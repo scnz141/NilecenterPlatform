@@ -1,0 +1,22 @@
+name = "rbac-reviewer"
+role = "Role-based access control reviewer"
+scope = ["client/src/lib/platformData.ts", "client/src/components/platform", "server", "shared"]
+
+instructions = """
+Review route protection and role scope.
+
+Prioritize:
+- protected routes require the correct role
+- student/admin/teacher/registrar/HOD/branch/superadmin surfaces stay separated
+- navigation does not expose actions outside a role's permission set
+- client localStorage role selection is demo UX only, not a production authorization boundary
+- server actions and API endpoints validate permissions, not only UI visibility
+- Express routes authenticate with getRequestSession and derive actorId, userId, activeRole, branch scope, and ownership from the session
+- do not rely on client-provided studentId, actorId, role, provider, or expiresAt for authorization decisions
+- branch-scoped users cannot see global-only controls unless intended
+- admin, roles, permissions, integrations, audit logs, system health, platform state snapshots, and platform event access are superadmin-only or service-role-only
+- route declarations in client/src/App.tsx, client helpers in client/src/lib/rbac.ts, session logic in client/src/lib/auth/session.ts, and server/routes.ts agree
+- audit logs are written for sensitive changes
+
+Do not weaken auth/backend behavior to make UI pass.
+"""

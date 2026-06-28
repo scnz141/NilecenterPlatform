@@ -1,0 +1,8 @@
+dist
+node_modules
+.git
+.playwright-cli
+.playwright-mcp
+output
+*.min.js
+*.min.css

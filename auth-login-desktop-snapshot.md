@@ -1,0 +1,39 @@
+- generic [ref=e2] [box=0,0,1440,1000]:
+  - region "Notifications alt+T" [box=0,0,1440,0]
+  - main [ref=e6] [box=0,0,1440,1000]:
+    - complementary [ref=e7] [box=0,0,590,1000]:
+      - link "NC Nile Center" [ref=e9] [cursor=pointer] [box=58,58,121,32]:
+        - /url: /
+        - generic [ref=e10] [box=58,58,32,32]: NC
+        - text: Nile Center
+      - generic "Nile Learn inspiration" [ref=e11] [box=58,144,460,193]:
+        - text: اقرأ
+        - generic [ref=e12] [box=77,163,38,38]: ۞
+        - strong [ref=e13] [box=77,209,422,55]: اقْرَأْ بِاسْمِ رَبِّكَ
+        - paragraph [ref=e14] [box=77,273,340,21]: Begin every path of learning with purpose.
+        - generic [ref=e15] [box=77,302,422,17]: Qur'an 96:1
+      - generic [ref=e16] [box=58,391,440,332]:
+        - generic [ref=e17] [box=58,391,92,17]
+        - heading "Education operations with a calm, modern workspace." [level=2] [ref=e20] [box=58,422,440,220]
+        - paragraph [ref=e21] [box=58,655,390,68]: Arabic, Quran, language learning, admissions, scheduling, certificates, reports, and administration now share one platform foundation.
+      - generic [ref=e22] [box=58,777,473,73]:
+        - generic [ref=e23] [box=58,777,150,73]
+        - generic [ref=e26] [box=220,777,150,73]
+        - generic [ref=e29] [box=382,777,150,73]
+      - link "Moodle LMS" [ref=e32] [cursor=pointer] [box=58,904,146,38]:
+        - /url: https://nilecenter.online
+        - img [ref=e33] [box=71,915,15,15]
+        - text: Moodle LMS
+        - img [ref=e36] [box=177,916,14,14]
+    - generic [ref=e38] [box=590,0,850,1000]:
+      - generic [ref=e39] [box=654,125,720,446]:
+        - link "NC Nile Center" [ref=e40] [cursor=pointer] [box=654,125,121,32]:
+          - /url: /
+        - generic [ref=e42] [box=654,187,158,17]
+        - heading "One platform, separate access for learners and operations." [level=1] [ref=e45] [box=654,217,720,292]
+        - paragraph [ref=e46] [box=654,523,560,48]: Student learning and administration workflows now enter through separate routes so each role starts in the right context.
+      - generic [ref=e47] [box=654,599,722,276]:
+        - link "Student portal Learning workspace Courses, live classes, assignments, Quran progress, certificates, and support in one focused student route. Continue" [ref=e49] [cursor=pointer] [box=654,599,354,276]:
+          - /url: /auth/student-login
+        - link "Administration portal Operations workspace Teacher, registrar, HOD, branch, and super-admin access are separated from the learner sign-in path. Continue" [ref=e61] [cursor=pointer] [box=1022,599,354,276]:
+          - /url: /auth/administration-login

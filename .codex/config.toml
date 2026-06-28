@@ -1,0 +1,39 @@
+# Nile Learn project-level Codex configuration.
+# This file documents the local agent workflow. It is intentionally plain TOML
+# so future automation can parse prompt and reviewer ownership.
+
+project = "nile-learn"
+repository = "nile-center-platform"
+default_loop = "READ -> SPEC -> PLAN -> IMPLEMENT -> VERIFY -> REVIEW -> FIX -> DOCUMENT"
+
+[commands]
+format_check = "node_modules/.bin/prettier --check CLAUDE.md AGENTS.md .codex/hooks.json .codex/prompts/*.md"
+full_format_check = "FULL_FORMAT_CHECK=1 scripts/verify.sh"
+typecheck = "npm run check"
+verify_pnpm = "USE_PNPM=1 scripts/verify.sh"
+test = "npm test -- --run"
+build = "npm run build"
+portal_qa = "npm run qa:portals"
+verify = "scripts/verify.sh"
+loop = "scripts/codex-loop.sh"
+
+[paths]
+prompts = ".codex/prompts"
+agents = ".codex/agents"
+hooks = ".codex/hooks.json"
+agent_guide = "AGENTS.md"
+engineering_rules = "CLAUDE.md"
+
+[workflow]
+discovery_prompt = ".codex/prompts/00-discovery.md"
+security_prompt = ".codex/prompts/15-security-review.md"
+required_instruction_files = ["CLAUDE.md", "AGENTS.md", ".codex/prompts/<matching-feature>.md"]
+instruction_precedence = "Follow the stricter rule. CLAUDE.md owns engineering discipline; AGENTS.md owns Nile Learn product, security, role, portal, and command authority."
+required_response = ["mandatory_guidance_files_read", "summary", "changed_files", "commands_run", "validation_results", "remaining_limitations"]
+
+[reviewers]
+ui = ".codex/agents/ui-reviewer.toml"
+rbac = ".codex/agents/rbac-reviewer.toml"
+qa = ".codex/agents/qa-reviewer.toml"
+data = ".codex/agents/data-architect.toml"
+security = ".codex/agents/security-reviewer.toml"

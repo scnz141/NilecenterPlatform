@@ -1,0 +1,23 @@
+{
+  "project": "nile-learn",
+  "hooks": {
+    "beforeImplementation": [
+      "Read CLAUDE.md for engineering discipline and anti-pattern rules",
+      "Read AGENTS.md for Nile Learn product, security, role, portal, and command rules",
+      "Read the matching .codex/prompts/*.md file",
+      "Identify route, role, data models, and verification commands"
+    ],
+    "afterImplementation": ["scripts/verify.sh"],
+    "review": [
+      ".codex/agents/ui-reviewer.toml",
+      ".codex/agents/rbac-reviewer.toml",
+      ".codex/agents/qa-reviewer.toml",
+      ".codex/agents/data-architect.toml",
+      ".codex/agents/security-reviewer.toml"
+    ]
+  },
+  "notes": [
+    "Hooks are declarative for Codex/operator use; they are not automatically executed by this repository.",
+    "Use scripts/codex-loop.sh to run the local READ -> SPEC -> PLAN -> IMPLEMENT -> VERIFY -> REVIEW -> FIX -> DOCUMENT loop scaffold."
+  ]
+}
