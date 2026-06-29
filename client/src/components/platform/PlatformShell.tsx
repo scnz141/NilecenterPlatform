@@ -31,6 +31,8 @@ import {
   Menu,
   MessageSquare,
   Network,
+  PanelLeftClose,
+  PanelLeftOpen,
   PenLine,
   PlugZap,
   Presentation,
@@ -44,7 +46,7 @@ import {
   X,
 } from "lucide-react";
 import { toast } from "sonner";
-import { getDemoUser, roleInspirations, roleMeta, rolePermissions, type Role } from "@/lib/platformData";
+import { getDemoUser, roleInspirations, roleMeta, type Role } from "@/lib/platformData";
 import { getSidebarForRole } from "@/lib/rbac";
 import { getDirection, localeOptions, t, type Locale } from "@/lib/i18n";
 import { platformStore } from "@/lib/domain/store";
@@ -163,13 +165,17 @@ function canShowSearchResult(role: Role, href: string) {
 export default function PlatformShell({ role, children, title }: ShellProps) {
   const [location, navigate] = useLocation();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [sidebarExpanded, setSidebarExpanded] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [accountOpen, setAccountOpen] = useState(false);
   const [notificationVersion, setNotificationVersion] = useState(0);
   const [query, setQuery] = useState("");
   const menuButtonRef = useRef<HTMLButtonElement | null>(null);
   const mobileDrawerRef = useRef<HTMLElement | null>(null);
   const notificationButtonRef = useRef<HTMLButtonElement | null>(null);
   const notificationPopoverRef = useRef<HTMLDivElement | null>(null);
+  const accountButtonRef = useRef<HTMLButtonElement | null>(null);
+  const accountMenuRef = useRef<HTMLDivElement | null>(null);
   const searchWrapRef = useRef<HTMLDivElement | null>(null);
   const user = getDemoUser(role);
   const meta = roleMeta[role];
@@ -188,10 +194,10 @@ export default function PlatformShell({ role, children, title }: ShellProps) {
     return saved && branchOptions.includes(saved) ? saved : branchOptions[0];
   });
   const sidebar = getSidebarForRole(role);
-  const permissionCount = rolePermissions[role].length;
   const dir = getDirection(locale);
   const profileHref = sidebar.find((item) => item.label === "Profile")?.href ?? meta.defaultRoute;
   const hasSearchQuery = Boolean(query.trim());
+  const isDashboardRoute = location.endsWith("/dashboard");
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -213,6 +219,7 @@ export default function PlatformShell({ role, children, title }: ShellProps) {
   useEffect(() => {
     setMobileOpen(false);
     setNotificationsOpen(false);
+    setAccountOpen(false);
     setQuery("");
   }, [location]);
 
@@ -262,6 +269,7 @@ export default function PlatformShell({ role, children, title }: ShellProps) {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         setNotificationsOpen(false);
+        setAccountOpen(false);
         setQuery("");
       }
     };
@@ -277,6 +285,13 @@ export default function PlatformShell({ role, children, title }: ShellProps) {
       if (hasSearchQuery && !searchWrapRef.current?.contains(target)) {
         setQuery("");
       }
+      if (
+        accountOpen &&
+        !accountButtonRef.current?.contains(target) &&
+        !accountMenuRef.current?.contains(target)
+      ) {
+        setAccountOpen(false);
+      }
     };
     document.addEventListener("keydown", onKeyDown);
     document.addEventListener("pointerdown", onPointerDown);
@@ -284,7 +299,7 @@ export default function PlatformShell({ role, children, title }: ShellProps) {
       document.removeEventListener("keydown", onKeyDown);
       document.removeEventListener("pointerdown", onPointerDown);
     };
-  }, [hasSearchQuery, notificationsOpen]);
+  }, [accountOpen, hasSearchQuery, notificationsOpen]);
 
   const sidebarMarkup = (
     <div className="platform-sidebar-inner">
@@ -301,23 +316,15 @@ export default function PlatformShell({ role, children, title }: ShellProps) {
         <button className="platform-icon-button platform-mobile-close" aria-label="Close menu" onClick={() => setMobileOpen(false)}>
           <X size={16} />
         </button>
-      </div>
-
-      <div className="platform-role-card">
-        <div
-          className="platform-role-avatar"
-          style={role === "superadmin" ? { background: meta.tint, color: meta.color } : { background: meta.color }}
+        <button
+          type="button"
+          className="platform-sidebar-toggle"
+          aria-label={sidebarExpanded ? "Collapse sidebar" : "Expand sidebar"}
+          aria-pressed={sidebarExpanded}
+          onClick={() => setSidebarExpanded((expanded) => !expanded)}
         >
-          {role === "superadmin" ? <ShieldCheck size={17} /> : user.avatar}
-        </div>
-        <div className="platform-role-card-copy">
-          <strong>{user.name}</strong>
-          <span>{meta.label}</span>
-          <small>
-            <ShieldCheck size={12} />
-            {permissionCount} permissions
-          </small>
-        </div>
+          {sidebarExpanded ? <PanelLeftClose size={15} /> : <PanelLeftOpen size={15} />}
+        </button>
       </div>
 
       {showScopeSelector ? (
@@ -349,7 +356,14 @@ export default function PlatformShell({ role, children, title }: ShellProps) {
           const Icon = iconMap[item.icon as keyof typeof iconMap] ?? LayoutDashboard;
           const active = location === item.href || location.startsWith(`${item.href}/`);
           return (
-            <Link key={item.href} href={item.href} className={`platform-nav-item ${active ? "active" : ""}`} onClick={() => setMobileOpen(false)}>
+            <Link
+              key={item.href}
+              href={item.href}
+              className={`platform-nav-item ${active ? "active" : ""}`}
+              aria-label={item.label}
+              title={item.label}
+              onClick={() => setMobileOpen(false)}
+            >
               <Icon size={16} />
               <span>{item.label}</span>
               {item.badge ? <em style={{ background: meta.color }}>{item.badge}</em> : null}
@@ -357,20 +371,13 @@ export default function PlatformShell({ role, children, title }: ShellProps) {
           );
         })}
       </nav>
-
-      <div className="platform-sidebar-footer">
-        <Link href="/auth/logout" className="platform-nav-item">
-          <LogOut size={16} />
-          <span>Sign out</span>
-        </Link>
-      </div>
     </div>
   );
 
   return (
     <div className="platform-shell" dir={dir} style={{ "--role-color": meta.color, "--role-tint": meta.tint } as CSSProperties}>
       <motion.aside
-        className="platform-desktop-sidebar"
+        className={`platform-desktop-sidebar ${sidebarExpanded ? "expanded" : ""}`}
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ duration: 0.38, ease: [0.23, 1, 0.32, 1] }}
@@ -534,38 +541,81 @@ export default function PlatformShell({ role, children, title }: ShellProps) {
               </div>
             ) : null}
 
-            <Link href={profileHref} className="platform-user-pill" aria-label={`${user.name} profile`}>
-              <span
-                className="platform-user-avatar"
-                style={role === "superadmin" ? { background: meta.tint, color: meta.color } : { background: meta.color }}
+            <div className="platform-account">
+              <button
+                ref={accountButtonRef}
+                type="button"
+                className="platform-user-pill"
+                aria-label={`${user.name} account menu`}
+                aria-expanded={accountOpen}
+                aria-controls="platform-account-menu"
+                onClick={() => setAccountOpen((open) => !open)}
               >
-                {role === "superadmin" ? <ShieldCheck size={16} /> : user.avatar}
-              </span>
-              <span className="platform-user-copy">
-                <strong>{user.name}</strong>
-                <small>{meta.label}</small>
-              </span>
-              <ChevronDown size={14} />
-            </Link>
+                <span
+                  className="platform-user-avatar"
+                  style={role === "superadmin" ? { background: meta.tint, color: meta.color } : { background: meta.color }}
+                >
+                  {role === "superadmin" ? <ShieldCheck size={16} /> : user.avatar}
+                </span>
+                <span className="platform-user-copy">
+                  <strong>{user.name}</strong>
+                  <small>{meta.label}</small>
+                </span>
+                <ChevronDown size={14} />
+              </button>
+
+              {accountOpen ? (
+                <div
+                  id="platform-account-menu"
+                  ref={accountMenuRef}
+                  className="platform-account-menu"
+                  role="menu"
+                  aria-label={`${user.name} account actions`}
+                >
+                  <div className="platform-account-menu-head">
+                    <span
+                      className="platform-user-avatar"
+                      style={role === "superadmin" ? { background: meta.tint, color: meta.color } : { background: meta.color }}
+                    >
+                      {role === "superadmin" ? <ShieldCheck size={16} /> : user.avatar}
+                    </span>
+                    <div>
+                      <strong>{user.name}</strong>
+                      <small>{meta.label}</small>
+                    </div>
+                  </div>
+                  <Link href={profileHref} className="platform-account-menu-item" role="menuitem">
+                    <UserCircle size={15} />
+                    Profile
+                  </Link>
+                  <Link href="/auth/logout" className="platform-account-menu-item danger" role="menuitem">
+                    <LogOut size={15} />
+                    Sign out
+                  </Link>
+                </div>
+              ) : null}
+            </div>
           </div>
         </motion.header>
 
-        <motion.section
-          className="platform-context-quote"
-          style={{ "--role-color": meta.color, "--role-tint": meta.tint } as CSSProperties}
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.38, ease: [0.23, 1, 0.32, 1], delay: 0.08 }}
-          aria-label={`${meta.label} inspiration`}
-        >
-          <span className="platform-quote-mark" aria-hidden="true">۞</span>
-          <div>
-            <small>{inspiration.theme}</small>
-            <strong lang="ar" dir="rtl">{inspiration.arabic}</strong>
-            <p>{inspiration.meaning}</p>
-          </div>
-          <em>{inspiration.source}</em>
-        </motion.section>
+        {isDashboardRoute ? (
+          <motion.section
+            className="platform-context-quote"
+            style={{ "--role-color": meta.color, "--role-tint": meta.tint } as CSSProperties}
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.38, ease: [0.23, 1, 0.32, 1], delay: 0.08 }}
+            aria-label={`${meta.label} inspiration`}
+          >
+            <span className="platform-quote-mark" aria-hidden="true">۞</span>
+            <div>
+              <small>{inspiration.theme}</small>
+              <strong lang="ar" dir="rtl">{inspiration.arabic}</strong>
+              <p>{inspiration.meaning}</p>
+            </div>
+            <em>{inspiration.source}</em>
+          </motion.section>
+        ) : null}
 
         <motion.main
           key={location}
