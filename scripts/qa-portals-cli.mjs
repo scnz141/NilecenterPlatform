@@ -55,7 +55,7 @@ if (!fs.existsSync(pwcli)) {
 const roles = [
   {
     role: "student",
-    email: "student.demo@nilelearn.local",
+    email: "s@nl.test",
     loginPath: "/auth/student-login",
     dashboard: "/app/student/dashboard",
     routes: [
@@ -81,7 +81,7 @@ const roles = [
   },
   {
     role: "teacher",
-    email: "teacher.demo@nilelearn.local",
+    email: "t@nl.test",
     loginPath: "/auth/administration-login",
     dashboard: "/app/teacher/dashboard",
     routes: [
@@ -106,7 +106,7 @@ const roles = [
   },
   {
     role: "registrar",
-    email: "registrar.demo@nilelearn.local",
+    email: "r@nl.test",
     loginPath: "/auth/administration-login",
     dashboard: "/app/registrar/dashboard",
     routes: [
@@ -128,7 +128,7 @@ const roles = [
   },
   {
     role: "headofdepartment",
-    email: "hod.demo@nilelearn.local",
+    email: "h@nl.test",
     loginPath: "/auth/administration-login",
     dashboard: "/app/hod/dashboard",
     routes: [
@@ -148,7 +148,7 @@ const roles = [
   },
   {
     role: "branchadmin",
-    email: "branch.demo@nilelearn.local",
+    email: "b@nl.test",
     loginPath: "/auth/administration-login",
     dashboard: "/app/branch/dashboard",
     routes: [
@@ -166,7 +166,7 @@ const roles = [
   },
   {
     role: "superadmin",
-    email: "admin.demo@nilelearn.local",
+    email: "a@nl.test",
     loginPath: "/auth/administration-login",
     dashboard: "/app/admin/dashboard",
     routes: [

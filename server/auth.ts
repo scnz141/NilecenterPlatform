@@ -27,6 +27,14 @@ const demoUsers: Record<ServerRole, { id: string; email: string; name: string }>
   branchadmin: { id: "usr_branch_demo", email: "branch.demo@nilelearn.local", name: "Branch Demo" },
   superadmin: { id: "usr_admin_demo", email: "admin.demo@nilelearn.local", name: "Admin Demo" },
 };
+const demoEmailAliases: Record<ServerRole, string> = {
+  student: "s@nl.test",
+  teacher: "t@nl.test",
+  registrar: "r@nl.test",
+  headofdepartment: "h@nl.test",
+  branchadmin: "b@nl.test",
+  superadmin: "a@nl.test",
+};
 
 function clean(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
@@ -160,7 +168,8 @@ async function signInWithSupabase(email: string, password: string, requestedRole
 function signInWithDemo(email: string, password: string, requestedRole: ServerRole) {
   if (!demoAuthEnabled()) return null;
   const user = demoUsers[requestedRole];
-  if (clean(email).toLowerCase() !== user.email || clean(password).length < 4) return null;
+  const emailValue = clean(email).toLowerCase();
+  if (![user.email, demoEmailAliases[requestedRole]].includes(emailValue) || clean(password).length < 4) return null;
 
   return createSession({
     userId: user.id,

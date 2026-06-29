@@ -52,6 +52,15 @@ Required placeholders:
 
 The app uses safe local demo identities only:
 
+- Student: `s@nl.test`
+- Teacher: `t@nl.test`
+- Registrar: `r@nl.test`
+- HOD: `h@nl.test`
+- Branch admin: `b@nl.test`
+- Super admin: `a@nl.test`
+
+The legacy local emails still work for compatibility:
+
 - `student.demo@nilelearn.local`
 - `teacher.demo@nilelearn.local`
 - `registrar.demo@nilelearn.local`
@@ -93,7 +102,7 @@ Seed Supabase Auth users and demo database rows with:
 npm run seed:supabase
 ```
 
-The seeder creates or updates the six demo Auth users with role claims in `app_metadata`, verifies password sign-in for each role, and upserts the full seed into the server-only demo tables. The default demo password is `demo1234`; override it with `NILE_DEMO_PASSWORD` in `.env.local`.
+The seeder creates or updates the six role demo Auth users plus the six short aliases with role claims in `app_metadata`, verifies password sign-in for each role, and upserts the full seed into the server-only demo tables. The default demo password is `demo1234`; override it with `NILE_DEMO_PASSWORD` in `.env.local`.
 
 ## Route Groups
 

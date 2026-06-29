@@ -42,6 +42,14 @@ const PLATFORM_RECORDS_TABLE = sanitizeTableName(process.env.SUPABASE_PLATFORM_R
 const PLATFORM_STATE_TABLE = sanitizeTableName(process.env.SUPABASE_PLATFORM_STATE_TABLE || "platform_state_snapshots");
 const PLATFORM_EVENTS_TABLE = sanitizeTableName(process.env.SUPABASE_PLATFORM_EVENTS_TABLE || "platform_events");
 const PLATFORM_STATE_ID = process.env.SUPABASE_PLATFORM_STATE_ID || "nile-learn-demo";
+const SHORT_AUTH_EMAILS: Record<DemoRole, string> = {
+  student: "s@nl.test",
+  teacher: "t@nl.test",
+  registrar: "r@nl.test",
+  headofdepartment: "h@nl.test",
+  branchadmin: "b@nl.test",
+  superadmin: "a@nl.test",
+};
 
 function sanitizeTableName(value: string) {
   const table = value.trim();
@@ -63,7 +71,7 @@ function safeReason(input: unknown) {
 }
 
 function authUsersFromSeed(): AuthUserPayload[] {
-  return seedPlatformState.users.map((user) => ({
+  const users = seedPlatformState.users.map((user) => ({
     id: user.id,
     email: user.email,
     name: user.name,
@@ -72,6 +80,13 @@ function authUsersFromSeed(): AuthUserPayload[] {
     branchId: user.branchId,
     departmentId: user.departmentId,
   }));
+  const aliasedRoles = new Set<DemoRole>();
+  const aliases = users.flatMap((user) => {
+    if (aliasedRoles.has(user.activeRole)) return [];
+    aliasedRoles.add(user.activeRole);
+    return [{ ...user, email: SHORT_AUTH_EMAILS[user.activeRole] }];
+  });
+  return [...users, ...aliases];
 }
 
 function flattenSeedState(seededAt: string) {

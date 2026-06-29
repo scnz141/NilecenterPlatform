@@ -10,12 +10,12 @@ import { roleInspirations, type Role, type RoleInspiration } from "@/lib/platfor
 type LoginAudience = "gateway" | "student" | "administration";
 
 const roles = [
-  { id: "student", label: "Student", color: "#2D5016", route: "/app/student/dashboard", desc: "Courses, progress, certificates", email: "student.demo@nilelearn.local" },
-  { id: "teacher", label: "Teacher", color: "#1A3A5C", route: "/app/teacher/dashboard", desc: "Classes, attendance, grading", email: "teacher.demo@nilelearn.local" },
-  { id: "registrar", label: "Registrar", color: "#5C2D00", route: "/app/registrar/dashboard", desc: "Admissions and payments", email: "registrar.demo@nilelearn.local" },
-  { id: "headofdepartment", label: "Head of Dept", color: "#3D1A5C", route: "/app/hod/dashboard", desc: "Academic oversight", email: "hod.demo@nilelearn.local" },
-  { id: "branchadmin", label: "Branch Admin", color: "#1A4A3A", route: "/app/branch/dashboard", desc: "Branch operations", email: "branch.demo@nilelearn.local" },
-  { id: "superadmin", label: "Super Admin", color: "#4A3A1A", route: "/app/admin/dashboard", desc: "Platform administration", email: "admin.demo@nilelearn.local" },
+  { id: "student", label: "Student", color: "#2D5016", route: "/app/student/dashboard", desc: "Courses, progress, certificates", email: "s@nl.test" },
+  { id: "teacher", label: "Teacher", color: "#1A3A5C", route: "/app/teacher/dashboard", desc: "Classes, attendance, grading", email: "t@nl.test" },
+  { id: "registrar", label: "Registrar", color: "#5C2D00", route: "/app/registrar/dashboard", desc: "Admissions and payments", email: "r@nl.test" },
+  { id: "headofdepartment", label: "Head of Dept", color: "#3D1A5C", route: "/app/hod/dashboard", desc: "Academic oversight", email: "h@nl.test" },
+  { id: "branchadmin", label: "Branch Admin", color: "#1A4A3A", route: "/app/branch/dashboard", desc: "Branch operations", email: "b@nl.test" },
+  { id: "superadmin", label: "Super Admin", color: "#4A3A1A", route: "/app/admin/dashboard", desc: "Platform administration", email: "a@nl.test" },
 ] as const;
 
 const panels = [
