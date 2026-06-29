@@ -661,8 +661,8 @@ function AdminAccessExperience({ pageId, params }: { pageId: string; params?: Re
       <section className="admin-access-hero">
         <div>
           <span className="platform-eyebrow">{focusLabel}</span>
-          <h2>Govern identity, roles, permissions, and branch scope from one controlled surface.</h2>
-          <p>Modelled after the legacy EMS access patterns, but redesigned for faster assignment, clearer RBAC coverage, and auditable changes.</p>
+          <h2>Access control</h2>
+          <p>Manage users, roles, permissions, and branch scope with auditable RBAC changes.</p>
         </div>
         <div className="admin-access-hero-actions">
           <button className={pageId === "users" || pageId === "user-detail" ? "active" : ""} onClick={() => setSelectedRole(selectedUser?.activeRole ?? "teacher")}>
@@ -1070,8 +1070,8 @@ function AdminSystemExperience({ pageId }: { pageId: string }) {
       <section className="admin-system-hero">
         <div>
           <span className="platform-eyebrow">{focusCopy}</span>
-          <h2>Operate integrations, health, audit evidence, and platform settings from one governed workspace.</h2>
-          <p>External connectors stay explicit: mock mode means visible local behavior, connected means the server-side boundary is expected to own credentials and sync.</p>
+          <h2>Platform operations</h2>
+          <p>Manage integrations, health, audit logs, and settings with server-side credential boundaries.</p>
         </div>
         <div className="admin-system-nav" aria-label="Admin system navigation">
           {[
@@ -1596,8 +1596,8 @@ function AcademicGovernanceExperience({
       <section className="academic-governance-hero">
         <div>
           <span className="platform-eyebrow">{focusLabel}</span>
-          <h2>Shape the academic catalog, curriculum readiness, and class delivery from one HOD workspace.</h2>
-          <p>Programs, levels, courses, teachers, classes, outcomes, assessments, and Moodle-derived content stay connected instead of living as disconnected lists.</p>
+          <h2>Academic governance</h2>
+          <p>Manage programs, courses, curriculum, teachers, classes, and academic approvals.</p>
         </div>
         <div className="academic-governance-actions">
           {academicNavItems.map(([label, routeId, Icon]) => (
@@ -2242,8 +2242,8 @@ function BranchOperationsExperience({ pageId }: { pageId: string }) {
       <section className="branch-ops-hero">
         <div>
           <span className="platform-eyebrow">{focusLabel}</span>
-          <h2>Run the branch from one operational surface: people, rooms, classes, and readiness.</h2>
-          <p>Branch administration connects local staff, class groups, room capacity, payments, attendance, and schedule decisions without making operators hunt through disconnected pages.</p>
+          <h2>Branch operations</h2>
+          <p>Manage local students, teachers, rooms, classes, attendance, payments, and schedules.</p>
         </div>
         <div className="branch-ops-actions">
           {[
@@ -2790,8 +2790,8 @@ function RegistrarAdmissionsExperience({ pageId, params }: { pageId: string; par
       <section className="registrar-hero">
         <div>
           <span className="platform-eyebrow">{focusLabel}</span>
-          <h2>Manage the admissions journey from first contact to placement, payment, and class handoff.</h2>
-          <p>Registrar work needs one calm surface for leads, applications, placement results, enrollment readiness, invoices, and communication follow-up.</p>
+          <h2>Admissions workspace</h2>
+          <p>Manage leads, applications, placement, enrollments, payments, and follow-up.</p>
         </div>
         <div className="registrar-actions">
           {[
@@ -3401,8 +3401,8 @@ function TeacherDeliveryExperience({ pageId, params }: { pageId: string; params?
       <section className="teacher-delivery-hero">
         <div>
           <span className="platform-eyebrow">{selectedCourse?.title ?? "Class delivery"}</span>
-          <h2>Run live teaching, student progress, attendance, assignments, and materials from one focused class surface.</h2>
-          <p>Teacher screens need to work on classroom boards and laptops: clear session state, large course context, fast roster checks, and material controls without visual clutter.</p>
+          <h2>Class delivery</h2>
+          <p>Run sessions, attendance, materials, assignments, quizzes, and grading from one workspace.</p>
         </div>
         <div className="teacher-delivery-actions">
           {[

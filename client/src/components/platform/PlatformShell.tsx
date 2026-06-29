@@ -166,6 +166,7 @@ export default function PlatformShell({ role, children, title }: ShellProps) {
   const [location, navigate] = useLocation();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [sidebarExpanded, setSidebarExpanded] = useState(false);
+  const [sidebarHovered, setSidebarHovered] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
   const [notificationVersion, setNotificationVersion] = useState(0);
@@ -377,7 +378,15 @@ export default function PlatformShell({ role, children, title }: ShellProps) {
   return (
     <div className="platform-shell" dir={dir} style={{ "--role-color": meta.color, "--role-tint": meta.tint } as CSSProperties}>
       <motion.aside
-        className={`platform-desktop-sidebar ${sidebarExpanded ? "expanded" : ""}`}
+        className={`platform-desktop-sidebar ${sidebarExpanded ? "expanded" : ""} ${!sidebarExpanded && sidebarHovered ? "hovered" : ""}`}
+        onMouseEnter={() => setSidebarHovered(true)}
+        onMouseLeave={() => setSidebarHovered(false)}
+        onFocus={() => setSidebarHovered(true)}
+        onBlur={(event) => {
+          if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+            setSidebarHovered(false);
+          }
+        }}
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ duration: 0.38, ease: [0.23, 1, 0.32, 1] }}
