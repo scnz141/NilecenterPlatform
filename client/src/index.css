@@ -111,8 +111,6 @@
 
   .platform-desktop-sidebar,
   .platform-mobile-sidebar {
-    width: 268px;
-    min-width: 268px;
     background:
       radial-gradient(circle at 82% 12%, color-mix(in srgb, var(--role-color) 10%, transparent), transparent 8.5rem),
       linear-gradient(180deg, rgba(255, 253, 249, 0.98), rgba(247, 245, 240, 0.96)),
@@ -122,9 +120,16 @@
   }
 
   .platform-desktop-sidebar {
+    width: clamp(236px, 20vw, 268px);
+    min-width: clamp(236px, 20vw, 268px);
     height: 100vh;
     position: sticky;
     top: 0;
+  }
+
+  .platform-mobile-sidebar {
+    width: min(288px, calc(100vw - 28px));
+    min-width: 0;
   }
 
   .platform-sidebar-inner {
@@ -447,7 +452,8 @@
     min-height: 58px;
     position: relative;
     z-index: 20;
-    display: flex;
+    display: grid;
+    grid-template-columns: auto minmax(126px, auto) minmax(220px, 1fr) auto;
     align-items: center;
     gap: 12px;
     margin: 14px 24px 0;
@@ -463,6 +469,7 @@
     align-items: center;
     gap: 8px;
     min-width: 145px;
+    min-inline-size: 0;
   }
 
   .platform-breadcrumb span {
@@ -490,6 +497,7 @@
     align-items: center;
     gap: 8px;
     padding: 0 12px;
+    justify-self: stretch;
   }
 
   .platform-search input {
@@ -542,6 +550,8 @@
     gap: 8px;
     position: relative;
     flex: 0 0 auto;
+    min-width: 0;
+    justify-self: end;
   }
 
   .platform-icon-button {
@@ -627,8 +637,8 @@
   }
 
   .platform-user-pill {
-    min-width: 158px;
-    max-width: 190px;
+    min-width: 166px;
+    max-width: 224px;
     height: 42px;
     border: 1px solid color-mix(in srgb, var(--role-color) 18%, var(--border));
     border-radius: 999px;
@@ -676,6 +686,7 @@
 
   .platform-user-copy {
     min-width: 0;
+    flex: 1 1 auto;
     position: relative;
     z-index: 1;
     display: grid;
@@ -721,6 +732,7 @@
     padding: 26px clamp(16px, 2.7vw, 36px) 36px;
     overflow-y: auto;
     overflow-x: clip;
+    scrollbar-gutter: stable;
   }
 
   .platform-context-quote {
@@ -1146,22 +1158,26 @@
     width: 100%;
     border-collapse: collapse;
     font-size: 13px;
+    table-layout: fixed;
   }
 
   .platform-table-card th {
     text-align: left;
-    padding: 12px 14px;
+    padding: 14px 16px;
     color: var(--muted-foreground);
     font-size: 11px;
     font-weight: 800;
     text-transform: uppercase;
     border-bottom: 1px solid var(--border);
+    line-height: 1.25;
   }
 
   .platform-table-card td {
-    padding: 12px 14px;
+    padding: 14px 16px;
     border-bottom: 1px solid var(--border);
     vertical-align: middle;
+    line-height: 1.38;
+    overflow-wrap: anywhere;
   }
 
   .platform-table-card tr.selected td {
@@ -8352,9 +8368,13 @@
 
   @media (max-width: 1100px) {
     .platform-topbar {
+      grid-template-columns: auto minmax(0, 1fr) auto;
       margin-inline: 16px;
       padding-inline: 10px;
       gap: 8px;
+      min-height: auto;
+      padding-top: 10px;
+      padding-bottom: 10px;
     }
 
     .platform-breadcrumb {
@@ -8372,8 +8392,11 @@
     }
 
     .platform-search {
+      grid-column: 1 / -1;
+      grid-row: 2;
       min-width: 0;
-      flex: 1 1 220px;
+      max-width: none;
+      flex: 1 1 100%;
     }
 
     .platform-language {
@@ -8382,8 +8405,8 @@
     }
 
     .platform-user-pill {
-      min-width: 46px;
-      max-width: 150px;
+      min-width: 48px;
+      max-width: 192px;
     }
 
     .platform-metric-grid,
@@ -8578,7 +8601,7 @@
       margin: 8px 10px 0;
       padding: 0 12px;
       gap: 8px;
-      flex-wrap: wrap;
+      grid-template-columns: auto minmax(0, 1fr) auto;
       min-height: auto;
       padding-top: 10px;
       padding-bottom: 10px;
@@ -8627,6 +8650,8 @@
 
     .platform-search {
       order: 3;
+      grid-column: 1 / -1;
+      grid-row: 2;
       flex-basis: 100%;
       max-width: none;
     }

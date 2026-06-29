@@ -181,7 +181,7 @@ export default function PlatformShell({ role, children, title }: ShellProps) {
   });
   const scopeConfig = useMemo(() => getScopeConfig(role, meta.branchLabel), [meta.branchLabel, role]);
   const branchOptions = useMemo(() => Array.from(new Set(scopeConfig.options)), [scopeConfig.options]);
-  const showScopeSelector = branchOptions.length > 1 || role !== "student";
+  const showScopeSelector = branchOptions.length > 1;
   const [branch, setBranch] = useState(() => {
     if (typeof window === "undefined") return branchOptions[0];
     const saved = window.localStorage.getItem(`nilelearn.branch.${role}`);
