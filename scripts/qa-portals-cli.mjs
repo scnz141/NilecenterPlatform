@@ -1,12 +1,32 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { spawnSync } from "node:child_process";
+import { spawn } from "node:child_process";
+
+function readPositiveIntegerEnv(name, fallback) {
+  const raw = process.env[name];
+  if (!raw) return fallback;
+  const value = Number(raw);
+  return Number.isFinite(value) && value > 0 ? Math.floor(value) : fallback;
+}
 
 const baseUrl = process.env.QA_BASE_URL || "http://localhost:3001";
 const session = process.env.QA_SESSION || `nile-portals-qa-${process.pid}`;
 const password = process.env.NILE_DEMO_PASSWORD || "demo1234";
-const commandTimeoutMs = Number(process.env.QA_COMMAND_TIMEOUT_MS || 45000);
+const commandTimeoutMs = readPositiveIntegerEnv("QA_COMMAND_TIMEOUT_MS", 45000);
+const routeReadyTimeoutMs = readPositiveIntegerEnv("QA_ROUTE_READY_TIMEOUT_MS", 5000);
+const routeMatrixRouteTimeoutMs = readPositiveIntegerEnv(
+  "QA_ROUTE_MATRIX_ROUTE_TIMEOUT_MS",
+  3000
+);
+const routeMatrixChunkSize = readPositiveIntegerEnv(
+  "QA_ROUTE_MATRIX_CHUNK_SIZE",
+  6
+);
+const workflowReadyTimeoutMs = readPositiveIntegerEnv(
+  "QA_WORKFLOW_READY_TIMEOUT_MS",
+  4000
+);
 const pwcli =
   process.env.PWCLI ||
   path.join(
@@ -72,6 +92,7 @@ const roles = [
       "/app/teacher/classes/class_ar_l3_a",
       "/app/teacher/assignments/asg_ar_grammar",
       "/app/teacher/classes",
+      "/app/teacher/moodle-source",
       "/app/teacher/assignments",
       "/app/teacher/grading",
       "/app/teacher/quizzes",
@@ -181,22 +202,56 @@ const authRoutes = [
 const failures = [];
 const checks = [];
 const platformStorageKey = "nilelearn.platform.state.v1";
+const platformStateUpdatedEvent = "nilelearn:platform-state-updated";
 
-function runPw(command, args = []) {
-  const result = spawnSync(pwcli, ["-s", session, command, ...args], {
+async function runPw(command, args = [], options = {}) {
+  const timeoutMs = options.timeoutMs ?? commandTimeoutMs;
+  const child = spawn(pwcli, ["-s", session, command, ...args], {
     cwd: process.cwd(),
-    encoding: "utf8",
-    maxBuffer: 1024 * 1024 * 4,
-    timeout: commandTimeoutMs,
+    detached: true,
+    stdio: ["ignore", "pipe", "pipe"],
   });
-  const output = `${result.stdout ?? ""}${result.stderr ?? ""}`;
-  if (result.error?.code === "ETIMEDOUT") {
-    if (output.includes("### Result")) return output;
-    throw new Error(
-      `playwright ${command} timed out after ${commandTimeoutMs}ms: ${output.slice(0, 800)}`
-    );
+
+  let stdout = "";
+  let stderr = "";
+  let timedOut = false;
+  child.stdout?.setEncoding("utf8");
+  child.stderr?.setEncoding("utf8");
+  child.stdout?.on("data", chunk => {
+    stdout += chunk;
+    if (stdout.length > 1024 * 1024 * 4) stdout = stdout.slice(-1024 * 1024 * 4);
+  });
+  child.stderr?.on("data", chunk => {
+    stderr += chunk;
+    if (stderr.length > 1024 * 1024 * 4) stderr = stderr.slice(-1024 * 1024 * 4);
+  });
+
+  const timer = setTimeout(() => {
+    timedOut = true;
+    try {
+      if (child.pid) process.kill(-child.pid, "SIGTERM");
+    } catch {
+      child.kill("SIGTERM");
+    }
+    setTimeout(() => {
+      try {
+        if (child.pid) process.kill(-child.pid, "SIGKILL");
+      } catch {
+        child.kill("SIGKILL");
+      }
+    }, 1500).unref();
+  }, timeoutMs);
+
+  const status = await new Promise((resolve, reject) => {
+    child.on("error", reject);
+    child.on("close", code => resolve(code ?? 0));
+  }).finally(() => clearTimeout(timer));
+
+  const output = `${stdout}${stderr}`;
+  if (timedOut) {
+    throw new Error(`playwright ${command} timed out after ${timeoutMs}ms: ${output.slice(0, 800)}`);
   }
-  if (result.status !== 0) {
+  if (status !== 0) {
     throw new Error(`playwright ${command} failed: ${output.slice(0, 800)}`);
   }
   return output;
@@ -216,18 +271,47 @@ function extractResult(output) {
   }
 }
 
-function pageEval(source) {
-  return extractResult(runPw("eval", [source]));
+async function pageEval(source, options) {
+  return extractResult(await runPw("eval", [source], options));
 }
 
-function goto(pathname) {
-  runPw("goto", [`${baseUrl}${pathname}`]);
+async function goto(pathname) {
+  await runPw("goto", [`${baseUrl}${pathname}`]);
 }
 
 async function assertCheck(name, actual, predicate, details = {}) {
   const ok = Boolean(predicate(actual));
   checks.push({ name, ok, actual, ...details });
   if (!ok) failures.push({ name, actual, ...details });
+  return ok;
+}
+
+function chunkItems(items, size) {
+  const chunks = [];
+  for (let index = 0; index < items.length; index += size) {
+    chunks.push(items.slice(index, index + size));
+  }
+  return chunks;
+}
+
+function routeMatrixTimeout(routeCount) {
+  const derivedTimeoutMs = Math.max(
+    12000,
+    routeCount * (routeMatrixRouteTimeoutMs + 2000)
+  );
+  return Math.min(commandTimeoutMs, derivedTimeoutMs);
+}
+
+async function runRouteMatrix(routes) {
+  const results = [];
+  for (const routeChunk of chunkItems(routes, routeMatrixChunkSize)) {
+    const chunkResult = await pageEval(inspectRouteMatrixSource(routeChunk), {
+      timeoutMs: routeMatrixTimeout(routeChunk.length),
+    });
+    if (!Array.isArray(chunkResult)) return chunkResult;
+    results.push(...chunkResult);
+  }
+  return results;
 }
 
 function inspectSource(expectedPath) {
@@ -390,6 +474,7 @@ function inspectAuthSource(expectedPath) {
 function inspectRouteMatrixSource(routes) {
   return `async () => {
     const routes = ${JSON.stringify(routes)};
+    const routeTimeoutMs = ${JSON.stringify(routeMatrixRouteTimeoutMs)};
     const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
     const normalize = (value) => (value || "").replace(/\\s+/g, " ").trim();
     const isVisible = (element) => {
@@ -460,7 +545,7 @@ function inspectRouteMatrixSource(routes) {
     const waitForRoute = async (route) => {
       const previousContent = normalize(document.querySelector(".platform-content")?.textContent || "");
       const started = performance.now();
-      while (performance.now() - started < 6000) {
+      while (performance.now() - started < routeTimeoutMs) {
         const text = normalize(document.body.innerText || document.body.textContent);
         const contentText = normalize(document.querySelector(".platform-content")?.textContent || "");
         const changed = contentText !== previousContent;
@@ -490,7 +575,7 @@ function loginSource(role) {
     const response = await fetch("/api/auth/login", {
       method: "POST",
       credentials: "include",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", "X-Nile-Learn-Request": "browser" },
       body: JSON.stringify({
         email: ${JSON.stringify(role.email)},
         password: ${JSON.stringify(password)},
@@ -520,7 +605,10 @@ function workflowSetupSource(body) {
   return `async () => {
     const STORAGE_KEY = ${JSON.stringify(platformStorageKey)};
     const readState = () => JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}");
-    const writeState = (state) => localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    const writeState = (state) => {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      window.dispatchEvent(new Event(${JSON.stringify(platformStateUpdatedEvent)}));
+    };
     try {
       ${body}
     } catch (error) {
@@ -535,6 +623,10 @@ function workflowActionSource(body) {
     const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
     const normalize = (value) => (value || "").replace(/\\s+/g, " ").trim();
     const readState = () => JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}");
+    const writeState = (state) => {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      window.dispatchEvent(new Event(${JSON.stringify(platformStateUpdatedEvent)}));
+    };
     const visible = (element) => {
       if (!element) return false;
       const rect = element.getBoundingClientRect();
@@ -608,7 +700,7 @@ function workflowActionSource(body) {
         const text = normalize(document.body.innerText || document.body.textContent);
         const contentText = normalize(document.querySelector(".platform-content")?.textContent || "");
         return document.querySelector(".platform-shell") && document.querySelector(".platform-content") && !text.includes("Loading workspace") && contentText.length > 80;
-      }, 5000);
+      }, ${JSON.stringify(workflowReadyTimeoutMs)});
       ${body}
     } catch (error) {
       return {
@@ -623,9 +715,11 @@ function workflowActionSource(body) {
 
 function routeReadySource(expectedPath) {
   return `async () => {
+    const timeoutMs = ${JSON.stringify(routeReadyTimeoutMs)};
     const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
     const normalize = (value) => (value || "").replace(/\\s+/g, " ").trim();
-    for (let i = 0; i < 80; i += 1) {
+    const started = performance.now();
+    while (performance.now() - started < timeoutMs) {
       const loading = document.querySelector(".platform-route-loading");
       const shell = document.querySelector(".platform-shell");
       const content = document.querySelector(".platform-content");
@@ -646,6 +740,31 @@ function routeReadySource(expectedPath) {
   }`;
 }
 
+async function authenticateRole(role, checkName, details = {}) {
+  await goto(role.loginPath);
+  const loginResult = await pageEval(loginSource(role));
+  return assertCheck(
+    checkName,
+    loginResult,
+    value => value?.ok && value?.activeRole === role.role,
+    {
+      role: role.role,
+      ...details,
+    }
+  );
+}
+
+async function navigateToProtectedRoute(role, route, checkName, details = {}) {
+  await goto(route);
+  const routeReady = await pageEval(routeReadySource(route));
+  const ok = await assertCheck(checkName, routeReady, value => value?.ok, {
+    role: role.role,
+    route,
+    ...details,
+  });
+  return { ok, routeReady };
+}
+
 async function runDeepWorkflow({
   name,
   role: roleName,
@@ -658,49 +777,44 @@ async function runDeepWorkflow({
   const role = roles.find(item => item.role === roleName);
   if (!role) throw new Error(`Unknown role for deep workflow: ${roleName}`);
 
-  goto(role.loginPath);
-  const loginResult = pageEval(loginSource(role));
-  await assertCheck(
-    `${name} login`,
-    loginResult,
-    value => value?.ok && value?.activeRole === role.role,
-    {
-      role: role.role,
-      route,
-      deepWorkflow: true,
-    }
-  );
-
-  pageEval(resetPlatformStateSource());
-  goto(route);
-  const routeReady = pageEval(routeReadySource(route));
-  await assertCheck(`${name} route ready`, routeReady, value => value?.ok, {
-    role: role.role,
+  const loginOk = await authenticateRole(role, `${name} login`, {
     route,
     deepWorkflow: true,
   });
-  if (!routeReady?.ok) return;
+  if (!loginOk) return;
+
+  await pageEval(resetPlatformStateSource());
+  const { ok: routeReadyOk } = await navigateToProtectedRoute(
+    role,
+    route,
+    `${name} route ready`,
+    {
+      deepWorkflow: true,
+    }
+  );
+  if (!routeReadyOk) return;
 
   if (setupSource) {
-    const setupResult = pageEval(setupSource);
+    const setupResult = await pageEval(setupSource);
     await assertCheck(`${name} setup`, setupResult, value => value?.ok, {
       role: role.role,
       route,
       deepWorkflow: true,
     });
     if (reloadAfterSetup) {
-      goto(route);
-      const routeReadyAfterSetup = pageEval(routeReadySource(route));
-      await assertCheck(`${name} route ready after setup`, routeReadyAfterSetup, value => value?.ok, {
-        role: role.role,
+      const { ok: routeReadyAfterSetupOk } = await navigateToProtectedRoute(
+        role,
         route,
-        deepWorkflow: true,
-      });
-      if (!routeReadyAfterSetup?.ok) return;
+        `${name} route ready after setup`,
+        {
+          deepWorkflow: true,
+        }
+      );
+      if (!routeReadyAfterSetupOk) return;
     }
   }
 
-  const result = pageEval(source);
+  const result = await pageEval(source);
   await assertCheck(name, result, predicate, {
     role: role.role,
     route,
@@ -768,20 +882,44 @@ const deepWorkflowCases = [
       writeState(state);
       return { ok: true };
     `),
+    reloadAfterSetup: false,
     source: workflowActionSource(`
+      await waitFor(() => !document.querySelector(".learning-sync-pill.loading"), 5000);
       const before = readState();
-      const beforeProgress = before.enrollments?.[0]?.progress ?? 0;
+      const progress = before.lessonProgress?.find((item) => item.lessonId === "lesson_ar_conditional" && item.studentId === "stu_demo");
+      if (progress) {
+        progress.status = "in_progress";
+        delete progress.completedAt;
+      } else {
+        before.lessonProgress = before.lessonProgress || [];
+        before.lessonProgress.push({
+          id: "lp_ar_conditional_qa",
+          studentId: "stu_demo",
+          lessonId: "lesson_ar_conditional",
+          status: "in_progress",
+          notes: "QA deterministic setup."
+        });
+      }
+      const enrollment = before.enrollments?.find((item) => item.id === "enr_ar_l3");
+      if (enrollment) enrollment.progress = 68;
+      before.auditLogs = (before.auditLogs || []).filter((item) => item.action !== "lesson.completed" || item.entityId !== "lesson_ar_conditional");
+      writeState(before);
+      await waitFor(() => {
+        const actions = document.querySelector(".learning-player-actions");
+        return Array.from(actions?.querySelectorAll("button") || []).some((button) => visible(button) && !button.disabled && normalize(button.textContent).includes("Mark complete"));
+      });
+      const beforeProgress = before.enrollments?.find((item) => item.id === "enr_ar_l3")?.progress ?? 0;
       await clickButtonWithin(".learning-player-actions", "Mark complete");
       const after = await waitFor(() => {
         const state = readState();
-        const progress = state.enrollments?.[0]?.progress ?? 0;
+        const progress = state.enrollments?.find((item) => item.id === "enr_ar_l3")?.progress ?? 0;
         const completed = state.lessonProgress?.some((item) => item.lessonId === "lesson_ar_conditional" && item.status === "completed");
         return progress > beforeProgress && completed ? state : null;
       });
       return {
         ok: Boolean(after),
         beforeProgress,
-        afterProgress: after?.enrollments?.[0]?.progress,
+        afterProgress: after?.enrollments?.find((item) => item.id === "enr_ar_l3")?.progress,
         lastAudit: after?.auditLogs?.[0]?.action
       };
     `),
@@ -927,22 +1065,26 @@ const deepWorkflowCases = [
     role: "student",
     route: "/app/student/attendance",
     source: workflowActionSource(`
-      const attendanceButtons = Array.from(document.querySelectorAll("button")).map((button) => normalize(button.textContent));
+      const controlLabels = () => Array.from(document.querySelectorAll("button, [role='button'], input[type='submit']"))
+        .filter(visible)
+        .map((control) => normalize(control.textContent || control.getAttribute("aria-label") || control.getAttribute("value")));
+      const attendanceButtons = controlLabels();
       const attendanceText = normalize(document.body.textContent);
-      goto("/app/student/certificates");
-      await waitFor(() => normalize(document.body.textContent).includes("Certificate wallet"));
-      const certificateButtons = Array.from(document.querySelectorAll("button")).map((button) => normalize(button.textContent));
+      await goto("/app/student/certificates");
+      await waitFor(() => location.pathname === "/app/student/certificates" && normalize(document.body.textContent).includes("Certificate wallet"));
+      const certificateButtons = controlLabels();
+      const forbiddenCertificateControls = certificateButtons.filter((label) => /^(approve|approved|issue|issued)$/i.test(label));
       return {
         ok: true,
         attendanceHasSave: attendanceButtons.includes("Save attendance") || attendanceText.includes("Class attendance"),
-        certificateHasApprove: certificateButtons.includes("Approve") || certificateButtons.includes("Issue"),
+        forbiddenCertificateControls,
         certificateText: normalize(document.body.textContent)
       };
     `),
     predicate: value =>
       value?.ok &&
       value?.attendanceHasSave === false &&
-      value?.certificateHasApprove === false &&
+      (value?.forbiddenCertificateControls?.length ?? 0) === 0 &&
       value?.certificateText?.includes("Certificate wallet"),
   },
   {
@@ -958,25 +1100,30 @@ const deepWorkflowCases = [
     reloadAfterSetup: false,
     source: workflowActionSource(`
       const title = "QA recitation " + Date.now();
-      const buttons = Array.from(document.querySelectorAll("button")).map((button) => normalize(button.textContent));
+      const staffControlPattern = /^(update progress|review recitation|approve recitation|reject recitation|save review)$/i;
+      const quranControlLabels = () => Array.from(document.querySelectorAll("button, [role='button'], input[type='submit']"))
+        .filter(visible)
+        .map((control) => normalize(control.textContent || control.getAttribute("aria-label") || control.getAttribute("value")));
+      const beforeForbiddenControls = quranControlLabels().filter((label) => staffControlPattern.test(label));
       setByLabel("Recitation title", title);
       await clickButtonWithin(".platform-workflow-main .platform-workflow-card", "Submit recitation");
       const state = await waitFor(() => {
         const next = readState();
         return next.recitationSubmissions?.[0]?.title === title ? next : null;
       });
+      const afterForbiddenControls = quranControlLabels().filter((label) => staffControlPattern.test(label));
       return {
         ok: Boolean(state),
         title: state?.recitationSubmissions?.[0]?.title,
         status: state?.recitationSubmissions?.[0]?.status,
-        hasTeacherControls: buttons.includes("Update progress") || buttons.includes("Review recitation"),
+        forbiddenQuranControls: Array.from(new Set([...beforeForbiddenControls, ...afterForbiddenControls])),
         lastAudit: state?.auditLogs?.[0]?.action
       };
     `),
     predicate: value =>
       value?.ok &&
       value?.status === "pending" &&
-      value?.hasTeacherControls === false &&
+      (value?.forbiddenQuranControls?.length ?? 0) === 0 &&
       value?.lastAudit === "recitation.submitted",
   },
   {
@@ -1054,7 +1201,51 @@ const deepWorkflowCases = [
     name: "branch scheduling workflow creates calendar event",
     role: "branchadmin",
     route: "/app/branch/schedule",
+    setupSource: workflowSetupSource(`
+      const state = readState();
+      state.rooms = state.rooms || [];
+      if (!state.rooms.some((item) => item.id === "room_cairo_4")) {
+        state.rooms.push({
+          id: "room_cairo_4",
+          branchId: "br_cairo",
+          name: "Cairo Room 4",
+          capacity: 20,
+          equipment: ["Projector", "Whiteboard"],
+          status: "active"
+        });
+      }
+      state.courseRuns = state.courseRuns || [];
+      if (!state.courseRuns.some((item) => item.id === "run_ar_l3_cairo_qa")) {
+        state.courseRuns.push({
+          id: "run_ar_l3_cairo_qa",
+          courseId: "course_ar_l3",
+          branchId: "br_cairo",
+          teacherId: "usr_teacher_demo",
+          term: "QA Cairo",
+          startsOn: "2026-07-01",
+          endsOn: "2026-08-31",
+          status: "active"
+        });
+      }
+      state.classGroups = state.classGroups || [];
+      if (!state.classGroups.some((item) => item.id === "class_ar_l3_cairo_qa")) {
+        state.classGroups.push({
+          id: "class_ar_l3_cairo_qa",
+          courseRunId: "run_ar_l3_cairo_qa",
+          name: "Arabic L3 - Cairo QA",
+          capacity: 20,
+          schedule: "Sun/Tue 14:00",
+          roomId: "room_cairo_4",
+          meetingLinkId: "meet_ar_l3",
+          studentIds: []
+        });
+      }
+      writeState(state);
+      return { ok: true };
+    `),
+    reloadAfterSetup: false,
     source: workflowActionSource(`
+      await waitFor(() => normalize(document.body.textContent).includes("Arabic L3 - Cairo QA"), 4000);
       const title = "QA review session " + Date.now();
       setByLabel("Title", title);
       setByLabel("Date", "2026-07-03");
@@ -1065,18 +1256,32 @@ const deepWorkflowCases = [
         const next = readState();
         return next.events?.[0]?.title === title ? next : null;
       });
+      const event = state?.events?.find((item) => item.title === title);
+      const session = state?.classSessions?.find((item) => item.eventId === event?.id || item.title === title);
+      const classGroup = state?.classGroups?.find((item) => item.id === (session?.classGroupId ?? event?.classGroupId));
+      const courseRun = state?.courseRuns?.find((item) => item.id === classGroup?.courseRunId);
+      const actor = state?.users?.find((item) => item.id === "usr_branch_demo");
+      const branchInvariantSupported = Boolean(event && session && classGroup && courseRun && actor?.branchId);
+      const branchInvariantOk = !branchInvariantSupported || (event.branchId === actor.branchId && courseRun.branchId === actor.branchId);
       return {
         ok: Boolean(state),
-        title: state?.events?.[0]?.title,
-        status: state?.events?.[0]?.status,
-        sessionCreated: state?.classSessions?.[0]?.title === title,
+        title: event?.title,
+        status: event?.status,
+        eventBranchId: event?.branchId,
+        actorBranchId: actor?.branchId,
+        classGroupId: classGroup?.id,
+        classRunBranchId: courseRun?.branchId,
+        branchInvariantSupported,
+        branchInvariantOk,
+        sessionCreated: session?.title === title,
         lastAudit: state?.auditLogs?.[0]?.action
       };
     `),
     predicate: value =>
       value?.ok &&
       value?.title?.startsWith("QA review session") &&
-      value?.sessionCreated === true,
+      value?.sessionCreated === true &&
+      value?.branchInvariantOk === true,
   },
   {
     name: "branch payment workflow records Cairo-scoped invoice",
@@ -1185,6 +1390,64 @@ const deepWorkflowCases = [
       value?.title?.startsWith("QA HOD assessment") &&
       value?.courseRunId === "run_ar_l3_2026" &&
       value?.lastAudit === "assignment.created",
+  },
+  {
+    name: "HOD certificate issue is blocked until approval when issue control exists",
+    role: "headofdepartment",
+    route: "/app/hod/certificates",
+    setupSource: workflowSetupSource(`
+      const state = readState();
+      const certificate = state.certificates?.[0];
+      if (certificate) {
+        state.certificates = state.certificates.map((item) =>
+          item.id === certificate.id
+            ? { ...item, status: "pending_approval", approvedBy: undefined }
+            : item
+        );
+        state.auditLogs = (state.auditLogs || []).filter((item) => item.entityId !== certificate.id || item.action !== "certificate.issued");
+      }
+      writeState(state);
+      return { ok: Boolean(certificate), certificateId: certificate?.id };
+    `),
+    source: workflowActionSource(`
+      const getButtons = () => Array.from(document.querySelectorAll("button"))
+        .filter(visible)
+        .map((button) => ({
+          label: normalize(button.textContent),
+          disabled: button.disabled || button.getAttribute("aria-disabled") === "true"
+        }));
+      await waitFor(() => getButtons().some((button) => /^issue$/i.test(button.label)) || normalize(document.body.textContent).includes("pending_approval"));
+      const before = readState().certificates?.[0];
+      const issueButton = Array.from(document.querySelectorAll("button"))
+        .filter(visible)
+        .find((button) => /^issue$/i.test(normalize(button.textContent)));
+      const supportsIssueControl = Boolean(issueButton);
+      const issueDisabled = Boolean(issueButton?.disabled || issueButton?.getAttribute("aria-disabled") === "true");
+      if (issueButton && !issueDisabled) {
+        issueButton.click();
+        await delay(180);
+      }
+      const state = readState();
+      const after = state.certificates?.find((item) => item.id === before?.id);
+      const issuedAuditForCertificate = state.auditLogs?.some((item) => item.action === "certificate.issued" && item.entityId === before?.id) ?? false;
+      return {
+        ok: Boolean(before),
+        beforeStatus: before?.status,
+        afterStatus: after?.status,
+        supportsIssueControl,
+        issueDisabled,
+        issuedAuditForCertificate,
+        controls: getButtons()
+      };
+    `),
+    predicate: value =>
+      value?.ok &&
+      value?.beforeStatus === "pending_approval" &&
+      (
+        value?.supportsIssueControl === false ||
+        value?.issueDisabled === true ||
+        (value?.afterStatus !== "issued" && value?.issuedAuditForCertificate === false)
+      ),
   },
   {
     name: "HOD certificate workflow approves and issues certificate",
@@ -1450,11 +1713,11 @@ const deepWorkflowCases = [
 ];
 
 try {
-  runPw("open", [`${baseUrl}/auth/login`]);
+  await runPw("open", [`${baseUrl}/auth/login`]);
 
   for (const authRoute of authRoutes) {
-    goto(authRoute);
-    const authCheck = pageEval(inspectAuthSource(authRoute));
+    await goto(authRoute);
+    const authCheck = await pageEval(inspectAuthSource(authRoute));
     await assertCheck(
       `${authRoute} renders auth experience`,
       authCheck,
@@ -1482,8 +1745,8 @@ try {
     );
   }
 
-  goto("/auth/login");
-  const gateway = pageEval(`() => ({
+  await goto("/auth/login");
+  const gateway = await pageEval(`() => ({
     path: location.pathname,
     portalLinks: Array.from(document.querySelectorAll('a[href^="/auth/"]')).map((anchor) => anchor.getAttribute("href")),
     quoteArabic: document.querySelector(".auth-calligraphy-panel strong")?.textContent?.trim() || "",
@@ -1507,9 +1770,9 @@ try {
     value => value?.overflow === 0
   );
 
-  runPw("resize", ["390", "844"]);
-  goto("/auth/login");
-  const mobileGateway = pageEval(`() => ({
+  await runPw("resize", ["390", "844"]);
+  await goto("/auth/login");
+  const mobileGateway = await pageEval(`() => ({
     path: location.pathname,
     overflow: Math.max(0, document.documentElement.scrollWidth - document.documentElement.clientWidth),
     width: document.documentElement.clientWidth
@@ -1519,19 +1782,14 @@ try {
     mobileGateway,
     value => value?.overflow === 0
   );
-  runPw("resize", ["1440", "1000"]);
+  await runPw("resize", ["1440", "1000"]);
 
   for (const role of roles) {
-    goto(role.loginPath);
-    const loginResult = pageEval(loginSource(role));
-    await assertCheck(
-      `${role.role} login API succeeds`,
-      loginResult,
-      value => value?.ok && value?.activeRole === role.role
-    );
+    const loginOk = await authenticateRole(role, `${role.role} login API succeeds`);
+    if (!loginOk) continue;
 
-    goto(role.dashboard);
-    const dashboard = pageEval(inspectSource(role.dashboard));
+    await goto(role.dashboard);
+    const dashboard = await pageEval(inspectSource(role.dashboard));
     await assertCheck(
       `${role.role} dashboard route is correct`,
       dashboard,
@@ -1570,13 +1828,13 @@ try {
       value => value?.visibleControls >= 8
     );
 
-    const routeChecks = pageEval(inspectRouteMatrixSource(role.routes));
+    const routeChecks = await runRouteMatrix(role.routes);
     await assertCheck(
       `${role.role} route matrix returned all routes`,
       routeChecks,
       value => Array.isArray(value) && value.length === role.routes.length
     );
-    for (const routeCheck of routeChecks || []) {
+    for (const routeCheck of Array.isArray(routeChecks) ? routeChecks : []) {
       const route = routeCheck.expectedPath;
       await assertCheck(
         `${route} renders protected content`,
@@ -1612,16 +1870,11 @@ try {
   }
 
   for (const role of roles) {
-    runPw("resize", ["390", "844"]);
-    goto(role.loginPath);
-    const mobileLogin = pageEval(loginSource(role));
-    await assertCheck(
-      `${role.role} mobile login API succeeds`,
-      mobileLogin,
-      value => value?.ok && value?.activeRole === role.role
-    );
-    goto(role.dashboard);
-    const mobile = pageEval(inspectSource(role.dashboard));
+    await runPw("resize", ["390", "844"]);
+    const mobileLoginOk = await authenticateRole(role, `${role.role} mobile login API succeeds`);
+    if (!mobileLoginOk) continue;
+    await goto(role.dashboard);
+    const mobile = await pageEval(inspectSource(role.dashboard));
     await assertCheck(
       `${role.role} mobile dashboard renders protected content`,
       mobile,
@@ -1643,13 +1896,13 @@ try {
       value => (value?.unlabeledControls?.length ?? 0) === 0
     );
 
-    const mobileRoutes = pageEval(inspectRouteMatrixSource(role.routes));
+    const mobileRoutes = await runRouteMatrix(role.routes);
     await assertCheck(
       `${role.role} mobile route matrix returned all routes`,
       mobileRoutes,
       value => Array.isArray(value) && value.length === role.routes.length
     );
-    for (const mobileRoute of mobileRoutes || []) {
+    for (const mobileRoute of Array.isArray(mobileRoutes) ? mobileRoutes : []) {
       const route = mobileRoute.expectedPath;
       await assertCheck(
         `${route} mobile renders protected content`,
@@ -1674,17 +1927,28 @@ try {
       );
     }
   }
-  runPw("resize", ["1440", "1000"]);
+  await runPw("resize", ["1440", "1000"]);
 
-  const consoleOutput = runPw("console", ["error"]);
+  const consoleOutput = await runPw("console", ["error"]);
   checks.push({
     name: "browser console errors captured",
     ok: true,
     actual: consoleOutput.slice(0, 1000),
   });
+} catch (error) {
+  const actual = {
+    message: error instanceof Error ? error.message : String(error),
+    stack: error instanceof Error ? error.stack : undefined,
+  };
+  const failure = {
+    name: "portal QA runner fatal error",
+    actual,
+  };
+  checks.push({ ...failure, ok: false });
+  failures.push(failure);
 } finally {
   try {
-    runPw("close");
+    await runPw("close");
   } catch {
     // The browser may already be closed after a failed assertion.
   }

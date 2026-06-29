@@ -1,10 +1,13 @@
 import { seedPlatformState } from "./seed";
 import {
   applyCompleteLesson,
+  applyPlatformWorkflowAction,
   applyStartLesson,
   applySubmitAssignment,
   applySubmitQuizAttempt,
+  type PlatformWorkflowAction,
 } from "./actions";
+import { runPlatformWorkflowActionRequest } from "../backend/api";
 import type {
   AttendanceStatus,
   AuditLog,
@@ -25,6 +28,7 @@ import type {
 } from "./types";
 
 const STORAGE_KEY = "nilelearn.platform.state.v1";
+const PLATFORM_STATE_UPDATED_EVENT = "nilelearn:platform-state-updated";
 
 type CreateLeadInput = Pick<
   Lead,
@@ -87,6 +91,25 @@ function now() {
 
 function createId(prefix: string) {
   return `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
+}
+
+function messageRouteForUser(user?: PlatformState["users"][number]) {
+  switch (user?.activeRole) {
+    case "student":
+      return "/app/student/messages";
+    case "teacher":
+      return "/app/teacher/messages";
+    case "registrar":
+      return "/app/registrar/messages";
+    case "headofdepartment":
+      return "/app/hod/messages";
+    case "branchadmin":
+      return "/app/branch/messages";
+    case "superadmin":
+      return "/app/admin/dashboard";
+    default:
+      return "/app";
+  }
 }
 
 function cloneSeed(): PlatformState {
@@ -153,6 +176,28 @@ class PlatformStore {
   setState(state: PlatformState) {
     if (typeof window === "undefined") return;
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    if (
+      typeof window.dispatchEvent === "function" &&
+      typeof CustomEvent !== "undefined"
+    ) {
+      window.dispatchEvent(new CustomEvent(PLATFORM_STATE_UPDATED_EVENT));
+    }
+  }
+
+  private syncAction(action: PlatformWorkflowAction) {
+    if (typeof window === "undefined" || typeof window.dispatchEvent !== "function") return;
+    runPlatformWorkflowActionRequest(action).then(result => {
+      if (!result.ok || !result.data) return;
+      this.setState(result.data.state);
+    });
+  }
+
+  applyAction(action: PlatformWorkflowAction) {
+    const state = this.getState();
+    const result = applyPlatformWorkflowAction(state, action, { createId, now });
+    this.setState(state);
+    this.syncAction(action);
+    return result;
   }
 
   audit(
@@ -176,56 +221,11 @@ class PlatformStore {
   }
 
   createLead(input: CreateLeadInput) {
-    const state = this.getState();
-    const lead: Lead = {
-      id: createId("lead"),
-      fullName: input.fullName,
-      email: input.email,
-      phone: input.phone,
-      country: input.country,
-      subject: input.subject,
-      source: input.source ?? "trial_form",
-      status: "lead",
-      notes: input.notes,
-      createdAt: now(),
-    };
-    state.leads = [lead, ...state.leads];
-    this.appendAudit(
-      state,
-      "lead.created",
-      "Lead",
-      lead.id,
-      `Created lead for ${lead.fullName} from ${lead.source}.`,
-      "usr_registrar_demo"
-    );
-    this.setState(state);
-    return lead;
+    return this.applyAction({ type: "lead.create", ...input }).result as Lead;
   }
 
   createPlacementBooking(input: CreatePlacementInput) {
-    const state = this.getState();
-    const booking: PlacementTestBooking = {
-      id: createId("pt"),
-      fullName: input.fullName,
-      email: input.email,
-      phone: input.phone,
-      branchId: input.branchId ?? "br_online",
-      subject: input.subject,
-      preferredDate: input.preferredDate,
-      currentLevel: input.currentLevel,
-      status: "pending",
-    };
-    state.placementTests = [booking, ...state.placementTests];
-    this.appendAudit(
-      state,
-      "placement.created",
-      "PlacementTestBooking",
-      booking.id,
-      `Booked placement test for ${booking.fullName}.`,
-      "usr_registrar_demo"
-    );
-    this.setState(state);
-    return booking;
+    return this.applyAction({ type: "placement.create", ...input }).result as PlacementTestBooking;
   }
 
   saveOperationalRecord(
@@ -233,18 +233,11 @@ class PlatformStore {
     payload: Record<string, string>,
     actorId = "usr_admin_demo"
   ) {
-    const state = this.getState();
-    const entityId = createId("record");
-    this.appendAudit(
-      state,
-      "record.saved",
-      module,
-      entityId,
-      `Saved ${module} record: ${payload.title ?? payload.name ?? entityId}.`,
-      actorId
-    );
-    this.setState(state);
-    return entityId;
+    return (
+      this.applyAction({ type: "record.save", module, payload, actorId }).result as {
+        entityId: string;
+      }
+    ).entityId;
   }
 
   startLesson(
@@ -252,14 +245,7 @@ class PlatformStore {
     studentId = "stu_demo",
     actorId = "usr_student_demo"
   ) {
-    const state = this.getState();
-    const lesson = applyStartLesson(
-      state,
-      { lessonId, studentId, actorId },
-      { createId, now }
-    );
-    this.setState(state);
-    return lesson;
+    return this.applyAction({ type: "lesson.start", lessonId, studentId, actorId }).result as ReturnType<typeof applyStartLesson>;
   }
 
   completeLesson(
@@ -267,14 +253,7 @@ class PlatformStore {
     studentId = "stu_demo",
     actorId = "usr_student_demo"
   ) {
-    const state = this.getState();
-    const lesson = applyCompleteLesson(
-      state,
-      { lessonId, studentId, actorId },
-      { createId, now }
-    );
-    this.setState(state);
-    return lesson;
+    return this.applyAction({ type: "lesson.complete", lessonId, studentId, actorId }).result as ReturnType<typeof applyCompleteLesson>;
   }
 
   submitAssignment(
@@ -283,14 +262,7 @@ class PlatformStore {
     studentId = "stu_demo",
     actorId = "usr_student_demo"
   ) {
-    const state = this.getState();
-    const submission = applySubmitAssignment(
-      state,
-      { assignmentId, response, studentId, actorId },
-      { createId, now }
-    );
-    this.setState(state);
-    return submission;
+    return this.applyAction({ type: "assignment.submit", assignmentId, response, studentId, actorId }).result as ReturnType<typeof applySubmitAssignment>;
   }
 
   submitQuizAttempt(
@@ -299,62 +271,15 @@ class PlatformStore {
     studentId = "stu_demo",
     actorId = "usr_student_demo"
   ) {
-    const state = this.getState();
-    const attempt = applySubmitQuizAttempt(
-      state,
-      { quizId, answers, studentId, actorId },
-      { createId, now }
-    );
-    this.setState(state);
-    return attempt;
+    return this.applyAction({ type: "quiz.submit", quizId, answers, studentId, actorId }).result as ReturnType<typeof applySubmitQuizAttempt>;
   }
 
   createAssignment(input: CreateAssignmentInput, actorId = "usr_teacher_demo") {
-    const state = this.getState();
-    const assignment = {
-      id: createId("asg"),
-      courseRunId: input.courseRunId,
-      title: input.title,
-      dueAt: input.dueAt,
-      submissionType: input.submissionType,
-      rubric: input.rubric,
-      status: "active" as const,
-    };
-    state.assignments = [assignment, ...state.assignments];
-    this.appendAudit(
-      state,
-      "assignment.created",
-      "Assignment",
-      assignment.id,
-      `${assignment.title} created.`,
-      actorId
-    );
-    this.setState(state);
-    return assignment;
+    return this.applyAction({ type: "assignment.create", ...input, actorId }).result as PlatformState["assignments"][number];
   }
 
   createQuiz(input: CreateQuizInput, actorId = "usr_teacher_demo") {
-    const state = this.getState();
-    const quiz = {
-      id: createId("quiz"),
-      courseRunId: input.courseRunId,
-      title: input.title,
-      durationMinutes: input.durationMinutes,
-      questionTypes: input.questionTypes,
-      attemptsAllowed: input.attemptsAllowed,
-      status: "active" as const,
-    };
-    state.quizzes = [quiz, ...state.quizzes];
-    this.appendAudit(
-      state,
-      "quiz.created",
-      "Quiz",
-      quiz.id,
-      `${quiz.title} created.`,
-      actorId
-    );
-    this.setState(state);
-    return quiz;
+    return this.applyAction({ type: "quiz.create", ...input, actorId }).result as PlatformState["quizzes"][number];
   }
 
   gradeAssignmentSubmission(
@@ -363,68 +288,9 @@ class PlatformStore {
     feedback: string,
     actorId = "usr_teacher_demo"
   ) {
-    const state = this.getState();
-    let updatedSubmission: (typeof state.assignmentSubmissions)[number] | undefined;
-    state.assignmentSubmissions = state.assignmentSubmissions.map(submission => {
-      if (submission.id !== submissionId) return submission;
-      updatedSubmission = {
-        ...submission,
-        status: "completed",
-        score,
-        feedback,
-      };
-      return updatedSubmission;
-    });
-    if (!updatedSubmission) {
-      this.setState(state);
-      return undefined;
-    }
-    const assignment = state.assignments.find(
-      item => item.id === updatedSubmission?.assignmentId
-    );
-    const existingGrade = state.grades.find(
-      grade =>
-        grade.studentId === updatedSubmission?.studentId &&
-        grade.itemTitle === assignment?.title
-    );
-    const maxScore = 100;
-    if (existingGrade) {
-      existingGrade.score = score;
-      existingGrade.maxScore = maxScore;
-      existingGrade.feedback = feedback;
-    } else if (assignment) {
-      state.grades = [
-        {
-          id: createId("gr"),
-          studentId: updatedSubmission.studentId,
-          courseRunId: assignment.courseRunId,
-          itemTitle: assignment.title,
-          score,
-          maxScore,
-          feedback,
-        },
-        ...state.grades,
-      ];
-    }
-    const student = state.students.find(
-      item => item.id === updatedSubmission?.studentId
-    );
-    this.notify(state, {
-      userId: student?.userId ?? "usr_student_demo",
-      title: "Assignment graded",
-      body: `${assignment?.title ?? "Assignment"} received ${score}/${maxScore}.`,
-      href: "/app/student/grades",
-    });
-    this.appendAudit(
-      state,
-      "assignment.graded",
-      "AssignmentSubmission",
-      updatedSubmission.id,
-      `${assignment?.title ?? "Assignment"} graded ${score}/${maxScore}.`,
-      actorId
-    );
-    this.setState(state);
-    return updatedSubmission;
+    return this.applyAction({ type: "assignment.grade", submissionId, score, feedback, actorId }).result as
+      | PlatformState["assignmentSubmissions"][number]
+      | undefined;
   }
 
   saveAttendanceBulk(
@@ -433,263 +299,34 @@ class PlatformStore {
     statuses: Record<string, AttendanceStatus>,
     actorId = "usr_teacher_demo"
   ) {
-    const state = this.getState();
-    const session = state.classSessions.find(
-      item => item.id === sessionId || item.eventId === sessionId
-    );
-    const sessionKeys = new Set(
-      [sessionId, session?.id, session?.eventId].filter(Boolean)
-    );
-    Object.entries(statuses).forEach(([studentId, status]) => {
-      const existing = state.attendance.find(
-        record =>
-          record.classGroupId === classGroupId &&
-          sessionKeys.has(record.sessionId) &&
-          record.studentId === studentId
-      );
-      if (existing) {
-        existing.status = status;
-        existing.sessionId = session?.id ?? sessionId;
-      } else {
-        state.attendance = [
-          {
-            id: createId("att"),
-            classGroupId,
-            studentId,
-            sessionId: session?.id ?? sessionId,
-            status,
-          },
-          ...state.attendance,
-        ];
-      }
-    });
-    state.classSessions = state.classSessions.map(session =>
-      session.id === sessionId || session.eventId === sessionId
-        ? { ...session, attendanceSaved: true }
-        : session
-    );
-    this.appendAudit(
-      state,
-      "attendance.saved",
-      "AttendanceRecord",
-      classGroupId,
-      `Saved attendance for ${Object.keys(statuses).length} learner(s).`,
-      actorId
-    );
-    this.setState(state);
-    return state.attendance.filter(
-      record =>
-        record.classGroupId === classGroupId &&
-        sessionKeys.has(record.sessionId)
-    );
+    return this.applyAction({ type: "attendance.save", classGroupId, sessionId, statuses, actorId }).result as PlatformState["attendance"];
   }
 
   createCalendarEvent(
     input: CreateCalendarEventInput,
     actorId = "usr_branch_demo"
   ) {
-    const state = this.getState();
-    const starts = new Date(input.startsAt).getTime();
-    const ends = new Date(input.endsAt).getTime();
-    const conflicts = state.events.filter(event => {
-      const eventStarts = new Date(event.startsAt).getTime();
-      const eventEnds = new Date(event.endsAt).getTime();
-      const overlaps = starts < eventEnds && ends > eventStarts;
-      if (!overlaps) return false;
-      return Boolean(
-        (input.roomId && event.roomId === input.roomId) ||
-          (input.ownerId && event.ownerId === input.ownerId) ||
-          (input.classGroupId && event.classGroupId === input.classGroupId)
-      );
-    });
-    const event: CalendarEvent = {
-      id: createId("evt"),
-      type: input.type,
-      title: input.title,
-      startsAt: input.startsAt,
-      endsAt: input.endsAt,
-      ownerId: input.ownerId,
-      branchId: input.branchId,
-      roomId: input.roomId,
-      classGroupId: input.classGroupId,
-      status: conflicts.length ? "pending" : "active",
+    const { type: eventType, ...eventInput } = input;
+    return this.applyAction({ type: "calendar.create", ...eventInput, eventType, actorId }).result as {
+      event: CalendarEvent;
+      conflicts: CalendarEvent[];
     };
-    state.events = [event, ...state.events];
-    if (event.type === "class_session" || event.type === "live_session") {
-      state.classSessions = [
-        {
-          id: createId("session"),
-          classGroupId:
-            event.classGroupId ?? state.classGroups[0]?.id ?? "class_ar_l3_a",
-          eventId: event.id,
-          title: event.title,
-          startsAt: event.startsAt,
-          endsAt: event.endsAt,
-          status: event.status,
-          attendanceSaved: false,
-        },
-        ...state.classSessions,
-      ];
-    }
-    this.appendAudit(
-      state,
-      conflicts.length ? "calendar.created_with_conflict" : "calendar.created",
-      "CalendarEvent",
-      event.id,
-      `${event.title} created${conflicts.length ? ` with ${conflicts.length} conflict(s)` : ""}.`,
-      actorId
-    );
-    this.setState(state);
-    return { event, conflicts };
   }
 
   sendMessage(input: SendMessageInput) {
-    const state = this.getState();
-    const message: Message = {
-      id: createId("msg"),
-      fromUserId: input.fromUserId,
-      toUserId: input.toUserId,
-      subject: input.subject,
-      body: input.body,
-      read: false,
-      createdAt: now(),
-    };
-    state.messages = [message, ...state.messages];
-    const log: CommunicationLog = {
-      id: createId("comm"),
-      actorId: input.fromUserId,
-      channel: input.channel ?? "in_app",
-      subject: input.subject,
-      body: input.body,
-      relatedUserId: input.toUserId,
-      status: "completed",
-      createdAt: now(),
-    };
-    state.communicationLogs = [log, ...state.communicationLogs];
-    this.notify(state, {
-      userId: input.toUserId,
-      title: input.subject,
-      body: input.body,
-      href: "/app/student/messages",
-    });
-    this.appendAudit(
-      state,
-      "message.sent",
-      "Message",
-      message.id,
-      `Sent message: ${message.subject}.`,
-      input.fromUserId
-    );
-    this.setState(state);
-    return message;
+    return this.applyAction({ type: "message.send", ...input, actorId: input.fromUserId }).result as Message;
   }
 
-  approveCertificate(certificateId: string, actorId = "usr_hod_demo") {
-    const state = this.getState();
-    let updated: Certificate | undefined;
-    let changed = false;
-    state.certificates = state.certificates.map(certificate => {
-      if (certificate.id !== certificateId) return certificate;
-      if (
-        certificate.status === "approved" ||
-        certificate.status === "issued"
-      ) {
-        updated = certificate;
-        return certificate;
-      }
-      changed = true;
-      updated = { ...certificate, status: "approved", approvedBy: actorId };
-      return updated;
-    });
-    if (updated && changed) {
-      this.appendAudit(
-        state,
-        "certificate.approved",
-        "Certificate",
-        updated.id,
-        `Approved certificate ${updated.verificationCode}.`,
-        actorId
-      );
-    }
-    this.setState(state);
-    return updated;
+  approveCertificate(certificateId: string, actorId: string) {
+    return this.applyAction({ type: "certificate.approve", certificateId, actorId }).result as Certificate | undefined;
   }
 
-  issueCertificate(certificateId: string, actorId = "usr_hod_demo") {
-    const state = this.getState();
-    let updated: Certificate | undefined;
-    let changed = false;
-    state.certificates = state.certificates.map(certificate => {
-      if (certificate.id !== certificateId) return certificate;
-      if (certificate.status === "issued") {
-        updated = certificate;
-        return certificate;
-      }
-      changed = true;
-      updated = {
-        ...certificate,
-        status: "issued",
-        approvedBy: certificate.approvedBy ?? actorId,
-      };
-      return updated;
-    });
-    if (updated && changed) {
-      this.notify(state, {
-        userId: "usr_student_demo",
-        title: "Certificate issued",
-        body: `${updated.verificationCode} is ready to download.`,
-        href: "/app/student/certificates",
-      });
-      this.appendAudit(
-        state,
-        "certificate.issued",
-        "Certificate",
-        updated.id,
-        `Issued certificate ${updated.verificationCode}.`,
-        actorId
-      );
-    }
-    this.setState(state);
-    return updated;
+  issueCertificate(certificateId: string, actorId: string) {
+    return this.applyAction({ type: "certificate.issue", certificateId, actorId }).result as Certificate | undefined;
   }
 
   recordPayment(invoiceId: string, actorId = "usr_registrar_demo") {
-    const state = this.getState();
-    const invoice =
-      state.invoices.find(item => item.id === invoiceId) ?? state.invoices[0];
-    const paidSoFar = state.payments
-      .filter(
-        payment => payment.invoiceId === invoice.id && payment.status === "paid"
-      )
-      .reduce((sum, payment) => sum + payment.amount, 0);
-    const amount = Math.max(0, invoice.amount - paidSoFar);
-    if (amount <= 0 || invoice.status === "paid") {
-      return state.payments.find(
-        payment => payment.invoiceId === invoice.id && payment.status === "paid"
-      );
-    }
-    const payment: Payment = {
-      id: createId("pay"),
-      invoiceId: invoice.id,
-      amount,
-      method: "manual",
-      paidAt: now(),
-      status: "paid",
-    };
-    state.payments = [payment, ...state.payments];
-    state.invoices = state.invoices.map(item =>
-      item.id === invoice.id ? { ...item, status: "paid" } : item
-    );
-    this.appendAudit(
-      state,
-      "payment.recorded",
-      "Payment",
-      payment.id,
-      `Recorded ${invoice.currency} ${amount} for ${invoice.id}.`,
-      actorId
-    );
-    this.setState(state);
-    return payment;
+    return this.applyAction({ type: "payment.record", invoiceId, actorId }).result as Payment | undefined;
   }
 
   recordPlacementResult(
@@ -699,88 +336,18 @@ class PlatformStore {
     notes: string,
     actorId = "usr_registrar_demo"
   ) {
-    const state = this.getState();
-    const booking =
-      state.placementTests.find(item => item.id === bookingId) ??
-      state.placementTests[0];
-    const existing = state.placementResults.find(
-      item => item.bookingId === booking.id
-    );
-    const result: PlacementTestResult = {
-      id: existing?.id ?? createId("ptr"),
-      bookingId: booking.id,
-      examinerId: "usr_teacher_demo",
-      score,
+    return this.applyAction({
+      type: "placement.result.record",
+      bookingId,
       recommendedLevel,
+      score,
       notes,
-      createdAt: now(),
-    };
-    state.placementResults = existing
-      ? state.placementResults.map(item =>
-          item.id === existing.id ? result : item
-        )
-      : [result, ...state.placementResults];
-    state.placementTests = state.placementTests.map(item =>
-      item.id === booking.id
-        ? { ...item, status: "completed", recommendedLevel }
-        : item
-    );
-    const existingWorkflow = state.enrollmentWorkflows.find(
-      workflow => workflow.placementTestId === booking.id
-    );
-    const workflow = {
-      id: existingWorkflow?.id ?? createId("ew"),
-      leadId: booking.leadId,
-      placementTestId: booking.id,
-      targetCourseId: "course_ar_l3",
-      status: "ready_to_enroll" as const,
-      nextStep: "Confirm package, create invoice, and assign class",
-      updatedAt: now(),
-    };
-    state.enrollmentWorkflows = existingWorkflow
-      ? state.enrollmentWorkflows.map(item =>
-          item.id === existingWorkflow.id ? workflow : item
-        )
-      : [workflow, ...state.enrollmentWorkflows];
-    this.appendAudit(
-      state,
-      existing ? "placement.result_updated" : "placement.result_recorded",
-      "PlacementTestResult",
-      result.id,
-      `Recorded placement result for ${booking.fullName}.`,
-      actorId
-    );
-    this.setState(state);
-    return result;
+      actorId,
+    }).result as PlacementTestResult | undefined;
   }
 
   convertLeadToApplication(leadId: string, actorId = "usr_registrar_demo") {
-    const state = this.getState();
-    const lead = state.leads.find(item => item.id === leadId) ?? state.leads[0];
-    const existing = state.applications.find(item => item.leadId === lead.id);
-    if (existing) return existing;
-    state.leads = state.leads.map(item =>
-      item.id === lead.id ? { ...item, status: "ready_to_enroll" } : item
-    );
-    const application = {
-      id: createId("app"),
-      leadId: lead.id,
-      branchId: "br_online",
-      courseInterest: lead.subject,
-      schedulePreference: "To confirm",
-      status: "pending" as EntityStatus,
-    };
-    state.applications = [application, ...state.applications];
-    this.appendAudit(
-      state,
-      "lead.converted",
-      "Application",
-      application.id,
-      `Converted ${lead.fullName} to application.`,
-      actorId
-    );
-    this.setState(state);
-    return application;
+    return this.applyAction({ type: "lead.convert", leadId, actorId }).result as PlatformState["applications"][number] | undefined;
   }
 
   verifyCertificate(code: string) {
@@ -788,7 +355,7 @@ class PlatformStore {
     const normalized = code.trim().toLowerCase();
     if (!normalized) return null;
     const certificate = state.certificates.find(
-      item => item.verificationCode.toLowerCase() === normalized
+      item => item.status === "issued" && item.verificationCode.toLowerCase() === normalized
     );
     if (!certificate) return null;
     const student = state.students.find(
@@ -878,25 +445,14 @@ class PlatformStore {
     notes: string,
     actorId = "usr_teacher_demo"
   ) {
-    const state = this.getState();
-    let updated: QuranProgressRecord | undefined;
-    state.quranProgress = state.quranProgress.map(record => {
-      if (record.id !== recordId) return record;
-      updated = { ...record, memorizedPercent, tajweedScore, notes };
-      return updated;
-    });
-    if (updated) {
-      this.appendAudit(
-        state,
-        "quran.progress_updated",
-        "QuranProgressRecord",
-        updated.id,
-        `Updated ${updated.surah} progress.`,
-        actorId
-      );
-    }
-    this.setState(state);
-    return updated;
+    return this.applyAction({
+      type: "quran.progress.update",
+      recordId,
+      memorizedPercent,
+      tajweedScore,
+      notes,
+      actorId,
+    }).result as QuranProgressRecord | undefined;
   }
 
   reviewRecitation(
@@ -904,72 +460,15 @@ class PlatformStore {
     feedback: string,
     actorId = "usr_teacher_demo"
   ) {
-    const state = this.getState();
-    let updated: RecitationSubmission | undefined;
-    state.recitationSubmissions = state.recitationSubmissions.map(
-      submission => {
-        if (submission.id !== submissionId) return submission;
-        updated = { ...submission, status: "approved", feedback };
-        return updated;
-      }
-    );
-    if (updated) {
-      this.notify(state, {
-        userId: "usr_student_demo",
-        title: "Recitation reviewed",
-        body: feedback,
-        href: "/app/student/quran-progress",
-      });
-      this.appendAudit(
-        state,
-        "recitation.reviewed",
-        "RecitationSubmission",
-        updated.id,
-        `Reviewed ${updated.title}.`,
-        actorId
-      );
-    }
-    this.setState(state);
-    return updated;
+    return this.applyAction({ type: "recitation.review", submissionId, feedback, actorId }).result as RecitationSubmission | undefined;
   }
 
   submitRecitation(input: SubmitRecitationInput, actorId = "usr_student_demo") {
-    const state = this.getState();
-    const submission: RecitationSubmission = {
-      id: createId("rec"),
-      studentId: input.studentId,
-      teacherId: input.teacherId,
-      title: input.title,
-      submittedAt: now(),
-      status: "pending",
-    };
-    state.recitationSubmissions = [submission, ...state.recitationSubmissions];
-    this.notify(state, {
-      userId: input.teacherId,
-      title: "Recitation submitted",
-      body: `${submission.title} is ready for review.`,
-      href: "/app/teacher/quran-review",
-    });
-    this.appendAudit(
-      state,
-      "recitation.submitted",
-      "RecitationSubmission",
-      submission.id,
-      `Submitted ${submission.title}.`,
-      actorId
-    );
-    this.setState(state);
-    return submission;
+    return this.applyAction({ type: "recitation.submit", ...input, actorId }).result as RecitationSubmission;
   }
 
   markNotificationRead(notificationId: string) {
-    const state = this.getState();
-    state.notifications = state.notifications.map(notification =>
-      notification.id === notificationId
-        ? { ...notification, read: true }
-        : notification
-    );
-    this.setState(state);
+    this.applyAction({ type: "notification.read", notificationId });
   }
 
   search(query: string) {

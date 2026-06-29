@@ -130,6 +130,10 @@ else
   printf '\n==> Prettier check skipped (SKIP_FORMAT_CHECK=1)\n'
 fi
 
+if has_script "qa:portals"; then
+  run_step "Portal QA syntax" node --check scripts/qa-portals-cli.mjs
+fi
+
 run_step "TypeScript check" run_package_script check
 run_step "Unit tests" run_package_script test
 run_step "Production build" run_package_script build

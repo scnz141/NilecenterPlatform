@@ -1,5 +1,10 @@
 import type { Role } from "@/lib/platformData";
-import type { PlatformLearningAction, PlatformLearningActionResult } from "@/lib/domain/actions";
+import type {
+  PlatformLearningAction,
+  PlatformLearningActionResult,
+  PlatformWorkflowAction,
+  PlatformWorkflowActionResult,
+} from "@/lib/domain/actions";
 import type { PlatformState } from "@/lib/domain/types";
 
 export type AuthSessionDto = {
@@ -21,6 +26,7 @@ type ApiResult<T> = {
 async function apiJson<T>(path: string, init: RequestInit = {}): Promise<ApiResult<T>> {
   const headers = new Headers(init.headers);
   if (init.body && !headers.has("Content-Type")) headers.set("Content-Type", "application/json");
+  if (init.method && init.method.toUpperCase() !== "GET") headers.set("X-Nile-Learn-Request", "browser");
 
   try {
     const response = await fetch(path, {
@@ -74,12 +80,23 @@ export type PlatformActionDto = PlatformStateDto & {
   result: PlatformLearningActionResult;
 };
 
+export type PlatformWorkflowActionDto = PlatformStateDto & {
+  result: PlatformWorkflowActionResult;
+};
+
 export function fetchPlatformStateRequest() {
   return apiJson<PlatformStateDto>("/api/platform/state");
 }
 
 export function runPlatformLearningActionRequest(action: PlatformLearningAction) {
   return apiJson<PlatformActionDto>("/api/platform/state/actions", {
+    method: "POST",
+    body: JSON.stringify(action),
+  });
+}
+
+export function runPlatformWorkflowActionRequest(action: PlatformWorkflowAction) {
+  return apiJson<PlatformWorkflowActionDto>("/api/platform/state/actions", {
     method: "POST",
     body: JSON.stringify(action),
   });

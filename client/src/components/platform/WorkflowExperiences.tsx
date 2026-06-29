@@ -38,9 +38,7 @@ import {
 import { toast } from "sonner";
 import {
   fetchPlatformStateRequest,
-  runPlatformLearningActionRequest,
 } from "@/lib/backend/api";
-import type { PlatformLearningAction } from "@/lib/domain/actions";
 import { platformStore } from "@/lib/domain/store";
 import type {
   AttendanceStatus,
@@ -87,6 +85,7 @@ const reportLabels = {
   finance: "Finance",
   audit: "Audit",
 } as const;
+const PLATFORM_STATE_UPDATED_EVENT = "nilelearn:platform-state-updated";
 
 export function isStatefulWorkflowPage(
   role: Role,
@@ -148,6 +147,19 @@ export default function StatefulWorkflowExperience({
     };
   }, []);
 
+  useEffect(() => {
+    const syncLocalPlatformState = () => {
+      setVersion(value => value + 1);
+    };
+    window.addEventListener(PLATFORM_STATE_UPDATED_EVENT, syncLocalPlatformState);
+    return () => {
+      window.removeEventListener(
+        PLATFORM_STATE_UPDATED_EVENT,
+        syncLocalPlatformState
+      );
+    };
+  }, []);
+
   if (role === "student" && learningPages.has(pageId)) {
     return (
       <LearningWorkflow
@@ -156,7 +168,6 @@ export default function StatefulWorkflowExperience({
         refresh={refresh}
         params={params}
         backendSyncStatus={backendSyncStatus}
-        setBackendSyncStatus={setBackendSyncStatus}
       />
     );
   }
@@ -215,9 +226,6 @@ type WorkflowProps = {
   refresh: () => void;
   params?: Record<string, string | undefined>;
   backendSyncStatus?: "loading" | "supabase" | "local" | "offline";
-  setBackendSyncStatus?: (
-    status: "loading" | "supabase" | "local" | "offline"
-  ) => void;
 };
 
 type PlatformStateSnapshot = ReturnType<typeof platformStore.getState>;
@@ -278,7 +286,6 @@ function LearningWorkflow({
   refresh,
   params,
   backendSyncStatus = "offline",
-  setBackendSyncStatus,
 }: WorkflowProps) {
   const [assignmentResponse, setAssignmentResponse] = useState(
     "I completed the checkpoint and need feedback on examples."
@@ -386,7 +393,6 @@ function LearningWorkflow({
     (quiz?.attemptsAllowed ?? 0) - quizAttempts.length
   );
   const latestAttempt = quizAttempts[0];
-  const setSyncStatus = setBackendSyncStatus ?? (() => undefined);
   const syncStatus = backendSyncStatus;
   const syncLabel =
     syncStatus === "supabase"
@@ -396,21 +402,6 @@ function LearningWorkflow({
         : syncStatus === "loading"
           ? "Syncing"
           : "Offline cache";
-
-  const syncLearningAction = (action: PlatformLearningAction) => {
-    runPlatformLearningActionRequest(action).then(result => {
-      if (result.ok && result.data) {
-        platformStore.setState(result.data.state);
-        setSyncStatus(result.data.persistence);
-        refresh();
-        return;
-      }
-      setSyncStatus("offline");
-      toast.error("Saved locally only", {
-        description: result.error ?? "Backend sync failed.",
-      });
-    });
-  };
 
   const selectCourse = (runId: string) => {
     setManualRunId(runId);
@@ -426,11 +417,6 @@ function LearningWorkflow({
       getDemoUser(role).id
     );
     refresh();
-    syncLearningAction({
-      type: "lesson.start",
-      lessonId: selectedLesson.id,
-      studentId,
-    });
     toast.success("Lesson opened", { description: lesson.title });
   };
 
@@ -443,11 +429,6 @@ function LearningWorkflow({
       getDemoUser(role).id
     );
     refresh();
-    syncLearningAction({
-      type: "lesson.complete",
-      lessonId: selectedLesson.id,
-      studentId,
-    });
     toast.success("Lesson marked complete", { description: lesson.title });
   };
 
@@ -460,12 +441,6 @@ function LearningWorkflow({
       getDemoUser(role).id
     );
     refresh();
-    syncLearningAction({
-      type: "assignment.submit",
-      assignmentId: assignment.id,
-      response: assignmentResponse,
-      studentId,
-    });
     toast.success("Checkpoint submitted", { description: saved.id });
   };
 
@@ -478,12 +453,6 @@ function LearningWorkflow({
       getDemoUser(role).id
     );
     refresh();
-    syncLearningAction({
-      type: "quiz.submit",
-      quizId: quiz.id,
-      answers: { q1: quizAnswer },
-      studentId,
-    });
     toast.success("Quiz attempt saved", {
       description: `${attempt.score}/${attempt.maxScore}`,
     });
@@ -1059,11 +1028,22 @@ function AssessmentWorkflow({ role, state, refresh, params }: WorkflowProps) {
     role === "student"
       ? state.quizzes.filter(quiz => studentRunIds.has(quiz.courseRunId))
       : state.quizzes;
+  const routedAssignment = assignmentOptions.find(
+    item => item.id === params?.assignmentId
+  );
+  const routedQuiz = quizOptions.find(item => item.id === params?.quizId);
   const assignment =
-    assignmentOptions.find(item => item.id === params?.assignmentId) ??
+    routedAssignment ??
+    (routedQuiz
+      ? assignmentOptions.find(item => item.courseRunId === routedQuiz.courseRunId)
+      : undefined) ??
     assignmentOptions[0];
   const quiz =
-    quizOptions.find(item => item.id === params?.quizId) ?? quizOptions[0];
+    routedQuiz ??
+    (routedAssignment
+      ? quizOptions.find(item => item.courseRunId === routedAssignment.courseRunId)
+      : undefined) ??
+    quizOptions[0];
   const latestSubmission = state.assignmentSubmissions.find(
     item =>
       item.assignmentId === assignment?.id &&
@@ -2575,17 +2555,21 @@ function CertificateWorkflow({ role, state, refresh }: WorkflowProps) {
                         {approved ? "Approved" : "Approve"}
                       </button>
                       <button
-                        disabled={issued}
+                        disabled={!approved || issued}
                         onClick={() => {
-                          platformStore.issueCertificate(
+                          const issuedCertificate = platformStore.issueCertificate(
                             certificate.id,
                             getDemoUser(role).id
                           );
                           refresh();
-                          toast.success("Certificate issued");
+                          if (issuedCertificate?.status === "issued") {
+                            toast.success("Certificate issued");
+                          } else {
+                            toast.info("Approve the certificate before issuing it");
+                          }
                         }}
                       >
-                        {issued ? "Issued" : "Issue"}
+                        {issued ? "Issued" : approved ? "Issue" : "Approve first"}
                       </button>
                     </div>
                   </article>

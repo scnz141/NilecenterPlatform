@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { Link, useLocation } from "wouter";
 import {
@@ -129,7 +129,7 @@ const getScopeConfig = (role: Role, defaultScope: string): ScopeConfig => {
       return {
         label: "Branch scope",
         description: "Local operations",
-        options: [defaultScope, "All local programs", "Online"],
+        options: [defaultScope],
       };
     case "superadmin":
       return {
@@ -166,6 +166,11 @@ export default function PlatformShell({ role, children, title }: ShellProps) {
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [notificationVersion, setNotificationVersion] = useState(0);
   const [query, setQuery] = useState("");
+  const menuButtonRef = useRef<HTMLButtonElement | null>(null);
+  const mobileDrawerRef = useRef<HTMLElement | null>(null);
+  const notificationButtonRef = useRef<HTMLButtonElement | null>(null);
+  const notificationPopoverRef = useRef<HTMLDivElement | null>(null);
+  const searchWrapRef = useRef<HTMLDivElement | null>(null);
   const user = getDemoUser(role);
   const meta = roleMeta[role];
   const inspiration = roleInspirations[role];
@@ -204,6 +209,82 @@ export default function PlatformShell({ role, children, title }: ShellProps) {
       .slice(0, 6);
   }, [notificationVersion, role, user.id]);
   const unreadCount = notificationItems.filter((item) => !item.read).length;
+
+  useEffect(() => {
+    setMobileOpen(false);
+    setNotificationsOpen(false);
+    setQuery("");
+  }, [location]);
+
+  useEffect(() => {
+    if (!mobileOpen || typeof document === "undefined") return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const focusableSelector = [
+      "a[href]",
+      "button:not([disabled])",
+      "select:not([disabled])",
+      "textarea:not([disabled])",
+      "input:not([disabled])",
+      "[tabindex]:not([tabindex='-1'])",
+    ].join(",");
+    const drawer = mobileDrawerRef.current;
+    const focusable = Array.from(drawer?.querySelectorAll<HTMLElement>(focusableSelector) ?? []);
+    focusable[0]?.focus();
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        setMobileOpen(false);
+        return;
+      }
+      if (event.key !== "Tab" || !focusable.length) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener("keydown", onKeyDown);
+      menuButtonRef.current?.focus();
+    };
+  }, [mobileOpen]);
+
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setNotificationsOpen(false);
+        setQuery("");
+      }
+    };
+    const onPointerDown = (event: PointerEvent) => {
+      const target = event.target as Node;
+      if (
+        notificationsOpen &&
+        !notificationButtonRef.current?.contains(target) &&
+        !notificationPopoverRef.current?.contains(target)
+      ) {
+        setNotificationsOpen(false);
+      }
+      if (hasSearchQuery && !searchWrapRef.current?.contains(target)) {
+        setQuery("");
+      }
+    };
+    document.addEventListener("keydown", onKeyDown);
+    document.addEventListener("pointerdown", onPointerDown);
+    return () => {
+      document.removeEventListener("keydown", onKeyDown);
+      document.removeEventListener("pointerdown", onPointerDown);
+    };
+  }, [hasSearchQuery, notificationsOpen]);
 
   const sidebarMarkup = (
     <div className="platform-sidebar-inner">
@@ -268,7 +349,7 @@ export default function PlatformShell({ role, children, title }: ShellProps) {
           const Icon = iconMap[item.icon as keyof typeof iconMap] ?? LayoutDashboard;
           const active = location === item.href || location.startsWith(`${item.href}/`);
           return (
-            <Link key={item.href} href={item.href} className={`platform-nav-item ${active ? "active" : ""}`}>
+            <Link key={item.href} href={item.href} className={`platform-nav-item ${active ? "active" : ""}`} onClick={() => setMobileOpen(false)}>
               <Icon size={16} />
               <span>{item.label}</span>
               {item.badge ? <em style={{ background: meta.color }}>{item.badge}</em> : null}
@@ -301,6 +382,7 @@ export default function PlatformShell({ role, children, title }: ShellProps) {
         {mobileOpen ? (
           <motion.div
             className="platform-mobile-overlay"
+            role="presentation"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
@@ -308,7 +390,12 @@ export default function PlatformShell({ role, children, title }: ShellProps) {
           >
             <button className="platform-mobile-backdrop" aria-label="Close menu" onClick={() => setMobileOpen(false)} />
             <motion.aside
+              id="platform-mobile-sidebar"
+              ref={mobileDrawerRef}
               className="platform-mobile-sidebar"
+              role="dialog"
+              aria-modal="true"
+              aria-label={`${meta.label} navigation menu`}
               initial={{ x: dir === "rtl" ? 280 : -280 }}
               animate={{ x: 0 }}
               exit={{ x: dir === "rtl" ? 280 : -280 }}
@@ -327,7 +414,14 @@ export default function PlatformShell({ role, children, title }: ShellProps) {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.34, ease: [0.23, 1, 0.32, 1], delay: 0.04 }}
         >
-          <button className="platform-icon-button platform-menu-button" aria-label="Open menu" onClick={() => setMobileOpen(true)}>
+          <button
+            ref={menuButtonRef}
+            className="platform-icon-button platform-menu-button"
+            aria-label="Open menu"
+            aria-expanded={mobileOpen}
+            aria-controls="platform-mobile-sidebar"
+            onClick={() => setMobileOpen(true)}
+          >
             <Menu size={18} />
           </button>
 
@@ -336,16 +430,18 @@ export default function PlatformShell({ role, children, title }: ShellProps) {
             <strong>{title ?? meta.label}</strong>
           </div>
 
-          <div className="platform-search">
+          <div className="platform-search" ref={searchWrapRef}>
             <Search size={15} />
             <input
               value={query}
               onChange={(event) => setQuery(event.target.value)}
               placeholder={t(locale, "search")}
               aria-label="Global search"
+              aria-expanded={hasSearchQuery}
+              aria-controls="platform-search-results"
             />
             {hasSearchQuery ? (
-              <div className="platform-search-results">
+              <div className="platform-search-results" id="platform-search-results" role="listbox" aria-label="Search results">
                 {searchResults.length ? (
                   searchResults.map((item) => (
                     <button
@@ -384,8 +480,11 @@ export default function PlatformShell({ role, children, title }: ShellProps) {
             </select>
 
             <button
+              ref={notificationButtonRef}
               className="platform-icon-button"
               aria-label={t(locale, "notifications")}
+              aria-expanded={notificationsOpen}
+              aria-controls="platform-notifications-popover"
               onClick={() => setNotificationsOpen((open) => !open)}
             >
               <Bell size={17} />
@@ -393,7 +492,13 @@ export default function PlatformShell({ role, children, title }: ShellProps) {
             </button>
 
             {notificationsOpen ? (
-              <div className="platform-notification-popover">
+              <div
+                className="platform-notification-popover"
+                id="platform-notifications-popover"
+                ref={notificationPopoverRef}
+                role="menu"
+                aria-label={t(locale, "notifications")}
+              >
                 <div className="platform-popover-title">
                   <strong>{t(locale, "notifications")}</strong>
                   <button
@@ -410,6 +515,7 @@ export default function PlatformShell({ role, children, title }: ShellProps) {
                   <button
                     key={item.id}
                     className="platform-notification-item"
+                    role="menuitem"
                     onClick={() => {
                       platformStore.markNotificationRead(item.id);
                       setNotificationVersion((version) => version + 1);

@@ -251,6 +251,7 @@ export type Grade = {
   id: string;
   studentId: string;
   courseRunId: string;
+  itemId?: string;
   itemTitle: string;
   score: number;
   maxScore: number;

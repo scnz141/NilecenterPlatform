@@ -4,6 +4,7 @@ import type { PlatformState } from "./types";
 export const seedPlatformState: PlatformState = {
   users: [
     { id: "usr_student_demo", name: "Student Demo", email: "student.demo@nilelearn.local", roles: ["student"], activeRole: "student", branchId: "br_online", departmentId: "dep_arabic", status: "active" },
+    { id: "usr_student_cairo_demo", name: "Cairo Student Demo", email: "cairo.student.demo@nilelearn.local", roles: ["student"], activeRole: "student", branchId: "br_cairo", departmentId: "dep_arabic", status: "active" },
     { id: "usr_teacher_demo", name: "Teacher Demo", email: "teacher.demo@nilelearn.local", roles: ["teacher"], activeRole: "teacher", branchId: "br_online", departmentId: "dep_arabic", status: "active" },
     { id: "usr_registrar_demo", name: "Registrar Demo", email: "registrar.demo@nilelearn.local", roles: ["registrar"], activeRole: "registrar", branchId: "br_cairo", departmentId: "dep_admissions", status: "active" },
     { id: "usr_hod_demo", name: "HOD Demo", email: "hod.demo@nilelearn.local", roles: ["headofdepartment"], activeRole: "headofdepartment", branchId: "br_global", departmentId: "dep_arabic", status: "active" },
@@ -64,20 +65,24 @@ export const seedPlatformState: PlatformState = {
   ],
   courseRuns: [
     { id: "run_ar_l3_2026", courseId: "course_ar_l3", branchId: "br_online", teacherId: "usr_teacher_demo", term: "Summer 2026", startsOn: "2026-06-01", endsOn: "2026-08-31", status: "active" },
+    { id: "run_ar_l3_cairo_2026", courseId: "course_ar_l3", branchId: "br_cairo", teacherId: "usr_teacher_demo", term: "Summer 2026 Cairo", startsOn: "2026-06-01", endsOn: "2026-08-31", status: "active" },
     { id: "run_qt_1_2026", courseId: "course_qt_1", branchId: "br_online", teacherId: "usr_teacher_demo", term: "Summer 2026", startsOn: "2026-06-01", endsOn: "2026-08-31", status: "active" },
   ],
   classGroups: [
     { id: "class_ar_l3_a", courseRunId: "run_ar_l3_2026", name: "Arabic L3 - Group A", capacity: 16, schedule: "Mon/Wed/Fri 09:00", roomId: "room_online_a", meetingLinkId: "meet_ar_l3", studentIds: ["stu_demo"] },
+    { id: "class_ar_l3_cairo", courseRunId: "run_ar_l3_cairo_2026", name: "Arabic L3 - Cairo Group", capacity: 20, schedule: "Sun/Tue 14:00", roomId: "room_cairo_4", meetingLinkId: "meet_ar_l3", studentIds: ["stu_cairo_demo"] },
     { id: "class_qt_1_b", courseRunId: "run_qt_1_2026", name: "Quran Tajweed - Group B", capacity: 12, schedule: "Tue/Thu 10:30", roomId: "room_online_b", meetingLinkId: "meet_qt_1", studentIds: ["stu_demo"] },
   ],
   students: [
     { id: "stu_demo", userId: "usr_student_demo", status: "active", country: "Demo Country", preferredLanguage: "English", timezone: "Africa/Cairo" },
+    { id: "stu_cairo_demo", userId: "usr_student_cairo_demo", status: "active", country: "Egypt", preferredLanguage: "English", timezone: "Africa/Cairo" },
   ],
   teachers: [
     { id: "tch_demo", userId: "usr_teacher_demo", departmentId: "dep_arabic", specialties: ["Arabic grammar", "Tajweed"], availability: ["Mon 09:00", "Tue 10:30", "Thu 10:30"] },
   ],
   enrollments: [
     { id: "enr_ar_l3", studentId: "stu_demo", courseRunId: "run_ar_l3_2026", status: "active", progress: 68, attendanceRate: 94, currentGrade: 88 },
+    { id: "enr_ar_l3_cairo", studentId: "stu_cairo_demo", courseRunId: "run_ar_l3_cairo_2026", status: "active", progress: 52, attendanceRate: 90, currentGrade: 84 },
     { id: "enr_qt_1", studentId: "stu_demo", courseRunId: "run_qt_1_2026", status: "active", progress: 45, attendanceRate: 91, currentGrade: 92 },
   ],
   lessonProgress: [
@@ -109,13 +114,16 @@ export const seedPlatformState: PlatformState = {
   ],
   events: [
     { id: "evt_ar_live", type: "live_session", title: "Arabic L3 live class", startsAt: "2026-06-26T09:00:00+03:00", endsAt: "2026-06-26T10:30:00+03:00", ownerId: "usr_teacher_demo", branchId: "br_online", classGroupId: "class_ar_l3_a", status: "active" },
+    { id: "evt_ar_cairo_live", type: "live_session", title: "Arabic L3 Cairo live class", startsAt: "2026-06-27T14:00:00+03:00", endsAt: "2026-06-27T15:15:00+03:00", ownerId: "usr_teacher_demo", branchId: "br_cairo", roomId: "room_cairo_4", classGroupId: "class_ar_l3_cairo", status: "active" },
     { id: "evt_pt_demo", type: "placement_test", title: "Placement test booking", startsAt: "2026-06-27T13:00:00+03:00", endsAt: "2026-06-27T13:30:00+03:00", ownerId: "usr_registrar_demo", branchId: "br_online", status: "pending" },
   ],
   classSessions: [
     { id: "session_ar_live", classGroupId: "class_ar_l3_a", eventId: "evt_ar_live", title: "Arabic L3 live class", startsAt: "2026-06-26T09:00:00+03:00", endsAt: "2026-06-26T10:30:00+03:00", status: "active", attendanceSaved: false },
+    { id: "session_ar_cairo_live", classGroupId: "class_ar_l3_cairo", eventId: "evt_ar_cairo_live", title: "Arabic L3 Cairo live class", startsAt: "2026-06-27T14:00:00+03:00", endsAt: "2026-06-27T15:15:00+03:00", status: "active", attendanceSaved: false },
   ],
   teacherAvailability: [
     { id: "avail_teacher_mon", teacherId: "usr_teacher_demo", weekday: "Monday", startsAt: "09:00", endsAt: "13:00", branchId: "br_online" },
+    { id: "avail_teacher_sun_cairo", teacherId: "usr_teacher_demo", weekday: "Sunday", startsAt: "13:00", endsAt: "17:00", branchId: "br_cairo" },
     { id: "avail_teacher_thu", teacherId: "usr_teacher_demo", weekday: "Thursday", startsAt: "10:00", endsAt: "15:00", branchId: "br_online" },
   ],
   rooms: [
@@ -129,6 +137,7 @@ export const seedPlatformState: PlatformState = {
   ],
   attendance: [
     { id: "att_ar_1", classGroupId: "class_ar_l3_a", studentId: "stu_demo", sessionId: "evt_ar_live", status: "present", notes: "On time" },
+    { id: "att_ar_cairo_1", classGroupId: "class_ar_l3_cairo", studentId: "stu_cairo_demo", sessionId: "evt_ar_cairo_live", status: "present", notes: "Checked in at Cairo branch" },
   ],
   leads: [
     { id: "lead_demo_1", fullName: "Lead Demo", email: "lead.demo@nilelearn.local", phone: "+20 100 000 0020", subject: "Arabic Language", source: "website", status: "lead", notes: "Interested in evening classes", createdAt: "2026-06-26T09:00:00+03:00" },
@@ -147,6 +156,7 @@ export const seedPlatformState: PlatformState = {
   ],
   invoices: [
     { id: "inv_demo_1", studentId: "stu_demo", amount: 2400, currency: "EGP", dueAt: "2026-06-30", status: "pending" },
+    { id: "inv_cairo_demo_1", studentId: "stu_cairo_demo", amount: 2400, currency: "EGP", dueAt: "2026-07-05", status: "pending" },
   ],
   payments: [
     { id: "pay_demo_1", invoiceId: "inv_demo_1", amount: 1200, method: "manual", paidAt: "2026-06-20", status: "paid" },

@@ -191,9 +191,10 @@ describe("platformStore workflow guards", () => {
   it("does not duplicate certificate issue notifications or audit entries", () => {
     const certificate = platformStore.getState().certificates[0];
 
-    platformStore.issueCertificate(certificate.id);
+    platformStore.approveCertificate(certificate.id, "usr_hod_demo");
+    platformStore.issueCertificate(certificate.id, "usr_hod_demo");
     const afterFirst = platformStore.getState();
-    platformStore.issueCertificate(certificate.id);
+    platformStore.issueCertificate(certificate.id, "usr_hod_demo");
     const afterSecond = platformStore.getState();
 
     expect(
@@ -211,6 +212,52 @@ describe("platformStore workflow guards", () => {
     expect(
       afterSecond.auditLogs.filter(item => item.action === "certificate.issued")
     ).toHaveLength(1);
+  });
+
+  it("does not issue a certificate before approval", () => {
+    const certificate = platformStore.getState().certificates[0];
+
+    const issued = platformStore.issueCertificate(certificate.id, "usr_hod_demo");
+    const after = platformStore.getState();
+
+    expect(issued).toBeUndefined();
+    expect(
+      after.certificates.find(item => item.id === certificate.id)?.status
+    ).toBe("pending_approval");
+    expect(
+      after.notifications.filter(item => item.title === "Certificate issued")
+    ).toHaveLength(0);
+    expect(
+      after.auditLogs.filter(item => item.action === "certificate.issued")
+    ).toHaveLength(0);
+  });
+
+  it("does not create a class session for a cross-branch class group", () => {
+    const before = platformStore.getState();
+    const onlineClass = before.classGroups.find(
+      item => item.id === "class_ar_l3_a"
+    );
+    expect(onlineClass).toBeTruthy();
+
+    const result = platformStore.createCalendarEvent(
+      {
+        title: "Cairo branch live class",
+        type: "live_session",
+        startsAt: "2026-07-04T10:00:00+03:00",
+        endsAt: "2026-07-04T11:00:00+03:00",
+        ownerId: "usr_branch_demo",
+        branchId: "br_cairo",
+        classGroupId: onlineClass!.id,
+      },
+      "usr_branch_demo"
+    );
+    const after = platformStore.getState();
+
+    expect(result.event.branchId).toBe("br_cairo");
+    expect(result.event.classGroupId).toBeUndefined();
+    expect(
+      after.classSessions.some(item => item.eventId === result.event.id)
+    ).toBe(false);
   });
 
   it("creates a student recitation submission with teacher notification and audit", () => {
@@ -321,8 +368,10 @@ describe("platformStore workflow guards", () => {
 });
 
 describe("platformStore frontend utility helpers", () => {
-  it("verifies certificates by code with student and course context", () => {
+  it("verifies issued certificates by code with student and course context", () => {
     const certificate = platformStore.getState().certificates[0];
+    platformStore.approveCertificate(certificate.id, "usr_hod_demo");
+    platformStore.issueCertificate(certificate.id, "usr_hod_demo");
 
     const result = platformStore.verifyCertificate(
       `  ${certificate.verificationCode.toLowerCase()}  `
@@ -331,6 +380,12 @@ describe("platformStore frontend utility helpers", () => {
     expect(result?.certificate.id).toBe(certificate.id);
     expect(result?.user?.name).toBe("Student Demo");
     expect(result?.course?.title).toBe("Standard Arabic Level 3");
+  });
+
+  it("does not verify pending certificates by code", () => {
+    const certificate = platformStore.getState().certificates[0];
+
+    expect(platformStore.verifyCertificate(certificate.verificationCode)).toBeNull();
   });
 
   it("returns null for unknown certificate codes", () => {

@@ -11,13 +11,18 @@ function isRole(value: string | null): value is Role {
 export function getStoredRole(): Role | null {
   if (typeof window === "undefined") return null;
   const session = getStoredAuthSession();
-  if (session) return session.activeRole;
-  const value = window.localStorage.getItem(ACTIVE_ROLE_KEY);
-  return isRole(value) ? value : null;
+  return session?.activeRole ?? null;
 }
 
 export function setStoredRole(role: Role) {
   if (typeof window === "undefined") return;
+  const session = getStoredAuthSession();
+  if (!session || !session.roles.includes(role)) {
+    window.localStorage.removeItem(ACTIVE_ROLE_KEY);
+    window.dispatchEvent(new CustomEvent("nilelearn:session", { detail: null }));
+    return;
+  }
+  window.localStorage.setItem(AUTH_SESSION_KEY, JSON.stringify({ ...session, activeRole: role }));
   window.localStorage.setItem(ACTIVE_ROLE_KEY, role);
   window.dispatchEvent(new CustomEvent("nilelearn:session", { detail: role }));
 }
@@ -74,7 +79,7 @@ export async function refreshServerSession() {
     return result.data;
   }
   if (result.ok && result.data === null && typeof window !== "undefined") {
-    window.localStorage.removeItem(AUTH_SESSION_KEY);
+    clearStoredSessionLocal();
   }
   return null;
 }

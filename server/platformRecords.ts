@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { supabaseAdminRestFetch } from "./supabase";
 
-const DATA_DIR = path.resolve(process.cwd(), ".local-data");
+const DATA_DIR = process.env.VERCEL ? "/tmp" : path.resolve(process.cwd(), ".local-data");
 const DATA_FILE = path.join(DATA_DIR, "platform-records.json");
 
 type PlatformBackendRecord = {

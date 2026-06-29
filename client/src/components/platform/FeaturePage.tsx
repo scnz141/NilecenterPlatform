@@ -126,7 +126,7 @@ export default function FeaturePage({ role, pageId, params }: FeaturePageProps) 
   if (role === "headofdepartment" && academicGovernancePages.has(pageId)) {
     return (
       <PlatformShell role={role} title={config.title}>
-        <AcademicGovernanceExperience pageId={pageId} />
+        <AcademicGovernanceExperience pageId={pageId} scope="hod" />
       </PlatformShell>
     );
   }
@@ -205,7 +205,7 @@ function KindExperience({ config, role, pageId, params }: { config: PageConfig; 
   if (role === "superadmin" && adminAccessPages.has(pageId)) return <AdminAccessExperience pageId={pageId} params={params} />;
   if (role === "superadmin" && adminSystemPages.has(pageId)) return <AdminSystemExperience pageId={pageId} />;
   if (role === "superadmin" && adminAcademicPages.has(pageId)) return <SuperAdminAcademicExperience pageId={pageId} />;
-  if (role === "headofdepartment" && academicGovernancePages.has(pageId)) return <AcademicGovernanceExperience pageId={pageId} />;
+  if (role === "headofdepartment" && academicGovernancePages.has(pageId)) return <AcademicGovernanceExperience pageId={pageId} scope="hod" />;
   if (role === "branchadmin" && branchOperationsPages.has(pageId)) return <BranchOperationsExperience pageId={pageId} />;
   if (role === "registrar" && registrarAdmissionsPages.has(pageId)) return <RegistrarAdmissionsExperience pageId={pageId} params={params} />;
   if (role === "teacher" && teacherDeliveryPages.has(pageId)) return <TeacherDeliveryExperience pageId={pageId} params={params} />;
@@ -1323,21 +1323,21 @@ function integrationTone(status: IntegrationStatus) {
 
 function AcademicGovernanceExperience({
   pageId,
-  scope = "hod",
+  scope,
 }: {
   pageId: string;
-  scope?: "hod" | "admin";
+  scope: "hod" | "admin";
 }) {
   const [version, setVersion] = useState(0);
   const [query, setQuery] = useState("");
-  const [selectedProgramId, setSelectedProgramId] = useState("prog_arabic");
-  const [selectedCourseId, setSelectedCourseId] = useState("course_ar_l3");
+  const [selectedProgramId, setSelectedProgramId] = useState("");
+  const [selectedCourseId, setSelectedCourseId] = useState("");
   const [assessmentDraft, setAssessmentDraft] = useState({
     title: "Department oral assessment",
     type: "quiz" as "assignment" | "quiz",
   });
   const [messageDraft, setMessageDraft] = useState({
-    recipientId: "usr_teacher_demo",
+    recipientId: "",
     subject: "Academic department update",
     body: "Please review the latest curriculum and assessment readiness notes.",
   });
@@ -1349,13 +1349,15 @@ function AcademicGovernanceExperience({
   const refresh = () => setVersion((value) => value + 1);
   const actorRole = scope === "admin" ? "superadmin" : "headofdepartment";
   const actorId = getDemoUser(actorRole).id;
+  const actorUser = state.users.find((user) => user.id === actorId);
   const academicDepartments =
     scope === "admin"
       ? state.departments
-      : state.departments.filter((department) => department.id === "dep_arabic" || department.ownerUserId === actorId);
+      : state.departments.filter((department) => department.ownerUserId === actorId || department.id === actorUser?.departmentId);
   const departmentIds = academicDepartments.map((department) => department.id);
   const programs = state.programs.filter((program) => departmentIds.includes(program.departmentId));
-  const scopedCourseIds = new Set(state.courses.filter((course) => programs.some((program) => program.id === course.programId)).map((course) => course.id));
+  const scopedCourses = state.courses.filter((course) => programs.some((program) => program.id === course.programId));
+  const scopedCourseIds = new Set(scopedCourses.map((course) => course.id));
   const scopedRuns = state.courseRuns.filter((run) => scopedCourseIds.has(run.courseId));
   const scopedRunIds = new Set(scopedRuns.map((run) => run.id));
   const scopedClasses = state.classGroups.filter((group) => scopedRunIds.has(group.courseRunId));
@@ -1385,16 +1387,19 @@ function AcademicGovernanceExperience({
   const academicRecipients = state.users.filter((user) => user.id !== actorId && academicRecipientIds.has(user.id));
   const academicMessages = state.messages.filter((message) => academicRecipientIds.has(message.fromUserId) || academicRecipientIds.has(message.toUserId));
   const selectedProgram = programs.find((program) => program.id === selectedProgramId) ?? programs[0];
-  const programCourses = state.courses.filter((course) => course.programId === selectedProgram?.id);
-  const selectedCourse = programCourses.find((course) => course.id === selectedCourseId) ?? programCourses[0] ?? state.courses[0];
+  const programCourses = scopedCourses.filter((course) => course.programId === selectedProgram?.id);
+  const selectedCourse = programCourses.find((course) => course.id === selectedCourseId) ?? programCourses[0];
   const selectedLevel = state.levels.find((level) => level.id === selectedCourse?.levelId);
   const selectedModules = state.modules
     .filter((module) => module.courseId === selectedCourse?.id)
     .sort((a, b) => a.order - b.order);
   const selectedLessons = selectedModules.flatMap((module) => state.lessons.filter((lesson) => lesson.moduleId === module.id));
-  const activeCourses = state.courses.filter((course) => course.status === "active").length;
-  const classCapacity = state.classGroups.reduce((total, classGroup) => total + classGroup.capacity, 0);
-  const enrolledSeats = state.classGroups.reduce((total, classGroup) => total + classGroup.studentIds.length, 0);
+  const scopedModules = state.modules.filter((module) => scopedCourseIds.has(module.courseId));
+  const scopedModuleIds = new Set(scopedModules.map((module) => module.id));
+  const scopedLessons = state.lessons.filter((lesson) => scopedModuleIds.has(lesson.moduleId));
+  const activeCourses = scopedCourses.filter((course) => course.status === "active").length;
+  const classCapacity = scopedClasses.reduce((total, classGroup) => total + classGroup.capacity, 0);
+  const enrolledSeats = scopedClasses.reduce((total, classGroup) => total + classGroup.studentIds.length, 0);
   const teacherCount = state.teachers.filter((teacher) => departmentIds.includes(teacher.departmentId)).length;
   const academicFocusLabels: Record<string, string> = {
     assessments: "Assessment governance",
@@ -1418,6 +1423,24 @@ function AcademicGovernanceExperience({
     const text = `${program.title} ${program.category} ${program.language} ${department?.name ?? ""}`.toLowerCase();
     return text.includes(query.toLowerCase());
   });
+  useEffect(() => {
+    if (!programs.length) return;
+    if (!selectedProgramId || !programs.some((program) => program.id === selectedProgramId)) {
+      setSelectedProgramId(programs[0].id);
+    }
+  }, [programs, selectedProgramId]);
+  useEffect(() => {
+    if (!programCourses.length) return;
+    if (!selectedCourseId || !programCourses.some((course) => course.id === selectedCourseId)) {
+      setSelectedCourseId(programCourses[0].id);
+    }
+  }, [programCourses, selectedCourseId]);
+  useEffect(() => {
+    if (!academicRecipients.length) return;
+    if (!messageDraft.recipientId || !academicRecipients.some((user) => user.id === messageDraft.recipientId)) {
+      setMessageDraft((value) => ({ ...value, recipientId: academicRecipients[0].id }));
+    }
+  }, [academicRecipients, messageDraft.recipientId]);
   const auditRows = state.auditLogs
     .filter((audit) => /academic|course|program|module|level|curriculum|class/i.test(`${audit.action} ${audit.entityType} ${audit.summary}`))
     .slice(0, 5);
@@ -1471,7 +1494,7 @@ function AcademicGovernanceExperience({
 
   const selectProgram = (programId: string) => {
     setSelectedProgramId(programId);
-    const course = state.courses.find((item) => item.programId === programId);
+    const course = scopedCourses.find((item) => item.programId === programId);
     if (course) setSelectedCourseId(course.id);
   };
 
@@ -1557,6 +1580,8 @@ function AcademicGovernanceExperience({
         ["Departments", "departments", Building2],
         ["Programs", "programs", BookOpen],
         ["Courses", "courses", Layers],
+        ["Levels", "levels", SlidersHorizontal],
+        ["Moodle Source", "moodle-source", Database],
         ["Curriculum", "curriculum", FileText],
         ["Teachers", "teachers", Users],
         ["Classes", "classes", CalendarDays],
@@ -1591,10 +1616,10 @@ function AcademicGovernanceExperience({
 
       <div className="academic-governance-kpis">
         <AdminAccessMetric label="Programs" value={String(programs.length)} />
-        <AdminAccessMetric label="Active courses" value={`${activeCourses}/${state.courses.length}`} />
+        <AdminAccessMetric label="Active courses" value={`${activeCourses}/${scopedCourses.length}`} />
         <AdminAccessMetric label="Teachers" value={String(teacherCount)} />
         <AdminAccessMetric label="Seat usage" value={`${enrolledSeats}/${classCapacity}`} />
-        <AdminAccessMetric label="Lessons" value={String(state.lessons.length)} />
+        <AdminAccessMetric label="Lessons" value={String(scopedLessons.length)} />
       </div>
 
       <div className="academic-governance-layout">
@@ -1781,12 +1806,12 @@ function AcademicGovernanceExperience({
           <div className="academic-panel-head">
             <div>
               <span>Class delivery</span>
-              <strong>{state.classGroups.length} groups</strong>
+              <strong>{scopedClasses.length} groups</strong>
             </div>
             <CalendarDays size={18} />
           </div>
           <div className="academic-class-list">
-            {state.classGroups.map((classGroup) => {
+            {scopedClasses.map((classGroup) => {
               const run = state.courseRuns.find((item) => item.id === classGroup.courseRunId);
               const course = state.courses.find((item) => item.id === run?.courseId);
               const teacherUser = state.users.find((item) => item.id === run?.teacherId);
@@ -1883,6 +1908,7 @@ function AcademicGovernanceExperience({
               const user = state.users.find((item) => item.id === student?.userId);
               const course = state.courses.find((item) => item.id === certificate.courseId);
               const approved = certificate.status === "approved" || certificate.status === "issued";
+              const canIssue = certificate.status === "approved";
               const issued = certificate.status === "issued";
               return (
                 <article key={certificate.id}>
@@ -1903,14 +1929,18 @@ function AcademicGovernanceExperience({
                       {approved ? "Approved" : "Approve"}
                     </button>
                     <button
-                      disabled={issued}
+                      disabled={!canIssue || issued}
                       onClick={() => {
-                        platformStore.issueCertificate(certificate.id, actorId);
+                        const issuedCertificate = platformStore.issueCertificate(certificate.id, actorId);
                         refresh();
-                        toast.success("Certificate issued");
+                        if (issuedCertificate?.status === "issued") {
+                          toast.success("Certificate issued");
+                        } else {
+                          toast.info("Approve the certificate before issuing it");
+                        }
                       }}
                     >
-                      {issued ? "Issued" : "Issue"}
+                      {issued ? "Issued" : canIssue ? "Issue" : "Approve first"}
                     </button>
                   </div>
                 </article>
@@ -2037,6 +2067,8 @@ function BranchOperationsExperience({ pageId }: { pageId: string }) {
   const branchRunIds = new Set(branchRuns.map((run) => run.id));
   const branchClasses = state.classGroups.filter((classGroup) => branchRuns.some((run) => run.id === classGroup.courseRunId));
   const branchRooms = state.rooms.filter((room) => room.branchId === branch?.id);
+  const branchRoomKey = branchRooms.map((room) => room.id).join("|");
+  const branchClassKey = branchClasses.map((classGroup) => classGroup.id).join("|");
   const branchEvents = state.events.filter((event) => event.branchId === branch?.id || (event.classGroupId && branchClasses.some((classGroup) => classGroup.id === event.classGroupId)));
   const branchAttendance = state.attendance.filter((record) => branchClasses.some((classGroup) => classGroup.id === record.classGroupId));
   const branchStudentIds = new Set(branchStudents.map(({ student }) => student.id));
@@ -2114,10 +2146,10 @@ function BranchOperationsExperience({ pageId }: { pageId: string }) {
   useEffect(() => {
     setEventDraft((value) => ({
       ...value,
-      roomId: value.roomId || branchRooms[0]?.id || "",
-      classGroupId: value.classGroupId || branchClasses[0]?.id || "",
+      roomId: branchRooms.some((room) => room.id === value.roomId) ? value.roomId : branchRooms[0]?.id || "",
+      classGroupId: branchClasses.some((classGroup) => classGroup.id === value.classGroupId) ? value.classGroupId : branchClasses[0]?.id || "",
     }));
-  }, [branchRooms[0]?.id, branchClasses[0]?.id]);
+  }, [branchClassKey, branchRoomKey]);
 
   const createBranchEvent = (event: React.FormEvent) => {
     event.preventDefault();
@@ -2125,6 +2157,17 @@ function BranchOperationsExperience({ pageId }: { pageId: string }) {
       toast.error("Valid title, date, and time range are required");
       return;
     }
+    const needsClass = eventDraft.type === "live_session" || eventDraft.type === "class_session";
+    const classGroupId = branchClasses.some((classGroup) => classGroup.id === eventDraft.classGroupId)
+      ? eventDraft.classGroupId
+      : needsClass
+        ? branchClasses[0]?.id
+        : undefined;
+    if (needsClass && !classGroupId) {
+      toast.error("Assign a branch class before scheduling a live class session");
+      return;
+    }
+    const roomId = branchRooms.some((room) => room.id === eventDraft.roomId) ? eventDraft.roomId : branchRooms[0]?.id;
     const result = platformStore.createCalendarEvent(
       {
         title: eventDraft.title.trim(),
@@ -2133,8 +2176,8 @@ function BranchOperationsExperience({ pageId }: { pageId: string }) {
         endsAt: `${eventDraft.date}T${eventDraft.ends}:00+03:00`,
         ownerId: actorId,
         branchId: branch.id,
-        roomId: eventDraft.roomId || branchRooms[0]?.id,
-        classGroupId: eventDraft.classGroupId || branchClasses[0]?.id || state.classGroups[0]?.id,
+        roomId,
+        classGroupId,
       },
       actorId,
     );
@@ -2243,8 +2286,8 @@ function BranchOperationsExperience({ pageId }: { pageId: string }) {
               <span>Branch scope</span>
               <strong>{branch?.name ?? "Branch"}</strong>
             </div>
-            <select value={branch?.id ?? ""} onChange={(event) => setSelectedBranchId(event.target.value)} aria-label="Branch operations scope">
-              {state.branches.filter((item) => item.id !== "br_global").map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+            <select value={branch?.id ?? ""} disabled aria-label="Branch operations scope">
+              {branch ? <option value={branch.id}>{branch.name}</option> : <option value="">No branch assigned</option>}
             </select>
           </div>
           <div className="branch-scope-card">

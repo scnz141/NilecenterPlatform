@@ -37,7 +37,9 @@ export function isServerRole(value: unknown): value is ServerRole {
 }
 
 function demoAuthEnabled() {
-  return process.env.DEMO_AUTH_ENABLED !== "false" && process.env.VITE_DEMO_AUTH_ENABLED !== "false";
+  const explicit = process.env.DEMO_AUTH_ENABLED ?? process.env.VITE_DEMO_AUTH_ENABLED;
+  if (explicit !== undefined) return explicit === "true";
+  return process.env.NODE_ENV !== "production";
 }
 
 function parseCookies(req: Request) {
@@ -100,6 +102,9 @@ type SupabaseAuthUser = {
     roles?: ServerRole[];
     full_name?: string;
     name?: string;
+    demo_user_id?: string;
+    branch_id?: string;
+    department_id?: string;
   };
 };
 
@@ -143,7 +148,7 @@ async function signInWithSupabase(email: string, password: string, requestedRole
   }
 
   return createSession({
-    userId: user.id,
+    userId: clean(user.app_metadata?.demo_user_id) || user.id,
     email: user.email ?? email,
     name: user.app_metadata?.full_name ?? user.app_metadata?.name ?? email,
     roles,

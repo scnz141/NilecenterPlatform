@@ -10,6 +10,12 @@ export type Permission =
   | "dashboard:read"
   | "courses:read"
   | "courses:write"
+  | "classes:read"
+  | "classes:write"
+  | "rooms:read"
+  | "rooms:write"
+  | "schedule:read"
+  | "schedule:write"
   | "students:read"
   | "students:write"
   | "teachers:read"
@@ -336,9 +342,16 @@ export const rolePermissions: Record<Role, Permission[]> = {
     "dashboard:read",
     "students:read",
     "teachers:read",
+    "classes:read",
+    "classes:write",
+    "rooms:read",
+    "rooms:write",
+    "schedule:read",
+    "schedule:write",
     "attendance:read",
     "attendance:write",
     "payments:read",
+    "payments:write",
     "messages:write",
     "reports:read",
     "settings:write",
@@ -347,6 +360,12 @@ export const rolePermissions: Record<Role, Permission[]> = {
     "dashboard:read",
     "courses:read",
     "courses:write",
+    "classes:read",
+    "classes:write",
+    "rooms:read",
+    "rooms:write",
+    "schedule:read",
+    "schedule:write",
     "students:read",
     "students:write",
     "teachers:read",

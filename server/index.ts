@@ -11,6 +11,14 @@ async function startServer() {
   const app = express();
   const server = createServer(app);
 
+  app.use((_req, res, next) => {
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    res.setHeader("X-Frame-Options", "DENY");
+    res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
+    res.setHeader("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
+    next();
+  });
+
   registerApiRoutes(app);
 
   // Serve static files from dist/public in production
@@ -27,9 +35,10 @@ async function startServer() {
   });
 
   const port = process.env.PORT || 3000;
+  const host = process.env.HOST || "127.0.0.1";
 
-  server.listen(port, () => {
-    console.log(`Server running on http://localhost:${port}/`);
+  server.listen(Number(port), host, () => {
+    console.log(`Server running on http://${host}:${port}/`);
   });
 }
 
