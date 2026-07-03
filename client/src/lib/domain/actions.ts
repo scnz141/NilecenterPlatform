@@ -26,8 +26,8 @@ import type {
   QuranProgressRecord,
   RecitationSubmission,
   TeacherAvailability,
-} from "./types";
-import { roleOrder, rolePermissions, type Permission, type Role } from "../platformData";
+} from "./types.js";
+import { roleOrder, rolePermissions, type Permission, type Role } from "../platformData.js";
 
 export type PlatformLearningAction =
   | { type: "lesson.start"; lessonId: string; studentId?: string; actorId?: string }
