@@ -2,9 +2,11 @@ import { useMemo, useState } from "react";
 import { Link } from "wouter";
 import {
   ArrowRight,
+  Award,
   BookOpen,
   CalendarDays,
   CheckCircle2,
+  Download,
   Globe,
   GraduationCap,
   Mail,
@@ -16,7 +18,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { publicCourses } from "@/lib/platformData";
-import { saveBackendRecord } from "@/lib/backend/api";
+import { saveBackendRecord, verifyPublicCertificateRequest, type PublicCertificateVerificationDto } from "@/lib/backend/api";
 import { platformStore } from "@/lib/domain/store";
 import { leadFormSchema, placementFormSchema } from "@/lib/validators/platform";
 
@@ -25,6 +27,7 @@ type PublicMode =
   | "course"
   | "trial"
   | "placement"
+  | "verify"
   | "faq"
   | "contact"
   | "about"
@@ -34,6 +37,7 @@ type PublicMode =
 export default function PublicSitePage({ mode, slug }: { mode: PublicMode; slug?: string }) {
   if (mode === "trial") return <PublicFrame><BookingForm type="trial" /></PublicFrame>;
   if (mode === "placement") return <PublicFrame><BookingForm type="placement" /></PublicFrame>;
+  if (mode === "verify") return <PublicFrame><CertificateVerification /></PublicFrame>;
   if (mode === "course") return <PublicFrame><CourseDetail slug={slug ?? "arabic"} /></PublicFrame>;
   if (mode === "catalog") return <PublicFrame><CourseCatalog initialSlug={slug} /></PublicFrame>;
   return <PublicFrame><StaticPublicPage mode={mode} /></PublicFrame>;
@@ -51,6 +55,7 @@ function PublicFrame({ children }: { children: React.ReactNode }) {
           <Link href="/courses">Courses</Link>
           <Link href="/book-free-trial">Free trial</Link>
           <Link href="/book-placement-test">Placement test</Link>
+          <Link href="/verify-certificate">Verify</Link>
           <Link href="/faq">FAQ</Link>
           <Link href="/contact">Contact</Link>
         </nav>
@@ -65,6 +70,7 @@ function PublicFrame({ children }: { children: React.ReactNode }) {
         <div>
           <Link href="/privacy">Privacy</Link>
           <Link href="/terms">Terms</Link>
+          <Link href="/verify-certificate">Verify certificate</Link>
           <Link href="/auth/login">Portal</Link>
         </div>
       </footer>
@@ -120,6 +126,129 @@ function CourseCatalog({ initialSlug }: { initialSlug?: string }) {
           ))}
         </div>
       </section>
+    </main>
+  );
+}
+
+function CertificateVerification() {
+  const [code, setCode] = useState("");
+  const [result, setResult] = useState<PublicCertificateVerificationDto | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [submitted, setSubmitted] = useState(false);
+  const resultState = loading
+    ? "loading"
+    : result?.valid
+      ? "valid"
+      : result?.error?.toLowerCase().includes("unavailable") ||
+          result?.error?.toLowerCase().includes("too many") ||
+          result?.error?.toLowerCase().includes("enter")
+        ? "error"
+        : "missing";
+
+  const submit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    const trimmed = code.trim();
+    if (!trimmed) {
+      setResult({ valid: false, error: "Enter a certificate code." });
+      setSubmitted(true);
+      return;
+    }
+
+    setLoading(true);
+    setSubmitted(true);
+    setResult(null);
+    const response = await verifyPublicCertificateRequest(trimmed);
+    setLoading(false);
+    if (!response.ok || !response.data) {
+      setResult({ valid: false, error: response.error ?? "Verification is unavailable." });
+      toast.error("Verification unavailable", {
+        description: response.error ?? "Try again later.",
+      });
+      return;
+    }
+    setResult(response.data);
+    if (response.data.valid) {
+      toast.success("Issued certificate verified");
+    } else {
+      toast.info("No issued certificate found");
+    }
+  };
+
+  return (
+    <main className="public-verification-main">
+      <section>
+        <span>
+          <Award size={18} /> Certificate verification
+        </span>
+        <h1>Verify an issued Nile Learn certificate.</h1>
+        <p>
+          Enter the verification code printed on the certificate. Pending,
+          revoked, or internal approval records are never exposed publicly.
+        </p>
+      </section>
+
+      <form className="public-verification-card" onSubmit={submit}>
+        <label>
+          Verification code
+          <input
+            value={code}
+            onChange={event => setCode(event.target.value)}
+            placeholder="NCL-AR2-DEMO"
+            autoComplete="off"
+          />
+        </label>
+        <button type="submit" disabled={loading}>
+          <ShieldCheck size={16} />
+          {loading ? "Checking" : "Verify certificate"}
+        </button>
+
+        {submitted ? (
+          <div className={`public-verification-result ${resultState}`}>
+            {loading ? (
+              <>
+                <strong>Checking certificate</strong>
+                <p>Looking for an issued Nile Learn certificate.</p>
+              </>
+            ) : result?.valid ? (
+              <>
+                <strong>Issued certificate found</strong>
+                <div className="public-verification-preview">
+                  <span>Verified</span>
+                  <em>{result.certificate.verificationCode}</em>
+                  <p>{result.certificate.studentName}</p>
+                  <small>
+                    {result.certificate.courseTitle}
+                    {result.certificate.issuedAt
+                      ? ` · issued ${new Date(result.certificate.issuedAt).toLocaleDateString()}`
+                      : ""}
+                  </small>
+                </div>
+                <div className="public-verification-actions">
+                  <button type="button" onClick={() => window.print()}>
+                    <ShieldCheck size={15} />
+                    Print verification
+                  </button>
+                  <button type="button" disabled>
+                    <Download size={15} />
+                    PDF download pending
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <strong>
+                  {result?.error?.toLowerCase().includes("enter")
+                    ? "Certificate code required"
+                    : resultState === "error"
+                      ? "Verification unavailable"
+                      : "No issued certificate found"}
+                </strong>
+                <p>{result?.error ?? "Check the code and confirm the certificate has been issued."}</p>
+              </>
+            )}
+          </div>
+        ) : null}
+      </form>
     </main>
   );
 }
@@ -348,7 +477,7 @@ function mapBranchToId(branch: string) {
   return "br_online";
 }
 
-function StaticPublicPage({ mode }: { mode: Exclude<PublicMode, "catalog" | "course" | "trial" | "placement"> }) {
+function StaticPublicPage({ mode }: { mode: Exclude<PublicMode, "catalog" | "course" | "trial" | "placement" | "verify"> }) {
   const content = {
     faq: {
       icon: MessageSquare,

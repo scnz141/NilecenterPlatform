@@ -4,8 +4,9 @@ import { LockKeyhole, ShieldAlert } from "lucide-react";
 import PlatformShell from "./PlatformShell";
 import { canAccessRole, getStoredRole, refreshServerSession } from "@/lib/auth/session";
 import { roleMeta, type Role } from "@/lib/platformData";
+import { canOpenPage, getRequiredPermissionForPage } from "@/lib/rbac";
 
-export default function ProtectedRoute({ role, children }: { role: Role; children: ReactNode }) {
+export default function ProtectedRoute({ role, pageId = "dashboard", children }: { role: Role; pageId?: string; children: ReactNode }) {
   const [activeRole, setActiveRole] = useState<Role | null>(() => getStoredRole());
   const [checkedSession, setCheckedSession] = useState(Boolean(getStoredRole()));
 
@@ -34,7 +35,10 @@ export default function ProtectedRoute({ role, children }: { role: Role; childre
   }
 
   const access = canAccessRole(role);
-  if (access.ok) return <>{children}</>;
+  const requiredPermission = getRequiredPermissionForPage(role, pageId);
+  const permissionAllowed = access.ok && canOpenPage(role, pageId);
+  if (permissionAllowed) return <>{children}</>;
+  const deniedByPermission = access.ok && !permissionAllowed;
 
   return (
     <PlatformShell role={activeRole ?? role} title="Access">
@@ -44,7 +48,9 @@ export default function ProtectedRoute({ role, children }: { role: Role; childre
         <p>
           {access.reason === "not_authenticated"
             ? "Choose a demo role from the login page before opening protected workspaces."
-            : `Current role is ${roleMeta[activeRole ?? role].label}. This page requires ${roleMeta[role].label}.`}
+            : deniedByPermission
+              ? `${roleMeta[role].label} is signed in, but this page requires ${requiredPermission}.`
+              : `Current role is ${roleMeta[activeRole ?? role].label}. This page requires ${roleMeta[role].label}.`}
         </p>
         <div>
           <Link href="/auth/login" className="platform-primary-button" style={{ background: roleMeta[role].color }}>

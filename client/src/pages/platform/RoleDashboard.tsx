@@ -1,5 +1,5 @@
 import { motion } from "framer-motion";
-import type { CSSProperties } from "react";
+import { useMemo, type CSSProperties } from "react";
 import {
   Activity,
   ArrowRight,
@@ -27,6 +27,8 @@ import {
 } from "lucide-react";
 import { Link } from "wouter";
 import PlatformShell from "@/components/platform/PlatformShell";
+import { PlatformPageHeader, platformReveal } from "@/components/platform/PlatformPrimitives";
+import { platformStore } from "@/lib/domain/store";
 import { dashboardByRole, roleMeta, rolePermissions, sidebarByRole, type Role, type Stat } from "@/lib/platformData";
 
 const toneColor: Record<Stat["tone"], string> = {
@@ -38,14 +40,7 @@ const toneColor: Record<Stat["tone"], string> = {
   slate: "#1A1A1A",
 };
 
-const dashboardReveal = {
-  hidden: { opacity: 0, y: 18 },
-  visible: (delay = 0) => ({
-    opacity: 1,
-    y: 0,
-    transition: { duration: 0.42, delay, ease: [0.23, 1, 0.32, 1] as const },
-  }),
-};
+const dashboardReveal = platformReveal;
 
 export default function RoleDashboard({ role }: { role: Role }) {
   const dashboard = dashboardByRole[role];
@@ -123,13 +118,12 @@ export default function RoleDashboard({ role }: { role: Role }) {
 
   return (
     <PlatformShell role={role} title="Dashboard">
-      <motion.section className="platform-page-header" initial="hidden" animate="visible" custom={0} variants={dashboardReveal}>
-        <div>
-          <span className="platform-eyebrow">{meta.label}</span>
-          <h1>{dashboard.title}</h1>
-          <p>{dashboard.subtitle}</p>
-        </div>
-        <div className="platform-header-actions">
+      <PlatformPageHeader
+        compact
+        title={dashboard.title}
+        description={dashboard.subtitle}
+        actions={
+          <>
           <Link href={meta.defaultRoute.replace("/dashboard", "/reports")} className="platform-secondary-button">
             {reportActionLabel}
           </Link>
@@ -141,8 +135,9 @@ export default function RoleDashboard({ role }: { role: Role }) {
             <primaryDashboardAction.Icon size={15} />
             {primaryDashboardAction.label}
           </Link>
-        </div>
-      </motion.section>
+          </>
+        }
+      />
 
       <motion.div className="platform-metric-grid" initial="hidden" animate="visible">
         {dashboard.stats.map((stat, index) => (
@@ -249,57 +244,6 @@ type AdminCapability = {
   tone: Stat["tone"];
 };
 
-const adminCapabilities: AdminCapability[] = [
-  {
-    label: "Identity and users",
-    description: "Create staff, assign students, and inspect account status.",
-    metric: "6,412 users",
-    href: "/app/admin/users",
-    Icon: Users,
-    tone: "teal",
-  },
-  {
-    label: "Roles and permissions",
-    description: "Control who can read, edit, approve, and audit each module.",
-    metric: "19 permissions",
-    href: "/app/admin/roles",
-    Icon: ShieldCheck,
-    tone: "amber",
-  },
-  {
-    label: "Branch network",
-    description: "Review global branches, departments, rooms, and ownership.",
-    metric: "3 branches",
-    href: "/app/admin/branches",
-    Icon: Building2,
-    tone: "green",
-  },
-  {
-    label: "Programs and courses",
-    description: "Govern Arabic, Quran, language, kids, and training catalogs.",
-    metric: "295 courses",
-    href: "/app/admin/courses",
-    Icon: BookOpen,
-    tone: "purple",
-  },
-  {
-    label: "Moodle source",
-    description: "Track imported course sections, activities, and sync coverage.",
-    metric: "Mock sync",
-    href: "/app/admin/moodle-source",
-    Icon: Database,
-    tone: "slate",
-  },
-  {
-    label: "Audit and health",
-    description: "Open audit logs, integration checks, and system status.",
-    metric: "99.9%",
-    href: "/app/admin/system-health",
-    Icon: Activity,
-    tone: "red",
-  },
-];
-
 const adminQuickActions = [
   { label: "Create user", description: "Open the user management workspace", href: "/app/admin/users", Icon: Users },
   { label: "Manage roles", description: "Review RBAC rules and assignments", href: "/app/admin/roles", Icon: KeyRound },
@@ -373,13 +317,12 @@ function HeadOfDepartmentDashboard() {
 
   return (
     <PlatformShell role="headofdepartment" title="Dashboard">
-      <motion.section className="platform-page-header platform-page-header-admin" initial="hidden" animate="visible" custom={0} variants={dashboardReveal}>
-        <div>
-          <span className="platform-eyebrow">{meta.label}</span>
-          <h1>{dashboard.title}</h1>
-          <p>{dashboard.subtitle}</p>
-        </div>
-        <div className="platform-header-actions">
+      <PlatformPageHeader
+        compact
+        title={dashboard.title}
+        description={dashboard.subtitle}
+        actions={
+          <>
           <Link href="/app/hod/reports" className="platform-secondary-button">
             Reports
           </Link>
@@ -387,8 +330,9 @@ function HeadOfDepartmentDashboard() {
             <Plus size={15} />
             Course plan
           </Link>
-        </div>
-      </motion.section>
+          </>
+        }
+      />
 
       <motion.div className="platform-admin-status-strip platform-academic-status-strip" initial="hidden" animate="visible">
         {[
@@ -530,18 +474,136 @@ function HeadOfDepartmentDashboard() {
 function SuperAdminDashboard() {
   const dashboard = dashboardByRole.superadmin;
   const meta = roleMeta.superadmin;
+  const state = useMemo(() => platformStore.getState(), []);
   const permissionCount = rolePermissions.superadmin.length;
   const navCount = sidebarByRole.superadmin.length;
+  const activeUsers = state.users.filter((user) => user.status === "active").length;
+  const activeStudents = state.students.filter((student) => student.status === "active").length;
+  const activeClasses = state.classGroups.length;
+  const connectedIntegrations = state.integrations.filter((integration) => integration.status === "connected").length;
+  const usableIntegrations = state.integrations.filter((integration) => integration.status === "connected" || integration.status === "mock_mode").length;
+  const pendingInvoices = state.invoices.filter((invoice) => invoice.status !== "paid" && invoice.status !== "cancelled").length;
+  const platformEntityTotal =
+    state.users.length +
+    state.branches.length +
+    state.departments.length +
+    state.programs.length +
+    state.courses.length +
+    state.courseRuns.length +
+    state.classGroups.length +
+    state.enrollments.length +
+    state.events.length +
+    state.auditLogs.length;
+  const integrationReadiness = state.integrations.length
+    ? Math.round((usableIntegrations / state.integrations.length) * 100)
+    : 0;
+  const superAdminStats: Stat[] = [
+    { label: "Users in state", value: `${activeUsers}/${state.users.length}`, change: "active accounts", tone: "teal" },
+    { label: "Active learners", value: String(activeStudents), change: `${state.enrollments.length} enrollments`, tone: "green" },
+    { label: "Class groups", value: String(activeClasses), change: `${state.events.length} scheduled events`, tone: "amber" },
+    { label: "Integration readiness", value: `${integrationReadiness}%`, change: `${connectedIntegrations} connected`, tone: "purple" },
+  ];
+  const capabilities: AdminCapability[] = [
+    {
+      label: "Identity and users",
+      description: "Create staff, assign roles, pause accounts, and inspect branch/department scope.",
+      metric: `${state.users.length} accounts`,
+      href: "/app/admin/users",
+      Icon: Users,
+      tone: "teal",
+    },
+    {
+      label: "Roles and permissions",
+      description: "Control who can read, edit, approve, report, message, and audit each module.",
+      metric: `${permissionCount} permissions`,
+      href: "/app/admin/roles",
+      Icon: ShieldCheck,
+      tone: "amber",
+    },
+    {
+      label: "Branch network",
+      description: "Review global branches, departments, rooms, and operational ownership.",
+      metric: `${state.branches.length} branches`,
+      href: "/app/admin/branches",
+      Icon: Building2,
+      tone: "green",
+    },
+    {
+      label: "Programs and courses",
+      description: "Govern Arabic, Quran, language, kids, and teacher-training course catalogs.",
+      metric: `${state.courses.length} courses`,
+      href: "/app/admin/courses",
+      Icon: BookOpen,
+      tone: "purple",
+    },
+    {
+      label: "Moodle source",
+      description: "Track observed Moodle course sections, activities, and future sync coverage.",
+      metric: `${state.modules.length} modules`,
+      href: "/app/admin/moodle-source",
+      Icon: Database,
+      tone: "slate",
+    },
+    {
+      label: "Audit and health",
+      description: "Open audit evidence, connector readiness, settings, and system health checks.",
+      metric: `${state.auditLogs.length} audit rows`,
+      href: "/app/admin/system-health",
+      Icon: Activity,
+      tone: "red",
+    },
+  ];
+  const hierarchy = [
+    {
+      label: "Global governance",
+      detail: "Super Admin owns platform settings, RBAC, audit evidence, and connector boundaries.",
+      metric: `${navCount} admin workspaces`,
+      href: "/app/admin/platform-blueprint",
+      Icon: Network,
+      tone: "slate" as Stat["tone"],
+    },
+    {
+      label: "Academic ownership",
+      detail: "Departments, programs, levels, courses, curriculum, certificates, and Moodle source.",
+      metric: `${state.departments.length} departments · ${state.programs.length} programs`,
+      href: "/app/admin/departments",
+      Icon: Library,
+      tone: "purple" as Stat["tone"],
+    },
+    {
+      label: "Branch operations",
+      detail: "Branches, rooms, branch classes, attendance exceptions, payments, and local schedules.",
+      metric: `${state.branches.length} branches · ${state.rooms.length} rooms`,
+      href: "/app/admin/branches",
+      Icon: Building2,
+      tone: "green" as Stat["tone"],
+    },
+    {
+      label: "Admissions and finance",
+      detail: "Leads, placement tests, enrollment workflows, invoices, payment records, and reports.",
+      metric: `${state.leads.length} lead · ${pendingInvoices} pending invoices`,
+      href: "/app/admin/reports",
+      Icon: ScrollText,
+      tone: "amber" as Stat["tone"],
+    },
+    {
+      label: "Teaching delivery",
+      detail: "Teachers, course runs, class groups, resources, assessments, Quran review, and messages.",
+      metric: `${state.teachers.length} teacher · ${state.classGroups.length} classes`,
+      href: "/app/admin/moodle-source",
+      Icon: GraduationCap,
+      tone: "teal" as Stat["tone"],
+    },
+  ];
 
   return (
     <PlatformShell role="superadmin" title="Dashboard">
-      <motion.section className="platform-page-header platform-page-header-admin" initial="hidden" animate="visible" custom={0} variants={dashboardReveal}>
-        <div>
-          <span className="platform-eyebrow">{meta.label}</span>
-          <h1>{dashboard.title}</h1>
-          <p>{dashboard.subtitle}</p>
-        </div>
-        <div className="platform-header-actions">
+      <PlatformPageHeader
+        compact
+        title={dashboard.title}
+        description={dashboard.subtitle}
+        actions={
+          <>
           <Link href="/app/admin/reports" className="platform-secondary-button">
             Reports
           </Link>
@@ -549,15 +611,16 @@ function SuperAdminDashboard() {
             <Plus size={15} />
             Quick create
           </Link>
-        </div>
-      </motion.section>
+          </>
+        }
+      />
 
       <motion.div className="platform-admin-status-strip" initial="hidden" animate="visible">
         {[
           ["Scope", "Global platform"],
           ["Admin modules", `${navCount} workspaces`],
           ["RBAC coverage", `${permissionCount} permissions`],
-          ["Data state", "Supabase synced"],
+          ["Data state", `${platformEntityTotal} local records`],
         ].map(([label, value], index) => (
           <motion.article key={label} custom={0.03 + index * 0.035} variants={dashboardReveal}>
             <span>{label}</span>
@@ -567,7 +630,7 @@ function SuperAdminDashboard() {
       </motion.div>
 
       <motion.div className="platform-metric-grid platform-admin-metric-grid" initial="hidden" animate="visible">
-        {dashboard.stats.map((stat, index) => (
+        {superAdminStats.map((stat, index) => (
           <motion.article key={stat.label} className="platform-metric" custom={0.07 + index * 0.045} variants={dashboardReveal}>
             <div>
               <span>{stat.label}</span>
@@ -578,19 +641,52 @@ function SuperAdminDashboard() {
         ))}
       </motion.div>
 
+      <motion.section className="platform-admin-hierarchy" initial="hidden" animate="visible" custom={0.12} variants={dashboardReveal}>
+        <div className="platform-card-title compact">
+          <div>
+            <span>Platform hierarchy</span>
+            <strong>Administration operating map</strong>
+          </div>
+          <Link href="/app/admin/platform-blueprint" className="platform-secondary-button compact">
+            Blueprint
+          </Link>
+        </div>
+        <div className="platform-admin-hierarchy-grid">
+          {hierarchy.map((item, index) => (
+            <Link
+              key={item.label}
+              href={item.href}
+              className="platform-admin-hierarchy-card"
+              style={{ "--item-color": toneColor[item.tone] } as CSSProperties}
+            >
+              <span className="platform-admin-hierarchy-index">{String(index + 1).padStart(2, "0")}</span>
+              <span className="platform-admin-hierarchy-icon">
+                <item.Icon size={17} />
+              </span>
+              <div>
+                <small>{item.metric}</small>
+                <strong>{item.label}</strong>
+                <p>{item.detail}</p>
+              </div>
+              <ArrowRight size={15} />
+            </Link>
+          ))}
+        </div>
+      </motion.section>
+
       <motion.div className="platform-admin-layout" initial="hidden" animate="visible" custom={0.16} variants={dashboardReveal}>
         <section className="platform-admin-command">
           <div className="platform-admin-command-copy">
             <span>Governance command center</span>
-            <h2>Govern users, roles, branches, integrations, and audits from one controlled surface.</h2>
-            <p>Global scope stays visible, and every decision opens the module that owns it.</p>
+            <h2>Govern people, academic structure, branch operations, integrations, and audit evidence from one controlled surface.</h2>
+            <p>Every tile opens the module that owns the decision, so administration stays fast without hiding accountability.</p>
           </div>
 
           <div className="platform-admin-command-grid">
             {[
-              { label: "Identity", value: "Active", color: toneColor.teal },
-              { label: "RBAC", value: "Audited", color: toneColor.amber },
-              { label: "Integrations", value: "66%", color: toneColor.purple },
+              { label: "Identity", value: `${activeUsers}/${state.users.length}`, color: toneColor.teal },
+              { label: "RBAC", value: `${permissionCount}`, color: toneColor.amber },
+              { label: "Integrations", value: `${usableIntegrations}/${state.integrations.length}`, color: toneColor.purple },
             ].map((item) => (
               <article key={item.label} style={{ "--item-color": item.color } as CSSProperties}>
                 <span>{item.label}</span>
@@ -636,7 +732,7 @@ function SuperAdminDashboard() {
       </motion.div>
 
       <motion.section className="platform-admin-capability-grid" initial="hidden" animate="visible" custom={0.2} variants={dashboardReveal}>
-        {adminCapabilities.map((item) => (
+        {capabilities.map((item) => (
           <Link key={item.label} href={item.href} className="platform-admin-capability-card" style={{ "--item-color": toneColor[item.tone] } as CSSProperties}>
             <span>
               <item.Icon size={18} />

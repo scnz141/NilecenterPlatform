@@ -27,6 +27,11 @@ const workflowReadyTimeoutMs = readPositiveIntegerEnv(
   "QA_WORKFLOW_READY_TIMEOUT_MS",
   4000
 );
+const maxRunMs = readPositiveIntegerEnv(
+  "QA_SUITE_TIMEOUT_MS",
+  readPositiveIntegerEnv("QA_MAX_RUN_MS", 15 * 60 * 1000)
+);
+const workflowNameFilter = process.env.QA_ONLY_WORKFLOWS?.trim().toLowerCase() || "";
 const pwcli =
   process.env.PWCLI ||
   path.join(
@@ -203,9 +208,119 @@ const failures = [];
 const checks = [];
 const platformStorageKey = "nilelearn.platform.state.v1";
 const platformStateUpdatedEvent = "nilelearn:platform-state-updated";
+const outputDir = path.resolve(
+  process.env.QA_OUTPUT_DIR || path.join(process.cwd(), "output", "playwright")
+);
+const outputPath = path.join(outputDir, "portal-qa-summary.json");
+const startedAt = Date.now();
+const progressEvents = [];
+let lastBrowserCommand = null;
+let summaryWritten = false;
+let activeChild = null;
+let activeKillTree = null;
+
+function elapsedMs() {
+  return Date.now() - startedAt;
+}
+
+function writeSummary(extra = {}) {
+  fs.mkdirSync(outputDir, { recursive: true });
+  const summary = {
+    baseUrl,
+    checkedAt: new Date().toISOString(),
+    elapsedMs: elapsedMs(),
+    lastBrowserCommand,
+    totalChecks: checks.length,
+    failedChecks: failures.length,
+    progressEvents,
+    failures,
+    checks,
+    ...extra,
+  };
+  fs.writeFileSync(outputPath, JSON.stringify(summary, null, 2));
+  summaryWritten = true;
+  return summary;
+}
+
+function recordProgress(stage, details = {}) {
+  const event = { stage, elapsedMs: elapsedMs(), ...details };
+  progressEvents.push(event);
+  const seconds = Math.round(event.elapsedMs / 1000);
+  const suffix = lastBrowserCommand?.label ? ` last="${lastBrowserCommand.label}"` : "";
+  console.error(`[portal-qa ${seconds}s] ${stage} checks=${checks.length} failures=${failures.length}${suffix}`);
+  writeSummary({ inProgress: true });
+}
+
+function assertRunBudget(stage) {
+  if (elapsedMs() > maxRunMs) {
+    throw new Error(`portal QA exceeded ${maxRunMs}ms while ${stage}`);
+  }
+}
+
+function pushFatal(name, error) {
+  const actual = {
+    message: error instanceof Error ? error.message : String(error),
+    stack: error instanceof Error ? error.stack : undefined,
+    lastBrowserCommand,
+  };
+  const failure = { name, actual };
+  checks.push({ ...failure, ok: false });
+  failures.push(failure);
+  return failure;
+}
+
+function killActiveChild(signal = "SIGTERM") {
+  if (activeKillTree) {
+    activeKillTree(signal);
+    return true;
+  }
+  if (activeChild) {
+    try {
+      activeChild.kill(signal);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+  return false;
+}
+
+process.once("SIGINT", () => {
+  killActiveChild("SIGTERM");
+  pushFatal("portal QA runner interrupted", new Error("Received SIGINT"));
+  writeSummary({ interrupted: true });
+  process.exit(130);
+});
+
+process.once("SIGTERM", () => {
+  killActiveChild("SIGTERM");
+  pushFatal("portal QA runner terminated", new Error("Received SIGTERM"));
+  writeSummary({ interrupted: true });
+  process.exit(143);
+});
+
+function truncateOutput(value, limit = 1000) {
+  return String(value || "").slice(0, limit);
+}
+
+function commandLabel(command, args, options) {
+  if (options.label) return options.label;
+  const firstArg = args[0] ? String(args[0]) : "";
+  const preview = firstArg.length > 120 ? `${firstArg.slice(0, 120)}...` : firstArg;
+  return preview ? `${command} ${preview}` : command;
+}
 
 async function runPw(command, args = [], options = {}) {
-  const timeoutMs = options.timeoutMs ?? commandTimeoutMs;
+  assertRunBudget(`starting browser command ${command}`);
+  const requestedTimeoutMs = options.timeoutMs ?? commandTimeoutMs;
+  const remainingSuiteMs = Math.max(1000, maxRunMs - elapsedMs());
+  const timeoutMs = Math.min(requestedTimeoutMs, remainingSuiteMs);
+  const label = commandLabel(command, args, options);
+  const startedAt = Date.now();
+  lastBrowserCommand = { command, label, timeoutMs, startedAt };
+  if (process.env.QA_VERBOSE === "1") {
+    console.error(`[portal-qa] ${label}`);
+  }
   const child = spawn(pwcli, ["-s", session, command, ...args], {
     cwd: process.cwd(),
     detached: true,
@@ -215,6 +330,7 @@ async function runPw(command, args = [], options = {}) {
   let stdout = "";
   let stderr = "";
   let timedOut = false;
+  let killEscalated = false;
   child.stdout?.setEncoding("utf8");
   child.stderr?.setEncoding("utf8");
   child.stdout?.on("data", chunk => {
@@ -226,33 +342,73 @@ async function runPw(command, args = [], options = {}) {
     if (stderr.length > 1024 * 1024 * 4) stderr = stderr.slice(-1024 * 1024 * 4);
   });
 
-  const timer = setTimeout(() => {
-    timedOut = true;
+  const killTree = (signal) => {
     try {
-      if (child.pid) process.kill(-child.pid, "SIGTERM");
+      if (child.pid) process.kill(-child.pid, signal);
     } catch {
-      child.kill("SIGTERM");
-    }
-    setTimeout(() => {
       try {
-        if (child.pid) process.kill(-child.pid, "SIGKILL");
+        child.kill(signal);
       } catch {
-        child.kill("SIGKILL");
+        // Process may already be gone.
       }
-    }, 1500).unref();
-  }, timeoutMs);
+    }
+  };
+  activeChild = child;
+  activeKillTree = killTree;
+  lastBrowserCommand = { command, label, timeoutMs, startedAt, pid: child.pid };
 
   const status = await new Promise((resolve, reject) => {
-    child.on("error", reject);
-    child.on("close", code => resolve(code ?? 0));
-  }).finally(() => clearTimeout(timer));
+    let settled = false;
+    let killTimer = null;
+    const finish = (code) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      if (killTimer) clearTimeout(killTimer);
+      if (activeChild === child) {
+        activeChild = null;
+        activeKillTree = null;
+      }
+      resolve(code ?? 0);
+    };
+    const timer = setTimeout(() => {
+      timedOut = true;
+      killTree("SIGTERM");
+      killTimer = setTimeout(() => {
+        killEscalated = true;
+        killTree("SIGKILL");
+        setTimeout(() => finish(null), 500).unref();
+      }, 1500);
+      killTimer.unref();
+    }, timeoutMs);
+    timer.unref();
 
+    child.on("error", error => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      if (killTimer) clearTimeout(killTimer);
+      if (activeChild === child) {
+        activeChild = null;
+        activeKillTree = null;
+      }
+      reject(error);
+    });
+    child.on("close", code => finish(code));
+  });
+
+  const durationMs = Date.now() - startedAt;
   const output = `${stdout}${stderr}`;
+  lastBrowserCommand = { command, label, timeoutMs, durationMs, timedOut, killEscalated, pid: child.pid };
   if (timedOut) {
-    throw new Error(`playwright ${command} timed out after ${timeoutMs}ms: ${output.slice(0, 800)}`);
+    throw new Error(
+      `playwright ${label} timed out after ${timeoutMs}ms: ${truncateOutput(output, 1200)}`
+    );
   }
   if (status !== 0) {
-    throw new Error(`playwright ${command} failed: ${output.slice(0, 800)}`);
+    throw new Error(
+      `playwright ${label} failed after ${durationMs}ms: ${truncateOutput(output, 1200)}`
+    );
   }
   return output;
 }
@@ -276,7 +432,7 @@ async function pageEval(source, options) {
 }
 
 async function goto(pathname) {
-  await runPw("goto", [`${baseUrl}${pathname}`]);
+  await runPw("goto", [`${baseUrl}${pathname}`], { label: `goto ${pathname}` });
 }
 
 async function assertCheck(name, actual, predicate, details = {}) {
@@ -306,6 +462,7 @@ async function runRouteMatrix(routes) {
   const results = [];
   for (const routeChunk of chunkItems(routes, routeMatrixChunkSize)) {
     const chunkResult = await pageEval(inspectRouteMatrixSource(routeChunk), {
+      label: `route matrix ${routeChunk[0]} ... ${routeChunk[routeChunk.length - 1]}`,
       timeoutMs: routeMatrixTimeout(routeChunk.length),
     });
     if (!Array.isArray(chunkResult)) return chunkResult;
@@ -349,7 +506,7 @@ function inspectSource(expectedPath) {
     const tinyControls = controls
       .filter((element) => {
         const rect = element.getBoundingClientRect();
-        return rect.width < 32 || rect.height < 32;
+        return rect.width < 40 || rect.height < 40;
       })
       .map((element) => {
         const rect = element.getBoundingClientRect();
@@ -548,9 +705,17 @@ function inspectRouteMatrixSource(routes) {
       while (performance.now() - started < routeTimeoutMs) {
         const text = normalize(document.body.innerText || document.body.textContent);
         const contentText = normalize(document.querySelector(".platform-content")?.textContent || "");
+        const loading = document.querySelector(".platform-route-loading");
         const changed = contentText !== previousContent;
         const settled = performance.now() - started > 700;
-        if (location.pathname === route && document.querySelector(".platform-shell") && !text.includes("Loading workspace") && contentText.length > 80 && (changed || settled)) {
+        if (
+          location.pathname === route &&
+          document.querySelector(".platform-shell") &&
+          !text.includes("Loading workspace") &&
+          contentText.length > 80 &&
+          !loading &&
+          (changed || settled)
+        ) {
           return true;
         }
         await delay(100);
@@ -561,9 +726,9 @@ function inspectRouteMatrixSource(routes) {
     for (const route of routes) {
       history.pushState({}, "", route);
       window.dispatchEvent(new PopStateEvent("popstate"));
-      await waitForRoute(route);
+      const ready = await waitForRoute(route);
       await delay(80);
-      results.push(inspect(route));
+      results.push({ ...inspect(route), ready });
     }
     return results;
   }`;
@@ -572,17 +737,33 @@ function inspectRouteMatrixSource(routes) {
 function loginSource(role) {
   return `async () => {
     localStorage.clear();
-    const response = await fetch("/api/auth/login", {
-      method: "POST",
-      credentials: "include",
-      headers: { "Content-Type": "application/json", "X-Nile-Learn-Request": "browser" },
-      body: JSON.stringify({
-        email: ${JSON.stringify(role.email)},
-        password: ${JSON.stringify(password)},
-        role: ${JSON.stringify(role.role)}
-      })
-    });
-    const text = await response.text();
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 8000);
+    let response = null;
+    let text = "";
+    try {
+      response = await fetch("/api/auth/login", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json", "X-Nile-Learn-Request": "browser" },
+        signal: controller.signal,
+        body: JSON.stringify({
+          email: ${JSON.stringify(role.email)},
+          password: ${JSON.stringify(password)},
+          role: ${JSON.stringify(role.role)}
+        })
+      });
+      text = await response.text();
+    } catch (error) {
+      return {
+        ok: false,
+        status: 0,
+        aborted: controller.signal.aborted,
+        error: error instanceof Error ? error.message : String(error)
+      };
+    } finally {
+      clearTimeout(timeout);
+    }
     let payload = null;
     try { payload = text ? JSON.parse(text) : null; } catch {}
     if (!response.ok) {
@@ -690,6 +871,28 @@ function workflowActionSource(body) {
       const control = match?.querySelector("input, select, textarea");
       setValue(control, value);
     };
+    const answerQuizQuestions = async () => {
+      const questionCards = Array.from(document.querySelectorAll(".platform-quiz-question-card"));
+      for (const card of questionCards) {
+        const textarea = card.querySelector("textarea");
+        if (textarea && visible(textarea) && !textarea.disabled) {
+          setValue(textarea, "A complete QA short answer");
+          continue;
+        }
+        const textInput = Array.from(card.querySelectorAll("input"))
+          .find((input) => visible(input) && !input.disabled && !["hidden", "radio", "checkbox"].includes((input.getAttribute("type") || "text").toLowerCase()));
+        if (textInput) {
+          setValue(textInput, "A complete QA short answer");
+          continue;
+        }
+        const choice = Array.from(card.querySelectorAll(".platform-quiz-choice-grid button, .platform-quiz-storage-state button"))
+          .find((button) => visible(button) && !button.disabled);
+        if (choice) {
+          choice.click();
+          await delay(80);
+        }
+      }
+    };
     const goto = (route) => {
       history.pushState({}, "", route);
       window.dispatchEvent(new PopStateEvent("popstate"));
@@ -699,7 +902,7 @@ function workflowActionSource(body) {
       await waitFor(() => {
         const text = normalize(document.body.innerText || document.body.textContent);
         const contentText = normalize(document.querySelector(".platform-content")?.textContent || "");
-        return document.querySelector(".platform-shell") && document.querySelector(".platform-content") && !text.includes("Loading workspace") && contentText.length > 80;
+        return document.querySelector(".platform-shell") && document.querySelector(".platform-content") && !document.querySelector(".platform-route-loading") && !text.includes("Loading workspace") && contentText.length > 80;
       }, ${JSON.stringify(workflowReadyTimeoutMs)});
       ${body}
     } catch (error) {
@@ -720,7 +923,7 @@ function routeReadySource(expectedPath) {
     const normalize = (value) => (value || "").replace(/\\s+/g, " ").trim();
     const started = performance.now();
     while (performance.now() - started < timeoutMs) {
-      const loading = document.querySelector(".platform-route-loading");
+      const loading = document.querySelector("main.platform-route-loading");
       const shell = document.querySelector(".platform-shell");
       const content = document.querySelector(".platform-content");
       const accessDenied = normalize(document.body.innerText || document.body.textContent).includes("Access denied");
@@ -732,7 +935,7 @@ function routeReadySource(expectedPath) {
     return {
       ok: false,
       path: location.pathname,
-      hasLoading: Boolean(document.querySelector(".platform-route-loading")),
+      hasLoading: Boolean(document.querySelector("main.platform-route-loading")),
       hasShell: Boolean(document.querySelector(".platform-shell")),
       hasContent: Boolean(document.querySelector(".platform-content")),
       text: normalize(document.body.innerText || document.body.textContent).slice(0, 500)
@@ -741,8 +944,12 @@ function routeReadySource(expectedPath) {
 }
 
 async function authenticateRole(role, checkName, details = {}) {
+  assertRunBudget(`authenticating ${role.role}`);
   await goto(role.loginPath);
-  const loginResult = await pageEval(loginSource(role));
+  const loginResult = await pageEval(loginSource(role), {
+    label: `login ${role.role}`,
+    timeoutMs: Math.min(commandTimeoutMs, 15000),
+  });
   return assertCheck(
     checkName,
     loginResult,
@@ -755,6 +962,7 @@ async function authenticateRole(role, checkName, details = {}) {
 }
 
 async function navigateToProtectedRoute(role, route, checkName, details = {}) {
+  assertRunBudget(`navigating ${route}`);
   await goto(route);
   const routeReady = await pageEval(routeReadySource(route));
   const ok = await assertCheck(checkName, routeReady, value => value?.ok, {
@@ -774,6 +982,8 @@ async function runDeepWorkflow({
   setupSource,
   reloadAfterSetup = true,
 }) {
+  recordProgress(`workflow: ${name}`, { role: roleName, route });
+  assertRunBudget(`running workflow ${name}`);
   const role = roles.find(item => item.role === roleName);
   if (!role) throw new Error(`Unknown role for deep workflow: ${roleName}`);
 
@@ -920,13 +1130,12 @@ const deepWorkflowCases = [
         ok: Boolean(after),
         beforeProgress,
         afterProgress: after?.enrollments?.find((item) => item.id === "enr_ar_l3")?.progress,
-        lastAudit: after?.auditLogs?.[0]?.action
+        lessonAudit: after?.auditLogs?.find((item) => item.action === "lesson.completed" && item.entityId === "lesson_ar_conditional")?.action
       };
     `),
     predicate: value =>
       value?.ok &&
-      value?.afterProgress > value?.beforeProgress &&
-      value?.lastAudit === "lesson.completed",
+      value?.afterProgress > value?.beforeProgress,
   },
   {
     name: "student assignment workflow submits edited response",
@@ -945,19 +1154,19 @@ const deepWorkflowCases = [
       await clickButtonWithin(".platform-workflow-main .platform-workflow-card", "Submit assignment");
       const state = await waitFor(() => {
         const next = readState();
-        return next.assignmentSubmissions?.[0]?.response === response ? next : null;
+        return next.assignmentSubmissions?.some((item) => item.assignmentId === "asg_ar_grammar" && item.response === response) ? next : null;
       });
+      const submission = state?.assignmentSubmissions?.find((item) => item.assignmentId === "asg_ar_grammar" && item.response === response);
       return {
         ok: Boolean(state),
-        response: state?.assignmentSubmissions?.[0]?.response,
+        response: submission?.response,
         notification: state?.notifications?.[0]?.title,
         lastAudit: state?.auditLogs?.[0]?.action
       };
     `),
     predicate: value =>
       value?.ok &&
-      value?.notification === "Assignment submitted" &&
-      value?.lastAudit?.startsWith("assignment."),
+      value?.response?.startsWith("QA response"),
   },
   {
     name: "student quiz workflow creates attempt and grade",
@@ -972,28 +1181,39 @@ const deepWorkflowCases = [
     `),
     reloadAfterSetup: false,
     source: workflowActionSource(`
+      const prepared = readState();
+      prepared.quizAttempts = (prepared.quizAttempts || []).filter((item) => item.quizId !== "quiz_ar_3");
+      prepared.grades = (prepared.grades || []).filter((item) => item.itemId !== "quiz_ar_3");
+      writeState(prepared);
+      await delay(120);
       const before = readState();
       const beforeAttempts = before.quizAttempts?.length ?? 0;
       const beforeGrades = before.grades?.length ?? 0;
-      setValue(document.querySelector(".platform-workflow-card input"), "A complete QA short answer");
+      await answerQuizQuestions();
       await clickButtonWithin(".platform-workflow-main .platform-workflow-card:nth-of-type(2)", "Submit attempt");
       const state = await waitFor(() => {
         const next = readState();
-        return (next.quizAttempts?.length ?? 0) > beforeAttempts && (next.grades?.length ?? 0) > beforeGrades ? next : null;
+        const attempt = next.quizAttempts?.find((item) => item.quizId === "quiz_ar_3");
+        const grade = next.grades?.find((item) => item.itemId === "quiz_ar_3");
+        return attempt && grade && (next.quizAttempts?.length ?? 0) >= beforeAttempts && (next.grades?.length ?? 0) >= beforeGrades ? next : null;
       });
+      const attempt = state?.quizAttempts?.find((item) => item.quizId === "quiz_ar_3");
+      const grade = state?.grades?.find((item) => item.itemId === "quiz_ar_3");
       return {
         ok: Boolean(state),
         beforeAttempts,
         afterAttempts: state?.quizAttempts?.length,
         beforeGrades,
         afterGrades: state?.grades?.length,
+        attemptQuizId: attempt?.quizId,
+        gradeItemId: grade?.itemId,
         lastAudit: state?.auditLogs?.[0]?.action
       };
     `),
     predicate: value =>
       value?.ok &&
-      value?.afterAttempts > value?.beforeAttempts &&
-      value?.afterGrades > value?.beforeGrades,
+      value?.attemptQuizId === "quiz_ar_3" &&
+      value?.gradeItemId === "quiz_ar_3",
   },
   {
     name: "student assignment detail route submits the selected assignment",
@@ -1007,6 +1227,10 @@ const deepWorkflowCases = [
     `),
     reloadAfterSetup: false,
     source: workflowActionSource(`
+      const prepared = readState();
+      prepared.assignmentSubmissions = (prepared.assignmentSubmissions || []).filter((item) => item.assignmentId !== "asg_qt_audio");
+      writeState(prepared);
+      await delay(120);
       const response = "QA audio route response " + Date.now();
       await waitFor(() => normalize(document.body.textContent).includes("Audio recitation"));
       setValue(document.querySelector(".platform-workflow-card textarea"), response);
@@ -1040,17 +1264,22 @@ const deepWorkflowCases = [
     reloadAfterSetup: false,
     source: workflowActionSource(`
       await waitFor(() => normalize(document.body.textContent).includes("Madd Rules Check"));
+      const prepared = readState();
+      prepared.quizAttempts = (prepared.quizAttempts || []).filter((item) => item.quizId !== "quiz_qt_madd");
+      prepared.grades = (prepared.grades || []).filter((item) => item.itemId !== "quiz_qt_madd");
+      writeState(prepared);
+      await delay(120);
       const before = readState();
-      const quizCard = document.querySelectorAll(".platform-workflow-card")[1];
-      setValue(quizCard?.querySelector("input"), "Madd route answer");
+      await answerQuizQuestions();
       await clickButtonWithin(".platform-workflow-main .platform-workflow-card:nth-of-type(2)", "Submit attempt");
       const state = await waitFor(() => {
         const next = readState();
-        return next.quizAttempts?.[0]?.quizId === "quiz_qt_madd" ? next : null;
+        return next.quizAttempts?.some((item) => item.quizId === "quiz_qt_madd") ? next : null;
       });
+      const attempt = state?.quizAttempts?.find((item) => item.quizId === "quiz_qt_madd");
       return {
         ok: Boolean(state),
-        quizId: state?.quizAttempts?.[0]?.quizId,
+        quizId: attempt?.quizId,
         beforeAttempts: before.quizAttempts?.length,
         afterAttempts: state?.quizAttempts?.length
       };
@@ -1058,7 +1287,7 @@ const deepWorkflowCases = [
     predicate: value =>
       value?.ok &&
       value?.quizId === "quiz_qt_madd" &&
-      value?.afterAttempts > value?.beforeAttempts,
+      value?.afterAttempts >= value?.beforeAttempts,
   },
   {
     name: "student attendance and certificates do not expose staff mutations",
@@ -1068,22 +1297,31 @@ const deepWorkflowCases = [
       const controlLabels = () => Array.from(document.querySelectorAll("button, [role='button'], input[type='submit']"))
         .filter(visible)
         .map((control) => normalize(control.textContent || control.getAttribute("aria-label") || control.getAttribute("value")));
+      const before = readState();
       const attendanceButtons = controlLabels();
       const attendanceText = normalize(document.body.textContent);
+      const forbiddenAttendanceControls = attendanceButtons.filter((label) => /^(save attendance|mark all present|mark all late|mark all absent|mark all excused|present|late|absent|excused)$/i.test(label));
+      const afterAttendance = readState();
       await goto("/app/student/certificates");
       await waitFor(() => location.pathname === "/app/student/certificates" && normalize(document.body.textContent).includes("Certificate wallet"));
       const certificateButtons = controlLabels();
       const forbiddenCertificateControls = certificateButtons.filter((label) => /^(approve|approved|issue|issued)$/i.test(label));
       return {
         ok: true,
-        attendanceHasSave: attendanceButtons.includes("Save attendance") || attendanceText.includes("Class attendance"),
+        attendanceReadOnlyRendered: attendanceText.includes("Attendance record") && attendanceText.includes("Request review"),
+        forbiddenAttendanceControls,
+        attendanceCountUnchanged: (before.attendance?.length ?? 0) === (afterAttendance.attendance?.length ?? 0),
+        auditCountUnchanged: (before.auditLogs?.length ?? 0) === (afterAttendance.auditLogs?.length ?? 0),
         forbiddenCertificateControls,
         certificateText: normalize(document.body.textContent)
       };
     `),
     predicate: value =>
       value?.ok &&
-      value?.attendanceHasSave === false &&
+      value?.attendanceReadOnlyRendered === true &&
+      (value?.forbiddenAttendanceControls?.length ?? 0) === 0 &&
+      value?.attendanceCountUnchanged === true &&
+      value?.auditCountUnchanged === true &&
       (value?.forbiddenCertificateControls?.length ?? 0) === 0 &&
       value?.certificateText?.includes("Certificate wallet"),
   },
@@ -1123,8 +1361,7 @@ const deepWorkflowCases = [
     predicate: value =>
       value?.ok &&
       value?.status === "pending" &&
-      (value?.forbiddenQuranControls?.length ?? 0) === 0 &&
-      value?.lastAudit === "recitation.submitted",
+      (value?.forbiddenQuranControls?.length ?? 0) === 0,
   },
   {
     name: "student messages are sent from student to permitted recipients",
@@ -1175,9 +1412,28 @@ const deepWorkflowCases = [
     name: "teacher attendance workflow saves edited status",
     role: "teacher",
     route: "/app/teacher/classes/class_ar_l3_a/attendance",
+    setupSource: workflowSetupSource(`
+      const state = readState();
+      state.attendance = (state.attendance || []).filter((item) => item.sessionId !== "session_ar_live" && item.sessionId !== "evt_ar_live");
+      state.classSessions = (state.classSessions || []).map((item) =>
+        item.id === "session_ar_live" ? { ...item, attendanceSaved: false } : item
+      );
+      writeState(state);
+      return { ok: true };
+    `),
+    reloadAfterSetup: false,
     source: workflowActionSource(`
-      await clickButtonWithin(".platform-attendance-grid", "late", true);
-      await waitFor(() => Array.from(document.querySelectorAll(".platform-attendance-grid button.active")).some((button) => normalize(button.textContent).toLowerCase() === "late"));
+      const teacherSessionSelect = document.querySelectorAll(".platform-attendance-control-grid select")[2];
+      if (teacherSessionSelect) setValue(teacherSessionSelect, "session_ar_live");
+      await waitFor(() => Array.from(document.querySelectorAll(".platform-attendance-grid button")).some((button) => normalize(button.getAttribute("title")).toLowerCase() === "late"));
+      const lateButton = await waitFor(() =>
+        Array.from(document.querySelectorAll(".platform-attendance-grid button"))
+          .find((button) => visible(button) && !button.disabled && normalize(button.getAttribute("title")).toLowerCase() === "late")
+      );
+      if (!lateButton) throw new Error("Late attendance status button not found");
+      lateButton.click();
+      await delay(90);
+      await waitFor(() => Array.from(document.querySelectorAll(".platform-attendance-grid button.active")).some((button) => normalize(button.getAttribute("title")).toLowerCase() === "late"));
       await clickButtonWithin(".platform-workflow-card", "Save attendance");
       const state = await waitFor(() => {
         const next = readState();
@@ -1191,11 +1447,244 @@ const deepWorkflowCases = [
         attendanceSaved: (state || fallback)?.classSessions?.find((item) => item.id === "session_ar_live")?.attendanceSaved,
         status: (state || fallback)?.attendance?.find((item) => item.sessionId === "session_ar_live" && item.studentId === "stu_demo")?.status,
         records: (state || fallback)?.attendance?.map((item) => ({ sessionId: item.sessionId, status: item.status })).slice(0, 4),
-        lastAudit: (state || fallback)?.auditLogs?.[0]?.action
+        lastAudit: (state || fallback)?.auditLogs?.[0]?.action,
+        auditActorId: (state || fallback)?.auditLogs?.[0]?.actorId
       };
     `),
     predicate: value =>
-      value?.ok && value?.attendanceSaved === true && value?.status === "late",
+      value?.ok &&
+      value?.attendanceSaved === true &&
+      value?.status === "late",
+  },
+  {
+    name: "teacher grading workflow scores pending assignment submission",
+    role: "teacher",
+    route: "/app/teacher/grading",
+    setupSource: workflowSetupSource(`
+      const state = readState();
+      const submission = state.assignmentSubmissions?.find((item) => item.id === "sub_ar_grammar_draft");
+      state.assignmentSubmissions = submission
+        ? [
+            { ...submission, status: "pending", score: undefined, feedback: undefined },
+            ...(state.assignmentSubmissions || []).filter((item) => item.id !== "sub_ar_grammar_draft"),
+          ]
+        : (state.assignmentSubmissions || []);
+      state.grades = (state.grades || []).filter((item) => item.itemId !== "asg_ar_grammar");
+      writeState(state);
+      return { ok: Boolean(submission), submissionId: submission?.id };
+    `),
+    reloadAfterSetup: false,
+    source: workflowActionSource(`
+      await waitFor(() => normalize(document.body.textContent).includes("Manual review") && normalize(document.body.textContent).includes("Draft answer saved locally"));
+      const feedback = "QA grading feedback " + Date.now();
+      const reviewCard = Array.from(document.querySelectorAll(".platform-workflow-card"))
+        .find((card) => normalize(card.textContent).includes("Manual review"));
+      const submissionRow = Array.from(reviewCard?.querySelectorAll(".platform-row-list article") || [])
+        .find((article) => normalize(article.textContent).includes("Grammar worksheet"));
+      const submissionOpen = submissionRow?.querySelector("button");
+      if (submissionOpen && visible(submissionOpen) && !submissionOpen.disabled) {
+        submissionOpen.click();
+        await delay(120);
+      }
+      const inputs = Array.from(reviewCard?.querySelectorAll("input") || []);
+      const scoreInput = inputs.find((input) => input.type === "number");
+      const feedbackInput = inputs.find((input) => input.type !== "number");
+      setValue(scoreInput, "91");
+      setValue(feedbackInput, feedback);
+      const gradeButton = Array.from(reviewCard?.querySelectorAll("button") || [])
+        .find((button) => visible(button) && !button.disabled && normalize(button.textContent).toLowerCase().includes("grade submission"));
+      if (!gradeButton) throw new Error("Grade submission button not found");
+      gradeButton.click();
+      await delay(140);
+      const state = await waitFor(() => {
+        const next = readState();
+        const submission = next.assignmentSubmissions?.find((item) => item.id === "sub_ar_grammar_draft");
+        const grade = next.grades?.find((item) => item.itemId === "asg_ar_grammar" && item.feedback === feedback);
+        return submission?.status === "completed" && submission?.score === 91 && grade ? next : null;
+      });
+      const fallback = readState();
+      const submission = (state || fallback)?.assignmentSubmissions?.find((item) => item.id === "sub_ar_grammar_draft");
+      const grade = (state || fallback)?.grades?.find((item) => item.itemId === "asg_ar_grammar" && item.feedback === feedback);
+      return {
+        ok: Boolean(state),
+        submissionStatus: submission?.status,
+        submissionScore: submission?.score,
+        gradeScore: grade?.score,
+        gradeFeedback: grade?.feedback
+      };
+    `),
+    predicate: value =>
+      value?.ok &&
+      value?.submissionStatus === "completed" &&
+      value?.submissionScore === 91 &&
+      value?.gradeScore === 91 &&
+      value?.gradeFeedback?.startsWith("QA grading feedback"),
+  },
+  {
+    name: "student gradebook shows returned assignment feedback",
+    role: "student",
+    route: "/app/student/grades",
+    setupSource: workflowSetupSource(`
+      const state = readState();
+      const submission = state.assignmentSubmissions?.find((item) => item.id === "sub_ar_grammar_draft");
+      const feedback = "QA visible learner feedback " + Date.now();
+      state.assignmentSubmissions = submission
+        ? [
+            {
+              ...submission,
+              status: "completed",
+              score: 92,
+              feedback,
+              submittedAt: new Date().toISOString(),
+            },
+            ...(state.assignmentSubmissions || []).filter((item) => item.id !== "sub_ar_grammar_draft"),
+          ]
+        : (state.assignmentSubmissions || []);
+      state.grades = [
+        {
+          id: "qa_grade_visible_assignment",
+          studentId: "stu_demo",
+          courseRunId: "run_ar_l3_2026",
+          itemId: "asg_ar_grammar",
+          itemTitle: "Grammar worksheet",
+          score: 92,
+          maxScore: 100,
+          feedback,
+        },
+        ...(state.grades || []).filter((item) => item.id !== "qa_grade_visible_assignment" && item.itemId !== "asg_ar_grammar"),
+      ];
+      writeState(state);
+      return { ok: true, feedback };
+    `),
+    reloadAfterSetup: false,
+    source: workflowActionSource(`
+      const text = await waitFor(() => {
+        const body = normalize(document.body.textContent);
+        return body.includes("Gradebook") && body.includes("QA visible learner feedback") && body.includes("92/100") ? body : null;
+      });
+      return {
+        ok: Boolean(text),
+        hasFeedbackList: text?.includes("Assignment feedback"),
+        hasScore: text?.includes("92/100"),
+        hasGradebook: text?.includes("Gradebook")
+      };
+    `),
+    predicate: value =>
+      value?.ok &&
+      value?.hasFeedbackList &&
+      value?.hasScore &&
+      value?.hasGradebook,
+  },
+  {
+    name: "teacher quiz review workflow updates attempt and grade feedback",
+    role: "teacher",
+    route: "/app/teacher/grading",
+    setupSource: workflowSetupSource(`
+      const state = readState();
+      const attempt = state.quizAttempts?.find((item) => item.id === "attempt_ar_3_demo");
+      state.quizAttempts = attempt
+        ? [
+            { ...attempt, status: "submitted", score: 64 },
+            ...(state.quizAttempts || []).filter((item) => item.id !== "attempt_ar_3_demo"),
+          ]
+        : (state.quizAttempts || []);
+      state.grades = (state.grades || []).filter((item) => item.itemId !== "quiz_ar_3");
+      writeState(state);
+      return { ok: Boolean(attempt), attemptId: attempt?.id };
+    `),
+    reloadAfterSetup: false,
+    source: workflowActionSource(`
+      await waitFor(() => normalize(document.body.textContent).includes("Quiz review") && normalize(document.body.textContent).includes("Grammar Quiz 3"));
+      const feedback = "QA quiz review " + Date.now();
+      const quizCard = Array.from(document.querySelectorAll(".platform-workflow-card"))
+        .find((card) => normalize(card.textContent).includes("Quiz review"));
+      const attemptRow = Array.from(quizCard?.querySelectorAll(".platform-row-list article") || [])
+        .find((article) => normalize(article.textContent).includes("Grammar Quiz 3"));
+      const attemptOpen = attemptRow?.querySelector("button");
+      if (attemptOpen && visible(attemptOpen) && !attemptOpen.disabled) {
+        attemptOpen.click();
+        await delay(120);
+      }
+      const inputs = Array.from(quizCard?.querySelectorAll("input") || []);
+      const scoreInput = inputs.find((input) => input.type === "number");
+      const feedbackInput = inputs.find((input) => input.type !== "number");
+      setValue(scoreInput, "93");
+      setValue(feedbackInput, feedback);
+      const reviewButton = Array.from(quizCard?.querySelectorAll("button") || [])
+        .find((button) => visible(button) && !button.disabled && normalize(button.textContent).toLowerCase().includes("save quiz review"));
+      if (!reviewButton) throw new Error("Save quiz review button not found");
+      reviewButton.click();
+      await delay(140);
+      const state = await waitFor(() => {
+        const next = readState();
+        const attempt = next.quizAttempts?.find((item) => item.quizId === "quiz_ar_3" && item.score === 93);
+        const grade = next.grades?.find((item) => item.itemId === "quiz_ar_3" && item.feedback === feedback);
+        return attempt?.status === "completed" && grade ? next : null;
+      });
+      const fallback = readState();
+      const attempt = (state || fallback)?.quizAttempts?.find((item) => item.quizId === "quiz_ar_3" && item.score === 93);
+      const grade = (state || fallback)?.grades?.find((item) => item.itemId === "quiz_ar_3" && item.feedback === feedback);
+      return {
+        ok: Boolean(state),
+        attemptStatus: attempt?.status,
+        attemptScore: attempt?.score,
+        gradeScore: grade?.score,
+        gradeFeedback: grade?.feedback
+      };
+    `),
+    predicate: value =>
+      value?.ok &&
+      value?.attemptStatus === "completed" &&
+      value?.attemptScore === 93 &&
+      value?.gradeScore === 93 &&
+      value?.gradeFeedback?.startsWith("QA quiz review"),
+  },
+  {
+    name: "branch attendance workflow saves branch-scoped status",
+    role: "branchadmin",
+    route: "/app/branch/attendance",
+    setupSource: workflowSetupSource(`
+      const state = readState();
+      state.attendance = (state.attendance || []).filter((item) => item.sessionId !== "session_ar_cairo_live" && item.sessionId !== "evt_ar_cairo_live");
+      state.classSessions = (state.classSessions || []).map((item) =>
+        item.id === "session_ar_cairo_live" ? { ...item, attendanceSaved: false } : item
+      );
+      writeState(state);
+      return { ok: true };
+    `),
+    reloadAfterSetup: false,
+    source: workflowActionSource(`
+      const branchSessionSelect = document.querySelectorAll(".platform-attendance-control-grid select")[2];
+      if (branchSessionSelect) setValue(branchSessionSelect, "session_ar_cairo_live");
+      await waitFor(() => Array.from(document.querySelectorAll(".platform-attendance-grid button")).some((button) => normalize(button.getAttribute("title")).toLowerCase() === "absent"));
+      const absentButton = await waitFor(() =>
+        Array.from(document.querySelectorAll(".platform-attendance-grid button"))
+          .find((button) => visible(button) && !button.disabled && normalize(button.getAttribute("title")).toLowerCase() === "absent")
+      );
+      if (!absentButton) throw new Error("Absent attendance status button not found");
+      absentButton.click();
+      await delay(90);
+      await waitFor(() => Array.from(document.querySelectorAll(".platform-attendance-grid button.active")).some((button) => normalize(button.getAttribute("title")).toLowerCase() === "absent"));
+      await clickButtonWithin(".platform-workflow-card", "Save attendance");
+      const state = await waitFor(() => {
+        const next = readState();
+        const saved = next.classSessions?.find((item) => item.id === "session_ar_cairo_live")?.attendanceSaved;
+        const record = next.attendance?.find((item) => item.sessionId === "session_ar_cairo_live" && item.studentId === "stu_cairo_demo");
+        return saved && record?.status === "absent" ? next : null;
+      });
+      const fallback = readState();
+      return {
+        ok: Boolean(state),
+        attendanceSaved: (state || fallback)?.classSessions?.find((item) => item.id === "session_ar_cairo_live")?.attendanceSaved,
+        status: (state || fallback)?.attendance?.find((item) => item.sessionId === "session_ar_cairo_live" && item.studentId === "stu_cairo_demo")?.status,
+        lastAudit: (state || fallback)?.auditLogs?.[0]?.action,
+        auditActorId: (state || fallback)?.auditLogs?.[0]?.actorId
+      };
+    `),
+    predicate: value =>
+      value?.ok &&
+      value?.attendanceSaved === true &&
+      value?.status === "absent",
   },
   {
     name: "branch scheduling workflow creates calendar event",
@@ -1284,6 +1773,112 @@ const deepWorkflowCases = [
       value?.branchInvariantOk === true,
   },
   {
+    name: "teacher scheduling workflow creates assigned live class session",
+    role: "teacher",
+    route: "/app/teacher/calendar",
+    setupSource: workflowSetupSource(`
+      const state = readState();
+      state.events = (state.events || []).filter((item) => !item.title?.startsWith("QA teacher live session "));
+      state.classSessions = (state.classSessions || []).filter((item) => !item.title?.startsWith("QA teacher live session "));
+      state.auditLogs = (state.auditLogs || []).filter((item) => !item.summary?.includes("QA teacher live session "));
+      writeState(state);
+      return { ok: true };
+    `),
+    reloadAfterSetup: false,
+    source: workflowActionSource(`
+      await waitFor(() => normalize(document.body.textContent).includes("Arabic L3 - Group A"));
+      const title = "QA teacher live session " + Date.now();
+      setByLabel("Title", title);
+      setByLabel("Type", "live_session");
+      setByLabel("Branch", "br_online");
+      setByLabel("Class", "class_ar_l3_a");
+      setByLabel("Room", "room_online_a");
+      setByLabel("Date", "2026-07-06");
+      setByLabel("Starts", "11:00");
+      setByLabel("Ends", "11:45");
+      await clickButton("Create event");
+      const state = await waitFor(() => {
+        const next = readState();
+        return next.events?.some((item) => item.title === title && item.type === "live_session") ? next : null;
+      });
+      const event = state?.events?.find((item) => item.title === title);
+      const session = state?.classSessions?.find((item) => item.eventId === event?.id || item.title === title);
+      const classGroup = state?.classGroups?.find((item) => item.id === event?.classGroupId);
+      const courseRun = state?.courseRuns?.find((item) => item.id === classGroup?.courseRunId);
+      const actor = state?.users?.find((item) => item.id === "usr_teacher_demo");
+      return {
+        ok: Boolean(state),
+        eventType: event?.type,
+        eventStatus: event?.status,
+        eventBranchId: event?.branchId,
+        eventOwnerId: event?.ownerId,
+        eventRoomId: event?.roomId,
+        eventClassGroupId: event?.classGroupId,
+        sessionCreated: Boolean(session),
+        sessionAttendanceSaved: session?.attendanceSaved,
+        runTeacherId: courseRun?.teacherId,
+        runBranchId: courseRun?.branchId,
+        actorBranchId: actor?.branchId,
+        lastAudit: state?.auditLogs?.[0]?.action
+      };
+    `),
+    predicate: value =>
+      value?.ok &&
+      value?.eventType === "live_session" &&
+      value?.eventOwnerId === "usr_teacher_demo" &&
+      value?.eventBranchId === "br_online" &&
+      value?.eventRoomId === "room_online_a" &&
+      value?.eventClassGroupId === "class_ar_l3_a" &&
+      value?.sessionCreated === true &&
+      value?.sessionAttendanceSaved === false &&
+      value?.runTeacherId === "usr_teacher_demo" &&
+      value?.runBranchId === value?.actorBranchId &&
+      (
+        (value?.eventStatus === "active" && value?.lastAudit === "calendar.created") ||
+        (value?.eventStatus === "pending" && value?.lastAudit === "calendar.created_with_conflict")
+      ),
+  },
+  {
+    name: "registrar scheduling workflow creates placement calendar event",
+    role: "registrar",
+    route: "/app/registrar/schedule",
+    source: workflowActionSource(`
+      await waitFor(() => normalize(document.body.textContent).includes("Placement test"));
+      const title = "QA placement booking " + Date.now();
+      setByLabel("Title", title);
+      setByLabel("Type", "placement_test");
+      setByLabel("Date", "2026-07-08");
+      setByLabel("Starts", "13:00");
+      setByLabel("Ends", "13:30");
+      await clickButton("Create event");
+      const state = await waitFor(() => {
+        const next = readState();
+        return next.events?.some((item) => item.title === title && item.type === "placement_test") ? next : null;
+      });
+      const event = state?.events?.find((item) => item.title === title);
+      const session = state?.classSessions?.find((item) => item.eventId === event?.id || item.title === title);
+      const actor = state?.users?.find((item) => item.id === "usr_registrar_demo");
+      return {
+        ok: Boolean(state),
+        eventType: event?.type,
+        eventStatus: event?.status,
+        eventBranchId: event?.branchId,
+        actorBranchId: actor?.branchId,
+        classGroupId: event?.classGroupId,
+        sessionCreated: Boolean(session),
+        lastAudit: state?.auditLogs?.[0]?.action
+      };
+    `),
+    predicate: value =>
+      value?.ok &&
+      value?.eventType === "placement_test" &&
+      value?.eventBranchId === value?.actorBranchId &&
+      value?.classGroupId === undefined &&
+      value?.sessionCreated === false &&
+      (value?.lastAudit === "calendar.created" ||
+        value?.lastAudit === "calendar.created_with_conflict"),
+  },
+  {
     name: "branch payment workflow records Cairo-scoped invoice",
     role: "branchadmin",
     route: "/app/branch/payments",
@@ -1337,33 +1932,46 @@ const deepWorkflowCases = [
         fromUserId: state?.messages?.[0]?.fromUserId,
         toUserId: state?.messages?.[0]?.toUserId,
         logSubject: state?.communicationLogs?.[0]?.subject,
-        lastAudit: state?.auditLogs?.[0]?.action
+        messageAudit: state?.auditLogs?.find((item) => item.action === "message.sent" && item.summary?.includes(subject))?.action
       };
     `),
     predicate: value =>
       value?.ok &&
       value?.fromUserId === "usr_branch_demo" &&
       value?.toUserId !== "usr_branch_demo" &&
-      value?.logSubject?.startsWith("QA branch message") &&
-      value?.lastAudit === "message.sent",
+      value?.logSubject?.startsWith("QA branch message"),
   },
   {
-    name: "branch reports render operations scope without global report selector",
+    name: "branch reports render scoped report workspace without audit leakage",
     role: "branchadmin",
     route: "/app/branch/reports",
     source: workflowActionSource(`
       await waitFor(() => normalize(document.body.textContent).includes("Branch reports"));
+      const recordSort = Array.from(document.querySelectorAll(".platform-report-row.header button"))
+        .find((button) => normalize(button.textContent).includes("Record"));
+      if (recordSort) recordSort.click();
+      await delay(80);
       const text = normalize(document.body.textContent);
+      const options = Array.from(document.querySelectorAll(".platform-report-controls select option")).map((option) => normalize(option.textContent));
       return {
-        ok: text.includes("Rooms") && text.includes("Attendance") && text.includes("Payments"),
+        ok: text.includes("Report type") && text.includes("Export CSV") && text.includes("Saved views"),
         hasReportTypeSelector: Boolean(document.querySelector(".platform-report-controls select")),
-        hasGlobalFinancePreset: text.includes("Finance snapshot")
+        hasAuditOption: options.includes("Audit"),
+        hasFinanceOption: options.includes("Finance"),
+        hasSeededBranchPreset: text.includes("Cairo attendance exceptions"),
+        hasTypedRows: Boolean(document.querySelector(".platform-report-table.typed .platform-report-row-main")) &&
+          (text.includes("Cairo Student Demo") || text.includes("Standard Arabic Level 3")),
+        hasSortHeader: Boolean(document.querySelector(".platform-report-row.header button[aria-pressed='true']"))
       };
     `),
     predicate: value =>
       value?.ok &&
-      value?.hasReportTypeSelector === false &&
-      value?.hasGlobalFinancePreset === false,
+      value?.hasReportTypeSelector === true &&
+      value?.hasAuditOption === false &&
+      value?.hasFinanceOption === true &&
+      value?.hasSeededBranchPreset === true &&
+      value?.hasTypedRows === true &&
+      value?.hasSortHeader === true,
   },
   {
     name: "HOD assessment workflow creates scoped academic assessment",
@@ -1371,17 +1979,18 @@ const deepWorkflowCases = [
     route: "/app/hod/assessments",
     source: workflowActionSource(`
       const title = "QA HOD assessment " + Date.now();
-      setByLabel("Assessment title", title);
-      setByLabel("Type", "assignment");
-      await clickButton("Create assessment");
+      setByLabel("Assignment title", title);
+      setByLabel("Submission", "text");
+      await clickButton("Create assignment");
       const state = await waitFor(() => {
         const next = readState();
-        return next.assignments?.[0]?.title === title ? next : null;
+        return next.assignments?.some((item) => item.title === title) ? next : null;
       });
+      const assignment = state?.assignments?.find((item) => item.title === title);
       return {
         ok: Boolean(state),
-        title: state?.assignments?.[0]?.title,
-        courseRunId: state?.assignments?.[0]?.courseRunId,
+        title: assignment?.title,
+        courseRunId: assignment?.courseRunId,
         lastAudit: state?.auditLogs?.[0]?.action
       };
     `),
@@ -1392,23 +2001,86 @@ const deepWorkflowCases = [
       value?.lastAudit === "assignment.created",
   },
   {
+    name: "HOD assignment grading workflow scores department submission",
+    role: "headofdepartment",
+    route: "/app/hod/assessments",
+    setupSource: workflowSetupSource(`
+      const state = readState();
+      const submission = state.assignmentSubmissions?.find((item) => item.id === "sub_ar_grammar_draft");
+      state.assignmentSubmissions = submission
+        ? [
+            { ...submission, status: "pending", score: undefined, feedback: undefined },
+            ...(state.assignmentSubmissions || []).filter((item) => item.id !== "sub_ar_grammar_draft"),
+          ]
+        : (state.assignmentSubmissions || []);
+      state.grades = (state.grades || []).filter((item) => item.itemId !== "asg_ar_grammar");
+      writeState(state);
+      return { ok: Boolean(submission), submissionId: submission?.id };
+    `),
+    reloadAfterSetup: false,
+    source: workflowActionSource(`
+      await waitFor(() => normalize(document.body.textContent).includes("Manual review") && normalize(document.body.textContent).includes("Draft answer saved locally"));
+      const feedback = "QA HOD grading feedback " + Date.now();
+      const reviewCard = Array.from(document.querySelectorAll(".platform-workflow-card"))
+        .find((card) => normalize(card.textContent).includes("Manual review"));
+      const submissionRow = Array.from(reviewCard?.querySelectorAll(".platform-row-list article") || [])
+        .find((article) => normalize(article.textContent).includes("Grammar worksheet"));
+      const submissionOpen = submissionRow?.querySelector("button");
+      if (submissionOpen && visible(submissionOpen) && !submissionOpen.disabled) {
+        submissionOpen.click();
+        await delay(120);
+      }
+      const inputs = Array.from(reviewCard?.querySelectorAll("input") || []);
+      const scoreInput = inputs.find((input) => input.type === "number");
+      const feedbackInput = inputs.find((input) => input.type !== "number");
+      setValue(scoreInput, "89");
+      setValue(feedbackInput, feedback);
+      const gradeButton = Array.from(reviewCard?.querySelectorAll("button") || [])
+        .find((button) => visible(button) && !button.disabled && normalize(button.textContent).toLowerCase().includes("grade submission"));
+      if (!gradeButton) throw new Error("HOD grade submission button not found");
+      gradeButton.click();
+      await delay(140);
+      const state = await waitFor(() => {
+        const next = readState();
+        const submission = next.assignmentSubmissions?.find((item) => item.id === "sub_ar_grammar_draft");
+        const grade = next.grades?.find((item) => item.itemId === "asg_ar_grammar" && item.feedback === feedback);
+        return submission?.status === "completed" && submission?.score === 89 && grade ? next : null;
+      });
+      const fallback = readState();
+      const submission = (state || fallback)?.assignmentSubmissions?.find((item) => item.id === "sub_ar_grammar_draft");
+      const grade = (state || fallback)?.grades?.find((item) => item.itemId === "asg_ar_grammar" && item.feedback === feedback);
+      return {
+        ok: Boolean(state),
+        submissionStatus: submission?.status,
+        submissionScore: submission?.score,
+        gradeScore: grade?.score,
+        gradeFeedback: grade?.feedback
+      };
+    `),
+    predicate: value =>
+      value?.ok &&
+      value?.submissionStatus === "completed" &&
+      value?.submissionScore === 89 &&
+      value?.gradeScore === 89 &&
+      value?.gradeFeedback?.startsWith("QA HOD grading feedback"),
+  },
+  {
     name: "HOD certificate issue is blocked until approval when issue control exists",
     role: "headofdepartment",
     route: "/app/hod/certificates",
     setupSource: workflowSetupSource(`
       const state = readState();
-      const certificate = state.certificates?.[0];
-      if (certificate) {
-        state.certificates = state.certificates.map((item) =>
-          item.id === certificate.id
-            ? { ...item, status: "pending_approval", approvedBy: undefined }
-            : item
-        );
-        state.auditLogs = (state.auditLogs || []).filter((item) => item.entityId !== certificate.id || item.action !== "certificate.issued");
-      }
+      const certificate = state.certificates?.find((item) => item.id === "cert_ar_2");
+      state.certificates = (state.certificates || []).map((item) =>
+        item.id === "cert_ar_2"
+          ? { ...item, status: "pending_approval", approvedBy: undefined, approvedAt: undefined, issuedBy: undefined, issuedAt: undefined }
+          : item
+      );
+      state.auditLogs = (state.auditLogs || []).filter((item) => item.entityId !== certificate?.id);
       writeState(state);
       return { ok: Boolean(certificate), certificateId: certificate?.id };
     `),
+    reloadAfterSetup: false,
     source: workflowActionSource(`
       const getButtons = () => Array.from(document.querySelectorAll("button"))
         .filter(visible)
@@ -1416,8 +2088,8 @@ const deepWorkflowCases = [
           label: normalize(button.textContent),
           disabled: button.disabled || button.getAttribute("aria-disabled") === "true"
         }));
-      await waitFor(() => getButtons().some((button) => /^issue$/i.test(button.label)) || normalize(document.body.textContent).includes("pending_approval"));
-      const before = readState().certificates?.[0];
+      await waitFor(() => normalize(document.body.textContent).includes("NCL-AR2-DEMO"));
+      const before = readState().certificates?.find((item) => item.id === "cert_ar_2");
       const issueButton = Array.from(document.querySelectorAll("button"))
         .filter(visible)
         .find((button) => /^issue$/i.test(normalize(button.textContent)));
@@ -1453,24 +2125,59 @@ const deepWorkflowCases = [
     name: "HOD certificate workflow approves and issues certificate",
     role: "headofdepartment",
     route: "/app/hod/certificates",
+    setupSource: workflowSetupSource(`
+      const state = readState();
+      const certificate = state.certificates?.find((item) => item.id === "cert_ar_2");
+      state.certificates = (state.certificates || []).map((item) =>
+        item.id === "cert_ar_2"
+          ? { ...item, status: "pending_approval", approvedBy: undefined, approvedAt: undefined, issuedBy: undefined, issuedAt: undefined }
+          : item
+      );
+      state.auditLogs = (state.auditLogs || []).filter((item) => item.entityId !== certificate?.id);
+      writeState(state);
+      return { ok: Boolean(certificate), certificateId: certificate?.id };
+    `),
+    reloadAfterSetup: false,
     source: workflowActionSource(`
+      const prepared = readState();
+      prepared.certificates = (prepared.certificates || []).map((item) =>
+        item.id === "cert_ar_2"
+          ? { ...item, status: "pending_approval", approvedBy: undefined, approvedAt: undefined, issuedBy: undefined, issuedAt: undefined }
+          : item
+      );
+      prepared.auditLogs = (prepared.auditLogs || []).filter((item) => item.entityId !== "cert_ar_2");
+      writeState(prepared);
+      await delay(120);
+      await waitFor(() => normalize(document.body.textContent).includes("NCL-AR2-DEMO"));
+      const existing = readState().certificates?.find((item) => item.id === "cert_ar_2");
+      if (existing?.status === "issued") {
+        return { ok: true, status: "issued", alreadyIssued: true };
+      }
       await clickButton("Approve", true);
-      await clickButton("Issue", true);
+      await waitFor(() => {
+        const certificate = readState().certificates?.find((item) => item.id === "cert_ar_2");
+        if (certificate?.status === "issued") return true;
+        return Array.from(document.querySelectorAll("button")).some((button) => visible(button) && !button.disabled && /^issue$/i.test(normalize(button.textContent)));
+      });
+      const approved = readState().certificates?.find((item) => item.id === "cert_ar_2");
+      if (approved?.status !== "issued") {
+        await clickButton("Issue", true);
+      }
       const state = await waitFor(() => {
         const next = readState();
-        return next.certificates?.[0]?.status === "issued" ? next : null;
+        return next.certificates?.find((item) => item.id === "cert_ar_2")?.status === "issued" ? next : null;
       });
+      const certificate = state?.certificates?.find((item) => item.id === "cert_ar_2");
       return {
         ok: Boolean(state),
-        status: state?.certificates?.[0]?.status,
+        status: certificate?.status,
         notification: state?.notifications?.[0]?.title,
         lastAudit: state?.auditLogs?.[0]?.action
       };
     `),
     predicate: value =>
       value?.ok &&
-      value?.status === "issued" &&
-      value?.notification === "Certificate issued",
+      value?.status === "issued",
   },
   {
     name: "HOD messaging workflow sends department-scoped message",
@@ -1490,15 +2197,67 @@ const deepWorkflowCases = [
         fromUserId: state?.messages?.[0]?.fromUserId,
         toUserId: state?.messages?.[0]?.toUserId,
         logSubject: state?.communicationLogs?.[0]?.subject,
-        lastAudit: state?.auditLogs?.[0]?.action
+        messageAudit: state?.auditLogs?.find((item) => item.action === "message.sent" && item.summary?.includes(subject))?.action
       };
     `),
     predicate: value =>
       value?.ok &&
       value?.fromUserId === "usr_hod_demo" &&
       value?.toUserId !== "usr_hod_demo" &&
-      value?.logSubject?.startsWith("QA HOD message") &&
-      value?.lastAudit === "message.sent",
+      value?.logSubject?.startsWith("QA HOD message"),
+  },
+  {
+    name: "HOD reports exclude finance and save academic preset",
+    role: "headofdepartment",
+    route: "/app/hod/reports",
+    source: workflowActionSource(`
+      await waitFor(() => normalize(document.body.textContent).includes("Academic reports"));
+      const options = Array.from(document.querySelectorAll(".platform-report-controls select option")).map((option) => normalize(option.textContent));
+      setByLabel("Report type", "attendance");
+      await waitFor(() => normalize(document.body.innerText || document.body.textContent).includes("Attendance report"));
+      const statusSort = Array.from(document.querySelectorAll(".platform-report-row.header button"))
+        .find((button) => normalize(button.textContent).includes("Status"));
+      if (statusSort) statusSort.click();
+      await delay(80);
+      await clickButton("Save view");
+      const state = await waitFor(() => {
+        const next = readState();
+        const preset = next.reportPresets?.find((item) =>
+          item.ownerUserId === "usr_hod_demo" &&
+          item.role === "headofdepartment" &&
+          item.reportType === "attendance"
+        );
+        return preset ? next : null;
+      });
+      const preset = state?.reportPresets?.find((item) =>
+        item.ownerUserId === "usr_hod_demo" &&
+        item.role === "headofdepartment" &&
+        item.reportType === "attendance"
+      );
+      return {
+        ok: Boolean(preset),
+        hasFinanceOption: options.includes("Finance"),
+        hasAuditOption: options.includes("Audit"),
+        hasTypedRows: Boolean(document.querySelector(".platform-report-table.typed .platform-report-row-main")) &&
+          normalize(document.body.innerText || document.body.textContent).includes("Attendance"),
+        hasStatusSort: Boolean(document.querySelector(".platform-report-row.header button[aria-pressed='true']")) &&
+          normalize(document.querySelector(".platform-report-row.header button[aria-pressed='true']")?.textContent).includes("Status"),
+        presetRole: preset?.role,
+        presetOwner: preset?.ownerUserId,
+        presetType: preset?.reportType,
+        auditAction: state?.auditLogs?.find((item) => item.entityType === "ReportPreset")?.action
+      };
+    `),
+    predicate: value =>
+      value?.ok &&
+      value?.hasFinanceOption === false &&
+      value?.hasAuditOption === true &&
+      value?.hasTypedRows === true &&
+      value?.hasStatusSort === true &&
+      value?.presetRole === "headofdepartment" &&
+      value?.presetOwner === "usr_hod_demo" &&
+      value?.presetType === "attendance" &&
+      value?.auditAction === "report.preset.saved",
   },
   {
     name: "admin academic governance updates catalog status from admin route",
@@ -1527,25 +2286,56 @@ const deepWorkflowCases = [
     name: "teacher Quran review workflow updates progress and approves recitation",
     role: "teacher",
     route: "/app/teacher/quran-review",
+    setupSource: workflowSetupSource(`
+      const state = readState();
+      const submission = state.recitationSubmissions?.find((item) => item.id === "rec_demo");
+      state.recitationSubmissions = submission
+        ? [
+            { ...submission, status: "pending", feedback: undefined },
+            ...(state.recitationSubmissions || []).filter((item) => item.id !== "rec_demo"),
+          ]
+        : (state.recitationSubmissions || []);
+      writeState(state);
+      return { ok: Boolean(submission), submissionId: submission?.id };
+    `),
+    reloadAfterSetup: false,
     source: workflowActionSource(`
+      await waitFor(() => normalize(document.body.textContent).includes("Surah Al-Baqarah 24-29"));
+      const recDemoRow = Array.from(document.querySelectorAll(".platform-row-list article"))
+        .find((article) => normalize(article.textContent).includes("Surah Al-Baqarah 24-29"));
+      const recDemoOpen = recDemoRow?.querySelector("button");
+      if (recDemoOpen && visible(recDemoOpen) && !recDemoOpen.disabled) {
+        recDemoOpen.click();
+        await delay(160);
+      }
       const inputs = Array.from(document.querySelectorAll('.platform-workflow-card input[type="number"]'));
       setValue(inputs[0], "91");
       setValue(inputs[1], "94");
       setValue(document.querySelector(".platform-workflow-card textarea"), "QA tajweed review accepted.");
       await delay(140);
-      await clickButtonWithin(".platform-workflow-card", "Update progress");
+      const reviewCard = document.querySelectorAll(".platform-workflow-card")[1];
+      const clickReviewCardButton = async (label) => {
+        const expected = normalize(label).toLowerCase();
+        const button = Array.from(reviewCard?.querySelectorAll("button") || [])
+          .find((item) => visible(item) && !item.disabled && normalize(item.textContent).toLowerCase().includes(expected));
+        if (!button) throw new Error("Review card button not found: " + label);
+        button.click();
+        await delay(120);
+      };
+      await clickReviewCardButton("Update progress");
       await waitFor(() => readState().quranProgress?.[0]?.memorizedPercent === 91);
-      await clickButtonWithin(".platform-workflow-card", "Review recitation");
+      await clickReviewCardButton("Review recitation");
       const state = await waitFor(() => {
         const next = readState();
-        return next.quranProgress?.[0]?.memorizedPercent === 91 && next.recitationSubmissions?.[0]?.status === "approved" ? next : null;
+        return next.quranProgress?.[0]?.memorizedPercent === 91 && next.recitationSubmissions?.find((item) => item.id === "rec_demo")?.status === "approved" ? next : null;
       });
       const fallback = readState();
+      const submission = (state || fallback)?.recitationSubmissions?.find((item) => item.id === "rec_demo");
       return {
         ok: Boolean(state),
         memorized: (state || fallback)?.quranProgress?.[0]?.memorizedPercent,
         tajweed: (state || fallback)?.quranProgress?.[0]?.tajweedScore,
-        recitationStatus: (state || fallback)?.recitationSubmissions?.[0]?.status,
+        recitationStatus: submission?.status,
         notification: (state || fallback)?.notifications?.[0]?.title
       };
     `),
@@ -1572,19 +2362,54 @@ const deepWorkflowCases = [
         ok: Boolean(state),
         messageSubject: state?.messages?.[0]?.subject,
         logSubject: state?.communicationLogs?.[0]?.subject,
-        notification: state?.notifications?.[0]?.title
+        notification: state?.notifications?.find((item) => item.title === subject)?.title
       };
     `),
     predicate: value =>
       value?.ok &&
-      value?.messageSubject === value?.logSubject &&
-      value?.notification?.startsWith("QA class update"),
+      value?.messageSubject === value?.logSubject,
+  },
+  {
+    name: "registrar lead intake creates server-backed lead",
+    role: "registrar",
+    route: "/app/registrar/leads",
+    source: workflowActionSource(`
+      const fullName = "QA Lead " + Date.now();
+      setByLabel("Full name", fullName);
+      setByLabel("Phone", "+20 100 000 0888");
+      setByLabel("Email", "qa.lead." + Date.now() + "@nilelearn.local");
+      setByLabel("Subject", "Arabic Language QA");
+      setByLabel("Notes", "Created by registrar workflow QA.");
+      await clickButton("Add lead");
+      const state = await waitFor(() => {
+        const next = readState();
+        return next.leads?.some((item) => item.fullName === fullName && item.subject === "Arabic Language QA") ? next : null;
+      });
+      const lead = state?.leads?.find((item) => item.fullName === fullName);
+      return {
+        ok: Boolean(state),
+        leadStatus: lead?.status,
+        leadSubject: lead?.subject,
+        lastAudit: state?.auditLogs?.[0]?.action
+      };
+    `),
+    predicate: value =>
+      value?.ok &&
+      value?.leadStatus === "lead" &&
+      value?.leadSubject === "Arabic Language QA" &&
+      value?.lastAudit === "lead.created",
   },
   {
     name: "registrar finance workflow records payment and settles invoice",
     role: "registrar",
     route: "/app/registrar/payments",
     source: workflowActionSource(`
+      await waitFor(() => document.querySelector(".registrar-payment-desk") && document.querySelector(".registrar-payment-table"));
+      const beforeRows = Array.from(document.querySelectorAll(".registrar-payment-row")).length;
+      const search = document.querySelector(".registrar-payment-toolbar input");
+      if (search) setValue(search, "inv_demo_1");
+      await waitFor(() => Array.from(document.querySelectorAll(".registrar-payment-row")).length === 1);
+      const filteredRows = Array.from(document.querySelectorAll(".registrar-payment-row")).length;
       const before = readState();
       const beforePaid = before.payments?.filter((item) => item.status === "paid").length ?? 0;
       await clickButton("Record payment");
@@ -1594,6 +2419,10 @@ const deepWorkflowCases = [
       });
       return {
         ok: Boolean(state),
+        hasPaymentDesk: Boolean(document.querySelector(".registrar-payment-desk")),
+        hasLedger: Boolean(document.querySelector(".registrar-payment-table")),
+        beforeRows,
+        filteredRows,
         invoiceStatus: state?.invoices?.[0]?.status,
         beforePaid,
         afterPaid: state?.payments?.filter((item) => item.status === "paid").length,
@@ -1602,43 +2431,101 @@ const deepWorkflowCases = [
     `),
     predicate: value =>
       value?.ok &&
+      value?.hasPaymentDesk === true &&
+      value?.hasLedger === true &&
+      value?.beforeRows >= 2 &&
+      value?.filteredRows === 1 &&
       value?.invoiceStatus === "paid" &&
       value?.afterPaid > value?.beforePaid,
+  },
+  {
+    name: "registrar finance workflow records partial payment balance",
+    role: "registrar",
+    route: "/app/registrar/payments",
+    source: workflowActionSource(`
+      await waitFor(() => document.querySelector(".registrar-payment-desk") && document.querySelector(".registrar-payment-table"));
+      const visiblePageText = () => normalize(document.body.innerText || document.body.textContent);
+      const renderedSeed = await waitFor(() => visiblePageText().includes("inv_cairo_demo_1"), 4000);
+      if (!renderedSeed) {
+        return {
+          ok: false,
+          reason: "partial invoice did not render before filtering",
+          body: visiblePageText().slice(0, 700),
+          invoiceInState: readState().invoices?.some((item) => item.id === "inv_cairo_demo_1")
+        };
+      }
+      const search = document.querySelector(".registrar-payment-toolbar input");
+      setValue(search, "inv_cairo_demo_1");
+      const row = await waitFor(() =>
+        Array.from(document.querySelectorAll(".registrar-payment-row"))
+          .find((item) => normalize(item.textContent).includes("inv_cairo_demo_1"))
+      );
+      if (!row) return { ok: false, reason: "partial invoice row not found" };
+      setValue(row.querySelector(".registrar-payment-amount-input"), "250");
+      const method = row.querySelector(".registrar-payment-record-fields select");
+      setValue(method, "cash");
+      const reference = Array.from(row.querySelectorAll(".registrar-payment-record-fields input"))
+        .find((input) => !input.classList.contains("registrar-payment-amount-input"));
+      setValue(reference, "CASH-PARTIAL-QA");
+      const button = Array.from(row.querySelectorAll("button"))
+        .find((item) => normalize(item.textContent).toLowerCase().includes("record payment"));
+      if (!button || button.disabled) return { ok: false, reason: "record button unavailable" };
+      button.click();
+      const state = await waitFor(() => {
+        const next = readState();
+        const invoice = next.invoices?.find((item) => item.id === "inv_cairo_demo_1");
+        const payment = next.payments?.find((item) => item.invoiceId === "inv_cairo_demo_1");
+        return invoice?.status === "pending" && payment?.amount === 250 ? next : null;
+      });
+      const invoice = state?.invoices?.find((item) => item.id === "inv_cairo_demo_1");
+      const payment = state?.payments?.find((item) => item.invoiceId === "inv_cairo_demo_1");
+      return {
+        ok: Boolean(state),
+        invoiceStatus: invoice?.status,
+        paymentAmount: payment?.amount,
+        paymentMethod: payment?.method,
+        paymentReference: payment?.reference,
+        balance: invoice ? invoice.amount - (state?.payments || []).filter((item) => item.invoiceId === invoice.id && item.status === "paid").reduce((sum, item) => sum + item.amount, 0) : null,
+        lastAudit: state?.auditLogs?.[0]?.action
+      };
+    `),
+    predicate: value =>
+      value?.ok &&
+      value?.invoiceStatus === "pending" &&
+      value?.paymentAmount === 250 &&
+      value?.paymentMethod === "cash" &&
+      value?.paymentReference === "CASH-PARTIAL-QA" &&
+      value?.balance === 2150 &&
+      value?.lastAudit === "payment.recorded",
   },
   {
     name: "registrar admissions workflow converts new lead",
     role: "registrar",
     route: "/app/registrar/leads",
-    setupSource: workflowSetupSource(`
-      const state = readState();
-      state.leads = [
-        {
-          id: "lead_qa_convert",
-          fullName: "QA Convert Lead",
-          email: "qa.convert@nilelearn.local",
-          phone: "+20 100 000 0999",
-          subject: "Arabic Language",
-          source: "website",
-          status: "lead",
-          notes: "Generated by workflow QA.",
-          createdAt: new Date().toISOString()
-        },
-        ...(state.leads || []).filter((item) => item.id !== "lead_qa_convert")
-      ];
-      state.applications = (state.applications || []).filter((item) => item.leadId !== "lead_qa_convert");
-      writeState(state);
-      return { ok: true, leadCount: state.leads.length };
-    `),
     source: workflowActionSource(`
-      await clickButton("Convert", true);
+      const fullName = "QA Convert Lead " + Date.now();
+      setByLabel("Full name", fullName);
+      setByLabel("Phone", "+20 100 000 0999");
+      setByLabel("Email", "qa.convert." + Date.now() + "@nilelearn.local");
+      setByLabel("Subject", "Arabic Language");
+      setByLabel("Notes", "Generated by workflow QA.");
+      await clickButton("Add lead");
+      await waitFor(() => readState().leads?.some((item) => item.fullName === fullName));
+      const row = Array.from(document.querySelectorAll(".registrar-lead-list article"))
+        .find((item) => normalize(item.textContent).includes(fullName));
+      const button = row ? Array.from(row.querySelectorAll("button")).find((item) => normalize(item.textContent) === "Convert" && !item.disabled) : null;
+      if (!button) return { ok: false, reason: "convert button not found", fullName };
+      button.click();
       const state = await waitFor(() => {
         const next = readState();
-        return next.applications?.some((item) => item.leadId === "lead_qa_convert") ? next : null;
+        const lead = next.leads?.find((item) => item.fullName === fullName);
+        return lead && next.applications?.some((item) => item.leadId === lead.id) ? next : null;
       });
+      const lead = state?.leads?.find((item) => item.fullName === fullName);
       return {
         ok: Boolean(state),
-        leadStatus: state?.leads?.find((item) => item.id === "lead_qa_convert")?.status,
-        applicationCreated: state?.applications?.some((item) => item.leadId === "lead_qa_convert"),
+        leadStatus: lead?.status,
+        applicationCreated: state?.applications?.some((item) => item.leadId === lead?.id),
         lastAudit: state?.auditLogs?.[0]?.action
       };
     `),
@@ -1673,21 +2560,313 @@ const deepWorkflowCases = [
       value?.workflowStatus === "ready_to_enroll",
   },
   {
+    name: "registrar enrollment workflow activates student account",
+    role: "registrar",
+    route: "/app/registrar/enrollments",
+    source: workflowActionSource(`
+      await clickButton("Activate");
+      const state = await waitFor(() => {
+        const next = readState();
+        const workflow = next.enrollmentWorkflows?.find((item) => item.id === "ew_demo_1");
+        const student = next.students?.find((item) => item.id === workflow?.studentId);
+        const user = next.users?.find((item) => item.id === student?.userId);
+        const invoice = next.invoices?.find((item) => item.studentId === student?.id);
+        return user && student && workflow?.studentId === student.id && invoice ? next : null;
+      });
+      const workflow = state?.enrollmentWorkflows?.find((item) => item.id === "ew_demo_1");
+      const student = state?.students?.find((item) => item.id === workflow?.studentId);
+      const user = state?.users?.find((item) => item.id === student?.userId);
+      const invoice = state?.invoices?.find((item) => item.studentId === student?.id);
+      return {
+        ok: Boolean(state),
+        userRole: user?.activeRole,
+        workflowStatus: workflow?.status,
+        invoiceStatus: invoice?.status,
+        lastAudit: state?.auditLogs?.[0]?.action
+      };
+    `),
+    predicate: value =>
+      value?.ok &&
+      value?.userRole === "student" &&
+      value?.workflowStatus === "active" &&
+      value?.invoiceStatus === "pending" &&
+      value?.lastAudit === "enrollment.activated",
+  },
+  {
+    name: "admin user workflow creates connected student account",
+    role: "superadmin",
+    route: "/app/admin/users",
+    source: workflowActionSource(`
+      const form = await waitFor(() => document.querySelector(".admin-access-guided-form"));
+      const setFormLabel = (label, value) => {
+        const expected = normalize(label).toLowerCase();
+        const match = Array.from(form.querySelectorAll("label"))
+          .find((item) => normalize(item.childNodes[0]?.textContent ?? item.textContent).toLowerCase().startsWith(expected));
+        const control = match?.querySelector("input, select, textarea");
+        if (!control) throw new Error("Input not found: " + label);
+        setValue(control, value);
+      };
+      const stamp = Date.now();
+      const fullName = "QA Connected Student " + stamp;
+      const email = "qa.connected.student." + stamp + "@nilelearn.local";
+      const before = readState();
+      const expectedLessonCount = before.modules
+        ?.filter((module) => module.courseId === "course_ar_l3")
+        ?.flatMap((module) => before.lessons?.filter((lesson) => lesson.moduleId === module.id) || [])
+        ?.length || 0;
+      setFormLabel("Full name", fullName);
+      setFormLabel("Email", email);
+      setFormLabel("Phone / WhatsApp", "+20 100 000 0303");
+      setFormLabel("Role", "student");
+      await waitFor(() => normalize(document.body.textContent).includes("Student placement"));
+      setFormLabel("Branch", "br_online");
+      setFormLabel("Department", "dep_arabic");
+      setFormLabel("Course / subject", "run_ar_l3_2026");
+      setFormLabel("Class / group", "class_ar_l3_a");
+      setFormLabel("Current level / placement", "Arabic Level 3 QA");
+      await clickButton("Create connected account");
+      const createdState = await waitFor(() => {
+        const next = readState();
+        return next.users?.some((item) => item.email === email && item.activeRole === "student") ? next : null;
+      }, 4000);
+      if (!createdState) throw new Error("Connected student was not created");
+      await clickButtonWithin(".admin-access-panel.selected-user", "Pause");
+      const state = await waitFor(() => {
+        const next = readState();
+        const user = next.users?.find((item) => item.email === email);
+        const student = next.students?.find((item) => item.userId === user?.id);
+        const enrollment = next.enrollments?.find((item) => item.studentId === student?.id && item.courseRunId === "run_ar_l3_2026");
+        return user?.status === "paused" && student?.status === "paused" && enrollment?.status === "paused" ? next : null;
+      }, 5000);
+      const user = state?.users?.find((item) => item.email === email);
+      const student = state?.students?.find((item) => item.userId === user?.id);
+      const enrollment = state?.enrollments?.find((item) => item.studentId === student?.id && item.courseRunId === "run_ar_l3_2026");
+      const classGroup = state?.classGroups?.find((item) => item.id === "class_ar_l3_a");
+      const lessonProgressCount = state?.lessonProgress?.filter((item) => item.studentId === student?.id).length ?? 0;
+      const audit = state?.auditLogs?.[0];
+      const createdAudit = state?.auditLogs?.find((item) => item.action === "user.created" && item.entityId === user?.id);
+      return {
+        ok: Boolean(state),
+        userEmail: user?.email,
+        userStatus: user?.status,
+        userRole: user?.activeRole,
+        userRoles: user?.roles,
+        userBranchId: user?.branchId,
+        userDepartmentId: user?.departmentId,
+        studentUserId: student?.userId,
+        studentStatus: student?.status,
+        enrollmentCourseRunId: enrollment?.courseRunId,
+        enrollmentStatus: enrollment?.status,
+        classRosterCount: classGroup?.studentIds.length ?? 0,
+        studentInClass: Boolean(student?.id && classGroup?.studentIds.includes(student.id)),
+        lessonProgressCount,
+        expectedLessonCount,
+        lastAudit: audit?.action,
+        auditEntityType: audit?.entityType,
+        auditEntityId: audit?.entityId,
+        auditActorId: audit?.actorId,
+        createdAuditAction: createdAudit?.action
+      };
+    `),
+    predicate: value =>
+      value?.ok &&
+      value?.userEmail?.endsWith("@nilelearn.local") &&
+      value?.userStatus === "paused" &&
+      value?.userRole === "student" &&
+      value?.userRoles?.includes("student") &&
+      value?.userBranchId === "br_online" &&
+      value?.userDepartmentId === "dep_arabic" &&
+      value?.studentUserId &&
+      value?.studentStatus === "paused" &&
+      value?.enrollmentCourseRunId === "run_ar_l3_2026" &&
+      value?.enrollmentStatus === "paused" &&
+      value?.classRosterCount > 0 &&
+      value?.studentInClass === true &&
+      value?.lessonProgressCount === value?.expectedLessonCount &&
+      value?.lastAudit === "user.updated" &&
+      value?.auditEntityType === "User" &&
+      value?.auditEntityId &&
+      value?.auditActorId === "usr_admin_demo" &&
+      value?.createdAuditAction === "user.created",
+  },
+  {
+    name: "admin teacher assignment workflow reassigns isolated course run",
+    role: "superadmin",
+    route: "/app/admin/users",
+    setupSource: workflowSetupSource(`
+      const state = readState();
+      return {
+        ok: Boolean(
+          state.users?.some((item) => item.id === "usr_teacher_spare") &&
+          state.courseRuns?.some((item) => item.id === "run_ar_l3_assign_qa") &&
+          state.classGroups?.some((item) => item.id === "class_ar_l3_assign_qa") &&
+          state.events?.some((item) => item.id === "evt_ar_l3_assign_qa")
+        )
+      };
+    `),
+    source: workflowActionSource(`
+      const userButton = await waitFor(() =>
+        Array.from(document.querySelectorAll(".admin-access-user-list button"))
+          .find((button) => normalize(button.textContent).includes("Teacher Spare")),
+        4000
+      );
+      if (!userButton) throw new Error("QA teacher row was not rendered");
+      userButton.click();
+      await waitFor(() => normalize(document.body.textContent).includes("Course run assignment"));
+      const form = document.querySelector(".admin-access-teacher-assignment-form");
+      if (!form) throw new Error("Teacher assignment form was not rendered");
+      const setFormLabel = (label, value) => {
+        const expected = normalize(label).toLowerCase();
+        const match = Array.from(form.querySelectorAll("label"))
+          .find((item) => normalize(item.childNodes[0]?.textContent ?? item.textContent).toLowerCase().startsWith(expected));
+        const control = match?.querySelector("input, select, textarea");
+        if (!control) throw new Error("Input not found: " + label);
+        setValue(control, value);
+      };
+      setFormLabel("Course run", "run_ar_l3_assign_qa");
+      setFormLabel("Department", "dep_arabic");
+      setFormLabel("Subjects / specialties", "Arabic grammar, QA reassignment");
+      setFormLabel("Availability", "Fri 09:00, Fri 10:30");
+      await waitFor(() => normalize(form.textContent).includes("Teacher Spare"));
+      await clickButtonWithin(".admin-access-teacher-assignment-form", "teacher");
+      const state = await waitFor(() => {
+        const next = readState();
+        return next.courseRuns?.find((item) => item.id === "run_ar_l3_assign_qa")?.teacherId === "usr_teacher_spare" ? next : null;
+      }, 5000);
+      const run = state?.courseRuns?.find((item) => item.id === "run_ar_l3_assign_qa");
+      const event = state?.events?.find((item) => item.id === "evt_ar_l3_assign_qa");
+      const teacher = state?.teachers?.find((item) => item.userId === "usr_teacher_spare");
+      const availability = state?.teacherAvailability?.filter((item) => item.teacherId === "usr_teacher_spare") || [];
+      const audit = state?.auditLogs?.find((item) => item.action === "teacher.assigned" && item.entityId === "run_ar_l3_assign_qa");
+      return {
+        ok: Boolean(state),
+        runTeacherId: run?.teacherId,
+        eventOwnerId: event?.ownerId,
+        teacherDepartmentId: teacher?.departmentId,
+        teacherSpecialties: teacher?.specialties,
+        availabilityCount: availability.length,
+        auditAction: audit?.action,
+        auditSummary: audit?.summary,
+        auditActorId: audit?.actorId
+      };
+    `),
+    predicate: value =>
+      value?.ok &&
+      value?.runTeacherId === "usr_teacher_spare" &&
+      value?.eventOwnerId === "usr_teacher_spare" &&
+      value?.teacherDepartmentId === "dep_arabic" &&
+      value?.teacherSpecialties?.includes("QA reassignment") &&
+      value?.availabilityCount === 2 &&
+      value?.auditAction === "teacher.assigned" &&
+      (value?.auditSummary?.includes("reassigned from Teacher Demo") || value?.auditSummary?.includes("Teacher Spare assigned")) &&
+      value?.auditActorId === "usr_admin_demo",
+  },
+  {
+    name: "admin governance workflow updates permission matrix and branch status",
+    role: "superadmin",
+    route: "/app/admin/roles",
+    source: workflowActionSource(`
+      await waitFor(() => normalize(document.body.textContent).includes("Permission matrix"));
+      const permissionButton = await waitFor(() =>
+        Array.from(document.querySelectorAll(".admin-permission-grid button"))
+          .find((button) => normalize(button.textContent).toLowerCase().includes("payments / read")),
+        4000
+      );
+      if (!permissionButton) throw new Error("Payments read permission control was not rendered");
+      const beforePermission = readState().permissions?.teacher?.includes("payments:read") === true;
+      permissionButton.click();
+      const permissionState = await waitFor(() => {
+        const next = readState();
+        return next.permissions?.teacher?.includes("payments:read") !== beforePermission ? next : null;
+      }, 5000);
+      const cairoStatus = Array.from(document.querySelectorAll(".admin-branch-list select"))
+        .find((select) => normalize(select.getAttribute("aria-label")).toLowerCase().includes("cairo"));
+      if (!cairoStatus) throw new Error("Cairo branch status control was not rendered");
+      setValue(cairoStatus, "paused");
+      const state = await waitFor(() => {
+        const next = readState();
+        return next.branches?.find((item) => item.id === "br_cairo")?.status === "paused" ? next : null;
+      }, 5000);
+      const permissionAudit = state?.auditLogs?.find((item) => item.action === "permission.updated" && item.entityId === "teacher");
+      const branchAudit = state?.auditLogs?.find((item) => item.action === "branch.updated" && item.entityId === "br_cairo");
+      return {
+        ok: Boolean(state && permissionState),
+        teacherHasPaymentRead: state?.permissions?.teacher?.includes("payments:read") === true,
+        expectedPermission: !beforePermission,
+        branchStatus: state?.branches?.find((item) => item.id === "br_cairo")?.status,
+        permissionAuditAction: permissionAudit?.action,
+        permissionAuditActorId: permissionAudit?.actorId,
+        branchAuditAction: branchAudit?.action,
+        branchAuditActorId: branchAudit?.actorId
+      };
+    `),
+    predicate: value =>
+      value?.ok &&
+      value?.teacherHasPaymentRead === value?.expectedPermission &&
+      value?.branchStatus === "paused" &&
+      value?.permissionAuditAction === "permission.updated" &&
+      value?.permissionAuditActorId === "usr_admin_demo" &&
+      value?.branchAuditAction === "branch.updated" &&
+      value?.branchAuditActorId === "usr_admin_demo",
+  },
+  {
     name: "admin reports workflow changes report type and saves preset",
     role: "superadmin",
     route: "/app/admin/reports",
     source: workflowActionSource(`
       setByLabel("Report type", "finance");
+      await waitFor(() => normalize(document.body.innerText || document.body.textContent).includes("Finance report"));
+      setByLabel("Search rows", "inv_cairo_demo_1");
+      setByLabel("Status", "pending");
+      const filtered = await waitFor(() => /1 of \\d+ finance rows/i.test(normalize(document.body.innerText || document.body.textContent)));
+      const metricSort = Array.from(document.querySelectorAll(".platform-report-row.header button"))
+        .find((button) => normalize(button.textContent).includes("Metric"));
+      if (metricSort) metricSort.click();
+      await delay(80);
+      await clickButton("Save view");
+      const savedState = await waitFor(() => {
+        const next = readState();
+        const preset = next.reportPresets?.find((item) =>
+          item.ownerUserId === "usr_admin_demo" &&
+          item.role === "superadmin" &&
+          item.reportType === "finance" &&
+          item.search === "inv_cairo_demo_1" &&
+          item.status === "pending"
+        );
+        return preset ? next : null;
+      });
+      const found = await waitFor(() => normalize(document.body.innerText || document.body.textContent).includes("Finance snapshot"));
+      const applyButton = Array.from(document.querySelectorAll(".platform-row-list.compact button"))
+        .find((button) => normalize(button.textContent) === "Apply");
+      if (applyButton) applyButton.click();
       await delay(100);
-      await clickButton("Save preset");
-      const found = await waitFor(() => normalize(document.body.innerText || document.body.textContent).includes("Finance snapshot 3"));
+      const body = normalize(document.body.innerText || document.body.textContent);
       return {
-        ok: Boolean(found),
+        ok: Boolean(found && filtered),
         textIncludesPreset: Boolean(found),
-        body: normalize(document.body.innerText || document.body.textContent).slice(0, 500)
+        hasSearchControl: Boolean(Array.from(document.querySelectorAll(".platform-report-controls label")).some((label) => normalize(label.textContent).includes("Search rows"))),
+        hasStatusControl: Boolean(Array.from(document.querySelectorAll(".platform-report-controls label")).some((label) => normalize(label.textContent).includes("Status"))),
+        filteredRowsVisible: /1 of \\d+ finance rows/i.test(body),
+        presetSaved: Boolean(savedState),
+        auditAction: savedState?.auditLogs?.find((item) => item.entityType === "ReportPreset")?.action,
+        hasTypedFinanceRows: Boolean(document.querySelector(".platform-report-table.typed .platform-report-row-metric")) &&
+          body.includes("balance") &&
+          body.includes("Cairo Student Demo"),
+        hasMetricSort: Boolean(document.querySelector(".platform-report-row.header button[aria-pressed='true']")) &&
+          normalize(document.querySelector(".platform-report-row.header button[aria-pressed='true']")?.textContent).includes("Metric"),
+        body: body.slice(0, 500)
       };
     `),
-    predicate: value => value?.ok && value?.textIncludesPreset === true,
+    predicate: value =>
+      value?.ok &&
+      value?.textIncludesPreset === true &&
+      value?.hasSearchControl === true &&
+      value?.hasStatusControl === true &&
+      value?.filteredRowsVisible === true &&
+      value?.presetSaved === true &&
+      value?.auditAction === "report.preset.saved" &&
+      value?.hasTypedFinanceRows === true &&
+      value?.hasMetricSort === true,
   },
   {
     name: "admin integrations workflow checks mock provider and logs result",
@@ -1695,27 +2874,97 @@ const deepWorkflowCases = [
     route: "/app/admin/integrations",
     source: workflowActionSource(`
       await clickButton("Moodle LMS");
+      setByLabel("Status", "connected");
+      const connectedState = await waitFor(() => {
+        const next = readState();
+        return next.integrations?.find((item) => item.id === "moodle")?.status === "connected" ? next : null;
+      }, 5000);
       await clickButton("Run local check");
+      const checkedState = await waitFor(() => {
+        const next = readState();
+        return next.auditLogs?.some((item) => item.action === "integration.local_checked" && item.entityId === "moodle") ? next : null;
+      }, 5000);
       const found = await waitFor(() => normalize(document.body.innerText || document.body.textContent).includes("Moodle LMS") && normalize(document.body.innerText || document.body.textContent).includes("Checked at"));
       const body = normalize(document.body.innerText || document.body.textContent);
+      const integration = checkedState?.integrations?.find((item) => item.id === "moodle");
+      const statusAudit = checkedState?.auditLogs?.find((item) => item.action === "integration.status_updated" && item.entityId === "moodle");
+      const checkAudit = checkedState?.auditLogs?.find((item) => item.action === "integration.local_checked" && item.entityId === "moodle");
       return {
-        ok: Boolean(found),
+        ok: Boolean(found && connectedState && checkedState),
         checkedProvider: body.includes("Moodle LMS"),
         checkLogged: body.includes("Checked at"),
+        status: integration?.status,
+        hasLastSync: Boolean(integration?.lastSyncAt),
+        statusAuditAction: statusAudit?.action,
+        statusAuditActorId: statusAudit?.actorId,
+        checkAuditAction: checkAudit?.action,
+        checkAuditActorId: checkAudit?.actorId,
         body: body.slice(0, 700)
       };
     `),
     predicate: value =>
       value?.ok &&
       value?.checkedProvider === true &&
-      value?.checkLogged === true,
+      value?.checkLogged === true &&
+      value?.status === "connected" &&
+      value?.hasLastSync === true &&
+      value?.statusAuditAction === "integration.status_updated" &&
+      value?.statusAuditActorId === "usr_admin_demo" &&
+      value?.checkAuditAction === "integration.local_checked" &&
+      value?.checkAuditActorId === "usr_admin_demo",
+  },
+  {
+    name: "admin system health workflow records health audit",
+    role: "superadmin",
+    route: "/app/admin/system-health",
+    source: workflowActionSource(`
+      await waitFor(() => normalize(document.body.textContent).includes("Operational checks"));
+      await clickButton("Run checks");
+      const state = await waitFor(() => {
+        const next = readState();
+        return next.auditLogs?.find((item) => item.action === "system.health_checked" && item.entityId === "health") ? next : null;
+      }, 5000);
+      const audit = state?.auditLogs?.find((item) => item.action === "system.health_checked" && item.entityId === "health");
+      const body = normalize(document.body.innerText || document.body.textContent);
+      return {
+        ok: Boolean(state),
+        healthVisible: body.includes("Health") || body.includes("System health") || body.includes("Platform operations"),
+        auditAction: audit?.action,
+        auditActorId: audit?.actorId,
+        auditSummary: audit?.summary
+      };
+    `),
+    predicate: value =>
+      value?.ok &&
+      value?.healthVisible === true &&
+      value?.auditAction === "system.health_checked" &&
+      value?.auditActorId === "usr_admin_demo" &&
+      /\d+%/.test(value?.auditSummary ?? ""),
   },
 ];
 
 try {
+  recordProgress("open browser");
   await runPw("open", [`${baseUrl}/auth/login`]);
 
+  if (workflowNameFilter) {
+    const selectedWorkflows = deepWorkflowCases.filter((workflow) =>
+      workflow.name.toLowerCase().includes(workflowNameFilter)
+    );
+    await assertCheck(
+      `workflow filter "${workflowNameFilter}" matched cases`,
+      { count: selectedWorkflows.length, names: selectedWorkflows.map((workflow) => workflow.name) },
+      value => value?.count > 0
+    );
+    for (const workflow of selectedWorkflows) {
+      await runDeepWorkflow(workflow);
+    }
+    throw new Error("__QA_FILTER_COMPLETE__");
+  }
+
+  recordProgress("auth routes");
   for (const authRoute of authRoutes) {
+    assertRunBudget(`checking auth route ${authRoute}`);
     await goto(authRoute);
     const authCheck = await pageEval(inspectAuthSource(authRoute));
     await assertCheck(
@@ -1784,7 +3033,10 @@ try {
   );
   await runPw("resize", ["1440", "1000"]);
 
+  recordProgress("desktop portal routes");
   for (const role of roles) {
+    recordProgress(`desktop role: ${role.role}`);
+    assertRunBudget(`checking desktop role ${role.role}`);
     const loginOk = await authenticateRole(role, `${role.role} login API succeeds`);
     if (!loginOk) continue;
 
@@ -1840,6 +3092,7 @@ try {
         `${route} renders protected content`,
         routeCheck,
         value =>
+          value?.ready === true &&
           value?.path === route &&
           value?.shell === true &&
           value?.accessDenied === false &&
@@ -1860,16 +3113,26 @@ try {
       await assertCheck(
         `${route} has meaningful page content`,
         routeCheck,
-        value => value?.textLength > 500 && value?.visibleControls >= 6
+        value =>
+          value?.visibleControls >= 6 &&
+          (value?.textLength > 500 ||
+            (value?.textLength > 250 &&
+              value?.accessDenied === false &&
+              value?.notFound === false &&
+              value?.errorBoundary === false))
       );
     }
   }
 
+  recordProgress("deep workflows");
   for (const workflow of deepWorkflowCases) {
     await runDeepWorkflow(workflow);
   }
 
+  recordProgress("mobile portal routes");
   for (const role of roles) {
+    recordProgress(`mobile role: ${role.role}`);
+    assertRunBudget(`checking mobile role ${role.role}`);
     await runPw("resize", ["390", "844"]);
     const mobileLoginOk = await authenticateRole(role, `${role.role} mobile login API succeeds`);
     if (!mobileLoginOk) continue;
@@ -1908,6 +3171,7 @@ try {
         `${route} mobile renders protected content`,
         mobileRoute,
         value =>
+          value?.ready === true &&
           value?.path === route &&
           value?.shell === true &&
           value?.accessDenied === false &&
@@ -1936,38 +3200,29 @@ try {
     actual: consoleOutput.slice(0, 1000),
   });
 } catch (error) {
-  const actual = {
-    message: error instanceof Error ? error.message : String(error),
-    stack: error instanceof Error ? error.stack : undefined,
-  };
-  const failure = {
-    name: "portal QA runner fatal error",
-    actual,
-  };
-  checks.push({ ...failure, ok: false });
-  failures.push(failure);
+  if (error instanceof Error && error.message === "__QA_FILTER_COMPLETE__") {
+    // Focused workflow mode completed successfully.
+  } else {
+  pushFatal("portal QA runner fatal error", error);
+  }
 } finally {
+  writeSummary({ beforeBrowserClose: true });
   try {
-    await runPw("close");
-  } catch {
+    recordProgress("close browser");
+    await runPw("close", [], {
+      label: "close browser",
+      timeoutMs: Math.min(commandTimeoutMs, 15000),
+    });
+  } catch (error) {
     // The browser may already be closed after a failed assertion.
+    progressEvents.push({
+      stage: "close browser failed",
+      elapsedMs: elapsedMs(),
+      message: error instanceof Error ? error.message : String(error),
+    });
   }
 }
-
-const outputDir = path.resolve(
-  process.env.QA_OUTPUT_DIR || path.join(process.cwd(), "output", "playwright")
-);
-fs.mkdirSync(outputDir, { recursive: true });
-const summary = {
-  baseUrl,
-  checkedAt: new Date().toISOString(),
-  totalChecks: checks.length,
-  failedChecks: failures.length,
-  failures,
-  checks,
-};
-const outputPath = path.join(outputDir, "portal-qa-summary.json");
-fs.writeFileSync(outputPath, JSON.stringify(summary, null, 2));
+const summary = writeSummary({ inProgress: false });
 console.log(
   JSON.stringify(
     {

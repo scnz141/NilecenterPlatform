@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import {
   Activity,
   ArrowRight,
@@ -38,13 +38,22 @@ import {
 import { toast } from "sonner";
 import {
   fetchPlatformStateRequest,
+  runPlatformWorkflowActionRequest,
 } from "@/lib/backend/api";
 import { platformStore } from "@/lib/domain/store";
 import type {
   AttendanceStatus,
+  CalendarEvent,
   CalendarEventType,
+  Certificate,
   Lesson,
   LessonResource,
+  Payment,
+  QuranProgressRecord,
+  QuizQuestionPreview,
+  RecitationSubmission,
+  ReportPreset,
+  ReportType,
 } from "@/lib/domain/types";
 import { checkSupabaseBrowserConnection } from "@/lib/supabase/client";
 import { withRuntimeIntegrationStatus } from "@/lib/integrations/registry";
@@ -54,6 +63,7 @@ import {
   type PageConfig,
   type Role,
 } from "@/lib/platformData";
+import { PlatformPageHeader, PlatformWorkspaceHeader } from "./PlatformPrimitives";
 
 const assessmentPages = new Set([
   "assignments",
@@ -85,7 +95,382 @@ const reportLabels = {
   finance: "Finance",
   audit: "Audit",
 } as const;
+const reportTypesByRole: Record<Role, ReportType[]> = {
+  student: ["enrollments", "attendance"],
+  teacher: ["enrollments", "attendance", "audit"],
+  registrar: ["enrollments", "finance"],
+  headofdepartment: ["enrollments", "attendance", "audit"],
+  branchadmin: ["enrollments", "attendance", "finance"],
+  superadmin: ["enrollments", "attendance", "finance", "audit"],
+};
+type ReportRow = ReturnType<typeof platformStore.exportReportRows>[number];
+type DisplayReportRow = {
+  eyebrow: string;
+  title: string;
+  subtitle: string;
+  status: string;
+  metric: string;
+  meta: string;
+  sort: {
+    primary: string;
+    status: string;
+    metric: string | number;
+    updated: string;
+  };
+};
+type ReportSortKey = "primary" | "status" | "metric" | "updated";
+type ReportSortDirection = "asc" | "desc";
 const PLATFORM_STATE_UPDATED_EVENT = "nilelearn:platform-state-updated";
+const PROTECTED_STATEFUL_PAGE_IDS = new Set([
+  ...Array.from(learningPages),
+  ...Array.from(assessmentPages),
+  ...Array.from(admissionsPages),
+  "payments",
+  "integrations",
+  "system-health",
+  "audit-logs",
+]);
+const attendanceStatusOptions: AttendanceStatus[] = ["present", "late", "absent", "excused"];
+const attendanceStatusLabels: Record<AttendanceStatus, string> = {
+  present: "Present",
+  late: "Late",
+  absent: "Absent",
+  excused: "Excused",
+};
+const attendanceStatusShortLabels: Record<AttendanceStatus, string> = {
+  present: "P",
+  late: "L",
+  absent: "A",
+  excused: "E",
+};
+type AttendanceSessionFilter = "all" | "saved" | "pending";
+type AttendanceRosterFilter = "all" | AttendanceStatus | "unsaved" | "exceptions";
+const certificateStatusLabels: Record<Certificate["status"], string> = {
+  draft: "Draft",
+  pending_approval: "Pending approval",
+  approved: "Approved",
+  issued: "Issued",
+  revoked: "Revoked",
+};
+const certificateStatusOptions: Certificate["status"][] = [
+  "pending_approval",
+  "approved",
+  "issued",
+  "draft",
+  "revoked",
+];
+const schedulerTypeLabels: Record<CalendarEventType, string> = {
+  class_session: "Class session",
+  live_session: "Live session",
+  trial_lesson: "Trial lesson",
+  placement_test: "Placement test",
+  assignment_due: "Assignment due",
+  quiz_due: "Quiz due",
+  exam: "Exam",
+  teacher_availability: "Teacher availability",
+  room_booking: "Room booking",
+  reminder: "Reminder",
+};
+
+type ScheduleBoardEvent = {
+  id: string;
+  title: string;
+  startsAt: string;
+  endsAt?: string;
+  type: CalendarEventType | "assignment_due" | "quiz_due";
+  status?: string;
+  roomId?: string;
+  branchId?: string;
+  classGroupId?: string;
+};
+
+function getSchedulerTypeOptions(role: Role): Array<{ value: CalendarEventType; label: string }> {
+  if (role === "registrar") {
+    return [
+      { value: "placement_test", label: "Placement test" },
+      { value: "trial_lesson", label: "Trial lesson" },
+      { value: "room_booking", label: "Room booking" },
+      { value: "reminder", label: "Reminder" },
+    ];
+  }
+  if (role === "teacher") {
+    return [
+      { value: "live_session", label: "Live session" },
+      { value: "class_session", label: "Class session" },
+      { value: "assignment_due", label: "Assignment due" },
+      { value: "quiz_due", label: "Quiz due" },
+      { value: "reminder", label: "Reminder" },
+    ];
+  }
+  if (role === "branchadmin") {
+    return [
+      { value: "live_session", label: "Live session" },
+      { value: "class_session", label: "Class session" },
+      { value: "room_booking", label: "Room booking" },
+      { value: "reminder", label: "Reminder" },
+    ];
+  }
+  return [
+    { value: "live_session", label: "Live session" },
+    { value: "class_session", label: "Class session" },
+    { value: "placement_test", label: "Placement test" },
+    { value: "room_booking", label: "Room booking" },
+    { value: "exam", label: "Exam" },
+  ];
+}
+
+function getDefaultSchedulerType(role: Role): CalendarEventType {
+  return role === "registrar" ? "placement_test" : "live_session";
+}
+
+function getCertificateEligibility(certificate: Certificate) {
+  return [
+    {
+      label: "Grade",
+      detail: `${certificate.grade}% / 80%`,
+      passed: certificate.grade >= 80,
+    },
+    {
+      label: "Attendance",
+      detail: `${certificate.attendanceRate}% / 80%`,
+      passed: certificate.attendanceRate >= 80,
+    },
+    {
+      label: "Approval",
+      detail: certificateStatusLabels[certificate.status],
+      passed: certificate.status === "approved" || certificate.status === "issued",
+    },
+    {
+      label: "Issue state",
+      detail: certificate.status === "issued" ? certificate.verificationCode : "Not issued",
+      passed: certificate.status === "issued",
+    },
+  ];
+}
+
+function getCertificateSummary(
+  state: PlatformStateSnapshot,
+  certificateIds?: Set<string>
+) {
+  const certificates = certificateIds
+    ? state.certificates.filter(certificate => certificateIds.has(certificate.id))
+    : state.certificates;
+  const statusCounts = Object.fromEntries(
+    certificateStatusOptions.map(status => [
+      status,
+      certificates.filter(certificate => certificate.status === status).length,
+    ])
+  ) as Record<Certificate["status"], number>;
+  const eligible = certificates.filter(
+    certificate => certificate.grade >= 80 && certificate.attendanceRate >= 80
+  );
+  const issuedCertificates = certificates.filter(
+    certificate => certificate.status === "issued"
+  );
+  const issuedDocuments = state.documents.filter(
+    document =>
+      document.type === "certificate" &&
+      issuedCertificates.some(
+        certificate => document.url === `#certificate-${certificate.id}`
+      )
+  );
+  const recentAudits = state.auditLogs
+    .filter(
+      audit =>
+        (audit.action === "certificate.approved" ||
+          audit.action === "certificate.issued") &&
+        (!certificateIds || certificateIds.has(audit.entityId))
+    )
+    .sort(
+      (a, b) =>
+        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    )
+    .slice(0, 4);
+
+  return {
+    certificates,
+    statusCounts,
+    eligible,
+    issuedDocuments,
+    recentAudits,
+  };
+}
+
+function certificateMeetsAcademicRules(certificate: Certificate) {
+  return certificate.grade >= 80 && certificate.attendanceRate >= 80;
+}
+
+function getCertificatePublicCode(certificate: Certificate, reveal: boolean) {
+  return reveal && certificate.status === "issued"
+    ? certificate.verificationCode
+    : "Reserved until issue";
+}
+
+function CertificateEligibilityEvidence({
+  certificate,
+  studentName,
+  courseTitle,
+  documentStatus,
+  approverName,
+  issuerName,
+  auditSummary,
+}: {
+  certificate: Certificate;
+  studentName: string;
+  courseTitle: string;
+  documentStatus?: string;
+  approverName?: string;
+  issuerName?: string;
+  auditSummary?: string;
+}) {
+  const issued = certificate.status === "issued";
+  const eligible = certificateMeetsAcademicRules(certificate);
+  return (
+    <section
+      className="platform-certificate-evidence"
+      aria-label="Certificate eligibility evidence"
+    >
+      <article>
+        <span>Learner</span>
+        <strong>{studentName}</strong>
+        <small>{courseTitle}</small>
+      </article>
+      <article>
+        <span>Eligibility</span>
+        <strong>{certificate.grade}% grade · {certificate.attendanceRate}% attendance</strong>
+        <small>{eligible ? "Meets current issue rules" : "Needs grade and attendance evidence"}</small>
+      </article>
+      <article>
+        <span>Document</span>
+        <strong>{issued ? documentStatus ?? "ready" : "not issued"}</strong>
+        <small>{issued ? "Public verification enabled" : "Hidden from public verification"}</small>
+      </article>
+      <article>
+        <span>Governance</span>
+        <strong>
+          {issued
+            ? `Issued by ${issuerName ?? "system"}`
+            : certificate.status === "approved"
+              ? `Approved by ${approverName ?? "system"}`
+              : certificateStatusLabels[certificate.status]}
+        </strong>
+        <small>{auditSummary ?? "No approval audit yet"}</small>
+      </article>
+    </section>
+  );
+}
+
+function CertificatePreview({
+  certificate,
+  studentName,
+  courseTitle,
+  documentStatus,
+  revealCode,
+  context,
+}: {
+  certificate: Certificate;
+  studentName: string;
+  courseTitle: string;
+  documentStatus?: string;
+  revealCode: boolean;
+  context: "student" | "governance";
+}) {
+  const issued = certificate.status === "issued";
+  const eligibility = getCertificateEligibility(certificate);
+  return (
+    <section
+      className={`platform-certificate-preview ${issued ? "issued" : "pending"}`}
+      aria-label="Certificate preview"
+    >
+      <div>
+        <span>Nile Learn Certificate</span>
+        <strong>{studentName}</strong>
+        <p>
+          {courseTitle} · Grade {certificate.grade}% · Attendance{" "}
+          {certificate.attendanceRate}%
+        </p>
+        <em>{getCertificatePublicCode(certificate, revealCode)}</em>
+        <div className="platform-certificate-rule-grid">
+          {eligibility.map(item => (
+            <span key={item.label} className={item.passed ? "passed" : ""}>
+              {item.label}: {item.detail}
+            </span>
+          ))}
+        </div>
+        <small>
+          {issued
+            ? `Document ${documentStatus ?? "ready"} · public verification enabled${
+                certificate.issuedAt ? ` · issued ${formatDateTime(certificate.issuedAt)}` : ""
+              }`
+            : context === "student"
+              ? "Approval or issue is still pending. Verification and print stay disabled."
+              : "Issue the certificate before verification and print are enabled."}
+        </small>
+      </div>
+      <div className="platform-certificate-preview-actions">
+        <button type="button" disabled={!issued} onClick={() => window.print()}>
+          <Download size={15} />
+          {issued ? "Print certificate" : "Issued only"}
+        </button>
+        <button type="button" disabled>
+          PDF renderer pending
+        </button>
+      </div>
+    </section>
+  );
+}
+
+function CertificateVerifyPanel({
+  title,
+  label,
+  value,
+  onChange,
+  disabled,
+  verification,
+}: {
+  title: string;
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  disabled?: boolean;
+  verification: ReturnType<typeof platformStore.verifyCertificate>;
+}) {
+  return (
+    <section className="platform-workflow-card">
+      <div className="platform-workflow-title">
+        <span>
+          <ShieldCheck size={16} /> Verify code
+        </span>
+        <strong>{title}</strong>
+      </div>
+      <div className="platform-inline-form">
+        <label>
+          {label}
+          <input
+            value={value}
+            onChange={event => onChange(event.target.value)}
+            disabled={disabled}
+            placeholder={disabled ? "Issued certificates only" : "NCL-..."}
+          />
+        </label>
+      </div>
+      <div
+        className={`platform-verification-result ${verification ? "valid" : "missing"}`}
+      >
+        <strong>
+          {verification ? "Issued certificate found" : "No issued match"}
+        </strong>
+        <small>
+          {verification
+            ? `${verification.studentName} · ${verification.courseTitle}`
+            : disabled
+              ? "This certificate is not issued yet."
+              : "Check the code or issue the certificate first. Pending approvals are not exposed."}
+        </small>
+      </div>
+    </section>
+  );
+}
 
 export function isStatefulWorkflowPage(
   role: Role,
@@ -160,6 +545,47 @@ export default function StatefulWorkflowExperience({
     };
   }, []);
 
+  const requiresServerScopedState =
+    PROTECTED_STATEFUL_PAGE_IDS.has(pageId) ||
+    config.kind === "attendance" ||
+    config.kind === "calendar" ||
+    config.kind === "certificate" ||
+    config.kind === "quran" ||
+    config.kind === "messages" ||
+    config.kind === "report";
+
+  if (requiresServerScopedState && backendSyncStatus === "loading") {
+    return (
+      <section className="platform-workflow-card platform-route-loading">
+        <span aria-hidden="true" className="platform-route-loading-spinner" />
+        <small>Syncing role scope</small>
+        <strong>{config.title}</strong>
+        <p>Loading the server-scoped workspace before showing protected records.</p>
+      </section>
+    );
+  }
+
+  if (requiresServerScopedState && backendSyncStatus === "offline") {
+    return (
+      <section className="platform-workflow-card platform-route-loading platform-route-offline">
+        <span aria-hidden="true" className="platform-route-offline-icon">
+          !
+        </span>
+        <small>Server scope unavailable</small>
+        <strong>{config.title}</strong>
+        <p>
+          Protected records are not shown from browser cache. Restore the API
+          connection and retry this role-scoped workspace.
+        </p>
+        <button type="button" onClick={() => window.location.reload()}>
+          Retry workspace
+        </button>
+      </section>
+    );
+  }
+
+  if (role === "student" && config.kind === "report")
+    return <StudentReportsWorkflow role={role} state={state} pageId={pageId} />;
   if (role === "student" && learningPages.has(pageId)) {
     return (
       <LearningWorkflow
@@ -181,34 +607,91 @@ export default function StatefulWorkflowExperience({
       />
     );
   if (role === "student" && config.kind === "attendance")
-    return <StudentAttendanceWorkflow role={role} state={state} refresh={refresh} />;
+    return (
+      <AttendancePageFrame
+        config={config}
+        role={role}
+        state={state}
+        backendSyncStatus={backendSyncStatus}
+      >
+        <StudentAttendanceWorkflow
+          role={role}
+          state={state}
+          refresh={refresh}
+          backendSyncStatus={backendSyncStatus}
+        />
+      </AttendancePageFrame>
+    );
   if (role === "student" && config.kind === "calendar")
-    return <StudentCalendarWorkflow role={role} state={state} refresh={refresh} />;
+    return (
+      <StudentCalendarWorkflow
+        role={role}
+        state={state}
+        refresh={refresh}
+        backendSyncStatus={backendSyncStatus}
+      />
+    );
   if (role === "student" && config.kind === "certificate")
-    return <StudentCertificateWorkflow role={role} state={state} refresh={refresh} />;
+    return (
+      <StudentCertificateWorkflow
+        role={role}
+        state={state}
+        refresh={refresh}
+        backendSyncStatus={backendSyncStatus}
+      />
+    );
   if (role === "student" && config.kind === "quran")
     return <StudentQuranWorkflow role={role} state={state} refresh={refresh} />;
   if (role === "student" && config.kind === "messages")
     return <StudentMessageWorkflow role={role} state={state} refresh={refresh} />;
-  if (role === "student" && config.kind === "report")
-    return <StudentReportsWorkflow role={role} state={state} pageId={pageId} />;
   if (assessmentPages.has(pageId) || config.kind === "assessment")
     return <AssessmentWorkflow role={role} state={state} refresh={refresh} params={params} />;
   if (config.kind === "attendance")
     return (
-      <AttendanceWorkflow
+      <AttendancePageFrame
+        config={config}
         role={role}
         state={state}
-        refresh={refresh}
-        params={params}
-      />
+        backendSyncStatus={backendSyncStatus}
+      >
+        <AttendanceWorkflow
+          role={role}
+          state={state}
+          refresh={refresh}
+          params={params}
+          backendSyncStatus={backendSyncStatus}
+        />
+      </AttendancePageFrame>
     );
   if (admissionsPages.has(pageId))
     return <AdmissionsWorkflow role={role} state={state} refresh={refresh} />;
+  if (config.kind === "calendar" && (role === "headofdepartment" || role === "superadmin"))
+    return (
+      <ScheduleGovernanceWorkflow
+        role={role}
+        state={state}
+        refresh={refresh}
+        backendSyncStatus={backendSyncStatus}
+      />
+    );
   if (config.kind === "calendar")
-    return <SchedulingWorkflow role={role} state={state} refresh={refresh} />;
+    return (
+      <SchedulingWorkflow
+        role={role}
+        state={state}
+        refresh={refresh}
+        backendSyncStatus={backendSyncStatus}
+      />
+    );
   if (config.kind === "certificate")
-    return <CertificateWorkflow role={role} state={state} refresh={refresh} />;
+    return (
+      <CertificateWorkflow
+        role={role}
+        state={state}
+        refresh={refresh}
+        backendSyncStatus={backendSyncStatus}
+      />
+    );
   if (config.kind === "quran")
     return <QuranWorkflow role={role} state={state} refresh={refresh} />;
   if (config.kind === "messages")
@@ -217,7 +700,7 @@ export default function StatefulWorkflowExperience({
     return <FinanceWorkflow role={role} state={state} refresh={refresh} />;
   if (pageId === "integrations")
     return <IntegrationsWorkflow role={role} state={state} refresh={refresh} />;
-  return <ReportsWorkflow role={role} state={state} pageId={pageId} />;
+  return <ReportsWorkflow role={role} state={state} refresh={refresh} pageId={pageId} />;
 }
 
 type WorkflowProps = {
@@ -232,6 +715,201 @@ type PlatformStateSnapshot = ReturnType<typeof platformStore.getState>;
 
 const STUDENT_PROFILE_ID = "stu_demo";
 const STUDENT_USER_ID = "usr_student_demo";
+
+function AttendancePageFrame({
+  config,
+  role,
+  state,
+  backendSyncStatus,
+  children,
+}: {
+  config: PageConfig;
+  role: Role;
+  state: PlatformStateSnapshot;
+  backendSyncStatus: "loading" | "supabase" | "local" | "offline";
+  children: ReactNode;
+}) {
+  const classIds = getAttendanceScopeClassIds(state, role);
+  const summary = getAttendanceSummary(state, classIds);
+  const scopeLabel =
+    role === "student"
+      ? "My classes"
+      : role === "teacher"
+        ? "Assigned classes"
+        : role === "branchadmin"
+          ? `${getRoleActorUser(state, role).branchId ? "Branch" : "Local"} scope`
+          : role === "headofdepartment"
+            ? "Academic scope"
+            : "Platform scope";
+
+  return (
+    <div className="platform-attendance-page">
+      <section className="platform-attendance-page-header">
+        <div>
+          <span>
+            <ClipboardCheck size={15} /> {roleMeta[role].label}
+          </span>
+          <h1>{config.title}</h1>
+          <p>{config.description}</p>
+        </div>
+        <div className="platform-attendance-page-metrics">
+          <span>{scopeLabel}</span>
+          <span>{summary.savedSessions}/{summary.sessions.length} saved</span>
+          <span>{summary.pendingSessions} pending</span>
+          <span>{backendSyncStatus === "loading" ? "Syncing" : `${backendSyncStatus} state`}</span>
+        </div>
+      </section>
+      {children}
+    </div>
+  );
+}
+
+function getAttendanceScopeClassIds(
+  state: PlatformStateSnapshot,
+  role: Role
+) {
+  const actor = getRoleActorUser(state, role);
+  if (role === "student") return getStudentScope(state).classIds;
+  if (role === "teacher") {
+    const runIds = new Set(
+      state.courseRuns
+        .filter(run => run.teacherId === actor.id)
+        .map(run => run.id)
+    );
+    return new Set(
+      state.classGroups
+        .filter(group => runIds.has(group.courseRunId))
+        .map(group => group.id)
+    );
+  }
+  if (role === "branchadmin") {
+    const runIds = new Set(
+      state.courseRuns
+        .filter(run => run.branchId === actor.branchId)
+        .map(run => run.id)
+    );
+    return new Set(
+      state.classGroups
+        .filter(group => runIds.has(group.courseRunId))
+        .map(group => group.id)
+    );
+  }
+  if (role === "headofdepartment") return getHodClassIds(state, actor.id);
+  return undefined;
+}
+
+function getAttendanceSummary(
+  state: PlatformStateSnapshot,
+  classIds?: Set<string>
+) {
+  const classGroups = classIds
+    ? state.classGroups.filter(group => classIds.has(group.id))
+    : state.classGroups;
+  const scopedClassIds = new Set(classGroups.map(group => group.id));
+  const sessions = state.classSessions.filter(session =>
+    scopedClassIds.has(session.classGroupId)
+  );
+  const records = state.attendance.filter(record =>
+    scopedClassIds.has(record.classGroupId)
+  );
+  const expectedRecords = sessions.reduce((sum, session) => {
+    const group = classGroups.find(item => item.id === session.classGroupId);
+    return sum + (group?.studentIds.length ?? 0);
+  }, 0);
+  const statusCounts = Object.fromEntries(
+    attendanceStatusOptions.map(status => [
+      status,
+      records.filter(record => record.status === status).length,
+    ])
+  ) as Record<AttendanceStatus, number>;
+
+  return {
+    classGroups,
+    sessions,
+    records,
+    expectedRecords,
+    statusCounts,
+    savedSessions: sessions.filter(session =>
+      isAttendanceSessionSaved(state, session)
+    ).length,
+    pendingSessions: sessions.filter(
+      session => !isAttendanceSessionSaved(state, session)
+    ).length,
+    completionRate: expectedRecords
+      ? Math.round((records.length / expectedRecords) * 100)
+      : 0,
+  };
+}
+
+function isAttendanceSessionSaved(
+  state: PlatformStateSnapshot,
+  session: PlatformStateSnapshot["classSessions"][number]
+) {
+  if (session.attendanceSaved) return true;
+  const group = state.classGroups.find(item => item.id === session.classGroupId);
+  if (!group?.studentIds.length) return false;
+  return group.studentIds.every(studentId =>
+    state.attendance.some(
+      record =>
+        record.classGroupId === group.id &&
+        record.studentId === studentId &&
+        (record.sessionId === session.id || record.sessionId === session.eventId)
+    )
+  );
+}
+
+function getHodClassIds(state: PlatformStateSnapshot, actorId: string) {
+  const actor = state.users.find(user => user.id === actorId);
+  const departmentIds = new Set(
+    state.departments
+      .filter(
+        department =>
+          department.ownerUserId === actorId ||
+          (actor?.departmentId && department.id === actor.departmentId)
+      )
+      .map(department => department.id)
+  );
+  const programIds = new Set(
+    state.programs
+      .filter(program => departmentIds.has(program.departmentId))
+      .map(program => program.id)
+  );
+  const courseIds = new Set(
+    state.courses
+      .filter(course => programIds.has(course.programId))
+      .map(course => course.id)
+  );
+  const courseRunIds = new Set(
+    state.courseRuns
+      .filter(run => courseIds.has(run.courseId))
+      .map(run => run.id)
+  );
+
+  return new Set(
+    state.classGroups
+      .filter(group => courseRunIds.has(group.courseRunId))
+      .map(group => group.id)
+  );
+}
+
+function getRoleActorUser(state: PlatformStateSnapshot, role: Role) {
+  const demoUser = getDemoUser(role);
+  const user =
+    state.users.find(user => user.id === demoUser.id) ??
+    state.users.find(user => user.activeRole === role) ??
+    state.users.find(user => user.roles.includes(role));
+  const demoBranch = state.branches.find(branch => branch.name === demoUser.branch);
+  const demoDepartment = state.departments.find(
+    department => department.name === demoUser.department
+  );
+
+  return {
+    id: user?.id ?? demoUser.id,
+    name: user?.name ?? demoUser.name,
+    branchId: user?.branchId ?? demoBranch?.id,
+    departmentId: user?.departmentId ?? demoDepartment?.id,
+  };
+}
 
 function getStudentScope(state: PlatformStateSnapshot) {
   const student =
@@ -278,6 +956,125 @@ function getStudentScope(state: PlatformStateSnapshot) {
 function formatDateTime(value?: string) {
   if (!value) return "Not scheduled";
   return new Date(value).toLocaleString();
+}
+
+function formatReportDate(value?: string) {
+  if (!value) return "No date";
+  return new Date(value).toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
+function statusLabel(value?: string | number) {
+  return String(value ?? "ready").replace(/_/g, " ");
+}
+
+function userNameForStudent(state: PlatformStateSnapshot, studentId?: string) {
+  const student = state.students.find((item) => item.id === studentId);
+  return state.users.find((item) => item.id === student?.userId)?.name ?? studentId ?? "Unassigned student";
+}
+
+function courseTitleForRun(state: PlatformStateSnapshot, courseRunId?: string) {
+  const run = state.courseRuns.find((item) => item.id === courseRunId);
+  const course = state.courses.find((item) => item.id === run?.courseId);
+  return course?.title ?? courseRunId ?? "Unassigned course";
+}
+
+function classNameForId(state: PlatformStateSnapshot, classGroupId?: string) {
+  return state.classGroups.find((item) => item.id === classGroupId)?.name ?? classGroupId ?? "Unassigned class";
+}
+
+function formatReportRow(row: ReportRow, reportType: ReportType, state: PlatformStateSnapshot): DisplayReportRow {
+  if (reportType === "attendance") {
+    const studentName = userNameForStudent(state, "studentId" in row ? String(row.studentId) : undefined);
+    const className = classNameForId(state, "classGroupId" in row ? String(row.classGroupId) : undefined);
+    const status = statusLabel("status" in row ? row.status : "saved");
+    const sessionId = "sessionId" in row ? String(row.sessionId) : "Session";
+    return {
+      eyebrow: "Attendance",
+      title: studentName,
+      subtitle: className,
+      status,
+      metric: sessionId,
+      meta: "notes" in row && row.notes ? String(row.notes) : "Roster evidence",
+      sort: {
+        primary: studentName,
+        status,
+        metric: sessionId,
+        updated: sessionId,
+      },
+    };
+  }
+
+  if (reportType === "finance") {
+    const amount = "amount" in row ? Number(row.amount) : 0;
+    const paid = "paid" in row ? Number(row.paid) : 0;
+    const balance = "balance" in row ? Number(row.balance) : Math.max(0, amount - paid);
+    const currency = "currency" in row ? String(row.currency) : "EGP";
+    const studentName = userNameForStudent(state, "studentId" in row ? String(row.studentId) : undefined);
+    const dueAt = "dueAt" in row ? String(row.dueAt) : "";
+    const status = statusLabel("status" in row ? row.status : "pending");
+    return {
+      eyebrow: "Finance",
+      title: studentName,
+      subtitle: `Invoice ${"id" in row ? row.id : "record"} · due ${formatReportDate(dueAt)}`,
+      status,
+      metric: `${balance} ${currency} balance`,
+      meta: `${paid} of ${amount} ${currency} paid`,
+      sort: {
+        primary: studentName,
+        status,
+        metric: balance,
+        updated: dueAt,
+      },
+    };
+  }
+
+  if (reportType === "audit") {
+    const actor = state.users.find((item) => item.id === ("actorId" in row ? row.actorId : ""))?.name ?? ("actorId" in row ? String(row.actorId) : "System");
+    const action = "action" in row ? String(row.action) : "Audit row";
+    const createdAt = "createdAt" in row ? String(row.createdAt) : "";
+    return {
+      eyebrow: "Audit",
+      title: action,
+      subtitle: "summary" in row ? String(row.summary) : "Operational evidence",
+      status: "logged",
+      metric: actor,
+      meta: `${"entityType" in row ? row.entityType : "Entity"} · ${formatReportDate(createdAt)}`,
+      sort: {
+        primary: action,
+        status: "logged",
+        metric: actor,
+        updated: createdAt,
+      },
+    };
+  }
+
+  const studentName = userNameForStudent(state, "studentId" in row ? String(row.studentId) : undefined);
+  const progress = "progress" in row ? Number(row.progress) : 0;
+  const status = statusLabel("status" in row ? row.status : "active");
+  return {
+    eyebrow: "Enrollment",
+    title: studentName,
+    subtitle: courseTitleForRun(state, "courseRunId" in row ? String(row.courseRunId) : undefined),
+    status,
+    metric: "progress" in row ? `${row.progress}% progress` : "Progress pending",
+    meta: "attendanceRate" in row ? `${row.attendanceRate}% attendance · grade ${"currentGrade" in row ? row.currentGrade : "n/a"}` : "Academic record",
+    sort: {
+      primary: studentName,
+      status,
+      metric: progress,
+      updated: "courseRunId" in row ? String(row.courseRunId) : "",
+    },
+  };
+}
+
+function getFutureDateInput(offsetDays = 1) {
+  const date = new Date();
+  date.setDate(date.getDate() + offsetDays);
+  return date.toISOString().slice(0, 10);
 }
 
 function LearningWorkflow({
@@ -499,11 +1296,12 @@ function LearningWorkflow({
         </div>
       </section>
 
-      <section className="learning-hero-panel">
-        <div>
-          <span className="platform-eyebrow">Course workspace</span>
-          <h2>{course.title}</h2>
-          <p>{course.description}</p>
+      <PlatformWorkspaceHeader
+        className="learning-hero-panel"
+        title={course.title}
+        description={course.description}
+        context={<span>Course workspace</span>}
+        meta={
           <div className="learning-hero-meta">
             <span>
               <CalendarDays size={14} /> {classGroup?.schedule ?? run.term}
@@ -523,24 +1321,26 @@ function LearningWorkflow({
               <Activity size={14} /> {syncLabel}
             </span>
           </div>
-        </div>
-        <div className="learning-progress-panel">
-          <span>Lesson completion</span>
-          <strong>{lessonCompletion}%</strong>
-          <div>
-            <i
-              style={{
-                width: `${lessonCompletion}%`,
-                background: roleMeta[role].color,
-              }}
-            />
+        }
+        aside={
+          <div className="learning-progress-panel">
+            <span>Lesson completion</span>
+            <strong>{lessonCompletion}%</strong>
+            <div>
+              <i
+                style={{
+                  width: `${lessonCompletion}%`,
+                  background: roleMeta[role].color,
+                }}
+              />
+            </div>
+            <small>
+              {completedLessons} of {lessonRows.length} lessons complete ·
+              enrollment {enrollment?.progress ?? 0}%
+            </small>
           </div>
-          <small>
-            {completedLessons} of {lessonRows.length} lessons complete ·
-            enrollment {enrollment?.progress ?? 0}%
-          </small>
-        </div>
-      </section>
+        }
+      />
 
       <div className="learning-main-grid">
         <section className="learning-player-panel">
@@ -1015,19 +1815,108 @@ function AssessmentWorkflow({ role, state, refresh, params }: WorkflowProps) {
   const [submissionText, setSubmissionText] = useState(
     "Completed response with examples."
   );
-  const [quizAnswer, setQuizAnswer] = useState("Correct");
+  const [quizAnswers, setQuizAnswers] = useState<Record<string, string>>({});
+  const [assignmentDraft, setAssignmentDraft] = useState({
+    title: "Weekly applied writing task",
+    dueAt: getFutureDateInput(5),
+    submissionType: "text" as "text" | "file" | "audio" | "video",
+    rubric: "Accuracy, Evidence, Teacher notes",
+  });
+  const [quizDraft, setQuizDraft] = useState({
+    title: "Checkpoint quiz",
+    dueAt: getFutureDateInput(4),
+    durationMinutes: 20,
+    attemptsAllowed: 2,
+    questionTypes: "multiple_choice, short_answer",
+  });
+  const [selectedStaffRunId, setSelectedStaffRunId] = useState("");
+  const [selectedPendingSubmissionId, setSelectedPendingSubmissionId] = useState("");
+  const [selectedQuizAttemptId, setSelectedQuizAttemptId] = useState("");
+  const [questionDraft, setQuestionDraft] = useState({
+    prompt: "Choose the correct answer and explain the grammar rule.",
+    questionType: "short_answer" as "multiple_choice" | "true_false" | "short_answer" | "essay" | "oral_record" | "file_upload",
+    difficulty: "core" as "foundation" | "core" | "challenge",
+    tags: "grammar, review",
+    choices: "",
+    answerKey: "Teacher-reviewed answer",
+    rubric: "Accuracy, Reasoning",
+  });
+  const [selectedAttachQuizId, setSelectedAttachQuizId] = useState("");
+  const [gradeDraft, setGradeDraft] = useState({
+    score: 86,
+    feedback: "Clear response. Add one more example before final portfolio review.",
+  });
+  const [quizReviewDraft, setQuizReviewDraft] = useState({
+    score: 88,
+    feedback: "Reviewed. Keep strengthening evidence and accuracy.",
+  });
+  const [savingAction, setSavingAction] = useState("");
+  const [actionError, setActionError] = useState("");
   const studentScope = getStudentScope(state);
   const studentRunIds = studentScope.runIds;
+  const actorUser = getRoleActorUser(state, role);
+  const editableAssessments = role === "teacher" || role === "headofdepartment";
+  const teacherRunIds = new Set(
+    state.courseRuns
+      .filter(run => role !== "teacher" || run.teacherId === actorUser.id)
+      .map(run => run.id)
+  );
+  const hodCourseIds = new Set(
+    role === "headofdepartment"
+      ? state.courses.map(course => course.id)
+      : []
+  );
+  const staffRunOptions = state.courseRuns.filter(run => {
+    if (role === "teacher") return teacherRunIds.has(run.id);
+    if (role === "headofdepartment") return hodCourseIds.has(run.courseId);
+    return false;
+  });
+  useEffect(() => {
+    if (!selectedStaffRunId && staffRunOptions[0]?.id) {
+      setSelectedStaffRunId(staffRunOptions[0].id);
+    }
+  }, [selectedStaffRunId, staffRunOptions]);
+  const selectedStaffRun =
+    staffRunOptions.find(run => run.id === selectedStaffRunId) ??
+    staffRunOptions[0];
+  const scopedRunIds =
+    role === "student"
+      ? studentRunIds
+      : new Set(staffRunOptions.map(run => run.id));
   const assignmentOptions =
     role === "student"
       ? state.assignments.filter(assignment =>
           studentRunIds.has(assignment.courseRunId)
         )
-      : state.assignments;
+      : state.assignments.filter(assignment => scopedRunIds.has(assignment.courseRunId));
   const quizOptions =
     role === "student"
       ? state.quizzes.filter(quiz => studentRunIds.has(quiz.courseRunId))
-      : state.quizzes;
+      : state.quizzes.filter(quiz => scopedRunIds.has(quiz.courseRunId));
+  const questionBankItems =
+    role === "student"
+      ? []
+      : state.questionBankItems
+          .filter(question => scopedRunIds.has(question.courseRunId))
+          .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+  const selectedRunQuestions = selectedStaffRun
+    ? questionBankItems.filter(question => question.courseRunId === selectedStaffRun.id)
+    : questionBankItems;
+  const selectedRunQuizzes = selectedStaffRun
+    ? quizOptions.filter(item => item.courseRunId === selectedStaffRun.id)
+    : quizOptions;
+  useEffect(() => {
+    if (!selectedAttachQuizId && selectedRunQuizzes[0]?.id) {
+      setSelectedAttachQuizId(selectedRunQuizzes[0].id);
+    }
+    if (selectedAttachQuizId && !selectedRunQuizzes.some(item => item.id === selectedAttachQuizId)) {
+      setSelectedAttachQuizId(selectedRunQuizzes[0]?.id ?? "");
+    }
+  }, [selectedAttachQuizId, selectedRunQuizzes]);
+  const selectedAttachQuiz =
+    selectedRunQuizzes.find(item => item.id === selectedAttachQuizId) ??
+    selectedRunQuizzes[0];
+  const attachedQuestionIds = new Set(selectedAttachQuiz?.questionIds ?? []);
   const routedAssignment = assignmentOptions.find(
     item => item.id === params?.assignmentId
   );
@@ -1049,9 +1938,19 @@ function AssessmentWorkflow({ role, state, refresh, params }: WorkflowProps) {
       item.assignmentId === assignment?.id &&
       (role !== "student" || item.studentId === studentScope.studentId)
   );
+  const selectedAssignmentGrade = state.grades.find(
+    item =>
+      item.itemId === assignment?.id &&
+      (role !== "student" || item.studentId === studentScope.studentId)
+  );
   const latestAttempt = state.quizAttempts.find(
     item =>
       item.quizId === quiz?.id &&
+      (role !== "student" || item.studentId === studentScope.studentId)
+  );
+  const selectedQuizGrade = state.grades.find(
+    item =>
+      item.itemId === quiz?.id &&
       (role !== "student" || item.studentId === studentScope.studentId)
   );
   const attemptsUsed = state.quizAttempts.filter(
@@ -1073,16 +1972,312 @@ function AssessmentWorkflow({ role, state, refresh, params }: WorkflowProps) {
   const selectedQuizCourse = state.courses.find(
     course => course.id === selectedQuizRun?.courseId
   );
+  const quizQuestionPreviews =
+    quiz && role === "student"
+      ? state.quizQuestionPreviews.filter(question => question.quizId === quiz.id && question.status === "active")
+      : [];
+  const quizHasAttachedQuestions = Boolean(quiz?.questionIds.length);
+  const quizHasSafeQuestionPreview = quizQuestionPreviews.length > 0;
+  const quizFallbackAnswer = quizAnswers.__fallback ?? "";
+  const quizHasAnswer = quizHasSafeQuestionPreview
+    ? quizQuestionPreviews.some(question => (quizAnswers[question.id] ?? "").trim().length > 0)
+    : quizFallbackAnswer.trim().length > 0;
+  const pendingSubmissions = state.assignmentSubmissions.filter(submission => {
+    const submissionAssignment = state.assignments.find(
+      item => item.id === submission.assignmentId
+    );
+    return (
+      submission.status === "pending" &&
+      Boolean(submissionAssignment && scopedRunIds.has(submissionAssignment.courseRunId))
+    );
+  });
+  const pendingSubmissionKey = pendingSubmissions.map(submission => submission.id).join("|");
+  const selectedPendingSubmission =
+    pendingSubmissions.find(submission => submission.id === selectedPendingSubmissionId) ??
+    pendingSubmissions[0];
+  const selectedPendingAssignment = state.assignments.find(
+    item => item.id === selectedPendingSubmission?.assignmentId
+  );
+  const selectedPendingStudent = state.students.find(
+    item => item.id === selectedPendingSubmission?.studentId
+  );
+  const selectedPendingUser = state.users.find(
+    item => item.id === selectedPendingStudent?.userId
+  );
+  const reviewableQuizAttempts = editableAssessments
+    ? state.quizAttempts
+        .filter(attempt => {
+          const attemptQuiz = state.quizzes.find(item => item.id === attempt.quizId);
+          return Boolean(attemptQuiz && scopedRunIds.has(attemptQuiz.courseRunId));
+        })
+        .sort((a, b) => new Date(b.submittedAt ?? b.startedAt).getTime() - new Date(a.submittedAt ?? a.startedAt).getTime())
+    : [];
+  const reviewableQuizAttemptKey = reviewableQuizAttempts.map(attempt => attempt.id).join("|");
+  const selectedQuizAttempt =
+    reviewableQuizAttempts.find(attempt => attempt.id === selectedQuizAttemptId) ??
+    reviewableQuizAttempts[0];
+  const selectedReviewQuiz = state.quizzes.find(item => item.id === selectedQuizAttempt?.quizId);
+  const selectedReviewStudent = state.students.find(item => item.id === selectedQuizAttempt?.studentId);
+  const selectedReviewUser = state.users.find(item => item.id === selectedReviewStudent?.userId);
+  const selectedReviewQuestions = selectedReviewQuiz
+    ? selectedReviewQuiz.questionIds
+        .map(questionId => questionBankItems.find(question => question.id === questionId))
+        .filter(Boolean)
+    : [];
+  const recentAssessmentAudits = state.auditLogs
+    .filter(audit =>
+      /assignment|quiz|grade|question/i.test(`${audit.action} ${audit.entityType}`)
+    )
+    .slice(0, 4);
+
+  useEffect(() => {
+    setQuizAnswers({});
+  }, [quiz?.id]);
+
+  useEffect(() => {
+    setSelectedPendingSubmissionId(current =>
+      current && pendingSubmissions.some(submission => submission.id === current)
+        ? current
+        : (pendingSubmissions[0]?.id ?? "")
+    );
+  }, [pendingSubmissionKey]);
+
+  useEffect(() => {
+    setSelectedQuizAttemptId(current =>
+      current && reviewableQuizAttempts.some(attempt => attempt.id === current)
+        ? current
+        : (reviewableQuizAttempts[0]?.id ?? "")
+    );
+  }, [reviewableQuizAttemptKey]);
+
+  const runWorkflowAction = async (
+    actionLabel: string,
+    payload: Parameters<typeof runPlatformWorkflowActionRequest>[0]
+  ) => {
+    setSavingAction(actionLabel);
+    setActionError("");
+    const result = await runPlatformWorkflowActionRequest(payload);
+    setSavingAction("");
+    if (!result.ok || !result.data) {
+      const message = result.error ?? `${actionLabel} failed.`;
+      setActionError(message);
+      toast.error(`${actionLabel} failed`, { description: message });
+      return null;
+    }
+    platformStore.setState(result.data.state);
+    refresh();
+    return result.data.result;
+  };
+
+  const submitAssignment = async () => {
+    if (!assignment || !submissionText.trim()) return;
+    const result = await runWorkflowAction("Assignment submission", {
+      type: "assignment.submit",
+      assignmentId: assignment.id,
+      response: submissionText.trim(),
+    });
+    if (result) toast.success("Assignment submitted", { description: result.entityId });
+  };
+
+  const submitQuiz = async () => {
+    if (!quiz || !quizHasAnswer || attemptsRemaining <= 0) return;
+    const answers = quizHasSafeQuestionPreview
+      ? Object.fromEntries(
+          quizQuestionPreviews
+            .map(question => [question.id, (quizAnswers[question.id] ?? "").trim()])
+            .filter(([, answer]) => answer.length > 0)
+        )
+      : { q1: quizFallbackAnswer.trim() };
+    const result = await runWorkflowAction("Quiz attempt", {
+      type: "quiz.submit",
+      quizId: quiz.id,
+      answers,
+    });
+    const attempt = result?.result as typeof latestAttempt | undefined;
+    if (result) {
+      toast.success("Quiz submitted", {
+        description: attempt ? `${attempt.score}/${attempt.maxScore}` : result.entityId,
+      });
+    }
+  };
+
+  const setQuizQuestionAnswer = (questionId: string, value: string) => {
+    setQuizAnswers(current => ({ ...current, [questionId]: value }));
+  };
+
+  const renderQuizQuestionInput = (question: QuizQuestionPreview) => {
+    const value = quizAnswers[question.id] ?? "";
+    if (question.type === "multiple_choice" || question.type === "true_false") {
+      const choices = question.type === "true_false" && question.choices.length === 0
+        ? ["True", "False"]
+        : question.choices;
+      return (
+        <div className="platform-quiz-choice-grid" role="radiogroup" aria-label={question.prompt}>
+          {choices.map(choice => (
+            <button
+              key={choice}
+              type="button"
+              className={value === choice ? "selected" : ""}
+              onClick={() => setQuizQuestionAnswer(question.id, choice)}
+            >
+              <CheckCircle2 size={14} />
+              {choice}
+            </button>
+          ))}
+        </div>
+      );
+    }
+    if (question.type === "oral_record" || question.type === "file_upload") {
+      return (
+        <div className="platform-quiz-storage-state">
+          <strong>{question.type === "oral_record" ? "Audio response" : "File response"}</strong>
+          <span>
+            Storage upload is not connected in this slice. Attach a pending
+            response so the attempt can move into teacher review.
+          </span>
+          <button
+            type="button"
+            className={value ? "selected" : ""}
+            onClick={() =>
+              setQuizQuestionAnswer(
+                question.id,
+                question.type === "oral_record"
+                  ? "Pending audio response attached"
+                  : "Pending file response attached"
+              )
+            }
+          >
+            <CheckCircle2 size={14} />
+            {value ? "Pending response attached" : "Use pending media response"}
+          </button>
+        </div>
+      );
+    }
+    return (
+      <textarea
+        aria-label={question.prompt}
+        value={value}
+        onChange={event => setQuizQuestionAnswer(question.id, event.target.value)}
+        placeholder="Write your response"
+      />
+    );
+  };
+
+  const createAssignment = async () => {
+    if (!selectedStaffRun || !assignmentDraft.title.trim()) return;
+    const result = await runWorkflowAction("Assignment create", {
+      type: "assignment.create",
+      courseRunId: selectedStaffRun.id,
+      title: assignmentDraft.title.trim(),
+      dueAt: new Date(assignmentDraft.dueAt).toISOString(),
+      submissionType: assignmentDraft.submissionType,
+      rubric: assignmentDraft.rubric
+        .split(",")
+        .map(item => item.trim())
+        .filter(Boolean),
+    });
+    if (result) toast.success("Assignment created", { description: result.entityId });
+  };
+
+  const createQuiz = async () => {
+    if (!selectedStaffRun || !quizDraft.title.trim()) return;
+    const result = await runWorkflowAction("Quiz create", {
+      type: "quiz.create",
+      courseRunId: selectedStaffRun.id,
+      title: quizDraft.title.trim(),
+      dueAt: new Date(quizDraft.dueAt).toISOString(),
+      durationMinutes: Math.max(5, Number(quizDraft.durationMinutes) || 20),
+      attemptsAllowed: Math.max(1, Number(quizDraft.attemptsAllowed) || 1),
+      questionTypes: quizDraft.questionTypes
+        .split(",")
+        .map(item => item.trim())
+        .filter(Boolean),
+    });
+    if (result) toast.success("Quiz created", { description: result.entityId });
+  };
+
+  const createQuestion = async () => {
+    if (!selectedStaffRun || !questionDraft.prompt.trim()) return;
+    const result = await runWorkflowAction("Question create", {
+      type: "question.create",
+      courseRunId: selectedStaffRun.id,
+      prompt: questionDraft.prompt.trim(),
+      questionType: questionDraft.questionType,
+      difficulty: questionDraft.difficulty,
+      tags: questionDraft.tags
+        .split(",")
+        .map(item => item.trim())
+        .filter(Boolean),
+      choices: questionDraft.choices
+        .split(",")
+        .map(item => item.trim())
+        .filter(Boolean),
+      answerKey: questionDraft.answerKey.trim(),
+      rubric: questionDraft.rubric
+        .split(",")
+        .map(item => item.trim())
+        .filter(Boolean),
+    });
+    if (result) toast.success("Question saved", { description: result.entityId });
+  };
+
+  const setQuizQuestions = async (questionIds: string[]) => {
+    if (!selectedAttachQuiz) return;
+    const result = await runWorkflowAction("Quiz question attach", {
+      type: "quiz.questions.set",
+      quizId: selectedAttachQuiz.id,
+      questionIds,
+    });
+    if (result) toast.success("Quiz questions updated", { description: result.entityId });
+  };
+
+  const attachQuestionToQuiz = (questionId: string) => {
+    if (!selectedAttachQuiz) return;
+    setQuizQuestions([...Array.from(attachedQuestionIds), questionId]);
+  };
+
+  const attachAllRunQuestions = () => {
+    if (!selectedAttachQuiz) return;
+    setQuizQuestions(selectedRunQuestions.map(question => question.id));
+  };
+
+  const gradeSubmission = async () => {
+    if (!selectedPendingSubmission || !editableAssessments) return;
+    const result = await runWorkflowAction("Grade submission", {
+      type: "assignment.grade",
+      submissionId: selectedPendingSubmission.id,
+      score: Math.min(100, Math.max(0, Number(gradeDraft.score) || 0)),
+      feedback: gradeDraft.feedback.trim() || "Reviewed by teacher.",
+    });
+    if (result) toast.success("Submission graded", { description: result.entityId });
+  };
+
+  const reviewQuizAttempt = async () => {
+    if (!selectedQuizAttempt || !editableAssessments) return;
+    const result = await runWorkflowAction("Quiz review", {
+      type: "quiz.review",
+      attemptId: selectedQuizAttempt.id,
+      score: Math.min(100, Math.max(0, Number(quizReviewDraft.score) || 0)),
+      feedback: quizReviewDraft.feedback.trim() || "Reviewed by teacher.",
+    });
+    if (result) toast.success("Quiz reviewed", { description: result.entityId });
+  };
 
   return (
     <div className="platform-workflow-layout">
       <div className="platform-workflow-main">
+        {actionError ? (
+          <div className="platform-empty-state error">
+            <strong>Assessment action failed</strong>
+            <span>{actionError}</span>
+          </div>
+        ) : null}
         <section className="platform-workflow-card">
           <div className="platform-workflow-title">
             <span>
               <ClipboardCheck size={16} /> Assignment workflow
             </span>
-            <strong>{assignment?.title}</strong>
+            <strong>{role === "student" ? assignment?.title : "Assignment queue"}</strong>
           </div>
           {assignment ? (
             <>
@@ -1107,30 +2302,66 @@ function AssessmentWorkflow({ role, state, refresh, params }: WorkflowProps) {
                   </article>
                 ))}
               </div>
-              <textarea
-                value={submissionText}
-                onChange={event => setSubmissionText(event.target.value)}
-              />
-              <button
-                className="platform-primary-button"
-                style={{ background: roleMeta[role].color }}
-                disabled={!submissionText.trim()}
-                onClick={() => {
-                  const submission = platformStore.submitAssignment(
-                    assignment.id,
-                    submissionText,
-                    studentScope.studentId,
-                    getDemoUser(role).id
-                  );
-                  refresh();
-                  toast.success("Assignment submitted", {
-                    description: submission.id,
-                  });
-                }}
-              >
-                <Send size={15} />
-                Submit assignment
-              </button>
+              {role === "student" ? (
+                <div className={`platform-assessment-feedback ${selectedAssignmentGrade ? "reviewed" : latestSubmission ? "pending" : "empty"}`}>
+                  <div>
+                    <span>{selectedAssignmentGrade ? "Reviewed assignment" : latestSubmission ? "Submitted for review" : "No submission yet"}</span>
+                    <strong>
+                      {selectedAssignmentGrade
+                        ? `${selectedAssignmentGrade.score}/${selectedAssignmentGrade.maxScore}`
+                        : latestSubmission?.status ?? "Ready"}
+                    </strong>
+                    <p>
+                      {selectedAssignmentGrade?.feedback ??
+                        latestSubmission?.feedback ??
+                        (latestSubmission
+                          ? "Your teacher will grade this submission and return feedback here."
+                          : "Submit your answer when you are ready for teacher review.")}
+                    </p>
+                  </div>
+                  <dl>
+                    <div>
+                      <dt>Course</dt>
+                      <dd>{selectedAssignmentCourse?.title ?? "Course"}</dd>
+                    </div>
+                    <div>
+                      <dt>Status</dt>
+                      <dd>{selectedAssignmentGrade ? "recorded" : latestSubmission?.status ?? "not started"}</dd>
+                    </div>
+                    <div>
+                      <dt>Submitted</dt>
+                      <dd>{latestSubmission ? formatDateTime(latestSubmission.submittedAt) : "none"}</dd>
+                    </div>
+                  </dl>
+                </div>
+              ) : null}
+              {role === "student" ? (
+                <>
+                  <textarea
+                    aria-label="Assignment response"
+                    value={submissionText}
+                    onChange={event => setSubmissionText(event.target.value)}
+                  />
+                  <button
+                    className="platform-primary-button"
+                    style={{ background: roleMeta[role].color }}
+                    disabled={!submissionText.trim() || savingAction === "Assignment submission"}
+                    onClick={submitAssignment}
+                  >
+                    <Send size={15} />
+                    {savingAction === "Assignment submission" ? "Submitting" : "Submit assignment"}
+                  </button>
+                </>
+              ) : (
+                <div className="platform-empty-state">
+                  <strong>{pendingSubmissions.length} pending submission(s)</strong>
+                  <span>
+                    {selectedPendingSubmission
+                      ? `${selectedPendingUser?.name ?? "Learner"} submitted ${selectedPendingAssignment?.title ?? selectedPendingSubmission.assignmentId}.`
+                      : "Submitted work will appear here for teacher review."}
+                  </span>
+                </div>
+              )}
             </>
           ) : (
             <div className="platform-empty-state">
@@ -1166,32 +2397,91 @@ function AssessmentWorkflow({ role, state, refresh, params }: WorkflowProps) {
                   </article>
                 ))}
               </div>
-              <div className="platform-inline-form">
-                <label>
-                  Short answer
-                  <input
-                    value={quizAnswer}
-                    onChange={event => setQuizAnswer(event.target.value)}
-                  />
-                </label>
-                <button
-                  disabled={!quizAnswer.trim() || attemptsRemaining <= 0}
-                  onClick={() => {
-                    const attempt = platformStore.submitQuizAttempt(
-                      quiz.id,
-                      { q1: quizAnswer },
-                      studentScope.studentId,
-                      getDemoUser(role).id
-                    );
-                    refresh();
-                    toast.success("Quiz submitted", {
-                      description: `${attempt.score}/${attempt.maxScore}`,
-                    });
-                  }}
-                >
-                  {attemptsRemaining <= 0 ? "Attempts used" : "Submit attempt"}
-                </button>
-              </div>
+              {role === "student" ? (
+                <div className={`platform-assessment-feedback ${selectedQuizGrade ? "reviewed" : latestAttempt ? "pending" : "empty"}`}>
+                  <div>
+                    <span>{selectedQuizGrade ? "Reviewed quiz" : latestAttempt ? "Attempt submitted" : "No attempt yet"}</span>
+                    <strong>
+                      {selectedQuizGrade
+                        ? `${selectedQuizGrade.score}/${selectedQuizGrade.maxScore}`
+                        : latestAttempt
+                          ? `${latestAttempt.score}/${latestAttempt.maxScore}`
+                          : `${attemptsRemaining} attempt(s) remaining`}
+                    </strong>
+                    <p>
+                      {selectedQuizGrade?.feedback ??
+                        (latestAttempt
+                          ? "Your attempt is saved. Teacher review feedback will appear here when returned."
+                          : "Answer the questions and submit an attempt for review.")}
+                    </p>
+                  </div>
+                  <dl>
+                    <div>
+                      <dt>Course</dt>
+                      <dd>{selectedQuizCourse?.title ?? "Course"}</dd>
+                    </div>
+                    <div>
+                      <dt>Status</dt>
+                      <dd>{selectedQuizGrade ? "recorded" : latestAttempt?.status ?? "not started"}</dd>
+                    </div>
+                    <div>
+                      <dt>Submitted</dt>
+                      <dd>{latestAttempt?.submittedAt ? formatDateTime(latestAttempt.submittedAt) : "none"}</dd>
+                    </div>
+                  </dl>
+                </div>
+              ) : null}
+              {role === "student" && quizHasSafeQuestionPreview ? (
+                <div className="platform-quiz-question-list">
+                  {quizQuestionPreviews.map((question, index) => (
+                    <article key={question.id} className="platform-quiz-question-card">
+                      <div className="platform-quiz-question-head">
+                        <span>Question {index + 1}</span>
+                        <div>
+                          <small>{question.type.replace(/_/g, " ")}</small>
+                          <small>{question.difficulty}</small>
+                        </div>
+                      </div>
+                      <strong>{question.prompt}</strong>
+                      {question.tags.length ? (
+                        <div className="platform-chip-row">
+                          {question.tags.map(tag => (
+                            <span key={tag}>{tag}</span>
+                          ))}
+                        </div>
+                      ) : null}
+                      {renderQuizQuestionInput(question)}
+                    </article>
+                  ))}
+                </div>
+              ) : role === "student" && quizHasAttachedQuestions ? (
+                <div className="platform-empty-state">
+                  <strong>No deliverable questions</strong>
+                  <span>This quiz has attached questions, but none are available for your enrolled course right now.</span>
+                </div>
+              ) : (
+                <div className="platform-inline-form">
+                  <label>
+                    Short answer
+                    <input
+                      value={quizFallbackAnswer}
+                      onChange={event => setQuizAnswers({ __fallback: event.target.value })}
+                    />
+                  </label>
+                </div>
+              )}
+              <button
+                disabled={role !== "student" || !quizHasAnswer || attemptsRemaining <= 0 || savingAction === "Quiz attempt"}
+                onClick={role === "student" ? submitQuiz : undefined}
+              >
+                {role !== "student"
+                  ? "Read only"
+                  : attemptsRemaining <= 0
+                    ? "Attempts used"
+                    : savingAction === "Quiz attempt"
+                      ? "Submitting"
+                      : "Submit attempt"}
+              </button>
             </>
           ) : (
             <div className="platform-empty-state">
@@ -1200,8 +2490,510 @@ function AssessmentWorkflow({ role, state, refresh, params }: WorkflowProps) {
             </div>
           )}
         </section>
-      </div>
-      <aside className="platform-workflow-side">
+
+        {editableAssessments ? (
+          <section className="platform-workflow-card">
+            <div className="platform-workflow-title">
+              <span>
+                <NotebookPen size={16} /> Assessment command
+              </span>
+              <strong>{selectedStaffRun?.term ?? "No course run"}</strong>
+            </div>
+            <div className="platform-inline-form">
+              <label>
+                Course run
+                <select
+                  value={selectedStaffRun?.id ?? ""}
+                  onChange={event => setSelectedStaffRunId(event.target.value)}
+                >
+                  {staffRunOptions.map(run => {
+                    const course = state.courses.find(item => item.id === run.courseId);
+                    return (
+                      <option key={run.id} value={run.id}>
+                        {course?.title ?? run.courseId} · {run.term}
+                      </option>
+                    );
+                  })}
+                </select>
+              </label>
+            </div>
+            <div className="platform-inline-form grid">
+              <label>
+                Assignment title
+                <input
+                  value={assignmentDraft.title}
+                  onChange={event =>
+                    setAssignmentDraft(value => ({ ...value, title: event.target.value }))
+                  }
+                />
+              </label>
+              <label>
+                Due date
+                <input
+                  type="date"
+                  value={assignmentDraft.dueAt}
+                  onChange={event =>
+                    setAssignmentDraft(value => ({ ...value, dueAt: event.target.value }))
+                  }
+                />
+              </label>
+              <label>
+                Submission
+                <select
+                  value={assignmentDraft.submissionType}
+                  onChange={event =>
+                    setAssignmentDraft(value => ({
+                      ...value,
+                      submissionType: event.target.value as "text" | "file" | "audio" | "video",
+                    }))
+                  }
+                >
+                  <option value="text">Text</option>
+                  <option value="file">File</option>
+                  <option value="audio">Audio</option>
+                  <option value="video">Video</option>
+                </select>
+              </label>
+              <label>
+                Rubric
+                <input
+                  value={assignmentDraft.rubric}
+                  onChange={event =>
+                    setAssignmentDraft(value => ({ ...value, rubric: event.target.value }))
+                  }
+                />
+              </label>
+              <button
+                type="button"
+                disabled={!selectedStaffRun || !assignmentDraft.title.trim() || savingAction === "Assignment create"}
+                onClick={createAssignment}
+              >
+                Create assignment
+              </button>
+            </div>
+            <div className="platform-inline-form grid">
+              <label>
+                Quiz title
+                <input
+                  value={quizDraft.title}
+                  onChange={event =>
+                    setQuizDraft(value => ({ ...value, title: event.target.value }))
+                  }
+                />
+              </label>
+              <label>
+                Due date
+                <input
+                  type="date"
+                  value={quizDraft.dueAt}
+                  onChange={event =>
+                    setQuizDraft(value => ({ ...value, dueAt: event.target.value }))
+                  }
+                />
+              </label>
+              <label>
+                Minutes
+                <input
+                  type="number"
+                  min="5"
+                  value={quizDraft.durationMinutes}
+                  onChange={event =>
+                    setQuizDraft(value => ({
+                      ...value,
+                      durationMinutes: Number(event.target.value),
+                    }))
+                  }
+                />
+              </label>
+              <label>
+                Attempts
+                <input
+                  type="number"
+                  min="1"
+                  value={quizDraft.attemptsAllowed}
+                  onChange={event =>
+                    setQuizDraft(value => ({
+                      ...value,
+                      attemptsAllowed: Number(event.target.value),
+                    }))
+                  }
+                />
+              </label>
+              <label>
+                Question types
+                <input
+                  value={quizDraft.questionTypes}
+                  onChange={event =>
+                    setQuizDraft(value => ({ ...value, questionTypes: event.target.value }))
+                  }
+                />
+              </label>
+              <button
+                type="button"
+                disabled={!selectedStaffRun || !quizDraft.title.trim() || savingAction === "Quiz create"}
+                onClick={createQuiz}
+              >
+                Create quiz
+              </button>
+            </div>
+          </section>
+        ) : null}
+
+        {editableAssessments ? (
+          <section className="platform-workflow-card">
+            <div className="platform-workflow-title">
+              <span>
+                <BookMarked size={16} /> Question bank
+              </span>
+              <strong>{selectedRunQuestions.length} item(s)</strong>
+            </div>
+            <p>
+              Build reusable questions for assigned course runs. Students never
+              receive answer keys or bank records.
+            </p>
+            <div className="platform-quiz-builder">
+              <div className="platform-inline-form">
+                <label>
+                  Target quiz
+                  <select
+                    value={selectedAttachQuiz?.id ?? ""}
+                    onChange={event => setSelectedAttachQuizId(event.target.value)}
+                  >
+                    {selectedRunQuizzes.map(item => (
+                      <option key={item.id} value={item.id}>
+                        {item.title}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+              <div className="platform-quiz-builder-summary">
+                <span>Attached</span>
+                <strong>{selectedAttachQuiz?.questionIds?.length ?? 0}</strong>
+                <small>
+                  {selectedAttachQuiz
+                    ? `${selectedAttachQuiz.title} · ${selectedAttachQuiz.questionTypes.join(", ")}`
+                    : "Create a quiz before attaching questions."}
+                </small>
+                <button
+                  type="button"
+                  disabled={!selectedAttachQuiz || !selectedRunQuestions.length || savingAction === "Quiz question attach"}
+                  onClick={attachAllRunQuestions}
+                >
+                  Attach all
+                </button>
+              </div>
+            </div>
+            <div className="platform-inline-form grid">
+              <label>
+                Prompt
+                <textarea
+                  value={questionDraft.prompt}
+                  onChange={event =>
+                    setQuestionDraft(value => ({ ...value, prompt: event.target.value }))
+                  }
+                />
+              </label>
+              <label>
+                Type
+                <select
+                  value={questionDraft.questionType}
+                  onChange={event =>
+                    setQuestionDraft(value => ({
+                      ...value,
+                      questionType: event.target.value as typeof questionDraft.questionType,
+                    }))
+                  }
+                >
+                  <option value="multiple_choice">Multiple choice</option>
+                  <option value="true_false">True / false</option>
+                  <option value="short_answer">Short answer</option>
+                  <option value="essay">Essay</option>
+                  <option value="oral_record">Oral record</option>
+                  <option value="file_upload">File upload</option>
+                </select>
+              </label>
+              <label>
+                Difficulty
+                <select
+                  value={questionDraft.difficulty}
+                  onChange={event =>
+                    setQuestionDraft(value => ({
+                      ...value,
+                      difficulty: event.target.value as typeof questionDraft.difficulty,
+                    }))
+                  }
+                >
+                  <option value="foundation">Foundation</option>
+                  <option value="core">Core</option>
+                  <option value="challenge">Challenge</option>
+                </select>
+              </label>
+              <label>
+                Tags
+                <input
+                  value={questionDraft.tags}
+                  onChange={event =>
+                    setQuestionDraft(value => ({ ...value, tags: event.target.value }))
+                  }
+                />
+              </label>
+              <label>
+                Choices
+                <input
+                  value={questionDraft.choices}
+                  onChange={event =>
+                    setQuestionDraft(value => ({ ...value, choices: event.target.value }))
+                  }
+                  placeholder="Comma separated for MCQ"
+                />
+              </label>
+              <label>
+                Answer key
+                <input
+                  value={questionDraft.answerKey}
+                  onChange={event =>
+                    setQuestionDraft(value => ({ ...value, answerKey: event.target.value }))
+                  }
+                />
+              </label>
+              <label>
+                Rubric
+                <input
+                  value={questionDraft.rubric}
+                  onChange={event =>
+                    setQuestionDraft(value => ({ ...value, rubric: event.target.value }))
+                  }
+                />
+              </label>
+              <button
+                type="button"
+                disabled={!selectedStaffRun || !questionDraft.prompt.trim() || savingAction === "Question create"}
+                onClick={createQuestion}
+              >
+                {savingAction === "Question create" ? "Saving" : "Save question"}
+              </button>
+            </div>
+            <div className="platform-row-list compact">
+              {selectedRunQuestions.length ? (
+                selectedRunQuestions.slice(0, 8).map(question => (
+                  <article
+                    key={question.id}
+                    className={`platform-question-row ${attachedQuestionIds.has(question.id) ? "selected" : ""}`}
+                  >
+                    <div>
+                      <strong>{question.prompt}</strong>
+                      <small>
+                        {question.type.replaceAll("_", " ")} · {question.difficulty} ·{" "}
+                        {question.tags.join(", ")}
+                      </small>
+                    </div>
+                    {attachedQuestionIds.has(question.id) ? (
+                      <span>attached</span>
+                    ) : (
+                      <button
+                        type="button"
+                        disabled={!selectedAttachQuiz || savingAction === "Quiz question attach"}
+                        onClick={() => attachQuestionToQuiz(question.id)}
+                      >
+                        Attach
+                      </button>
+                    )}
+                  </article>
+                ))
+              ) : (
+                <article>
+                  <div>
+                    <strong>No questions in this run yet</strong>
+                    <small>Add the first reusable question for this course run.</small>
+                  </div>
+                </article>
+              )}
+            </div>
+          </section>
+        ) : null}
+
+        {editableAssessments ? (
+          <section className="platform-workflow-card">
+            <div className="platform-workflow-title">
+              <span>
+                <GraduationCap size={16} /> Manual review
+              </span>
+              <strong>{selectedPendingSubmission ? "Ready to grade" : "No pending work"}</strong>
+            </div>
+            {pendingSubmissions.length > 1 ? (
+              <div className="platform-row-list compact">
+                {pendingSubmissions.map(submission => {
+                  const assignment = state.assignments.find(item => item.id === submission.assignmentId);
+                  const student = state.students.find(item => item.id === submission.studentId);
+                  const user = state.users.find(item => item.id === student?.userId);
+                  return (
+                    <article
+                      key={submission.id}
+                      className={selectedPendingSubmission?.id === submission.id ? "selected" : ""}
+                    >
+                      <div>
+                        <strong>{assignment?.title ?? submission.assignmentId}</strong>
+                        <small>{user?.name ?? submission.studentId} · {submission.status}</small>
+                      </div>
+                      <button type="button" onClick={() => setSelectedPendingSubmissionId(submission.id)}>
+                        Review
+                      </button>
+                    </article>
+                  );
+                })}
+              </div>
+            ) : null}
+            {selectedPendingSubmission ? (
+              <>
+                <p>
+                  {selectedPendingUser?.name ?? "Learner"} ·{" "}
+                  {selectedPendingAssignment?.title ?? selectedPendingSubmission.assignmentId}
+                </p>
+                <blockquote>{selectedPendingSubmission.response}</blockquote>
+                <div className="platform-inline-form">
+                  <label>
+                    Score
+                    <input
+                      type="number"
+                      min="0"
+                      max="100"
+                      value={gradeDraft.score}
+                      onChange={event =>
+                        setGradeDraft(value => ({
+                          ...value,
+                          score: Number(event.target.value),
+                        }))
+                      }
+                    />
+                  </label>
+                  <label>
+                    Feedback
+                    <input
+                      value={gradeDraft.feedback}
+                      onChange={event =>
+                        setGradeDraft(value => ({
+                          ...value,
+                          feedback: event.target.value,
+                        }))
+                      }
+                    />
+                  </label>
+                  <button
+                    type="button"
+                    disabled={savingAction === "Grade submission"}
+                    onClick={gradeSubmission}
+                  >
+                    Grade submission
+                  </button>
+                </div>
+              </>
+            ) : (
+              <div className="platform-empty-state">
+                <strong>No pending submissions</strong>
+                <span>New learner submissions will appear here for manual feedback.</span>
+              </div>
+            )}
+          </section>
+        ) : null}
+
+        {editableAssessments ? (
+          <section className="platform-workflow-card">
+            <div className="platform-workflow-title">
+              <span>
+                <ListChecks size={16} /> Quiz review
+              </span>
+              <strong>{selectedQuizAttempt ? "Attempt evidence" : "No attempts"}</strong>
+            </div>
+            {selectedQuizAttempt ? (
+              <>
+                {reviewableQuizAttempts.length > 1 ? (
+                  <div className="platform-row-list compact">
+                    {reviewableQuizAttempts.map(attempt => {
+                      const attemptQuiz = state.quizzes.find(item => item.id === attempt.quizId);
+                      const student = state.students.find(item => item.id === attempt.studentId);
+                      const user = state.users.find(item => item.id === student?.userId);
+                      return (
+                        <article
+                          key={attempt.id}
+                          className={selectedQuizAttempt?.id === attempt.id ? "selected" : ""}
+                        >
+                          <div>
+                            <strong>{attemptQuiz?.title ?? attempt.quizId}</strong>
+                            <small>{user?.name ?? attempt.studentId} · {attempt.status} · {attempt.score}/{attempt.maxScore}</small>
+                          </div>
+                          <button type="button" onClick={() => setSelectedQuizAttemptId(attempt.id)}>
+                            Review
+                          </button>
+                        </article>
+                      );
+                    })}
+                  </div>
+                ) : null}
+                <p>
+                  {selectedReviewUser?.name ?? "Learner"} ·{" "}
+                  {selectedReviewQuiz?.title ?? selectedQuizAttempt.quizId} ·{" "}
+                  Current score {selectedQuizAttempt.score}/{selectedQuizAttempt.maxScore}
+                </p>
+                <div className="platform-quiz-review-list">
+                  {Object.entries(selectedQuizAttempt.answers).map(([questionId, answer]) => {
+                    const question = selectedReviewQuestions.find(item => item?.id === questionId);
+                    return (
+                      <article key={questionId}>
+                        <span>{question?.type?.replace(/_/g, " ") ?? "response"}</span>
+                        <strong>{question?.prompt ?? questionId}</strong>
+                        <p>{answer}</p>
+                      </article>
+                    );
+                  })}
+                </div>
+                <div className="platform-inline-form">
+                  <label>
+                    Score
+                    <input
+                      type="number"
+                      min="0"
+                      max="100"
+                      value={quizReviewDraft.score}
+                      onChange={event =>
+                        setQuizReviewDraft(value => ({
+                          ...value,
+                          score: Number(event.target.value),
+                        }))
+                      }
+                    />
+                  </label>
+                  <label>
+                    Feedback
+                    <input
+                      value={quizReviewDraft.feedback}
+                      onChange={event =>
+                        setQuizReviewDraft(value => ({
+                          ...value,
+                          feedback: event.target.value,
+                        }))
+                      }
+                    />
+                  </label>
+                  <button
+                    type="button"
+                    disabled={savingAction === "Quiz review"}
+                    onClick={reviewQuizAttempt}
+                  >
+                    {savingAction === "Quiz review" ? "Saving review" : "Save quiz review"}
+                  </button>
+                </div>
+              </>
+            ) : (
+              <div className="platform-empty-state">
+                <strong>No quiz attempts yet</strong>
+                <span>Submitted attempts from scoped learners will appear here for feedback.</span>
+              </div>
+            )}
+          </section>
+        ) : null}
+        </div>
+        <aside className="platform-workflow-side">
         <MiniMetric
           label="Latest submission"
           value={latestSubmission?.status ?? "none"}
@@ -1214,50 +3006,169 @@ function AssessmentWorkflow({ role, state, refresh, params }: WorkflowProps) {
               : "none"
           }
         />
+        <MiniMetric label="Pending review" value={String(pendingSubmissions.length + reviewableQuizAttempts.length)} />
+        <MiniMetric label="Bank questions" value={String(questionBankItems.length)} />
         <MiniMetric label="Grade items" value={String(state.grades.length)} />
+        <div className="platform-row-list compact">
+          {recentAssessmentAudits.length ? (
+            recentAssessmentAudits.map(audit => (
+              <article key={audit.id}>
+                <div>
+                  <strong>{audit.action}</strong>
+                  <small>{audit.summary}</small>
+                </div>
+              </article>
+            ))
+          ) : (
+            <article>
+              <div>
+                <strong>No assessment audit yet</strong>
+                <small>Submissions, attempts, and grading will appear here.</small>
+              </div>
+            </article>
+          )}
+        </div>
         <WorkflowAudit state={state} />
-      </aside>
-    </div>
+        </aside>
+      </div>
   );
 }
 
-function StudentAttendanceWorkflow({ role, state }: WorkflowProps) {
+function StudentAttendanceWorkflow({
+  state,
+  refresh,
+  backendSyncStatus = "offline",
+}: WorkflowProps) {
   const scope = getStudentScope(state);
-  const records = state.attendance.filter(
-    record =>
-      record.studentId === scope.studentId && scope.classIds.has(record.classGroupId)
-  );
+  const [reviewingRecordId, setReviewingRecordId] = useState("");
+  const [reviewError, setReviewError] = useState("");
+  const now = Date.now();
+  const records = state.attendance
+    .filter(
+      record =>
+        record.studentId === scope.studentId &&
+        scope.classIds.has(record.classGroupId)
+    )
+    .sort((a, b) => {
+      const sessionA = state.classSessions.find(
+        item => item.id === a.sessionId || item.eventId === a.sessionId
+      );
+      const sessionB = state.classSessions.find(
+        item => item.id === b.sessionId || item.eventId === b.sessionId
+      );
+      return (
+        new Date(sessionB?.startsAt ?? 0).getTime() -
+        new Date(sessionA?.startsAt ?? 0).getTime()
+      );
+    });
   const upcomingSessions = state.classSessions
-    .filter(session => scope.classIds.has(session.classGroupId))
+    .filter(
+      session =>
+        scope.classIds.has(session.classGroupId) &&
+        new Date(session.startsAt).getTime() >= now
+    )
     .sort(
       (a, b) => new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime()
     )
     .slice(0, 6);
-  const averageAttendance = scope.enrollments.length
+  const latestSessions = state.classSessions
+    .filter(session => scope.classIds.has(session.classGroupId))
+    .sort(
+      (a, b) => new Date(b.startsAt).getTime() - new Date(a.startsAt).getTime()
+    )
+    .slice(0, 6);
+  const sessionRows = upcomingSessions.length ? upcomingSessions : latestSessions;
+  const computedAttendance = records.length
     ? Math.round(
-        scope.enrollments.reduce(
-          (sum, enrollment) => sum + enrollment.attendanceRate,
-          0
-        ) / scope.enrollments.length
+        (records.filter(record => record.status !== "absent").length /
+          records.length) *
+          100
       )
-    : 0;
+    : null;
+  const averageAttendance =
+    computedAttendance ??
+    (scope.enrollments.length
+      ? Math.round(
+          scope.enrollments.reduce(
+            (sum, enrollment) => sum + enrollment.attendanceRate,
+            0
+          ) / scope.enrollments.length
+        )
+      : 0);
   const exceptionCount = records.filter(record => record.status !== "present").length;
+  const reviewRecipientForRecord = (
+    record?: PlatformStateSnapshot["attendance"][number]
+  ) => {
+    const group = record
+      ? state.classGroups.find(item => item.id === record.classGroupId)
+      : scope.classGroups[0];
+    const run = state.courseRuns.find(item => item.id === group?.courseRunId);
+    return run?.teacherId ?? scope.courses[0]?.run.teacherId;
+  };
+  const requestAttendanceReview = async (
+    record?: PlatformStateSnapshot["attendance"][number]
+  ) => {
+    const teacherUserId = reviewRecipientForRecord(record);
+    if (!teacherUserId || backendSyncStatus === "loading") {
+      const message =
+        backendSyncStatus === "loading"
+          ? "Attendance is still syncing. Try again after the page finishes loading."
+          : "No teacher is linked to this attendance record.";
+      setReviewError(message);
+      toast.error("Attendance review unavailable", { description: message });
+      return;
+    }
+
+    const session = record
+      ? state.classSessions.find(
+          item => item.id === record.sessionId || item.eventId === record.sessionId
+        )
+      : undefined;
+    const group = record
+      ? state.classGroups.find(item => item.id === record.classGroupId)
+      : scope.classGroups[0];
+    const requestId = record?.id ?? "general";
+    setReviewingRecordId(requestId);
+    setReviewError("");
+    const result = await runPlatformWorkflowActionRequest({
+      type: "message.send",
+      toUserId: teacherUserId,
+      subject: "Attendance review request",
+      body: `Please review ${session?.title ?? group?.name ?? "my attendance record"} for ${scope.user?.name ?? "this learner"}. Current status: ${record ? attendanceStatusLabels[record.status] : "not recorded"}.`,
+      channel: "in_app",
+    });
+    setReviewingRecordId("");
+
+    if (!result.ok || !result.data) {
+      const message = result.error ?? "Attendance review request failed.";
+      setReviewError(message);
+      toast.error("Attendance review failed", { description: message });
+      return;
+    }
+
+    platformStore.setState(result.data.state);
+    refresh();
+    toast.success("Attendance review requested", {
+      description: "A message was sent to the class teacher.",
+    });
+  };
 
   return (
     <div className="platform-workflow-layout">
       <div className="platform-workflow-main">
-        <section className="platform-workflow-card">
+        <section className="platform-workflow-card platform-attendance-workspace">
           <div className="platform-workflow-title">
             <span>
               <SlidersHorizontal size={16} /> Attendance record
             </span>
-            <strong>{scope.user?.name ?? "Student"}</strong>
+            <strong>{averageAttendance}% attendance</strong>
           </div>
-          <p>
-            Read-only attendance history from enrolled classes. Teachers and
-            registrars save attendance; students can review status and raise a
-            support request when a record needs correction.
-          </p>
+          <div className="platform-attendance-context">
+            <span>{scope.user?.name ?? "Student"}</span>
+            <span>{scope.classGroups.length} class(es)</span>
+            <span>{records.length} saved record(s)</span>
+            <span>{backendSyncStatus === "loading" ? "Syncing" : "Read only"}</span>
+          </div>
           <div className="platform-row-list">
             {records.length ? (
               records.map(record => {
@@ -1277,14 +3188,21 @@ function StudentAttendanceWorkflow({ role, state }: WorkflowProps) {
                       </small>
                     </div>
                     <div className="platform-row-actions">
-                      <span>{record.status}</span>
+                      <span className={`platform-attendance-chip ${record.status}`}>
+                        {attendanceStatusLabels[record.status]}
+                      </span>
                       <button
                         type="button"
-                        onClick={() =>
-                          toast.info("Open support to request an attendance review.")
+                        disabled={
+                          backendSyncStatus === "loading" ||
+                          reviewingRecordId === record.id
                         }
+                        onClick={() => requestAttendanceReview(record)}
                       >
-                        Request review
+                        <MessageSquare size={14} />
+                        {reviewingRecordId === record.id
+                          ? "Sending"
+                          : "Request review"}
                       </button>
                     </div>
                   </article>
@@ -1294,51 +3212,88 @@ function StudentAttendanceWorkflow({ role, state }: WorkflowProps) {
               <div className="platform-empty-state">
                 <strong>No attendance saved yet</strong>
                 <span>Your classes are active, but no teacher attendance rows are saved.</span>
+                <button
+                  type="button"
+                  disabled={
+                    backendSyncStatus === "loading" ||
+                    reviewingRecordId === "general"
+                  }
+                  onClick={() => requestAttendanceReview()}
+                >
+                  <MessageSquare size={14} />
+                  {reviewingRecordId === "general"
+                    ? "Sending"
+                    : "Request review"}
+                </button>
               </div>
             )}
           </div>
+          {reviewError ? (
+            <p className="platform-attendance-error">{reviewError}</p>
+          ) : null}
         </section>
         <section className="platform-workflow-card">
           <div className="platform-workflow-title">
             <span>
-              <Clock3 size={16} /> Upcoming sessions
+              <Clock3 size={16} /> Sessions
             </span>
-            <strong>{upcomingSessions.length} scheduled</strong>
+            <strong>
+              {upcomingSessions.length
+                ? `${upcomingSessions.length} upcoming`
+                : `${latestSessions.length} latest`}
+            </strong>
           </div>
           <div className="platform-row-list compact">
-            {upcomingSessions.map(session => {
-              const group = state.classGroups.find(
-                item => item.id === session.classGroupId
-              );
-              return (
-                <article key={session.id}>
-                  <div>
-                    <strong>{session.title}</strong>
-                    <small>
-                      {group?.name ?? "Class"} · {formatDateTime(session.startsAt)}
-                    </small>
-                  </div>
-                  <span>{session.attendanceSaved ? "saved" : "pending"}</span>
-                </article>
-              );
-            })}
+            {sessionRows.length ? (
+              sessionRows.map(session => {
+                const group = state.classGroups.find(
+                  item => item.id === session.classGroupId
+                );
+                const sessionSaved = isAttendanceSessionSaved(state, session);
+                return (
+                  <article key={session.id}>
+                    <div>
+                      <strong>{session.title}</strong>
+                      <small>
+                        {group?.name ?? "Class"} · {formatDateTime(session.startsAt)}
+                      </small>
+                    </div>
+                    <span className={`platform-attendance-chip ${sessionSaved ? "saved" : "pending"}`}>
+                      {sessionSaved ? "Saved" : "Pending"}
+                    </span>
+                  </article>
+                );
+              })
+            ) : (
+              <article>
+                <div>
+                  <strong>No class sessions</strong>
+                  <small>New class sessions will appear here after scheduling.</small>
+                </div>
+              </article>
+            )}
           </div>
         </section>
-      </div>
-      <aside className="platform-workflow-side">
+        </div>
+        <aside className="platform-workflow-side">
         <MiniMetric label="Attendance" value={`${averageAttendance}%`} />
         <MiniMetric label="Recorded sessions" value={String(records.length)} />
         <MiniMetric label="Exceptions" value={String(exceptionCount)} />
         <MiniMetric label="Classes" value={String(scope.classGroups.length)} />
-      </aside>
-    </div>
+        </aside>
+      </div>
   );
 }
 
-function StudentCalendarWorkflow({ role, state }: WorkflowProps) {
+function StudentCalendarWorkflow({
+  role,
+  state,
+  backendSyncStatus = "offline",
+}: WorkflowProps) {
   const [viewMode, setViewMode] = useState<"day" | "week" | "month">("week");
   const scope = getStudentScope(state);
-  const classEvents = state.events.filter(
+  const now = Date.now();
+  const classEvents: ScheduleBoardEvent[] = state.events.filter(
     event => event.classGroupId && scope.classIds.has(event.classGroupId)
   );
   const assignmentEvents = state.assignments
@@ -1347,7 +3302,7 @@ function StudentCalendarWorkflow({ role, state }: WorkflowProps) {
       id: assignment.id,
       title: assignment.title,
       startsAt: assignment.dueAt,
-      type: "assignment_due",
+      type: "assignment_due" as const,
       status: assignment.status,
     }));
   const quizEvents = state.quizzes
@@ -1355,11 +3310,27 @@ function StudentCalendarWorkflow({ role, state }: WorkflowProps) {
     .map(quiz => ({
       id: quiz.id,
       title: quiz.title,
-      startsAt: "",
-      type: "quiz_due",
+      startsAt: quiz.dueAt || "",
+      type: "quiz_due" as const,
       status: quiz.status,
     }));
-  const timeline = [...classEvents, ...assignmentEvents, ...quizEvents]
+  const timelineItems: ScheduleBoardEvent[] = [...classEvents, ...assignmentEvents, ...quizEvents].sort(
+    (a, b) =>
+      new Date(a.startsAt || "2999-01-01").getTime() -
+      new Date(b.startsAt || "2999-01-01").getTime()
+  );
+  const upcomingTimeline = timelineItems.filter(
+    item => item.startsAt && new Date(item.startsAt).getTime() >= now
+  );
+  const recentTimeline = timelineItems
+    .filter(item => !item.startsAt || new Date(item.startsAt).getTime() < now)
+    .sort(
+      (a, b) =>
+        new Date(b.startsAt || "1900-01-01").getTime() -
+        new Date(a.startsAt || "1900-01-01").getTime()
+    )
+    .slice(0, 5);
+  const timeline = upcomingTimeline
     .sort(
       (a, b) =>
         new Date(a.startsAt || "2999-01-01").getTime() -
@@ -1377,6 +3348,22 @@ function StudentCalendarWorkflow({ role, state }: WorkflowProps) {
             </span>
             <strong>Classes, due dates, reminders</strong>
           </div>
+          <div className="platform-workflow-title compact">
+            <span>Upcoming events</span>
+            <strong>{timeline.length}</strong>
+          </div>
+          {backendSyncStatus === "loading" ? (
+            <div className="platform-empty-state">
+              <strong>Syncing learner calendar</strong>
+              <span>Loading scoped classes, due dates, and reminders.</span>
+            </div>
+          ) : null}
+          <ScheduleBoard
+            state={state}
+            events={timeline}
+            limit={viewMode === "day" ? 4 : viewMode === "week" ? 8 : 12}
+            emptyText="No future classes or due dates are scheduled for this learner."
+          />
           <div className="platform-segmented" aria-label="Student calendar view">
             {(["day", "week", "month"] as const).map(mode => (
               <button
@@ -1417,9 +3404,36 @@ function StudentCalendarWorkflow({ role, state }: WorkflowProps) {
               ))
             ) : (
               <div className="platform-empty-state">
-                <strong>No calendar items</strong>
-                <span>Your enrolled classes do not have scheduled items yet.</span>
+                <strong>No upcoming items</strong>
+                <span>Recent and unscheduled course items remain visible below.</span>
               </div>
+            )}
+          </div>
+          <div className="platform-workflow-title compact">
+            <span>Recent or unscheduled</span>
+            <strong>{recentTimeline.length}</strong>
+          </div>
+          <div className="platform-row-list compact">
+            {recentTimeline.length ? (
+              recentTimeline.map(event => (
+                <article key={`recent_${event.type}_${event.id}`}>
+                  <div>
+                    <strong>{event.title}</strong>
+                    <small>
+                      {schedulerTypeLabels[event.type as CalendarEventType] ?? event.type} · {formatDateTime(event.startsAt)}
+                    </small>
+                  </div>
+                  <span>{event.status ?? "scheduled"}</span>
+                </article>
+              ))
+            ) : (
+              <article>
+                <div>
+                  <strong>No recent items</strong>
+                  <small>Past classes and unscheduled assessments will appear here.</small>
+                </div>
+                <span>empty</span>
+              </article>
             )}
           </div>
         </section>
@@ -1434,7 +3448,15 @@ function StudentCalendarWorkflow({ role, state }: WorkflowProps) {
   );
 }
 
-function StudentCertificateWorkflow({ role, state }: WorkflowProps) {
+function StudentCertificateWorkflow({
+  role,
+  state,
+  backendSyncStatus,
+}: WorkflowProps) {
+  if (backendSyncStatus === "loading") {
+    return <WorkflowLoadingCard label="Certificate wallet" />;
+  }
+
   const scope = getStudentScope(state);
   const certificates = state.certificates.filter(
     certificate => certificate.studentId === scope.studentId
@@ -1446,8 +3468,17 @@ function StudentCertificateWorkflow({ role, state }: WorkflowProps) {
   const selectedCourse = state.courses.find(
     course => course.id === selected?.courseId
   );
+  const selectedDocument = state.documents.find(
+    document =>
+      selected &&
+      document.ownerId === selected.studentId &&
+      document.type === "certificate" &&
+      (document.url === `#certificate-${selected.id}` ||
+        document.title.includes(selected.verificationCode))
+  );
+  const selectedIssued = selected?.status === "issued";
   const [verificationCode, setVerificationCode] = useState(
-    selected?.verificationCode ?? ""
+    selected?.status === "issued" ? selected.verificationCode : ""
   );
   const verification = platformStore.verifyCertificate(verificationCode);
 
@@ -1476,18 +3507,27 @@ function StudentCertificateWorkflow({ role, state }: WorkflowProps) {
                       <strong>{course?.title ?? "Course certificate"}</strong>
                       <small>
                         Grade {certificate.grade}% · Attendance{" "}
-                        {certificate.attendanceRate}% · {certificate.status}
+                        {certificate.attendanceRate}% · {certificateStatusLabels[certificate.status]}
                       </small>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setSelectedId(certificate.id);
-                        setVerificationCode(certificate.verificationCode);
-                      }}
-                    >
-                      Preview
-                    </button>
+                    <div className="platform-row-actions">
+                      <span className={`platform-certificate-status ${certificate.status}`}>
+                        {certificateStatusLabels[certificate.status]}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedId(certificate.id);
+                          setVerificationCode(
+                            certificate.status === "issued"
+                              ? certificate.verificationCode
+                              : ""
+                          );
+                        }}
+                      >
+                        Preview
+                      </button>
+                    </div>
                   </article>
                 );
               })
@@ -1500,21 +3540,14 @@ function StudentCertificateWorkflow({ role, state }: WorkflowProps) {
           </div>
         </section>
         {selected ? (
-          <section className="platform-certificate-preview">
-            <div>
-              <span>Nile Learn Certificate</span>
-              <strong>{scope.user?.name ?? "Student"}</strong>
-              <p>
-                {selectedCourse?.title ?? "Course"} · Grade {selected.grade}% ·
-                Attendance {selected.attendanceRate}%
-              </p>
-              <em>{selected.verificationCode}</em>
-            </div>
-            <button type="button" onClick={() => window.print()}>
-              <Download size={15} />
-              Print preview
-            </button>
-          </section>
+          <CertificatePreview
+            certificate={selected}
+            studentName={scope.user?.name ?? "Student"}
+            courseTitle={selectedCourse?.title ?? "Course"}
+            documentStatus={selectedDocument?.status}
+            revealCode={selectedIssued}
+            context="student"
+          />
         ) : null}
       </div>
       <aside className="platform-workflow-side">
@@ -1524,38 +3557,104 @@ function StudentCertificateWorkflow({ role, state }: WorkflowProps) {
         />
         <MiniMetric
           label="Eligible"
-          value={String(certificates.filter(item => item.grade >= 80).length)}
+          value={String(
+            certificates.filter(item => item.grade >= 80 && item.attendanceRate >= 80).length
+          )}
         />
-        <section className="platform-workflow-card">
-          <div className="platform-workflow-title">
-            <span>
-              <ShieldCheck size={16} /> Verify code
-            </span>
-            <strong>Student lookup</strong>
-          </div>
-          <div className="platform-inline-form">
-            <label>
-              Verification code
-              <input
-                value={verificationCode}
-                onChange={event => setVerificationCode(event.target.value)}
-              />
-            </label>
-          </div>
-          <div
-            className={`platform-verification-result ${verification ? "valid" : "missing"}`}
-          >
-            <strong>
-              {verification ? "Certificate found" : "No local match"}
-            </strong>
-            <small>
-              {verification
-                ? `${verification.course?.title ?? "Course"} · ${verification.certificate.status}`
-                : "Check the verification code on your certificate."}
-            </small>
-          </div>
-        </section>
+        <MiniMetric
+          label="Documents"
+          value={String(
+            state.documents.filter(
+              item =>
+                item.type === "certificate" &&
+                certificates.some(certificate => certificate.studentId === item.ownerId)
+            ).length
+          )}
+        />
+        <CertificateVerifyPanel
+          title="Student lookup"
+          label="Verification code"
+          value={verificationCode}
+          onChange={setVerificationCode}
+          disabled={!selectedIssued}
+          verification={verification}
+        />
       </aside>
+    </div>
+  );
+}
+
+function QuranProgressSummary({
+  role,
+  progress,
+  plan,
+  recitationCount,
+}: {
+  role: Role;
+  progress?: QuranProgressRecord;
+  plan?: { target: string; currentJuz: string; revisionCycle: string };
+  recitationCount: number;
+}) {
+  const bars = [
+    { label: "Memory", value: progress?.memorizedPercent ?? 0 },
+    { label: "Tajweed", value: progress?.tajweedScore ?? 0 },
+    { label: "Reviews", value: Math.min(100, recitationCount * 18) },
+  ];
+
+  return (
+    <div className="platform-quran-summary">
+      <div>
+        <span>Plan</span>
+        <strong>{plan?.target ?? progress?.surah ?? "No plan"}</strong>
+        <small>
+          {plan?.currentJuz ?? progress?.juz ?? "-"} · {plan?.revisionCycle ?? "revision pending"}
+        </small>
+      </div>
+      <div className="platform-chart-bars">
+        {bars.map((bar, index) => (
+          <div key={bar.label}>
+            <span
+              style={{
+                height: `${Math.min(96, Math.max(18, bar.value))}%`,
+                background: index % 2 ? roleMeta[role].accent : roleMeta[role].color,
+              }}
+            />
+            <small>{bar.label}</small>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function RecitationWaveformPlaceholder({
+  role,
+  label,
+  status,
+}: {
+  role: Role;
+  label: string;
+  status?: string;
+}) {
+  const waveform = [34, 62, 45, 78, 52, 88, 41, 64, 36, 70, 58, 46];
+  return (
+    <div className="platform-recitation-audio">
+      <div className="platform-waveform" aria-label={label}>
+        {waveform.map((height, index) => (
+          <span
+            key={index}
+            style={{
+              height: `${height}%`,
+              background: roleMeta[role].color,
+            }}
+          />
+        ))}
+      </div>
+      <small>
+        {status
+          ? `Audio storage pending · ${status}`
+          : "Audio upload and playback will connect when storage is configured."}
+      </small>
     </div>
   );
 }
@@ -1572,7 +3671,36 @@ function StudentQuranWorkflow({ role, state, refresh }: WorkflowProps) {
   const [title, setTitle] = useState(
     progress ? `${progress.surah} ${progress.juz} recitation` : "Daily recitation"
   );
-  const waveform = [34, 62, 45, 78, 52, 88, 41, 64, 36, 70, 58, 46];
+  const [saving, setSaving] = useState(false);
+  const [workflowError, setWorkflowError] = useState("");
+  const [workflowMessage, setWorkflowMessage] = useState("");
+  const canSubmit = Boolean(plan && title.trim() && !saving);
+
+  const submitRecitation = async () => {
+    if (!plan || !title.trim()) return;
+    setSaving(true);
+    setWorkflowError("");
+    setWorkflowMessage("");
+    const result = await runPlatformWorkflowActionRequest({
+      type: "recitation.submit",
+      studentId: scope.studentId,
+      teacherId: plan.teacherId,
+      title: title.trim(),
+    });
+    setSaving(false);
+    if (!result.ok || !result.data) {
+      const message = result.error ?? "Recitation could not be submitted.";
+      setWorkflowError(message);
+      toast.error("Recitation not submitted", { description: message });
+      return;
+    }
+    platformStore.setState(result.data.state);
+    refresh();
+    setWorkflowMessage(`Submitted to your Quran teacher · ${result.data.persistence}`);
+    toast.success("Recitation submitted", {
+      description: result.data.persistence,
+    });
+  };
 
   return (
     <div className="platform-workflow-layout">
@@ -1589,33 +3717,22 @@ function StudentQuranWorkflow({ role, state, refresh }: WorkflowProps) {
             {plan?.currentJuz ?? progress?.juz ?? "-"} · revision{" "}
             {plan?.revisionCycle ?? "daily"}
           </p>
-          <div className="platform-chart-bars">
-            {[progress?.memorizedPercent ?? 0, progress?.tajweedScore ?? 0, submissions.length * 18].map(
-              (bar, index) => (
-                <div key={index}>
-                  <span
-                    style={{
-                      height: `${Math.min(96, Math.max(18, bar))}%`,
-                      background:
-                        index % 2 ? roleMeta[role].accent : roleMeta[role].color,
-                    }}
-                  />
-                  <small>{["Memory", "Tajweed", "Submits"][index]}</small>
-                </div>
-              )
-            )}
-          </div>
-          <div className="platform-waveform" aria-label="Recitation practice visual">
-            {waveform.map((height, index) => (
-              <span
-                key={index}
-                style={{
-                  height: `${height}%`,
-                  background: roleMeta[role].color,
-                }}
+          {plan || progress ? (
+            <>
+              <QuranProgressSummary
+                role={role}
+                progress={progress}
+                plan={plan}
+                recitationCount={submissions.length}
               />
-            ))}
-          </div>
+              <RecitationWaveformPlaceholder role={role} label="Recitation practice visual" />
+            </>
+          ) : (
+            <div className="platform-empty-state">
+              <strong>No Quran plan assigned</strong>
+              <span>Your teacher will assign a memorization and revision plan before recitation submission opens.</span>
+            </div>
+          )}
           <div className="platform-inline-form">
             <label>
               Recitation title
@@ -1624,26 +3741,15 @@ function StudentQuranWorkflow({ role, state, refresh }: WorkflowProps) {
             <button
               className="platform-primary-button"
               style={{ background: roleMeta[role].color }}
-              disabled={!title.trim()}
-              onClick={() => {
-                const submission = platformStore.submitRecitation(
-                  {
-                    studentId: scope.studentId,
-                    teacherId: plan?.teacherId ?? getDemoUser("teacher").id,
-                    title,
-                  },
-                  scope.userId
-                );
-                refresh();
-                toast.success("Recitation submitted", {
-                  description: submission.id,
-                });
-              }}
+              disabled={!canSubmit}
+              onClick={submitRecitation}
             >
               <Send size={15} />
-              Submit recitation
+              {saving ? "Submitting" : "Submit recitation"}
             </button>
           </div>
+          {workflowMessage ? <p className="platform-scheduler-feedback success">{workflowMessage}</p> : null}
+          {workflowError ? <p className="platform-attendance-error">{workflowError}</p> : null}
         </section>
         <section className="platform-workflow-card">
           <div className="platform-workflow-title">
@@ -1653,15 +3759,25 @@ function StudentQuranWorkflow({ role, state, refresh }: WorkflowProps) {
             <strong>{submissions.length} submissions</strong>
           </div>
           <div className="platform-row-list compact">
-            {submissions.map(submission => (
+            {submissions.length ? submissions.map(submission => (
               <article key={submission.id}>
                 <div>
                   <strong>{submission.title}</strong>
-                  <small>{formatDateTime(submission.submittedAt)}</small>
+                  <small>
+                    {formatDateTime(submission.submittedAt)}
+                    {submission.feedback ? ` · ${submission.feedback}` : ""}
+                  </small>
                 </div>
-                <span>{submission.status}</span>
+                <span className={`platform-status ${submission.status}`}>{submission.status}</span>
               </article>
-            ))}
+            )) : (
+              <article>
+                <div>
+                  <strong>No recitations submitted</strong>
+                  <small>Submit your next assigned recitation when your plan is ready.</small>
+                </div>
+              </article>
+            )}
           </div>
         </section>
       </div>
@@ -1802,6 +3918,35 @@ function StudentReportsWorkflow({
     item => item.studentId === scope.studentId
   );
   const attempts = state.quizAttempts.filter(item => item.studentId === scope.studentId);
+  const feedbackItems = grades
+    .map(grade => {
+      const quiz = state.quizzes.find(item => item.id === grade.itemId);
+      const assignment = state.assignments.find(item => item.id === grade.itemId);
+      const attempt = quiz
+        ? attempts.find(item => item.quizId === quiz.id)
+        : undefined;
+      const submission = assignment
+        ? submissions.find(item => item.assignmentId === assignment.id)
+        : undefined;
+      const course = state.courseRuns.find(run => run.id === grade.courseRunId);
+      const courseTitle = state.courses.find(item => item.id === course?.courseId)?.title;
+      return {
+        grade,
+        quiz,
+        assignment,
+        attempt,
+        submission,
+        courseTitle,
+        percent: grade.maxScore ? Math.round((grade.score / grade.maxScore) * 100) : grade.score,
+        reviewedAt: attempt?.submittedAt ?? submission?.submittedAt ?? "",
+      };
+    })
+    .sort((a, b) => {
+      const aTime = Date.parse(a.reviewedAt);
+      const bTime = Date.parse(b.reviewedAt);
+      return (Number.isFinite(bTime) ? bTime : 0) - (Number.isFinite(aTime) ? aTime : 0);
+    });
+  const latestFeedback = feedbackItems[0];
   const rows = [
     ...scope.courses.map(({ enrollment, course }) => ({
       type: "course",
@@ -1866,6 +4011,81 @@ function StudentReportsWorkflow({
               Export my CSV
             </button>
           </div>
+          {latestFeedback ? (
+            <div className="platform-student-feedback-panel">
+              <div>
+                <span>Latest teacher feedback</span>
+                <strong>{latestFeedback.grade.itemTitle}</strong>
+                <p>{latestFeedback.grade.feedback}</p>
+              </div>
+              <dl>
+                <div>
+                  <dt>Score</dt>
+                  <dd>{latestFeedback.grade.score}/{latestFeedback.grade.maxScore}</dd>
+                </div>
+                <div>
+                  <dt>Result</dt>
+                  <dd>{latestFeedback.percent >= 80 ? "Strong" : latestFeedback.percent >= 70 ? "Passing" : "Review"}</dd>
+                </div>
+                <div>
+                  <dt>Course</dt>
+                  <dd>{latestFeedback.courseTitle ?? "Course"}</dd>
+                </div>
+              </dl>
+              {latestFeedback.attempt ? (
+                <div className="platform-student-feedback-evidence">
+                  {Object.entries(latestFeedback.attempt.answers).slice(0, 2).map(([key, value]) => {
+                    const question = state.quizQuestionPreviews.find(item => item.id === key);
+                    return (
+                      <article key={key}>
+                        <span>{question?.prompt ?? key}</span>
+                        <strong>{value}</strong>
+                      </article>
+                    );
+                  })}
+                </div>
+              ) : latestFeedback.submission ? (
+                <div className="platform-student-feedback-evidence">
+                  <article>
+                    <span>Submitted response</span>
+                    <strong>{latestFeedback.submission.response}</strong>
+                  </article>
+                </div>
+              ) : null}
+            </div>
+          ) : (
+            <div className="platform-empty-state">
+              <strong>No feedback yet</strong>
+              <span>Your teacher feedback will appear here after an assignment or quiz is reviewed.</span>
+            </div>
+          )}
+          {feedbackItems.length ? (
+            <div className="platform-student-feedback-list">
+              {feedbackItems.slice(0, 6).map(item => (
+                <article key={item.grade.id}>
+                  <div>
+                    <span>{item.quiz ? "Quiz feedback" : "Assignment feedback"}</span>
+                    <strong>{item.grade.itemTitle}</strong>
+                    <p>{item.grade.feedback}</p>
+                  </div>
+                  <dl>
+                    <div>
+                      <dt>Score</dt>
+                      <dd>{item.grade.score}/{item.grade.maxScore}</dd>
+                    </div>
+                    <div>
+                      <dt>Result</dt>
+                      <dd>{item.percent >= 80 ? "Strong" : item.percent >= 70 ? "Passing" : "Review"}</dd>
+                    </div>
+                    <div>
+                      <dt>Evidence</dt>
+                      <dd>{item.reviewedAt ? formatDateTime(item.reviewedAt) : "recorded"}</dd>
+                    </div>
+                  </dl>
+                </article>
+              ))}
+            </div>
+          ) : null}
           <div className="platform-report-table">
             {rows.map((row, index) => (
               <article key={`${row.type}_${index}`}>
@@ -1890,74 +4110,140 @@ function StudentReportsWorkflow({
   );
 }
 
-function AttendanceWorkflow({ role, state, refresh, params }: WorkflowProps) {
+function AttendanceWorkflow({
+  role,
+  state,
+  refresh,
+  params,
+  backendSyncStatus = "offline",
+}: WorkflowProps) {
   const routeClassId = params?.classId;
-  const demoStudentId = "stu_demo";
-  const teacherUserId = getDemoUser("teacher").id;
-  const teacherRunIds = new Set(
+  const actorUser = getRoleActorUser(state, role);
+  const actorId = actorUser.id;
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState("");
+  const studentScope = getStudentScope(state);
+  const ownedTeacherRunIds = new Set(
     state.courseRuns
-      .filter(run => run.teacherId === teacherUserId)
+      .filter(run => run.teacherId === actorId)
       .map(run => run.id)
   );
+  const teacherRunIds = ownedTeacherRunIds;
   const studentRunIds = new Set(
     state.enrollments
-      .filter(enrollment => enrollment.studentId === demoStudentId)
+      .filter(enrollment => enrollment.studentId === studentScope.studentId)
       .map(enrollment => enrollment.courseRunId)
   );
+  const ownedBranchRunIds = new Set(
+    state.courseRuns
+      .filter(run => run.branchId === actorUser?.branchId)
+      .map(run => run.id)
+  );
+  const branchRunIds = ownedBranchRunIds;
   const classOptions = state.classGroups.filter(group => {
     if (role === "teacher") return teacherRunIds.has(group.courseRunId);
     if (role === "student") return studentRunIds.has(group.courseRunId);
+    if (role === "branchadmin") return branchRunIds.has(group.courseRunId);
     return true;
   });
   const classOptionKey = classOptions.map(group => group.id).join("|");
+  const routeClass = classOptions.find(group => group.id === routeClassId);
+  const routeClassOutOfScope = Boolean(routeClassId && !routeClass);
   const initialClassId =
-    classOptions.find(group => group.id === routeClassId)?.id ??
-    classOptions[0]?.id ??
+    routeClass?.id ??
+    (!routeClassOutOfScope ? classOptions[0]?.id : undefined) ??
     "";
   const [selectedClassId, setSelectedClassId] = useState(initialClassId);
   const selectedClass =
-    classOptions.find(group => group.id === selectedClassId) ??
-    classOptions.find(group => group.id === routeClassId) ??
-    classOptions[0];
+    routeClassOutOfScope
+      ? undefined
+      : classOptions.find(group => group.id === selectedClassId) ??
+        routeClass ??
+        classOptions[0];
   const sessions = state.classSessions
     .filter(session => session.classGroupId === selectedClass?.id)
     .sort(
       (a, b) => new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime()
     );
-  const sessionOptionKey = sessions.map(session => session.id).join("|");
+  const [sessionFilter, setSessionFilter] = useState<AttendanceSessionFilter>("all");
+  const [rosterFilter, setRosterFilter] = useState<AttendanceRosterFilter>("all");
+  const filteredSessions = sessions.filter(item => {
+    if (sessionFilter === "all") return true;
+    const sessionSaved = isAttendanceSessionSaved(state, item);
+    return sessionFilter === "saved" ? sessionSaved : !sessionSaved;
+  });
+  const sessionOptionKey = filteredSessions.map(session => session.id).join("|");
   const [selectedSessionId, setSelectedSessionId] = useState(
-    sessions[0]?.id ?? ""
+    filteredSessions[0]?.id ?? ""
   );
   const session =
-    sessions.find(item => item.id === selectedSessionId) ?? sessions[0];
+    filteredSessions.find(item => item.id === selectedSessionId) ??
+    filteredSessions[0];
   const [statuses, setStatuses] = useState<Record<string, AttendanceStatus>>(
     {}
   );
-  const options: AttendanceStatus[] = ["present", "late", "absent", "excused"];
-  const statusLabels: Record<AttendanceStatus, string> = {
-    present: "Present",
-    late: "Late",
-    absent: "Absent",
-    excused: "Excused",
-  };
+  const [initialStatuses, setInitialStatuses] = useState<Record<string, AttendanceStatus>>(
+    {}
+  );
+  const selectedRun = state.courseRuns.find(run => run.id === selectedClass?.courseRunId);
+  const selectedCourse = state.courses.find(course => course.id === selectedRun?.courseId);
+  const selectedBranch = state.branches.find(branch => branch.id === selectedRun?.branchId);
+  const selectedTeacher = state.users.find(user => user.id === selectedRun?.teacherId);
+  const selectedRoom = state.rooms.find(room => room.id === selectedClass?.roomId);
   const presentCount = Object.values(statuses).filter(
     value => value === "present"
   ).length;
   const exceptionCount = Object.values(statuses).filter(
     value => value !== "present"
   ).length;
+  const statusCounts = Object.fromEntries(
+    attendanceStatusOptions.map(status => [
+      status,
+      Object.values(statuses).filter(value => value === status).length,
+    ])
+  ) as Record<AttendanceStatus, number>;
   const savedRecords = session
     ? state.attendance.filter(
         record =>
           record.classGroupId === selectedClass?.id &&
           (record.sessionId === session.id ||
-            record.sessionId === session.eventId)
+          record.sessionId === session.eventId)
       )
     : [];
+  const selectedSessionSaved = session
+    ? isAttendanceSessionSaved(state, session)
+    : false;
+  const savedSessionCount = sessions.filter(item =>
+    isAttendanceSessionSaved(state, item)
+  ).length;
+  const missingSessionCount = sessions.length - savedSessionCount;
+  const savedRecordStudentIds = new Set(savedRecords.map(record => record.studentId));
+  const dirtyStudentIds = selectedClass
+    ? selectedClass.studentIds.filter(
+        studentId => statuses[studentId] !== initialStatuses[studentId]
+      )
+    : [];
+  const dirtyStudentIdSet = new Set(dirtyStudentIds);
+  const hasAttendanceChanges =
+    dirtyStudentIds.length > 0 ||
+    savedRecordStudentIds.size < (selectedClass?.studentIds.length ?? 0);
+  const visibleStudentIds = selectedClass
+    ? selectedClass.studentIds.filter(studentId => {
+        if (rosterFilter === "all") return true;
+        if (rosterFilter === "unsaved") return !savedRecordStudentIds.has(studentId);
+        if (rosterFilter === "exceptions") return statuses[studentId] !== "present";
+        return statuses[studentId] === rosterFilter;
+      })
+    : [];
+  const isSyncLoading = backendSyncStatus === "loading";
   const attendanceReady =
+    !isSyncLoading &&
     Boolean(session) &&
     Boolean(selectedClass?.studentIds.length) &&
     Object.keys(statuses).length === selectedClass?.studentIds.length;
+  const editableAttendance = role === "teacher" || role === "branchadmin";
+  const canSaveAttendance =
+    attendanceReady && editableAttendance && hasAttendanceChanges && !saving;
   const recentAttendanceAudits = state.auditLogs
     .filter(
       audit =>
@@ -1969,13 +4255,60 @@ function AttendanceWorkflow({ role, state, refresh, params }: WorkflowProps) {
     if (!item) return "No session selected";
     return `${item.title} · ${new Date(item.startsAt).toLocaleString()}`;
   };
+  const saveAttendance = async () => {
+    if (!selectedClass || !session || !attendanceReady) return;
+    setSaving(true);
+    setSaveError("");
+    const result = await runPlatformWorkflowActionRequest({
+      type: "attendance.save",
+      classGroupId: selectedClass.id,
+      sessionId: session.id,
+      statuses,
+    });
+    setSaving(false);
+    if (!result.ok || !result.data) {
+      const message = result.error ?? "Attendance could not be saved.";
+      setSaveError(message);
+      toast.error("Attendance save failed", { description: message });
+      return;
+    }
+    const actionData = result.data;
+    const savedStatuses = Object.fromEntries(
+      selectedClass.studentIds.map(studentId => {
+        const savedRecord = actionData.state.attendance.find(
+          record =>
+            record.classGroupId === selectedClass.id &&
+            record.studentId === studentId &&
+            (record.sessionId === session.id ||
+              record.sessionId === session.eventId)
+        );
+        return [studentId, savedRecord?.status ?? statuses[studentId] ?? "present"];
+      })
+    ) as Record<string, AttendanceStatus>;
+    setStatuses(savedStatuses);
+    setInitialStatuses(savedStatuses);
+    platformStore.setState(actionData.state);
+    refresh();
+    toast.success("Attendance saved", {
+      description: `${selectedClass.name} · ${session.title} · ${actionData.persistence}`,
+    });
+  };
+  const markAll = (status: AttendanceStatus) => {
+    if (!selectedClass || saving || isSyncLoading || !editableAttendance) return;
+    setStatuses(
+      Object.fromEntries(
+        selectedClass.studentIds.map(studentId => [studentId, status])
+      ) as Record<string, AttendanceStatus>
+    );
+  };
 
   useEffect(() => {
-    const routedClassId = classOptions.find(
-      group => group.id === routeClassId
-    )?.id;
-    if (routedClassId) {
-      setSelectedClassId(routedClassId);
+    if (routeClassOutOfScope) {
+      setSelectedClassId("");
+      return;
+    }
+    if (routeClass) {
+      setSelectedClassId(routeClass.id);
       return;
     }
     setSelectedClassId(current =>
@@ -1983,15 +4316,15 @@ function AttendanceWorkflow({ role, state, refresh, params }: WorkflowProps) {
         ? current
         : (classOptions[0]?.id ?? "")
     );
-  }, [classOptionKey, routeClassId]);
+  }, [classOptionKey, routeClass?.id, routeClassOutOfScope]);
 
   useEffect(() => {
     setSelectedSessionId(current =>
-      current && sessions.some(item => item.id === current)
+      current && filteredSessions.some(item => item.id === current)
         ? current
-        : (sessions[0]?.id ?? "")
+        : (filteredSessions[0]?.id ?? "")
     );
-  }, [sessionOptionKey]);
+  }, [sessionOptionKey, sessionFilter]);
 
   useEffect(() => {
     if (!selectedClass || !session) {
@@ -2009,22 +4342,32 @@ function AttendanceWorkflow({ role, state, refresh, params }: WorkflowProps) {
         );
         return [studentId, current?.status ?? "present"];
       })
-    ) as Record<string, AttendanceStatus>;
+      ) as Record<string, AttendanceStatus>;
     setStatuses(nextStatuses);
+    setInitialStatuses(nextStatuses);
   }, [selectedClass?.id, session?.id, session?.eventId, state.attendance]);
 
+  const scopeLabel =
+    role === "branchadmin"
+      ? `Branch scope: ${selectedBranch?.name ?? "Assigned branch"}`
+      : `Teacher: ${selectedTeacher?.name ?? actorUser.name}`;
+
   if (!selectedClass) {
+    const emptyTitle = routeClassOutOfScope
+      ? "Class outside your scope"
+      : "No class available";
+    const emptyMessage = routeClassOutOfScope
+      ? "This class is not assigned to the current role scope, so attendance controls stay locked."
+      : "No class group is available for this role in the local platform state.";
     return (
       <section className="platform-workflow-card">
         <div className="platform-workflow-title">
-          <span>
-            <SlidersHorizontal size={16} /> Class attendance
-          </span>
-          <strong>No class available</strong>
+            <span>
+              <SlidersHorizontal size={16} /> Class roster attendance
+            </span>
+            <strong>{emptyTitle}</strong>
         </div>
-        <p>
-          No class group is available for this role in the local platform state.
-        </p>
+        <p>{emptyMessage}</p>
       </section>
     );
   }
@@ -2032,20 +4375,41 @@ function AttendanceWorkflow({ role, state, refresh, params }: WorkflowProps) {
   return (
     <div className="platform-workflow-layout">
       <div className="platform-workflow-main">
-        <section className="platform-workflow-card">
+        <section className="platform-workflow-card platform-attendance-workspace">
           <div className="platform-workflow-title">
             <span>
-              <SlidersHorizontal size={16} /> Class attendance
+              <SlidersHorizontal size={16} /> Class roster attendance
             </span>
-            <strong>{selectedClass.name}</strong>
+            <strong>
+              {role === "branchadmin" ? "Branch control" : "Teacher marking"}
+            </strong>
           </div>
-          <div className="platform-inline-form grid">
+          <div className="platform-attendance-context">
+            <span>{selectedClass.name}</span>
+            <span>{selectedCourse?.title ?? "Course"}</span>
+            <span>{scopeLabel}</span>
+            <span>{selectedRoom?.name ?? selectedTeacher?.name ?? "Assigned class"}</span>
+            <span>{session ? `${selectedSessionSaved ? "Saved" : "Pending"} session` : "No session"}</span>
+            <span>{backendSyncStatus === "loading" ? "Syncing state" : `${backendSyncStatus} state`}</span>
+          </div>
+          <div id="attendance-control-status" className="platform-attendance-notice">
+            {isSyncLoading
+              ? "Attendance state is syncing. Marking controls unlock when the current state is loaded."
+              : editableAttendance
+                ? dirtyStudentIds.length
+                  ? `${dirtyStudentIds.length} roster change(s) are ready to save.`
+                  : hasAttendanceChanges
+                    ? `${selectedClass.studentIds.length - savedRecordStudentIds.size} roster row(s) still need a saved attendance record.`
+                    : "Saved roster is current for this session."
+                : `This attendance workspace is read-only for ${roleMeta[role].label}.`}
+          </div>
+          <div className="platform-attendance-control-grid">
             <label>
               Class
               <select
                 value={selectedClass.id}
                 onChange={event => setSelectedClassId(event.target.value)}
-                disabled={classOptions.length <= 1}
+                disabled={classOptions.length <= 1 || saving}
               >
                 {classOptions.map(group => (
                   <option key={group.id} value={group.id}>
@@ -2055,30 +4419,90 @@ function AttendanceWorkflow({ role, state, refresh, params }: WorkflowProps) {
               </select>
             </label>
             <label>
+              Session status
+              <select
+                value={sessionFilter}
+                onChange={event =>
+                  setSessionFilter(event.target.value as AttendanceSessionFilter)
+                }
+                disabled={saving || !sessions.length}
+              >
+                <option value="all">All sessions</option>
+                <option value="pending">Pending only</option>
+                <option value="saved">Saved only</option>
+              </select>
+            </label>
+            <label>
               Session
               <select
                 value={session?.id ?? ""}
                 onChange={event => setSelectedSessionId(event.target.value)}
-                disabled={!sessions.length}
+                disabled={!filteredSessions.length || saving}
               >
-                {sessions.length ? (
-                  sessions.map(item => (
+                {filteredSessions.length ? (
+                  filteredSessions.map(item => (
                     <option key={item.id} value={item.id}>
                       {formatSessionLabel(item)}
                     </option>
                   ))
                 ) : (
-                  <option value="">No sessions scheduled</option>
+                  <option value="">No sessions match this filter</option>
                 )}
               </select>
             </label>
+            <label>
+              Roster filter
+              <select
+                value={rosterFilter}
+                onChange={event =>
+                  setRosterFilter(event.target.value as AttendanceRosterFilter)
+                }
+                disabled={saving || !selectedClass.studentIds.length}
+              >
+                <option value="all">All learners</option>
+                <option value="unsaved">Unsaved rows</option>
+                <option value="exceptions">Exceptions</option>
+                {attendanceStatusOptions.map(status => (
+                  <option key={status} value={status}>
+                    {attendanceStatusLabels[status]}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+          <div className="platform-attendance-toolbar" aria-label="Bulk attendance actions">
+            {attendanceStatusOptions.map(status => (
+              <button
+                key={status}
+                type="button"
+                aria-label={`Mark all learners ${attendanceStatusLabels[status].toLowerCase()}`}
+                aria-describedby="attendance-control-status"
+                disabled={!selectedClass.studentIds.length || saving || isSyncLoading || !editableAttendance}
+                onClick={() => markAll(status)}
+                title={`Mark all ${attendanceStatusLabels[status].toLowerCase()}`}
+              >
+                <span>{attendanceStatusShortLabels[status]}</span>
+                {attendanceStatusLabels[status]}
+              </button>
+            ))}
+          </div>
+          <div className="platform-attendance-count-strip" aria-label="Attendance status totals">
+            {attendanceStatusOptions.map(status => (
+              <span key={status}>
+                {attendanceStatusLabels[status]} <strong>{statusCounts[status]}</strong>
+              </span>
+            ))}
+            <span>
+              Visible <strong>{visibleStudentIds.length}</strong>
+            </span>
           </div>
           {!session ? (
             <div className="platform-empty-state">
               <strong>No session to mark</strong>
               <span>
-                Create or schedule a class session before saving attendance for{" "}
-                {selectedClass.name}.
+                {sessions.length
+                  ? "Change the session filter to inspect saved or pending attendance."
+                  : `Create or schedule a class session before saving attendance for ${selectedClass.name}.`}
               </span>
               <button
                 type="button"
@@ -2106,15 +4530,38 @@ function AttendanceWorkflow({ role, state, refresh, params }: WorkflowProps) {
                 Review roster
               </button>
             </div>
+          ) : !visibleStudentIds.length ? (
+            <div className="platform-empty-state">
+              <strong>No roster rows match this filter</strong>
+              <span>
+                Clear the roster filter or switch session status to inspect the
+                full class.
+              </span>
+              <button
+                type="button"
+                onClick={() => setRosterFilter("all")}
+              >
+                Show all learners
+              </button>
+            </div>
           ) : (
             <div className="platform-attendance-grid stateful">
-              {selectedClass.studentIds.map(studentId => {
+              {visibleStudentIds.map(studentId => {
                 const student = state.students.find(
                   item => item.id === studentId
                 );
                 const user = state.users.find(
                   item => item.id === student?.userId
                 );
+                const enrollment = selectedRun
+                  ? state.enrollments.find(
+                      item =>
+                        item.studentId === studentId &&
+                        item.courseRunId === selectedRun.id
+                    )
+                  : undefined;
+                const rowSaved = savedRecordStudentIds.has(studentId);
+                const rowDirty = dirtyStudentIdSet.has(studentId);
                 return (
                   <article key={studentId}>
                     <div>
@@ -2123,14 +4570,25 @@ function AttendanceWorkflow({ role, state, refresh, params }: WorkflowProps) {
                         {session.title} ·{" "}
                         {new Date(session.startsAt).toLocaleString()}
                       </span>
+                      <small className="platform-attendance-roster-meta">
+                        Attendance {enrollment?.attendanceRate ?? 0}% · Grade{" "}
+                        {enrollment?.currentGrade ?? 0}% ·{" "}
+                        {rowDirty ? "unsaved change" : rowSaved ? "saved" : "pending"}
+                      </small>
                     </div>
                     <div>
-                      {options.map(status => (
+                      {attendanceStatusOptions.map(status => (
                         <button
                           key={status}
+                          type="button"
+                          aria-pressed={statuses[studentId] === status}
+                          disabled={saving || isSyncLoading || !editableAttendance}
+                          aria-describedby="attendance-control-status"
                           className={
                             statuses[studentId] === status ? "active" : ""
                           }
+                          title={attendanceStatusLabels[status]}
+                          aria-label={`${user?.name ?? studentId}: ${attendanceStatusLabels[status]}`}
                           onClick={() =>
                             setStatuses(prev => ({
                               ...prev,
@@ -2138,9 +4596,15 @@ function AttendanceWorkflow({ role, state, refresh, params }: WorkflowProps) {
                             }))
                           }
                         >
-                          {statusLabels[status]}
+                          <span aria-hidden="true">{attendanceStatusShortLabels[status]}</span>
+                          <strong>{attendanceStatusLabels[status]}</strong>
                         </button>
                       ))}
+                      <span
+                        className={`platform-attendance-chip ${rowDirty ? "changed" : rowSaved ? "saved" : "pending"}`}
+                      >
+                        {rowDirty ? "Unsaved" : rowSaved ? "Saved" : "Pending"}
+                      </span>
                     </div>
                   </article>
                 );
@@ -2148,26 +4612,34 @@ function AttendanceWorkflow({ role, state, refresh, params }: WorkflowProps) {
             </div>
           )}
           <button
+            type="button"
             className="platform-primary-button"
             style={{ background: roleMeta[role].color }}
-            disabled={!attendanceReady}
-            onClick={() => {
-              if (!session || !attendanceReady) return;
-              platformStore.saveAttendanceBulk(
-                selectedClass.id,
-                session.id,
-                statuses,
-                getDemoUser(role).id
-              );
-              refresh();
-              toast.success("Attendance saved", {
-                description: `${selectedClass.name} · ${session.title}`,
-              });
-            }}
+            aria-describedby="attendance-control-status"
+            disabled={!canSaveAttendance}
+            onClick={saveAttendance}
           >
             <CheckCircle2 size={15} />
-            Save attendance
+            {saving ? "Saving attendance" : "Save attendance"}
           </button>
+          <div className="platform-attendance-status-line">
+            <span>
+              {savedRecordStudentIds.size}/{selectedClass.studentIds.length} roster
+              rows saved for this session.
+            </span>
+            <span>
+              {savedSessionCount} saved · {missingSessionCount} missing session(s)
+            </span>
+            <span>
+              {dirtyStudentIds.length} unsaved change(s)
+            </span>
+          </div>
+          {saveError ? <p className="platform-attendance-error">{saveError}</p> : null}
+          {!editableAttendance ? (
+            <p className="platform-attendance-error">
+              This attendance view is read-only for {roleMeta[role].label}.
+            </p>
+          ) : null}
         </section>
         {session ? (
           <section className="platform-workflow-card">
@@ -2190,7 +4662,9 @@ function AttendanceWorkflow({ role, state, refresh, params }: WorkflowProps) {
                     <article key={record.id}>
                       <div>
                         <strong>{user?.name ?? record.studentId}</strong>
-                        <small>{statusLabels[record.status]}</small>
+                        <span className={`platform-attendance-chip ${record.status}`}>
+                          {attendanceStatusLabels[record.status]}
+                        </span>
                       </div>
                     </article>
                   );
@@ -2213,7 +4687,7 @@ function AttendanceWorkflow({ role, state, refresh, params }: WorkflowProps) {
         <MiniMetric
           label="Session status"
           value={
-            session?.attendanceSaved ? "saved" : session ? "pending" : "none"
+            selectedSessionSaved ? "saved" : session ? "pending" : "none"
           }
         />
         <MiniMetric
@@ -2231,14 +4705,19 @@ function AttendanceWorkflow({ role, state, refresh, params }: WorkflowProps) {
           </div>
           <div className="platform-row-list compact">
             {recentAttendanceAudits.length ? (
-              recentAttendanceAudits.map(audit => (
-                <article key={audit.id}>
-                  <div>
-                    <strong>Attendance saved</strong>
-                    <small>{audit.summary}</small>
-                  </div>
-                </article>
-              ))
+              recentAttendanceAudits.map(audit => {
+                const actor = state.users.find(user => user.id === audit.actorId);
+                return (
+                  <article key={audit.id}>
+                    <div>
+                      <strong>{actor?.name ?? "System"} saved attendance</strong>
+                      <small>
+                        {audit.summary} · {formatDateTime(audit.createdAt)}
+                      </small>
+                    </div>
+                  </article>
+                );
+              })
             ) : (
               <article>
                 <div>
@@ -2254,50 +4733,400 @@ function AttendanceWorkflow({ role, state, refresh, params }: WorkflowProps) {
   );
 }
 
-function SchedulingWorkflow({ role, state, refresh }: WorkflowProps) {
+function ScheduleGovernanceWorkflow({
+  role,
+  state,
+  backendSyncStatus = "offline",
+}: WorkflowProps) {
+  const actorUser = getRoleActorUser(state, role);
+  const classIds =
+    role === "headofdepartment"
+      ? getHodClassIds(state, actorUser.id)
+      : new Set(state.classGroups.map(group => group.id));
+  const scopedEvents = state.events
+    .filter(event => {
+      if (role === "superadmin") return true;
+      return event.classGroupId ? classIds.has(event.classGroupId) : event.ownerId === actorUser.id;
+    })
+    .sort((a, b) => new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime());
+  const pendingEvents = scopedEvents.filter(event => event.status === "pending");
+  const activeEvents = scopedEvents.filter(event => event.status === "active");
+  const classSessionEvents = scopedEvents.filter(event => event.type === "class_session" || event.type === "live_session");
+  const auditIds = new Set(scopedEvents.map(event => event.id));
+  const recentAudits = state.auditLogs
+    .filter(
+      audit =>
+        (audit.action === "calendar.created" ||
+          audit.action === "calendar.created_with_conflict") &&
+        auditIds.has(audit.entityId)
+    )
+    .slice(0, 5);
+
+  return (
+    <div className="platform-workflow-layout">
+      <div className="platform-workflow-main">
+        <section className="platform-workflow-card">
+          <div className="platform-workflow-title">
+            <span>
+              <CalendarDays size={16} /> Schedule governance
+            </span>
+            <strong>
+              {role === "superadmin" ? "Platform calendar" : "Academic calendar"}
+            </strong>
+          </div>
+          <div className="platform-calendar-brief">
+            <div>
+              <strong>
+                {role === "superadmin" ? "All branches" : `${classIds.size} class scope`}
+              </strong>
+              <span>
+                {activeEvents.length} active · {pendingEvents.length} pending · {classSessionEvents.length} class sessions
+              </span>
+            </div>
+            <span>{backendSyncStatus === "loading" ? "Syncing" : `${backendSyncStatus} state`}</span>
+          </div>
+          <div className="platform-calendar-scope compact">
+            <span>{roleMeta[role].label}</span>
+            <span>{scopedEvents.length} events</span>
+            <span>{pendingEvents.length ? `${pendingEvents.length} need review` : "No pending conflicts"}</span>
+          </div>
+        </section>
+        <ScheduleBoard
+          state={state}
+          events={scopedEvents}
+          limit={10}
+          emptyText="No schedule events are currently in this governance scope."
+        />
+        <EventList
+          state={state}
+          events={scopedEvents}
+          limit={10}
+          emptyText="No schedule events match this governance scope."
+        />
+      </div>
+      <aside className="platform-workflow-side">
+        <MiniMetric label="Events" value={String(scopedEvents.length)} />
+        <MiniMetric label="Pending" value={String(pendingEvents.length)} />
+        <MiniMetric label="Classes" value={String(classSessionEvents.length)} />
+        <MiniMetric label="Audits" value={String(recentAudits.length)} />
+        <section className="platform-workflow-card">
+          <div className="platform-workflow-title">
+            <span>
+              <ShieldCheck size={16} /> Schedule audit
+            </span>
+            <strong>{recentAudits.length} rows</strong>
+          </div>
+          <div className="platform-row-list compact">
+            {recentAudits.length ? (
+              recentAudits.map(audit => {
+                const actor = state.users.find(user => user.id === audit.actorId);
+                return (
+                  <article key={audit.id}>
+                    <div>
+                      <strong>
+                        {audit.action === "calendar.created_with_conflict"
+                          ? "Pending review"
+                          : "Scheduled"}
+                      </strong>
+                      <small>
+                        {actor?.name ?? "System"} · {audit.summary} · {formatDateTime(audit.createdAt)}
+                      </small>
+                    </div>
+                  </article>
+                );
+              })
+            ) : (
+              <article>
+                <div>
+                  <strong>No schedule audit rows</strong>
+                  <small>New schedule changes will appear here.</small>
+                </div>
+              </article>
+            )}
+          </div>
+        </section>
+      </aside>
+    </div>
+  );
+}
+
+function SchedulingWorkflow({
+  role,
+  state,
+  refresh,
+  backendSyncStatus = "offline",
+}: WorkflowProps) {
   const [viewMode, setViewMode] = useState<"day" | "week" | "month">("week");
+  const [typeFilter, setTypeFilter] = useState<"all" | CalendarEventType>("all");
+  const [statusFilter, setStatusFilter] = useState<"all" | "active" | "pending">("all");
   const [title, setTitle] = useState("Arabic L3 review session");
-  const [date, setDate] = useState("2026-07-02");
+  const [date, setDate] = useState(() => getFutureDateInput());
   const [starts, setStarts] = useState("09:00");
   const [ends, setEnds] = useState("10:30");
-  const [type, setType] = useState<CalendarEventType>("live_session");
-  const actorId = getDemoUser(role).id;
-  const branchUser = state.users.find(user => user.id === actorId);
+  const [type, setType] = useState<CalendarEventType>(() =>
+    getDefaultSchedulerType(role)
+  );
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState("");
+  const [lastResult, setLastResult] = useState<{
+    status: string;
+    title: string;
+    conflicts: number;
+    availabilityGaps: number;
+  } | null>(null);
+  const actorUser = getRoleActorUser(state, role);
+  const actorId = actorUser.id;
+  const typeOptions = useMemo(() => getSchedulerTypeOptions(role), [role]);
   const roleRuns = state.courseRuns.filter(run => {
     if (role === "teacher") return run.teacherId === actorId;
-    if (role === "branchadmin") return run.branchId === branchUser?.branchId;
+    if (role === "branchadmin") return run.branchId === actorUser?.branchId;
     return true;
   });
   const roleRunIds = new Set(roleRuns.map(run => run.id));
-  const classOptions = state.classGroups.filter(group => roleRunIds.has(group.courseRunId));
   const branchIds = new Set(roleRuns.map(run => run.branchId));
-  const roomOptions = state.rooms.filter(room => !branchIds.size || branchIds.has(room.branchId));
+  const branchOptions = state.branches.filter(branch => {
+    if (role === "branchadmin") return branch.id === actorUser?.branchId;
+    if (role === "teacher") return branchIds.has(branch.id);
+    return true;
+  });
+  const [branchId, setBranchId] = useState(
+    actorUser?.branchId ?? branchOptions[0]?.id ?? ""
+  );
+  const classOptions = state.classGroups.filter(group => {
+    if (!roleRunIds.has(group.courseRunId)) return false;
+    if (!branchId) return true;
+    const run = state.courseRuns.find(item => item.id === group.courseRunId);
+    return run?.branchId === branchId;
+  });
+  const roomOptions = state.rooms.filter(room => {
+    if (!branchId) return role === "teacher" ? branchIds.has(room.branchId) : true;
+    return room.branchId === branchId;
+  });
   const [roomId, setRoomId] = useState(roomOptions[0]?.id ?? "");
   const [classGroupId, setClassGroupId] = useState(classOptions[0]?.id ?? "");
-  const [lastConflict, setLastConflict] = useState<string | null>(null);
-  const invalidEvent =
-    !title.trim() || !date || !starts || !ends || starts >= ends || !roomId;
+  const branchOptionKey = branchOptions.map(branch => branch.id).join("|");
+  const classOptionKey = classOptions.map(group => group.id).join("|");
+  const roomOptionKey = roomOptions.map(room => room.id).join("|");
+  const selectedBranch = state.branches.find(branch => branch.id === branchId);
   const selectedRoom = state.rooms.find(room => room.id === roomId);
   const selectedClass = state.classGroups.find(group => group.id === classGroupId);
   const selectedRun = state.courseRuns.find(run => run.id === selectedClass?.courseRunId);
-  const roomEvents = state.events.filter(
-    event =>
-      event.roomId === roomId || (classGroupId && event.classGroupId === classGroupId)
-  );
-  const scopedEvents = state.events.filter(event => {
-    if (role === "teacher") return event.ownerId === actorId || (event.classGroupId ? classOptions.some(group => group.id === event.classGroupId) : false);
-    if (role === "branchadmin") return event.branchId === branchUser?.branchId || (event.classGroupId ? classOptions.some(group => group.id === event.classGroupId) : false);
+  const selectedTeacher = state.users.find(user => user.id === selectedRun?.teacherId);
+  const selectedTeacherId = selectedRun?.teacherId;
+  const getEventAssignedTeacherId = (event: CalendarEvent) => {
+    const eventGroup = event.classGroupId
+      ? state.classGroups.find(group => group.id === event.classGroupId)
+      : undefined;
+    const eventRun = eventGroup
+      ? state.courseRuns.find(run => run.id === eventGroup.courseRunId)
+      : undefined;
+    return eventRun?.teacherId ?? event.ownerId;
+  };
+  const needsClass = type === "class_session" || type === "live_session";
+  const usesRoom = type !== "assignment_due" && type !== "quiz_due" && type !== "reminder";
+  const requiresRoom = type === "room_booking";
+  const submitRoomId = usesRoom ? roomId || undefined : undefined;
+  const submitClassGroupId = needsClass ? classGroupId || undefined : undefined;
+  const submitBranchId =
+    (submitClassGroupId ? selectedRun?.branchId : undefined) ??
+    (submitRoomId ? selectedRoom?.branchId : undefined) ??
+    selectedBranch?.id;
+  const candidateStartsAt = date && starts ? `${date}T${starts}:00+03:00` : "";
+  const candidateEndsAt = date && ends ? `${date}T${ends}:00+03:00` : "";
+  const startsMs = Date.parse(candidateStartsAt);
+  const endsMs = Date.parse(candidateEndsAt);
+  const hasValidRange = Boolean(date && starts && ends && starts < ends && Number.isFinite(startsMs) && Number.isFinite(endsMs));
+  const isSyncLoading = backendSyncStatus === "loading";
+  const invalidEvent =
+    !title.trim() ||
+    !hasValidRange ||
+    (needsClass && !classGroupId) ||
+    (requiresRoom && !roomId) ||
+    isSyncLoading ||
+    saving;
+  const disabledReason = isSyncLoading
+    ? "Waiting for server-scoped calendar state."
+    : !title.trim()
+      ? "Add a short event title."
+      : !hasValidRange
+        ? "Choose a valid date and time range."
+        : needsClass && !classGroupId
+          ? "Choose a class group for this session."
+          : requiresRoom && !roomId
+            ? "Choose a room for this booking."
+            : "";
+  const scopedEvents = state.events
+    .filter(event => {
+      if (role === "teacher") {
+        return (
+          event.ownerId === actorId ||
+          (event.classGroupId
+            ? classOptions.some(group => group.id === event.classGroupId)
+            : false)
+        );
+      }
+      if (role === "branchadmin") {
+        return (
+          event.branchId === actorUser?.branchId ||
+          (event.classGroupId
+            ? classOptions.some(group => group.id === event.classGroupId)
+            : false)
+        );
+      }
+      if (role === "registrar") {
+        return (
+          event.type === "placement_test" ||
+          event.type === "trial_lesson" ||
+          event.type === "room_booking" ||
+          event.type === "reminder" ||
+          event.ownerId === actorId
+        );
+      }
+      return true;
+    })
+    .sort((a, b) => new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime());
+  const filteredEvents = scopedEvents.filter(event => {
+    if (typeFilter !== "all" && event.type !== typeFilter) return false;
+    if (statusFilter !== "all" && event.status !== statusFilter) return false;
     return true;
   });
+  const previewConflicts = hasValidRange
+    ? state.events.filter(event => {
+        const eventStarts = new Date(event.startsAt).getTime();
+        const eventEnds = new Date(event.endsAt).getTime();
+        const overlaps = startsMs < eventEnds && endsMs > eventStarts;
+        if (!overlaps) return false;
+        return Boolean(
+          (submitRoomId && event.roomId === submitRoomId) ||
+            event.ownerId === actorId ||
+            (submitClassGroupId && event.classGroupId === submitClassGroupId) ||
+            (selectedTeacherId &&
+              getEventAssignedTeacherId(event) === selectedTeacherId)
+        );
+      })
+    : [];
+  const conflictDetails = previewConflicts.map(event => {
+    const reasons = [
+      submitRoomId && event.roomId === submitRoomId ? "room" : "",
+      event.ownerId === actorId ? "owner" : "",
+      submitClassGroupId && event.classGroupId === submitClassGroupId ? "class" : "",
+      selectedTeacherId && getEventAssignedTeacherId(event) === selectedTeacherId
+        ? "teacher"
+        : "",
+    ].filter(Boolean);
+    return {
+      event,
+      reason: reasons.length ? reasons.join(" + ") : "time overlap",
+    };
+  });
+  const availabilityMatches =
+    hasValidRange && selectedRun && needsClass
+      ? state.teacherAvailability.filter(item => {
+          const weekday = new Date(candidateStartsAt).toLocaleDateString("en-US", {
+            weekday: "long",
+          });
+          return (
+            item.teacherId === selectedRun.teacherId &&
+            item.branchId === submitBranchId &&
+            item.weekday === weekday &&
+            item.startsAt <= starts &&
+            item.endsAt >= ends
+          );
+        })
+      : [];
+  const hasAvailabilityGap =
+    hasValidRange && Boolean(selectedRun && needsClass && !availabilityMatches.length);
+  const eventStatusCounts = {
+    active: scopedEvents.filter(event => event.status === "active").length,
+    pending: scopedEvents.filter(event => event.status === "pending").length,
+    total: scopedEvents.length,
+    visible: filteredEvents.length,
+  };
+  const scopedEventIds = new Set(scopedEvents.map(event => event.id));
+  const recentCalendarAudits = state.auditLogs
+    .filter(
+      audit =>
+        (audit.action === "calendar.created" ||
+          audit.action === "calendar.created_with_conflict") &&
+        scopedEventIds.has(audit.entityId)
+    )
+    .slice(0, 4);
 
   useEffect(() => {
+    if (!branchId || !branchOptions.some(branch => branch.id === branchId)) {
+      setBranchId(actorUser?.branchId ?? branchOptions[0]?.id ?? "");
+    }
+  }, [actorUser?.branchId, branchId, branchOptionKey]);
+
+  useEffect(() => {
+    if (!typeOptions.some(option => option.value === type)) {
+      setType(typeOptions[0]?.value ?? "live_session");
+    }
     if (!roomId || !roomOptions.some(room => room.id === roomId)) {
       setRoomId(roomOptions[0]?.id ?? "");
     }
     if (!classGroupId || !classOptions.some(group => group.id === classGroupId)) {
       setClassGroupId(classOptions[0]?.id ?? "");
     }
-  }, [roomId, classGroupId, roomOptions, classOptions]);
+  }, [classGroupId, classOptionKey, roomId, roomOptionKey, type, typeOptions]);
+
+  const useConflictSlot = () => {
+    const event = scopedEvents.find(item => item.roomId || item.classGroupId) ?? scopedEvents[0];
+    if (!event) return;
+    setTitle(`${event.title} overlap check`);
+    setDate(event.startsAt.slice(0, 10));
+    setStarts(event.startsAt.slice(11, 16));
+    setEnds(event.endsAt.slice(11, 16));
+    if (typeOptions.some(option => option.value === event.type)) {
+      setType(event.type);
+    } else {
+      setType(typeOptions[0]?.value ?? getDefaultSchedulerType(role));
+    }
+    if (event.roomId) setRoomId(event.roomId);
+    if (event.classGroupId) setClassGroupId(event.classGroupId);
+    if (event.branchId) setBranchId(event.branchId);
+  };
+
+  const createEvent = async () => {
+    if (invalidEvent) return;
+    setSaving(true);
+    setSaveError("");
+    setLastResult(null);
+    const result = await runPlatformWorkflowActionRequest({
+      type: "calendar.create",
+      eventType: type,
+      title: title.trim(),
+      startsAt: candidateStartsAt,
+      endsAt: candidateEndsAt,
+      branchId: submitBranchId,
+      roomId: submitRoomId,
+      classGroupId: submitClassGroupId,
+    });
+    setSaving(false);
+    if (!result.ok || !result.data) {
+      const message = result.error ?? "Calendar event could not be saved.";
+      setSaveError(message);
+      toast.error("Event save failed", { description: message });
+      return;
+    }
+    const payload = result.data.result.result as {
+      event?: CalendarEvent;
+      conflicts?: CalendarEvent[];
+      availabilityGaps?: string[];
+    } | undefined;
+    platformStore.setState(result.data.state);
+    refresh();
+    setLastResult({
+      status: payload?.event?.status ?? "saved",
+      title: payload?.event?.title ?? title.trim(),
+      conflicts: payload?.conflicts?.length ?? 0,
+      availabilityGaps: payload?.availabilityGaps?.length ?? 0,
+    });
+    toast.success(
+      payload?.conflicts?.length ? "Event saved with conflict" : "Event scheduled",
+      { description: `${title.trim()} · ${result.data.persistence}` }
+    );
+  };
 
   return (
     <div className="platform-workflow-layout">
@@ -2307,7 +5136,29 @@ function SchedulingWorkflow({ role, state, refresh }: WorkflowProps) {
             <span>
               <CalendarDays size={16} /> Scheduling engine
             </span>
-            <strong>Create event</strong>
+            <strong>{roleMeta[role].label} calendar</strong>
+          </div>
+          <div className="platform-calendar-brief">
+            <div>
+              <strong>{selectedBranch?.name ?? "Global scope"}</strong>
+              <span>
+                {eventStatusCounts.visible}/{eventStatusCounts.total} visible · {eventStatusCounts.pending} pending
+              </span>
+            </div>
+            <span>{backendSyncStatus === "loading" ? "Syncing" : `${backendSyncStatus} state`}</span>
+          </div>
+          <div className="platform-calendar-scope compact">
+            <span>{selectedBranch?.name ?? "Global scope"}</span>
+            <span>{usesRoom ? selectedRoom?.name ?? "No room selected" : "No room required"}</span>
+            <span>{needsClass ? selectedClass?.name ?? "Class required" : "No class required"}</span>
+            <span>{needsClass ? selectedTeacher?.name ?? "Teacher required" : "No teacher required"}</span>
+            <span>{typeFilter === "all" ? "All event types" : schedulerTypeLabels[typeFilter]}</span>
+            <span>{statusFilter === "all" ? "All statuses" : statusFilter}</span>
+            <span>
+              {previewConflicts.length || hasAvailabilityGap
+                ? `${previewConflicts.length + (hasAvailabilityGap ? 1 : 0)} schedule review`
+                : "Clear preview"}
+            </span>
           </div>
           <div className="platform-segmented" aria-label="Calendar view">
             {(["day", "week", "month"] as const).map(mode => (
@@ -2319,6 +5170,33 @@ function SchedulingWorkflow({ role, state, refresh }: WorkflowProps) {
                 {mode}
               </button>
             ))}
+          </div>
+          <div className="platform-calendar-filter-grid">
+            <label>
+              Event filter
+              <select
+                value={typeFilter}
+                onChange={event => setTypeFilter(event.target.value as "all" | CalendarEventType)}
+              >
+                <option value="all">All event types</option>
+                {typeOptions.map(option => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Status filter
+              <select
+                value={statusFilter}
+                onChange={event => setStatusFilter(event.target.value as "all" | "active" | "pending")}
+              >
+                <option value="all">All statuses</option>
+                <option value="active">Active</option>
+                <option value="pending">Pending conflict</option>
+              </select>
+            </label>
           </div>
           <div className="platform-inline-form grid">
             <label>
@@ -2336,10 +5214,29 @@ function SchedulingWorkflow({ role, state, refresh }: WorkflowProps) {
                   setType(event.target.value as CalendarEventType)
                 }
               >
-                <option value="live_session">Live session</option>
-                <option value="placement_test">Placement test</option>
-                <option value="assignment_due">Assignment due</option>
-                <option value="room_booking">Room booking</option>
+                {typeOptions.map(option => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Branch
+              <select
+                value={branchId}
+                onChange={event => setBranchId(event.target.value)}
+                disabled={role === "branchadmin" || !branchOptions.length}
+              >
+                {branchOptions.length ? (
+                  branchOptions.map(branch => (
+                    <option key={branch.id} value={branch.id}>
+                      {branch.name}
+                    </option>
+                  ))
+                ) : (
+                  <option value="">No branch</option>
+                )}
               </select>
             </label>
             <label>
@@ -2369,23 +5266,33 @@ function SchedulingWorkflow({ role, state, refresh }: WorkflowProps) {
             <label>
               Room
               <select
-                value={roomId}
+                value={usesRoom ? roomId : ""}
                 onChange={event => setRoomId(event.target.value)}
+                disabled={!roomOptions.length || !usesRoom}
               >
-                {roomOptions.map(room => (
-                  <option key={room.id} value={room.id}>
-                    {room.name}
-                  </option>
-                ))}
+                {!usesRoom ? (
+                  <option value="">No room required</option>
+                ) : roomOptions.length ? (
+                  roomOptions.map(room => (
+                    <option key={room.id} value={room.id}>
+                      {room.name}
+                    </option>
+                  ))
+                ) : (
+                  <option value="">No room</option>
+                )}
               </select>
             </label>
             <label>
               Class
               <select
-                value={classGroupId}
+                value={needsClass ? classGroupId : ""}
                 onChange={event => setClassGroupId(event.target.value)}
+                disabled={!classOptions.length || !needsClass}
               >
-                {classOptions.length ? (
+                {!needsClass ? (
+                  <option value="">No class required</option>
+                ) : classOptions.length ? (
                   classOptions.map(group => (
                     <option key={group.id} value={group.id}>
                       {group.name}
@@ -2397,69 +5304,93 @@ function SchedulingWorkflow({ role, state, refresh }: WorkflowProps) {
               </select>
             </label>
           </div>
-          {lastConflict ? (
-            <p className="platform-form-error">{lastConflict}</p>
-          ) : null}
-          <div className="platform-conflict-panel">
+          <div className={`platform-conflict-panel ${previewConflicts.length || hasAvailabilityGap ? "warning" : "clear"}`}>
             <strong>Conflict preview</strong>
-            <span>{selectedRoom?.name ?? "No room selected"}</span>
-            {roomEvents.length ? (
-              roomEvents
+            <span>
+              {hasValidRange
+                ? `${new Date(candidateStartsAt).toLocaleString()} to ${new Date(candidateEndsAt).toLocaleTimeString()}`
+                : "Choose a valid date and time range"}
+            </span>
+            {previewConflicts.length ? (
+              conflictDetails
                 .slice(0, viewMode === "day" ? 2 : viewMode === "week" ? 4 : 6)
-                .map(event => (
+                .map(({ event, reason }) => (
                   <small key={event.id}>
-                    {event.title} ·{" "}
-                    {new Date(event.startsAt).toLocaleDateString()} ·{" "}
-                    {event.status}
+                    {event.title} · {reason} · {event.status}
                   </small>
                 ))
             ) : (
-              <small>No room or class conflicts in the local calendar.</small>
+              <small>No room, teacher, or class overlap detected for this slot.</small>
             )}
+            {hasAvailabilityGap ? (
+              <small>
+                {selectedTeacher?.name ?? "Teacher"} has no availability block for
+                {" "}
+                {new Date(candidateStartsAt).toLocaleDateString("en-US", {
+                  weekday: "long",
+                })}
+                {" "}
+                {starts}-{ends}.
+              </small>
+            ) : null}
           </div>
-          <button
-            className="platform-primary-button"
-            style={{ background: roleMeta[role].color }}
-            disabled={invalidEvent}
-            onClick={() => {
-              const result = platformStore.createCalendarEvent(
-                {
-                  title,
-                  type,
-                  startsAt: `${date}T${starts}:00+03:00`,
-                  endsAt: `${date}T${ends}:00+03:00`,
-                  ownerId: actorId,
-                  branchId: selectedRun?.branchId ?? selectedRoom?.branchId,
-                  roomId,
-                  classGroupId: classGroupId || undefined,
-                },
-                actorId
-              );
-              setLastConflict(
-                result.conflicts.length
-                  ? `${result.conflicts.length} conflict(s) detected. Event saved as pending.`
-                  : null
-              );
-              refresh();
-              toast.success(
-                result.conflicts.length
-                  ? "Event saved with conflict"
-                  : "Event scheduled"
-              );
-            }}
-          >
-            Create event
-          </button>
+          {lastResult ? (
+            <div className={`platform-scheduler-feedback ${lastResult.conflicts || lastResult.availabilityGaps ? "warning" : "success"}`}>
+              <strong>{lastResult.title}</strong>
+              <span>
+                {lastResult.status} ·{" "}
+                {lastResult.conflicts || lastResult.availabilityGaps
+                  ? `${lastResult.conflicts} conflict(s), ${lastResult.availabilityGaps} availability review(s)`
+                  : "no conflicts"}
+              </span>
+            </div>
+          ) : null}
+          {saveError ? <p className="platform-attendance-error">{saveError}</p> : null}
+          <div className="platform-calendar-actions">
+            <button type="button" onClick={useConflictSlot} disabled={!scopedEvents.length}>
+              Use conflict slot
+            </button>
+            <button
+              type="button"
+              className="platform-primary-button"
+              style={{ background: roleMeta[role].color }}
+              disabled={invalidEvent}
+              onClick={createEvent}
+            >
+              <CalendarDays size={15} />
+              {saving ? "Saving event" : "Create event"}
+            </button>
+          </div>
+          <p className="platform-calendar-hint">
+            {disabledReason ||
+              (previewConflicts.length
+                ? "This will save as pending so operations can resolve the conflict."
+                : hasAvailabilityGap
+                  ? "This will save as pending because teacher availability needs review."
+                : "This event is ready to save through the server action endpoint.")}
+          </p>
         </section>
+        <ScheduleBoard
+          state={state}
+          events={filteredEvents}
+          limit={viewMode === "day" ? 3 : viewMode === "week" ? 6 : 10}
+          emptyText="No events match this role scope yet."
+        />
         <EventList
           state={state}
-          events={scopedEvents}
+          events={filteredEvents}
           limit={viewMode === "day" ? 3 : viewMode === "week" ? 5 : 8}
+          emptyText="Create an event or adjust the role filters."
         />
       </div>
       <aside className="platform-workflow-side">
-        <MiniMetric label="Events" value={String(state.events.length)} />
-        <MiniMetric label="Rooms" value={String(state.rooms.length)} />
+        <div className="platform-calendar-status-grid">
+          <MiniMetric label="Scoped events" value={String(eventStatusCounts.total)} />
+          <MiniMetric label="Visible" value={String(eventStatusCounts.visible)} />
+          <MiniMetric label="Active" value={String(eventStatusCounts.active)} />
+          <MiniMetric label="Pending" value={String(eventStatusCounts.pending)} />
+        </div>
+        <MiniMetric label="Rooms" value={String(roomOptions.length)} />
         <MiniMetric
           label="Availability blocks"
           value={String(state.teacherAvailability.length)}
@@ -2467,13 +5398,50 @@ function SchedulingWorkflow({ role, state, refresh }: WorkflowProps) {
         <section className="platform-workflow-card">
           <div className="platform-workflow-title">
             <span>
-              <CalendarDays size={16} /> Recurring rules
+              <ShieldCheck size={16} /> Schedule audit
             </span>
-            <strong>Mock mode</strong>
+            <strong>{recentCalendarAudits.length} rows</strong>
+          </div>
+          <div className="platform-row-list compact">
+            {recentCalendarAudits.length ? (
+              recentCalendarAudits.map(audit => {
+                const actor = state.users.find(user => user.id === audit.actorId);
+                return (
+                  <article key={audit.id}>
+                    <div>
+                      <strong>
+                        {audit.action === "calendar.created_with_conflict"
+                          ? "Saved with conflict"
+                          : "Event scheduled"}
+                      </strong>
+                      <small>
+                        {actor?.name ?? "System"} · {audit.summary} · {formatDateTime(audit.createdAt)}
+                      </small>
+                    </div>
+                  </article>
+                );
+              })
+            ) : (
+              <article>
+                <div>
+                  <strong>No schedule audit rows</strong>
+                  <small>Create an event to record scheduler evidence.</small>
+                </div>
+              </article>
+            )}
+          </div>
+        </section>
+        <section className="platform-workflow-card">
+          <div className="platform-workflow-title">
+            <span>
+              <CalendarDays size={16} /> Scheduler boundaries
+            </span>
+            <strong>Server guarded</strong>
           </div>
           <p>
-            Recurring schedules and external calendar sync stay disabled until a
-            server scheduler is connected.
+            Calendar saves use the platform action endpoint. Recurring rules and
+            external calendar sync stay disabled until a server scheduler is
+            connected.
           </p>
           <button disabled>Enable recurrence</button>
         </section>
@@ -2482,11 +5450,55 @@ function SchedulingWorkflow({ role, state, refresh }: WorkflowProps) {
   );
 }
 
-function CertificateWorkflow({ role, state, refresh }: WorkflowProps) {
+function WorkflowLoadingCard({ label }: { label: string }) {
+  return (
+    <div className="platform-workflow-layout">
+      <div className="platform-workflow-main">
+        <section className="platform-workflow-card">
+          <div className="platform-workflow-title">
+            <span>
+              <ShieldCheck size={16} /> Loading scoped data
+            </span>
+            <strong>{label}</strong>
+          </div>
+          <p className="platform-muted-copy">
+            Fetching the server-scoped workspace before certificate details are
+            shown.
+          </p>
+        </section>
+      </div>
+    </div>
+  );
+}
+
+function CertificateWorkflow({
+  role,
+  state,
+  refresh,
+  backendSyncStatus,
+}: WorkflowProps) {
+  if (backendSyncStatus === "loading") {
+    return <WorkflowLoadingCard label="Certificate governance" />;
+  }
+
+  const canManageCertificates = role === "headofdepartment";
+  const [statusFilter, setStatusFilter] = useState<Certificate["status"] | "all">("all");
+  const [searchTerm, setSearchTerm] = useState("");
+  const certificateOptions = state.certificates.filter(certificate => {
+    if (statusFilter !== "all" && certificate.status !== statusFilter) return false;
+    const student = state.students.find(item => item.id === certificate.studentId);
+    const user = state.users.find(item => item.id === student?.userId);
+    const course = state.courses.find(item => item.id === certificate.courseId);
+    const searchable = `${certificate.verificationCode} ${user?.name ?? ""} ${course?.title ?? ""}`.toLowerCase();
+    return searchable.includes(searchTerm.trim().toLowerCase());
+  });
   const [selectedId, setSelectedId] = useState(state.certificates[0]?.id ?? "");
+  const [savingKey, setSavingKey] = useState("");
+  const [workflowMessage, setWorkflowMessage] = useState("");
+  const [workflowError, setWorkflowError] = useState("");
   const selected =
-    state.certificates.find(certificate => certificate.id === selectedId) ??
-    state.certificates[0];
+    certificateOptions.find(certificate => certificate.id === selectedId) ??
+    certificateOptions[0];
   const selectedStudent = state.students.find(
     student => student.id === selected?.studentId
   );
@@ -2496,10 +5508,93 @@ function CertificateWorkflow({ role, state, refresh }: WorkflowProps) {
   const selectedCourse = state.courses.find(
     course => course.id === selected?.courseId
   );
+  const selectedDocument = state.documents.find(
+    document =>
+      selected &&
+      document.ownerId === selected.studentId &&
+      document.type === "certificate" &&
+      (document.url === `#certificate-${selected.id}` ||
+        document.title.includes(selected.verificationCode))
+  );
+  const selectedIssued = selected?.status === "issued";
+  const selectedApprover = state.users.find(user => user.id === selected?.approvedBy);
+  const selectedIssuer = state.users.find(user => user.id === selected?.issuedBy);
+  const selectedAudits = state.auditLogs
+    .filter(
+      audit =>
+        selected &&
+        audit.entityType === "Certificate" &&
+        audit.entityId === selected.id &&
+        (audit.action === "certificate.approved" || audit.action === "certificate.issued")
+    )
+    .sort(
+      (a, b) =>
+        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    );
+  const certificateSummary = getCertificateSummary(
+    state,
+    new Set(state.certificates.map(certificate => certificate.id))
+  );
   const [verificationCode, setVerificationCode] = useState(
-    selected?.verificationCode ?? ""
+    selected?.status === "issued" ? selected.verificationCode : ""
   );
   const verification = platformStore.verifyCertificate(verificationCode);
+
+  useEffect(() => {
+    if (!selected && certificateOptions[0]) {
+      setSelectedId(certificateOptions[0].id);
+      setVerificationCode(
+        certificateOptions[0].status === "issued"
+          ? certificateOptions[0].verificationCode
+          : ""
+      );
+    }
+  }, [certificateOptions, selected]);
+
+  const runCertificateAction = async (
+    actionType: "certificate.approve" | "certificate.issue",
+    certificate: Certificate
+  ) => {
+    const nextKey = `${actionType}:${certificate.id}`;
+    setSavingKey(nextKey);
+    setWorkflowMessage("");
+    setWorkflowError("");
+    const result = await runPlatformWorkflowActionRequest({
+      type: actionType,
+      certificateId: certificate.id,
+    });
+    setSavingKey("");
+    if (!result.ok || !result.data) {
+      const message = result.error ?? "Certificate workflow failed.";
+      setWorkflowError(message);
+      toast.error("Certificate action failed", { description: message });
+      return;
+    }
+    const changed = result.data.result.result as Certificate | undefined;
+    platformStore.setState(result.data.state);
+    refresh();
+    setSelectedId(certificate.id);
+    setVerificationCode(
+      changed?.status === "issued" ? changed.verificationCode : ""
+    );
+    if (!changed) {
+      const message =
+        actionType === "certificate.issue"
+          ? "Certificate was not issued because it is not approved yet."
+          : "Certificate state did not change.";
+      setWorkflowMessage(message);
+      toast.info(message);
+      return;
+    }
+    const message =
+      actionType === "certificate.approve"
+        ? `Approved ${changed.verificationCode}.`
+        : `Issued ${changed.verificationCode}.`;
+    setWorkflowMessage(`${message} Saved to ${result.data.persistence}.`);
+    toast.success(actionType === "certificate.approve" ? "Certificate approved" : "Certificate issued", {
+      description: result.data.persistence,
+    });
+  };
 
   return (
     <div className="platform-workflow-layout">
@@ -2509,15 +5604,50 @@ function CertificateWorkflow({ role, state, refresh }: WorkflowProps) {
             <span>
               <Award size={16} /> Certificate workflow
             </span>
-            <strong>Approval queue</strong>
+            <strong>{certificateOptions.length} in scope</strong>
           </div>
+          <div className="platform-certificate-toolbar">
+            <div className="platform-status-tabs" aria-label="Certificate status filter">
+              {(["all", ...certificateStatusOptions] as Array<Certificate["status"] | "all">).map(status => (
+                <button
+                  key={status}
+                  type="button"
+                  className={statusFilter === status ? "active" : ""}
+                  onClick={() => setStatusFilter(status)}
+                >
+                  {status === "all" ? "All" : certificateStatusLabels[status]}
+                </button>
+              ))}
+            </div>
+            <label className="platform-compact-search">
+              Search certificates
+              <input
+                value={searchTerm}
+                onChange={event => setSearchTerm(event.target.value)}
+                placeholder="Learner, course, or code"
+              />
+            </label>
+          </div>
+          {!canManageCertificates ? (
+            <p className="platform-muted-copy">
+              Super admin reviews platform certificate health and audit evidence here.
+              Approval and issue actions remain HOD-scoped on the server.
+            </p>
+          ) : null}
           <div className="platform-row-list">
-            {state.certificates.map(certificate =>
-              (() => {
+            {certificateOptions.length ? (
+              certificateOptions.map(certificate =>
+                (() => {
                 const approved =
                   certificate.status === "approved" ||
                   certificate.status === "issued";
                 const issued = certificate.status === "issued";
+                const eligible =
+                  certificate.grade >= 80 && certificate.attendanceRate >= 80;
+                const canApprove =
+                  certificate.status === "pending_approval" && eligible;
+                const approveKey = `certificate.approve:${certificate.id}`;
+                const issueKey = `certificate.issue:${certificate.id}`;
                 return (
                   <article
                     key={certificate.id}
@@ -2529,78 +5659,96 @@ function CertificateWorkflow({ role, state, refresh }: WorkflowProps) {
                       <strong>{certificate.verificationCode}</strong>
                       <small>
                         Grade {certificate.grade}% · Attendance{" "}
-                        {certificate.attendanceRate}% · {certificate.status}
+                        {certificate.attendanceRate}% · {certificateStatusLabels[certificate.status]}
                       </small>
                     </div>
                     <div className="platform-row-actions">
+                      <span className={`platform-certificate-status ${certificate.status}`}>
+                        {certificateStatusLabels[certificate.status]}
+                      </span>
                       <button
+                        type="button"
                         onClick={() => {
                           setSelectedId(certificate.id);
-                          setVerificationCode(certificate.verificationCode);
+                          setVerificationCode(
+                            certificate.status === "issued"
+                              ? certificate.verificationCode
+                              : ""
+                          );
                         }}
                       >
                         Preview
                       </button>
-                      <button
-                        disabled={approved}
-                        onClick={() => {
-                          platformStore.approveCertificate(
-                            certificate.id,
-                            getDemoUser(role).id
-                          );
-                          refresh();
-                          toast.success("Certificate approved");
-                        }}
-                      >
-                        {approved ? "Approved" : "Approve"}
-                      </button>
-                      <button
-                        disabled={!approved || issued}
-                        onClick={() => {
-                          const issuedCertificate = platformStore.issueCertificate(
-                            certificate.id,
-                            getDemoUser(role).id
-                          );
-                          refresh();
-                          if (issuedCertificate?.status === "issued") {
-                            toast.success("Certificate issued");
-                          } else {
-                            toast.info("Approve the certificate before issuing it");
-                          }
-                        }}
-                      >
-                        {issued ? "Issued" : approved ? "Issue" : "Approve first"}
-                      </button>
+                      {canManageCertificates ? (
+                        <>
+                          <button
+                            type="button"
+                            disabled={!canApprove || Boolean(savingKey)}
+                            onClick={() => runCertificateAction("certificate.approve", certificate)}
+                          >
+                            {savingKey === approveKey
+                              ? "Approving"
+                              : approved
+                                ? "Approved"
+                                : eligible
+                                  ? "Approve"
+                                  : "Not eligible"}
+                          </button>
+                          <button
+                            type="button"
+                            disabled={!approved || issued || Boolean(savingKey)}
+                            onClick={() => runCertificateAction("certificate.issue", certificate)}
+                          >
+                            {savingKey === issueKey ? "Issuing" : issued ? "Issued" : approved ? "Issue" : "Approve first"}
+                          </button>
+                        </>
+                      ) : null}
                     </div>
                   </article>
                 );
               })()
+              )
+            ) : (
+              <div className="platform-empty-state">
+                <strong>No certificates in scope</strong>
+                <span>Eligible learner certificates will appear after grades and attendance are ready.</span>
+              </div>
             )}
           </div>
+          {workflowMessage ? <p className="platform-scheduler-feedback success">{workflowMessage}</p> : null}
+          {workflowError ? <p className="platform-attendance-error">{workflowError}</p> : null}
         </section>
         {selected ? (
-          <section className="platform-certificate-preview">
-            <div>
-              <span>Nile Learn Certificate</span>
-              <strong>{selectedUser?.name ?? "Student"}</strong>
-              <p>
-                {selectedCourse?.title ?? "Course"} · Grade {selected.grade}% ·
-                Attendance {selected.attendanceRate}%
-              </p>
-              <em>{selected.verificationCode}</em>
-            </div>
-            <button onClick={() => window.print()}>
-              <Download size={15} />
-              Print preview
-            </button>
-          </section>
+          <CertificateEligibilityEvidence
+            certificate={selected}
+            studentName={selectedUser?.name ?? "Student"}
+            courseTitle={selectedCourse?.title ?? "Course"}
+            documentStatus={selectedDocument?.status}
+            approverName={selectedApprover?.name}
+            issuerName={selectedIssuer?.name}
+            auditSummary={
+              selectedAudits[0]
+                ? `${selectedAudits[0].summary} · ${formatDateTime(selectedAudits[0].createdAt)}`
+                : undefined
+            }
+          />
+        ) : null}
+        {selected ? (
+          <CertificatePreview
+            certificate={selected}
+            studentName={selectedUser?.name ?? "Student"}
+            courseTitle={selectedCourse?.title ?? "Course"}
+            documentStatus={selectedDocument?.status}
+            revealCode
+            context="governance"
+          />
         ) : null}
       </div>
       <aside className="platform-workflow-side">
         <MiniMetric
           label="Pending"
           value={String(
-            state.certificates.filter(
+            certificateOptions.filter(
               item => item.status === "pending_approval"
             ).length
           )}
@@ -2608,42 +5756,56 @@ function CertificateWorkflow({ role, state, refresh }: WorkflowProps) {
         <MiniMetric
           label="Approved"
           value={String(
-            state.certificates.filter(item => item.status === "approved").length
+            certificateOptions.filter(item => item.status === "approved").length
           )}
         />
         <MiniMetric
           label="Issued"
           value={String(
-            state.certificates.filter(item => item.status === "issued").length
+            certificateOptions.filter(item => item.status === "issued").length
           )}
+        />
+        <MiniMetric
+          label="Documents"
+          value={String(certificateSummary.issuedDocuments.length)}
+        />
+        <CertificateVerifyPanel
+          title="Local lookup"
+          label="Verification code"
+          value={verificationCode}
+          onChange={setVerificationCode}
+          disabled={!selectedIssued}
+          verification={verification}
         />
         <section className="platform-workflow-card">
           <div className="platform-workflow-title">
             <span>
-              <ShieldCheck size={16} /> Verify code
+              <FileText size={16} /> Certificate audit
             </span>
-            <strong>Local lookup</strong>
+            <strong>{certificateSummary.recentAudits.length} rows</strong>
           </div>
-          <div className="platform-inline-form">
-            <label>
-              Verification code
-              <input
-                value={verificationCode}
-                onChange={event => setVerificationCode(event.target.value)}
-              />
-            </label>
-          </div>
-          <div
-            className={`platform-verification-result ${verification ? "valid" : "missing"}`}
-          >
-            <strong>
-              {verification ? "Certificate found" : "No local match"}
-            </strong>
-            <small>
-              {verification
-                ? `${verification.user?.name ?? "Student"} · ${verification.course?.title ?? "Course"}`
-                : "Check the code or issue the certificate first."}
-            </small>
+          <div className="platform-row-list compact">
+            {certificateSummary.recentAudits.length ? (
+              certificateSummary.recentAudits.map(audit => (
+                <article key={audit.id}>
+                  <div>
+                    <strong>
+                      {audit.action === "certificate.issued"
+                        ? "Issued"
+                        : "Approved"}
+                    </strong>
+                    <small>{audit.summary} · {formatDateTime(audit.createdAt)}</small>
+                  </div>
+                </article>
+              ))
+            ) : (
+              <article>
+                <div>
+                  <strong>No audit rows yet</strong>
+                  <small>Approval and issue actions will appear here.</small>
+                </div>
+              </article>
+            )}
           </div>
         </section>
       </aside>
@@ -2652,14 +5814,31 @@ function CertificateWorkflow({ role, state, refresh }: WorkflowProps) {
 }
 
 function QuranWorkflow({ role, state, refresh }: WorkflowProps) {
-  const progress = state.quranProgress[0];
-  const submission = state.recitationSubmissions[0];
-  const [memorized, setMemorized] = useState(progress?.memorizedPercent ?? 0);
-  const [tajweed, setTajweed] = useState(progress?.tajweedScore ?? 0);
-  const [feedback, setFeedback] = useState(
-    "Madd timing improved. Continue daily revision."
+  const [selectedSubmissionId, setSelectedSubmissionId] = useState(
+    state.recitationSubmissions[0]?.id ?? ""
   );
-  const [mistakes, setMistakes] = useState<string[]>(["Madd timing"]);
+  const selectedSubmission =
+    state.recitationSubmissions.find(item => item.id === selectedSubmissionId) ??
+    state.recitationSubmissions[0];
+  const selectedStudent = state.students.find(
+    item => item.id === selectedSubmission?.studentId
+  );
+  const selectedUser = state.users.find(item => item.id === selectedStudent?.userId);
+  const selectedPlan = state.quranPlans.find(
+    item => item.studentId === selectedSubmission?.studentId
+  );
+  const selectedProgress = state.quranProgress.find(
+    item => item.studentId === selectedSubmission?.studentId
+  ) ?? state.quranProgress[0];
+  const [memorized, setMemorized] = useState(selectedProgress?.memorizedPercent ?? 0);
+  const [tajweed, setTajweed] = useState(selectedProgress?.tajweedScore ?? 0);
+  const [feedback, setFeedback] = useState(
+    selectedSubmission?.feedback ?? selectedProgress?.notes ?? ""
+  );
+  const [mistakes, setMistakes] = useState<string[]>([]);
+  const [savingKey, setSavingKey] = useState("");
+  const [workflowMessage, setWorkflowMessage] = useState("");
+  const [workflowError, setWorkflowError] = useState("");
   const mistakeOptions = [
     "Madd timing",
     "Makharij",
@@ -2667,7 +5846,66 @@ function QuranWorkflow({ role, state, refresh }: WorkflowProps) {
     "Stopping",
     "Revision gap",
   ];
-  const waveform = [34, 62, 45, 78, 52, 88, 41, 64, 36, 70, 58, 46];
+
+  useEffect(() => {
+    setMemorized(selectedProgress?.memorizedPercent ?? 0);
+    setTajweed(selectedProgress?.tajweedScore ?? 0);
+    setFeedback(selectedSubmission?.feedback ?? selectedProgress?.notes ?? "");
+    setMistakes([]);
+  }, [selectedProgress?.id, selectedSubmission?.id]);
+
+  const submitReview = async () => {
+    if (!selectedSubmission || !feedback.trim()) return;
+    const nextKey = `review:${selectedSubmission.id}`;
+    setSavingKey(nextKey);
+    setWorkflowMessage("");
+    setWorkflowError("");
+    const result = await runPlatformWorkflowActionRequest({
+      type: "recitation.review",
+      submissionId: selectedSubmission.id,
+      feedback: [
+        feedback.trim(),
+        mistakes.length ? `Focus tags: ${mistakes.join(", ")}` : "",
+      ].filter(Boolean).join(" "),
+    });
+    setSavingKey("");
+    if (!result.ok || !result.data) {
+      const message = result.error ?? "Recitation review could not be saved.";
+      setWorkflowError(message);
+      toast.error("Review not saved", { description: message });
+      return;
+    }
+    platformStore.setState(result.data.state);
+    refresh();
+    setWorkflowMessage(`Review saved · ${result.data.persistence}`);
+    toast.success("Recitation reviewed", { description: result.data.persistence });
+  };
+
+  const updateProgress = async () => {
+    if (!selectedProgress) return;
+    const nextKey = `progress:${selectedProgress.id}`;
+    setSavingKey(nextKey);
+    setWorkflowMessage("");
+    setWorkflowError("");
+    const result = await runPlatformWorkflowActionRequest({
+      type: "quran.progress.update",
+      recordId: selectedProgress.id,
+      memorizedPercent: memorized,
+      tajweedScore: tajweed,
+      notes: feedback.trim(),
+    });
+    setSavingKey("");
+    if (!result.ok || !result.data) {
+      const message = result.error ?? "Quran progress could not be saved.";
+      setWorkflowError(message);
+      toast.error("Progress not saved", { description: message });
+      return;
+    }
+    platformStore.setState(result.data.state);
+    refresh();
+    setWorkflowMessage(`Progress updated · ${result.data.persistence}`);
+    toast.success("Quran progress updated", { description: result.data.persistence });
+  };
 
   return (
     <div className="platform-workflow-layout">
@@ -2675,15 +5913,62 @@ function QuranWorkflow({ role, state, refresh }: WorkflowProps) {
         <section className="platform-workflow-card">
           <div className="platform-workflow-title">
             <span>
-              <Headphones size={16} /> Quran progress
+              <Headphones size={16} /> Quran review workspace
             </span>
-            <strong>{progress?.surah}</strong>
+            <strong>{selectedUser?.name ?? "No learner selected"}</strong>
           </div>
+          <div className="platform-row-list compact">
+            {state.recitationSubmissions.length ? state.recitationSubmissions.map(item => {
+              const student = state.students.find(studentItem => studentItem.id === item.studentId);
+              const user = state.users.find(userItem => userItem.id === student?.userId);
+              return (
+                <article
+                  key={item.id}
+                  className={selectedSubmission?.id === item.id ? "selected" : ""}
+                >
+                  <div>
+                    <strong>{item.title}</strong>
+                    <small>{user?.name ?? "Learner"} · {formatDateTime(item.submittedAt)}</small>
+                  </div>
+                  <div className="platform-row-actions">
+                    <span className={`platform-status ${item.status}`}>{item.status}</span>
+                    <button type="button" onClick={() => setSelectedSubmissionId(item.id)}>
+                      Open
+                    </button>
+                  </div>
+                </article>
+              );
+            }) : (
+              <article>
+                <div>
+                  <strong>No recitations in scope</strong>
+                  <small>Submitted recitations from assigned Quran learners will appear here.</small>
+                </div>
+              </article>
+            )}
+          </div>
+        </section>
+
+        <section className="platform-workflow-card">
+          <div className="platform-workflow-title">
+            <span>
+              <BookMarked size={16} /> Memorization and tajweed
+            </span>
+            <strong>{selectedProgress?.surah ?? selectedPlan?.target ?? "No progress record"}</strong>
+          </div>
+          <QuranProgressSummary
+            role={role}
+            progress={selectedProgress}
+            plan={selectedPlan}
+            recitationCount={state.recitationSubmissions.length}
+          />
           <div className="platform-inline-form grid">
             <label>
               Memorized %
               <input
                 type="number"
+                min="0"
+                max="100"
                 value={memorized}
                 onChange={event => setMemorized(Number(event.target.value))}
               />
@@ -2692,6 +5977,8 @@ function QuranWorkflow({ role, state, refresh }: WorkflowProps) {
               Tajweed score
               <input
                 type="number"
+                min="0"
+                max="100"
                 value={tajweed}
                 onChange={event => setTajweed(Number(event.target.value))}
               />
@@ -2701,20 +5988,11 @@ function QuranWorkflow({ role, state, refresh }: WorkflowProps) {
             value={feedback}
             onChange={event => setFeedback(event.target.value)}
           />
-          <div
-            className="platform-waveform"
-            aria-label="Recitation waveform placeholder"
-          >
-            {waveform.map((height, index) => (
-              <span
-                key={index}
-                style={{
-                  height: `${height}%`,
-                  background: roleMeta[role].color,
-                }}
-              />
-            ))}
-          </div>
+          <RecitationWaveformPlaceholder
+            role={role}
+            label="Recitation waveform placeholder"
+            status={selectedSubmission?.status}
+          />
           <div className="platform-tag-grid" aria-label="Tajweed mistake tags">
             {mistakeOptions.map(mistake => (
               <button
@@ -2734,48 +6012,34 @@ function QuranWorkflow({ role, state, refresh }: WorkflowProps) {
           </div>
           <div className="platform-action-grid">
             <button
-              disabled={!progress}
-              onClick={() => {
-                platformStore.updateQuranProgress(
-                  progress.id,
-                  memorized,
-                  tajweed,
-                  feedback,
-                  getDemoUser(role).id
-                );
-                refresh();
-                toast.success("Quran progress updated");
-              }}
+              disabled={!selectedProgress || Boolean(savingKey)}
+              onClick={updateProgress}
             >
-              Update progress
+              {savingKey === `progress:${selectedProgress?.id}` ? "Updating" : "Update progress"}
             </button>
             <button
-              disabled={!submission || submission.status === "approved"}
-              onClick={() => {
-                platformStore.reviewRecitation(
-                  submission.id,
-                  feedback,
-                  getDemoUser(role).id
-                );
-                refresh();
-                toast.success("Recitation reviewed");
-              }}
+              disabled={!selectedSubmission || selectedSubmission.status === "approved" || !feedback.trim() || Boolean(savingKey)}
+              onClick={submitReview}
             >
-              {submission?.status === "approved"
+              {savingKey === `review:${selectedSubmission?.id}`
+                ? "Saving"
+                : selectedSubmission?.status === "approved"
                 ? "Reviewed"
                 : "Review recitation"}
             </button>
           </div>
+          {workflowMessage ? <p className="platform-scheduler-feedback success">{workflowMessage}</p> : null}
+          {workflowError ? <p className="platform-attendance-error">{workflowError}</p> : null}
         </section>
       </div>
       <aside className="platform-workflow-side">
         <MiniMetric
           label="Plan"
-          value={state.quranPlans[0]?.target ?? "No plan"}
+          value={selectedPlan?.target ?? "No plan"}
         />
         <MiniMetric
           label="Current Juz"
-          value={state.quranPlans[0]?.currentJuz ?? "-"}
+          value={selectedPlan?.currentJuz ?? "-"}
         />
         <MiniMetric
           label="Recitations"
@@ -2786,13 +6050,12 @@ function QuranWorkflow({ role, state, refresh }: WorkflowProps) {
             <span>
               <Headphones size={16} /> Audio storage
             </span>
-            <strong>Not connected</strong>
+            <strong>Provider pending</strong>
           </div>
           <p>
-            Review tools are ready locally. Upload and playback require the
-            future storage provider.
+            Review evidence is saved now. Audio upload and playback will use
+            the future server-side storage provider.
           </p>
-          <button disabled>Upload audio</button>
         </section>
       </aside>
     </div>
@@ -2800,7 +6063,8 @@ function QuranWorkflow({ role, state, refresh }: WorkflowProps) {
 }
 
 function MessageWorkflow({ role, state, refresh }: WorkflowProps) {
-  const actorId = getDemoUser(role).id;
+  const actorUser = getRoleActorUser(state, role);
+  const actorId = actorUser.id;
   const teacherRunIds = new Set(
     state.courseRuns
       .filter(run => run.teacherId === actorId)
@@ -2926,53 +6190,225 @@ function MessageWorkflow({ role, state, refresh }: WorkflowProps) {
 }
 
 function FinanceWorkflow({ role, state, refresh }: WorkflowProps) {
+  const actor = getRoleActorUser(state, role);
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState<"all" | Payment["status"]>("all");
+  const [amountDrafts, setAmountDrafts] = useState<Record<string, string>>({});
+  const [methodDrafts, setMethodDrafts] = useState<Record<string, Payment["method"]>>({});
+  const [referenceDrafts, setReferenceDrafts] = useState<Record<string, string>>({});
+  const [savingInvoiceId, setSavingInvoiceId] = useState("");
+  const [actionError, setActionError] = useState("");
+  const paymentMethods: Payment["method"][] = ["manual", "cash", "bank_transfer", "card"];
+  const invoiceBranchId = (invoiceId: string) => {
+    const invoice = state.invoices.find(item => item.id === invoiceId);
+    const enrollment = state.enrollments.find(item => item.studentId === invoice?.studentId);
+    const run = state.courseRuns.find(item => item.id === enrollment?.courseRunId);
+    return run?.branchId;
+  };
+  const invoiceRows = state.invoices
+    .filter(invoice => role !== "branchadmin" || invoiceBranchId(invoice.id) === actor.branchId)
+    .map(invoice => {
+      const payments = state.payments.filter(
+        payment => payment.invoiceId === invoice.id && payment.status === "paid"
+      );
+      const paid = payments.reduce((sum, payment) => sum + payment.amount, 0);
+      const balance = Math.max(0, invoice.amount - paid);
+      const student = state.students.find(item => item.id === invoice.studentId);
+      const user = state.users.find(item => item.id === student?.userId);
+      return { invoice, payments, paid, balance, student, user };
+    })
+    .filter(row => {
+      const haystack = `${row.invoice.id} ${row.user?.name ?? ""} ${row.user?.email ?? ""}`.toLowerCase();
+      const matchesSearch = !search.trim() || haystack.includes(search.trim().toLowerCase());
+      const matchesStatus = statusFilter === "all" || row.invoice.status === statusFilter;
+      return matchesSearch && matchesStatus;
+    });
+  const totalDue = invoiceRows.reduce((sum, row) => sum + row.invoice.amount, 0);
+  const totalPaid = invoiceRows.reduce((sum, row) => sum + row.paid, 0);
+  const totalBalance = invoiceRows.reduce((sum, row) => sum + row.balance, 0);
+  const recordPayment = async (invoiceId: string, balance: number) => {
+    if (balance <= 0) return;
+    setSavingInvoiceId(invoiceId);
+    setActionError("");
+    const requestedAmount = Number(amountDrafts[invoiceId] ?? balance);
+    const result = await runPlatformWorkflowActionRequest({
+      type: "payment.record",
+      invoiceId,
+      amount: Number.isFinite(requestedAmount) ? requestedAmount : balance,
+      method: methodDrafts[invoiceId] ?? "manual",
+      reference: referenceDrafts[invoiceId]?.trim() || undefined,
+    });
+    setSavingInvoiceId("");
+    if (!result.ok || !result.data) {
+      const message = result.error ?? "Payment could not be recorded.";
+      setActionError(message);
+      toast.error("Payment failed", { description: message });
+      return;
+    }
+    platformStore.setState(result.data.state);
+    setAmountDrafts(current => {
+      const next = { ...current };
+      delete next[invoiceId];
+      return next;
+    });
+    setReferenceDrafts(current => {
+      const next = { ...current };
+      delete next[invoiceId];
+      return next;
+    });
+    refresh();
+    toast.success("Payment recorded", { description: result.data.result.summary });
+  };
+
   return (
-    <div className="platform-workflow-layout">
-      <div className="platform-workflow-main">
-        <section className="platform-workflow-card">
+    <div className="platform-workflow-layout registrar-payment-desk">
+      <div className="platform-workflow-main registrar-payment-command">
+        <section className="platform-workflow-card registrar-payment-table-card">
           <div className="platform-workflow-title">
             <span>
               <CreditCard size={16} /> Finance workflow
             </span>
             <strong>Invoices and payments</strong>
           </div>
-          <div className="platform-row-list">
-            {state.invoices.map(invoice => {
-              const paid = state.payments
-                .filter(
-                  payment =>
-                    payment.invoiceId === invoice.id &&
-                    payment.status === "paid"
-                )
-                .reduce((sum, payment) => sum + payment.amount, 0);
-              return (
-                <article key={invoice.id}>
+          <div className="registrar-payment-summary">
+            <article>
+              <span>Invoice scope</span>
+              <strong>{invoiceRows.length}</strong>
+              <small>{role === "branchadmin" ? actor.branchId ?? "Branch" : "Admissions desk"}</small>
+            </article>
+            <article>
+              <span>Collected</span>
+              <strong>{totalPaid}</strong>
+              <small>of {totalDue} due</small>
+            </article>
+            <article>
+              <span>Balance</span>
+              <strong>{totalBalance}</strong>
+              <small>pending reconciliation</small>
+            </article>
+          </div>
+          <div className="registrar-payment-toolbar">
+            <label>
+              Search
+              <input
+                value={search}
+                onChange={event => setSearch(event.target.value)}
+                placeholder="Invoice, student, phone"
+              />
+            </label>
+            <label>
+              Status
+              <select
+                value={statusFilter}
+                onChange={event => setStatusFilter(event.target.value as typeof statusFilter)}
+              >
+                <option value="all">All</option>
+                <option value="pending">Pending</option>
+                <option value="paid">Paid</option>
+                <option value="overdue">Overdue</option>
+              </select>
+            </label>
+          </div>
+          {actionError ? (
+            <div className="platform-empty-state error">
+              <strong>Payment save failed</strong>
+              <span>{actionError}</span>
+            </div>
+          ) : null}
+          <div className="registrar-payment-table">
+            <div className="registrar-payment-table-head" aria-hidden="true">
+              <span>Invoice</span>
+              <span>Student</span>
+              <span>Amount</span>
+              <span>Paid</span>
+              <span>Balance</span>
+              <span>Status</span>
+              <span>Record</span>
+              <span>Action</span>
+            </div>
+            {invoiceRows.length ? (
+              invoiceRows.map(({ invoice, paid, balance, user, payments }) => (
+                <article key={invoice.id} className="registrar-payment-row">
                   <div>
                     <strong>{invoice.id}</strong>
                     <small>
-                      {invoice.currency} {invoice.amount} · paid {paid} · due{" "}
-                      {invoice.dueAt}
+                      Due {invoice.dueAt}
+                      {payments[0]?.reference ? ` · ${payments[0].reference}` : ""}
                     </small>
                   </div>
-                  <div className="platform-row-actions">
-                    <span>{invoice.status}</span>
-                    <button
-                      disabled={invoice.status === "paid"}
-                      onClick={() => {
-                        platformStore.recordPayment(
-                          invoice.id,
-                          getDemoUser(role).id
-                        );
-                        refresh();
-                        toast.success("Payment recorded");
-                      }}
-                    >
-                      {invoice.status === "paid" ? "Paid" : "Record payment"}
-                    </button>
+                  <div>
+                    <strong>{user?.name ?? invoice.studentId}</strong>
+                    <small>{invoice.currency} account</small>
                   </div>
+                  <span>{invoice.currency} {invoice.amount}</span>
+                  <span className={paid ? "settled" : "attention"}>{paid}</span>
+                  <span className={balance ? "attention" : "settled"}>{balance}</span>
+                  <span className={`registrar-payment-status ${invoice.status}`}>{invoice.status}</span>
+                  <div className="registrar-payment-record-fields">
+                    <input
+                      className="registrar-payment-amount-input"
+                      type="number"
+                      min="0"
+                      max={balance}
+                      value={amountDrafts[invoice.id] ?? String(balance)}
+                      onChange={event =>
+                        setAmountDrafts(current => ({
+                          ...current,
+                          [invoice.id]: event.target.value,
+                        }))
+                      }
+                      aria-label={`Payment amount for ${invoice.id}`}
+                      disabled={balance <= 0 || Boolean(savingInvoiceId)}
+                    />
+                    <select
+                      value={methodDrafts[invoice.id] ?? "manual"}
+                      onChange={event =>
+                        setMethodDrafts(current => ({
+                          ...current,
+                          [invoice.id]: event.target.value as Payment["method"],
+                        }))
+                      }
+                      aria-label={`Payment method for ${invoice.id}`}
+                      disabled={balance <= 0 || Boolean(savingInvoiceId)}
+                    >
+                      {paymentMethods.map(method => (
+                        <option key={method} value={method}>
+                          {method.replace("_", " ")}
+                        </option>
+                      ))}
+                    </select>
+                    <input
+                      value={referenceDrafts[invoice.id] ?? ""}
+                      onChange={event =>
+                        setReferenceDrafts(current => ({
+                          ...current,
+                          [invoice.id]: event.target.value,
+                        }))
+                      }
+                      placeholder="Reference"
+                      aria-label={`Payment reference for ${invoice.id}`}
+                      disabled={balance <= 0 || Boolean(savingInvoiceId)}
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    disabled={balance <= 0 || savingInvoiceId === invoice.id}
+                    onClick={() => recordPayment(invoice.id, balance)}
+                  >
+                    {balance <= 0
+                      ? "Paid"
+                      : savingInvoiceId === invoice.id
+                        ? "Saving"
+                        : "Record payment"}
+                  </button>
                 </article>
-              );
-            })}
+              ))
+            ) : (
+              <div className="registrar-payment-empty">
+                <strong>No invoices match this view</strong>
+                <small>Clear filters or switch branch scope to review more balances.</small>
+              </div>
+            )}
           </div>
         </section>
       </div>
@@ -2985,6 +6421,7 @@ function FinanceWorkflow({ role, state, refresh }: WorkflowProps) {
             state.payments.filter(payment => payment.status === "paid").length
           )}
         />
+        <MiniMetric label="Open balance" value={String(totalBalance)} />
       </aside>
     </div>
   );
@@ -3106,20 +6543,25 @@ function AdmissionsWorkflow({ role, state, refresh }: WorkflowProps) {
 function ReportsWorkflow({
   role,
   state,
+  refresh,
   pageId,
-}: Omit<WorkflowProps, "refresh"> & { pageId: string }) {
-  const [reportType, setReportType] = useState<keyof typeof reportLabels>(
-    pageId === "audit-logs"
+}: WorkflowProps & { pageId: string }) {
+  const allowedReportTypes = reportTypesByRole[role] ?? ["enrollments"];
+  const initialReportType =
+    (pageId === "audit-logs" || pageId === "system-health") && allowedReportTypes.includes("audit")
       ? "audit"
-      : pageId === "system-health"
-        ? "audit"
-        : "enrollments"
-  );
-  const [savedPresets, setSavedPresets] = useState<string[]>([
-    "Executive weekly",
-    "Branch operations",
-  ]);
-  const actorId = getDemoUser(role).id;
+      : allowedReportTypes[0];
+  const [reportType, setReportType] = useState<ReportType>(initialReportType);
+  const [reportSearch, setReportSearch] = useState("");
+  const [reportStatusFilter, setReportStatusFilter] = useState("all");
+  const [reportSortKey, setReportSortKey] = useState<ReportSortKey>("primary");
+  const [reportSortDirection, setReportSortDirection] = useState<ReportSortDirection>("asc");
+  const [isSavingPreset, setIsSavingPreset] = useState(false);
+  const actorUser = getRoleActorUser(state, role);
+  const actorId = actorUser.id;
+  const savedPresets = (state.reportPresets ?? [])
+    .filter((preset) => preset.ownerUserId === actorId && preset.role === role && allowedReportTypes.includes(preset.reportType))
+    .slice(0, 5);
   const teacherRunIds = new Set(
     state.courseRuns
       .filter(run => run.teacherId === actorId)
@@ -3130,22 +6572,71 @@ function ReportsWorkflow({
       .filter(group => teacherRunIds.has(group.courseRunId))
       .map(group => group.id)
   );
-  const branchUser = state.users.find(user => user.id === actorId);
-  const branchStudentIds = new Set(
-    state.students
-      .filter(student =>
-        state.users.some(
-          user => user.id === student.userId && user.branchId === branchUser?.branchId
-        )
-      )
-      .map(student => student.id)
+  const branchRunIds = new Set(
+    state.courseRuns
+      .filter(run => run.branchId === actorUser.branchId)
+      .map(run => run.id)
   );
-  const baseRows = platformStore.exportReportRows(reportType);
+  const branchClassIds = new Set(
+    state.classGroups
+      .filter(group => branchRunIds.has(group.courseRunId))
+      .map(group => group.id)
+  );
+  const branchStudentIds = new Set(
+    state.enrollments
+      .filter(enrollment => branchRunIds.has(enrollment.courseRunId))
+      .map(enrollment => enrollment.studentId)
+  );
+  const hodClassIds = role === "headofdepartment" ? getHodClassIds(state, actorId) : undefined;
+  const hodRunIds = new Set(
+    role === "headofdepartment"
+      ? state.classGroups
+          .filter(group => hodClassIds?.has(group.id))
+          .map(group => group.courseRunId)
+      : []
+  );
+  const hodStudentIds = new Set(
+    role === "headofdepartment"
+      ? state.classGroups
+          .filter(group => hodClassIds?.has(group.id))
+          .flatMap(group => group.studentIds)
+      : []
+  );
+  const reportAttendanceClassIds =
+    role === "superadmin"
+      ? undefined
+      : role === "teacher"
+        ? teacherClassIds
+        : role === "branchadmin"
+          ? branchClassIds
+          : role === "student"
+            ? getStudentScope(state).classIds
+            : role === "headofdepartment"
+              ? hodClassIds
+              : undefined;
+  const effectiveReportType = allowedReportTypes.includes(reportType) ? reportType : allowedReportTypes[0];
+  const baseRows = platformStore.exportReportRows(effectiveReportType);
   const rows = baseRows.filter(row => {
+    const isScopedAttendanceAudit =
+      "action" in row &&
+      row.action === "attendance.saved" &&
+      "entityId" in row &&
+      Boolean(reportAttendanceClassIds?.has(String(row.entityId)));
     if (role === "superadmin") return true;
     if (role === "teacher") {
       if ("courseRunId" in row) return teacherRunIds.has(String(row.courseRunId));
       if ("classGroupId" in row) return teacherClassIds.has(String(row.classGroupId));
+      if (isScopedAttendanceAudit) return true;
+      if ("actorId" in row) return row.actorId === actorId;
+      return false;
+    }
+    if (role === "headofdepartment") {
+      if ("courseRunId" in row) return hodRunIds.has(String(row.courseRunId));
+      if ("classGroupId" in row) {
+        return Boolean(reportAttendanceClassIds?.has(String(row.classGroupId)));
+      }
+      if ("studentId" in row) return hodStudentIds.has(String(row.studentId));
+      if (isScopedAttendanceAudit) return true;
       if ("actorId" in row) return row.actorId === actorId;
       return false;
     }
@@ -3156,22 +6647,77 @@ function ReportsWorkflow({
     }
     if (role === "branchadmin") {
       if ("studentId" in row) return branchStudentIds.has(String(row.studentId));
+      if (isScopedAttendanceAudit) return true;
       if ("actorId" in row) return row.actorId === actorId;
       return false;
     }
     if ("actorId" in row) return row.actorId === actorId;
     return true;
   });
-  const bars = [
-    rows.filter(row => "courseRunId" in row || "studentId" in row).length * 30,
-    rows.filter(row => "classGroupId" in row && row.status === "present").length * 45,
-    state.assignmentSubmissions.filter(item => role !== "teacher" || teacherRunIds.has(state.assignments.find(assignment => assignment.id === item.assignmentId)?.courseRunId ?? "")).length * 35,
-    state.quizAttempts.filter(item => role !== "teacher" || teacherRunIds.has(state.quizzes.find(quiz => quiz.id === item.quizId)?.courseRunId ?? "")).length * 30,
-    rows.filter(row => "balance" in row && row.status === "paid").length * 45,
-    rows.filter(row => "actorId" in row).length * 6,
-  ].map(value => Math.min(96, Math.max(18, value)));
+  const filteredRows = rows.filter(row => {
+    const query = reportSearch.trim().toLowerCase();
+    const matchesQuery =
+      !query ||
+      Object.values(row).some(value =>
+        String(value ?? "")
+          .toLowerCase()
+          .includes(query)
+      );
+    const matchesStatus =
+      reportStatusFilter === "all" ||
+      ("status" in row && String(row.status).toLowerCase() === reportStatusFilter);
+    return matchesQuery && matchesStatus;
+  });
+  const formattedRows = filteredRows.map((row) => ({
+    raw: row,
+    display: formatReportRow(row, effectiveReportType, state),
+  }));
+  const sortedReportRows = [...formattedRows].sort((left, right) => {
+    const leftValue = left.display.sort[reportSortKey];
+    const rightValue = right.display.sort[reportSortKey];
+    const direction = reportSortDirection === "asc" ? 1 : -1;
+    if (typeof leftValue === "number" || typeof rightValue === "number") {
+      return (Number(leftValue) - Number(rightValue)) * direction;
+    }
+    return String(leftValue).localeCompare(String(rightValue), undefined, {
+      numeric: true,
+      sensitivity: "base",
+    }) * direction;
+  });
+  const sortedRawRows = sortedReportRows.map((row) => row.raw);
+  const displayRows = sortedReportRows.slice(0, 8).map((row) => row.display);
+  const reportCertificateIds =
+    role === "superadmin" || role === "headofdepartment"
+      ? new Set(state.certificates.map(certificate => certificate.id))
+      : undefined;
+  const exceptionRows = filteredRows.filter(
+    (row) =>
+      ("status" in row && ["absent", "late", "overdue", "pending"].includes(String(row.status).toLowerCase())) ||
+      ("balance" in row && Number(row.balance) > 0),
+  ).length;
+  const auditRows = filteredRows.filter(row => "actorId" in row).length;
+  const reportScopeLabel =
+    role === "superadmin"
+      ? "Global platform"
+      : role === "branchadmin"
+        ? actorUser.branchId ?? "Branch"
+        : role === "headofdepartment"
+          ? actorUser.departmentId ?? "Department"
+          : roleMeta[role].label;
+  const reportPageTitle =
+    pageId === "audit-logs"
+      ? "Audit logs"
+      : role === "branchadmin"
+        ? "Branch reports"
+        : role === "registrar"
+          ? "Registrar reports"
+          : role === "headofdepartment"
+            ? "Academic reports"
+            : role === "teacher"
+              ? "Teacher reports"
+              : "Reports";
   const exportCsv = () => {
-    const csv = platformStore.buildCsv(rows);
+    const csv = platformStore.buildCsv(sortedRawRows);
     if (!csv) {
       toast.info("No rows to export");
       return;
@@ -3180,73 +6726,156 @@ function ReportsWorkflow({
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement("a");
     anchor.href = url;
-    anchor.download = `nile-${reportType}-report.csv`;
+    anchor.download = `nile-${effectiveReportType}-report.csv`;
     anchor.click();
     URL.revokeObjectURL(url);
     toast.success("CSV exported locally", {
-      description: `${rows.length} row(s)`,
+      description: `${filteredRows.length} filtered row(s)`,
     });
+  };
+  const savePreset = async () => {
+    const label = `${reportLabels[effectiveReportType]} snapshot ${savedPresets.length + 1}`;
+    setIsSavingPreset(true);
+    const result = await runPlatformWorkflowActionRequest({
+      type: "report.preset.save",
+      role,
+      label,
+      reportType: effectiveReportType,
+      search: reportSearch,
+      status: reportStatusFilter,
+      rowCount: filteredRows.length,
+    });
+    setIsSavingPreset(false);
+    if (!result.ok || !result.data) {
+      toast.error("Preset was not saved", {
+        description: result.error ?? "The server rejected this report view.",
+      });
+      return;
+    }
+    platformStore.setState(result.data.state);
+    refresh();
+    toast.success("Report view saved", { description: label });
+  };
+  const applyPreset = (preset: ReportPreset) => {
+    setReportType(preset.reportType);
+    setReportSearch(preset.search);
+    setReportStatusFilter(preset.status);
+    toast.info("Preset applied", { description: preset.label });
+  };
+  const sortReport = (key: ReportSortKey) => {
+    if (reportSortKey === key) {
+      setReportSortDirection((current) => current === "asc" ? "desc" : "asc");
+      return;
+    }
+    setReportSortKey(key);
+    setReportSortDirection(key === "metric" ? "desc" : "asc");
   };
 
   return (
-    <div className="platform-workflow-layout">
-      <div className="platform-workflow-main">
+    <div className="platform-report-workspace">
+      <PlatformPageHeader
+        compact
+        context={<span>{roleMeta[role].label}</span>}
+        title={reportPageTitle}
+        description="Role-scoped attendance, certificate, enrollment, finance, and audit evidence for operational review."
+        actions={
+          <button type="button" className="platform-secondary-button" onClick={exportCsv}>
+            <Download size={15} />
+            Export CSV
+          </button>
+        }
+      />
+      <div className="platform-workflow-layout">
+        <div className="platform-workflow-main">
+        <AttendanceGovernancePanel
+          state={state}
+          classIds={reportAttendanceClassIds}
+          title={role === "superadmin" ? "Platform attendance" : "Attendance governance"}
+        />
+        {role === "superadmin" || role === "headofdepartment" ? (
+          <CertificateGovernancePanel
+            state={state}
+            certificateIds={reportCertificateIds}
+            title={
+              role === "superadmin"
+                ? "Platform certificates"
+                : "Certificate governance"
+            }
+          />
+        ) : null}
         <section className="platform-workflow-card">
           <div className="platform-workflow-title">
             <span>
               <Activity size={16} /> Reports
             </span>
-            <strong>Live local metrics</strong>
+            <strong>{reportLabels[effectiveReportType]} report</strong>
           </div>
           <div className="platform-report-controls">
             <label>
               Report type
               <select
-                value={reportType}
+                value={effectiveReportType}
                 onChange={event =>
-                  setReportType(event.target.value as keyof typeof reportLabels)
+                  setReportType(event.target.value as ReportType)
                 }
               >
-                {Object.entries(reportLabels).map(([value, label]) => (
+                {allowedReportTypes.map((value) => (
                   <option key={value} value={value}>
-                    {label}
+                    {reportLabels[value]}
                   </option>
                 ))}
               </select>
             </label>
-            <button
-              onClick={() => {
-                const label = `${reportLabels[reportType]} snapshot ${savedPresets.length + 1}`;
-                setSavedPresets(current => [label, ...current].slice(0, 5));
-                toast.success("Preset saved locally", { description: label });
-              }}
-            >
-              Save preset
+            <label>
+              Search rows
+              <input
+                value={reportSearch}
+                onChange={event => setReportSearch(event.target.value)}
+                placeholder="Search IDs, status, actor, student"
+              />
+            </label>
+            <label>
+              Status
+              <select
+                value={reportStatusFilter}
+                onChange={event => setReportStatusFilter(event.target.value)}
+              >
+                <option value="all">All statuses</option>
+                <option value="active">Active</option>
+                <option value="pending">Pending</option>
+                <option value="paid">Paid</option>
+                <option value="overdue">Overdue</option>
+                <option value="present">Present</option>
+                <option value="late">Late</option>
+                <option value="absent">Absent</option>
+                <option value="excused">Excused</option>
+              </select>
+            </label>
+            <button type="button" onClick={savePreset} disabled={isSavingPreset}>
+              {isSavingPreset ? "Saving..." : "Save view"}
             </button>
-            <button onClick={exportCsv}>
+            <button type="button" onClick={exportCsv}>
               <Download size={15} />
               Export CSV
             </button>
           </div>
-          <div className="platform-chart-bars">
-            {bars.map((bar, index) => (
-              <div key={index}>
-                <span
-                  style={{
-                    height: `${bar}%`,
-                    background:
-                      index % 2 ? roleMeta[role].accent : roleMeta[role].color,
-                  }}
-                />
-                <small>
-                  {
-                    ["Enroll", "Attend", "Submit", "Quiz", "Paid", "Audit"][
-                      index
-                    ]
-                  }
-                </small>
-              </div>
-            ))}
+          <div className="platform-report-summary-band">
+            <article>
+              <small>Filtered rows</small>
+              <strong>{filteredRows.length}</strong>
+            </article>
+            <article>
+              <small>Exceptions</small>
+              <strong>{exceptionRows}</strong>
+            </article>
+            <article>
+              <small>Audit rows</small>
+              <strong>{auditRows}</strong>
+            </article>
+            <article>
+              <small>Export scope</small>
+              <strong>{reportScopeLabel}</strong>
+            </article>
           </div>
         </section>
         <section className="platform-workflow-card">
@@ -3254,29 +6883,53 @@ function ReportsWorkflow({
             <span>
               <FileText size={16} /> Result rows
             </span>
-            <strong>{reportLabels[reportType]} report</strong>
+            <strong>{filteredRows.length} of {rows.length} {reportLabels[effectiveReportType].toLowerCase()} rows</strong>
           </div>
-          <div className="platform-report-table">
-            {rows.slice(0, 6).map((row, index) => (
-              <article key={`${reportType}_${index}`}>
-                {Object.entries(row)
-                  .slice(0, 4)
-                  .map(([key, value]) => (
-                    <span key={key}>
-                      <strong>{key}</strong>
-                      {String(value)}
-                    </span>
-                  ))}
+          <div className="platform-report-table typed">
+            <div className="platform-report-row header" role="row">
+              <button type="button" onClick={() => sortReport("primary")} aria-pressed={reportSortKey === "primary"}>
+                Record {reportSortKey === "primary" ? (reportSortDirection === "asc" ? "↑" : "↓") : ""}
+              </button>
+              <button type="button" onClick={() => sortReport("status")} aria-pressed={reportSortKey === "status"}>
+                Status {reportSortKey === "status" ? (reportSortDirection === "asc" ? "↑" : "↓") : ""}
+              </button>
+              <button type="button" onClick={() => sortReport("metric")} aria-pressed={reportSortKey === "metric"}>
+                Metric {reportSortKey === "metric" ? (reportSortDirection === "asc" ? "↑" : "↓") : ""}
+              </button>
+            </div>
+            {filteredRows.length ? (
+              displayRows.map((row, index) => (
+                <article key={`${effectiveReportType}_${index}`} className="platform-report-row">
+                  <div className="platform-report-row-main">
+                    <small>{row.eyebrow}</small>
+                    <strong>{row.title}</strong>
+                    <span>{row.subtitle}</span>
+                  </div>
+                  <span className={`platform-report-status status-${row.status.replace(/\s+/g, "-")}`}>
+                    {row.status}
+                  </span>
+                  <div className="platform-report-row-metric">
+                    <strong>{row.metric}</strong>
+                    <span>{row.meta}</span>
+                  </div>
+                </article>
+              ))
+            ) : (
+              <article className="platform-report-row empty">
+                <span>
+                  <strong>No rows</strong>
+                  No report rows match this scope and filter.
+                </span>
               </article>
-            ))}
+            )}
           </div>
         </section>
         <WorkflowAudit state={state} />
-      </div>
-      <aside className="platform-workflow-side">
-        <MiniMetric label="Rows" value={String(rows.length)} />
+        </div>
+        <aside className="platform-workflow-side">
+        <MiniMetric label="Rows" value={`${filteredRows.length}/${rows.length}`} />
         <MiniMetric label="Courses" value={String(role === "teacher" ? teacherRunIds.size : state.courses.length)} />
-        <MiniMetric label="Audit rows" value={String(rows.filter(row => "actorId" in row).length)} />
+        <MiniMetric label="Audit rows" value={String(filteredRows.filter(row => "actorId" in row).length)} />
         <MiniMetric
           label="Integrations"
           value={String(state.integrations.length)}
@@ -3290,17 +6943,250 @@ function ReportsWorkflow({
           </div>
           <div className="platform-row-list compact">
             {savedPresets.map(preset => (
-              <article key={preset}>
+              <article key={preset.id}>
                 <div>
-                  <strong>{preset}</strong>
-                  <small>Stored in this browser session</small>
+                  <strong>{preset.label}</strong>
+                  <small>{reportLabels[preset.reportType]} · {preset.status === "all" ? "all statuses" : preset.status} · {preset.rowCount} row(s)</small>
                 </div>
+                <button type="button" onClick={() => applyPreset(preset)}>Apply</button>
               </article>
             ))}
           </div>
         </section>
-      </aside>
+        </aside>
+      </div>
     </div>
+  );
+}
+
+function AttendanceGovernancePanel({
+  state,
+  classIds,
+  title,
+}: {
+  state: PlatformStateSnapshot;
+  classIds?: Set<string>;
+  title: string;
+}) {
+  const summary = getAttendanceSummary(state, classIds);
+  const recentAudits = state.auditLogs
+    .filter(
+      audit =>
+        audit.action === "attendance.saved" &&
+        (!classIds || classIds.has(audit.entityId))
+    )
+    .slice(0, 4);
+  const recentSessions = summary.sessions
+    .slice()
+    .sort((a, b) => new Date(b.startsAt).getTime() - new Date(a.startsAt).getTime())
+    .slice(0, 6);
+  const missingSessions = summary.sessions
+    .filter(session => !isAttendanceSessionSaved(state, session))
+    .sort((a, b) => new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime())
+    .slice(0, 4);
+
+  return (
+    <section className="platform-workflow-card platform-attendance-governance">
+      <div className="platform-workflow-title">
+        <span>
+          <ClipboardCheck size={16} /> Attendance health
+        </span>
+        <strong>{title}</strong>
+      </div>
+      <div className="platform-attendance-health-grid">
+        <MiniMetric label="Saved sessions" value={`${summary.savedSessions}/${summary.sessions.length}`} />
+        <MiniMetric label="Pending sessions" value={String(summary.pendingSessions)} />
+        <MiniMetric label="Roster records" value={`${summary.records.length}/${summary.expectedRecords}`} />
+        <MiniMetric label="Completion" value={`${summary.completionRate}%`} />
+      </div>
+      <div className="platform-attendance-status-grid">
+        {attendanceStatusOptions.map(status => (
+          <article key={status}>
+            <span className={`platform-attendance-chip ${status}`}>
+              {attendanceStatusLabels[status]}
+            </span>
+            <strong>{summary.statusCounts[status]}</strong>
+          </article>
+        ))}
+      </div>
+      <div className="platform-attendance-governance-grid">
+        <div className="platform-row-list compact platform-attendance-evidence-list">
+          <div className="platform-attendance-list-heading">
+            <strong>Session evidence</strong>
+            <span>{missingSessions.length ? `${missingSessions.length} missing` : "all reviewed"}</span>
+          </div>
+          {recentSessions.length ? (
+            recentSessions.map(session => {
+              const group = state.classGroups.find(item => item.id === session.classGroupId);
+              const run = state.courseRuns.find(item => item.id === group?.courseRunId);
+              const teacher = state.users.find(item => item.id === run?.teacherId);
+              const records = summary.records.filter(
+                record =>
+                  record.classGroupId === session.classGroupId &&
+                  (record.sessionId === session.id || record.sessionId === session.eventId)
+              );
+              const sessionSaved = isAttendanceSessionSaved(state, session);
+              return (
+                <article key={session.id}>
+                  <div>
+                    <strong>{session.title}</strong>
+                    <small>
+                      {group?.name ?? "Class"} · {teacher?.name ?? "Teacher"} · {formatDateTime(session.startsAt)}
+                    </small>
+                  </div>
+                  <span className={`platform-attendance-chip ${sessionSaved ? "saved" : "pending"}`}>
+                    {sessionSaved ? `${records.length} saved` : "Missing"}
+                  </span>
+                </article>
+              );
+            })
+          ) : (
+            <article>
+              <div>
+                <strong>No sessions in scope</strong>
+                <small>Create sessions before attendance can be governed.</small>
+              </div>
+            </article>
+          )}
+        </div>
+        <div className="platform-row-list compact platform-attendance-evidence-list">
+          <div className="platform-attendance-list-heading">
+            <strong>Audit evidence</strong>
+            <span>{recentAudits.length} rows</span>
+          </div>
+          {recentAudits.length ? (
+            recentAudits.map(audit => {
+              const actor = state.users.find(user => user.id === audit.actorId);
+              return (
+                <article key={audit.id}>
+                  <div>
+                    <strong>{actor?.name ?? "System"} saved attendance</strong>
+                    <small>{audit.summary} · {formatDateTime(audit.createdAt)}</small>
+                  </div>
+                  <span className="platform-attendance-chip saved">Audited</span>
+                </article>
+              );
+            })
+          ) : (
+            <article>
+              <div>
+                <strong>No attendance audit rows</strong>
+                <small>Saved attendance will appear here.</small>
+              </div>
+            </article>
+          )}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function CertificateGovernancePanel({
+  state,
+  certificateIds,
+  title,
+}: {
+  state: PlatformStateSnapshot;
+  certificateIds?: Set<string>;
+  title: string;
+}) {
+  const summary = getCertificateSummary(state, certificateIds);
+  const recentCertificates = summary.certificates
+    .slice()
+    .sort((a, b) => {
+      const rank = (certificate: Certificate) =>
+        certificate.status === "pending_approval"
+          ? 0
+          : certificate.status === "approved"
+            ? 1
+            : certificate.status === "issued"
+              ? 2
+              : 3;
+      return rank(a) - rank(b);
+    })
+    .slice(0, 4);
+
+  return (
+    <section className="platform-workflow-card platform-certificate-governance">
+      <div className="platform-workflow-title">
+        <span>
+          <Award size={16} /> Certificate health
+        </span>
+        <strong>{title}</strong>
+      </div>
+      <div className="platform-attendance-health-grid">
+        <MiniMetric label="Open" value={String(summary.statusCounts.pending_approval)} />
+        <MiniMetric label="Approved" value={String(summary.statusCounts.approved)} />
+        <MiniMetric label="Issued" value={String(summary.statusCounts.issued)} />
+        <MiniMetric label="Documents" value={String(summary.issuedDocuments.length)} />
+      </div>
+      <div className="platform-attendance-status-grid">
+        {certificateStatusOptions.slice(0, 3).map(status => (
+          <article key={status}>
+            <span className={`platform-certificate-status ${status}`}>
+              {certificateStatusLabels[status]}
+            </span>
+            <strong>{summary.statusCounts[status]}</strong>
+          </article>
+        ))}
+      </div>
+      <div className="platform-attendance-governance-grid">
+        <div className="platform-row-list compact">
+          {recentCertificates.length ? (
+            recentCertificates.map(certificate => {
+              const student = state.students.find(item => item.id === certificate.studentId);
+              const user = state.users.find(item => item.id === student?.userId);
+              const course = state.courses.find(item => item.id === certificate.courseId);
+              return (
+                <article key={certificate.id}>
+                  <div>
+                    <strong>{certificate.verificationCode}</strong>
+                    <small>
+                      {user?.name ?? "Student"} · {course?.title ?? "Course"} ·
+                      {" "}
+                      grade {certificate.grade}%
+                    </small>
+                  </div>
+                  <span className={`platform-certificate-status ${certificate.status}`}>
+                    {certificateStatusLabels[certificate.status]}
+                  </span>
+                </article>
+              );
+            })
+          ) : (
+            <article>
+              <div>
+                <strong>No certificates in scope</strong>
+                <small>Eligible certificates will appear after grades and attendance are ready.</small>
+              </div>
+            </article>
+          )}
+        </div>
+        <div className="platform-row-list compact">
+          {summary.recentAudits.length ? (
+            summary.recentAudits.map(audit => (
+              <article key={audit.id}>
+                <div>
+                  <strong>
+                    {audit.action === "certificate.issued"
+                      ? "Certificate issued"
+                      : "Certificate approved"}
+                  </strong>
+                  <small>{audit.summary}</small>
+                </div>
+              </article>
+            ))
+          ) : (
+            <article>
+              <div>
+                <strong>No certificate audit rows</strong>
+                <small>Approval and issue actions will appear here.</small>
+              </div>
+            </article>
+          )}
+        </div>
+      </div>
+    </section>
   );
 }
 
@@ -3453,14 +7339,105 @@ function IntegrationsWorkflow({ role, state }: WorkflowProps) {
   );
 }
 
+function ScheduleBoard({
+  state,
+  events,
+  limit = 6,
+  emptyText,
+}: {
+  state: WorkflowProps["state"];
+  events: ScheduleBoardEvent[];
+  limit?: number;
+  emptyText: string;
+}) {
+  const visibleEvents = events
+    .filter(event => event.startsAt)
+    .slice()
+    .sort(
+      (a, b) => new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime()
+    )
+    .slice(0, limit);
+  const buckets = visibleEvents.reduce<
+    Array<{ key: string; label: string; events: ScheduleBoardEvent[] }>
+  >((items, event) => {
+    const date = new Date(event.startsAt);
+    const key = date.toISOString().slice(0, 10);
+    const existing = items.find(item => item.key === key);
+    const label = date.toLocaleDateString(undefined, {
+      weekday: "short",
+      month: "short",
+      day: "numeric",
+    });
+    if (existing) {
+      existing.events.push(event);
+      return items;
+    }
+    return [...items, { key, label, events: [event] }];
+  }, []);
+
+  return (
+    <section className="platform-workflow-card">
+      <div className="platform-workflow-title">
+        <span>
+          <CalendarDays size={16} /> Schedule board
+        </span>
+        <strong>{visibleEvents.length} visible</strong>
+      </div>
+      <div className="platform-calendar-grid stateful">
+        {buckets.length ? (
+          buckets.map(bucket => (
+            <div key={bucket.key}>
+              <strong>{bucket.label}</strong>
+              {bucket.events.map(event => {
+                const room = state.rooms.find(item => item.id === event.roomId);
+                const classGroup = state.classGroups.find(
+                  item => item.id === event.classGroupId
+                );
+                return (
+                  <article
+                    key={event.id}
+                    className={event.status === "pending" ? "warning" : ""}
+                  >
+                    <span>
+                      {new Date(event.startsAt).toLocaleTimeString(undefined, {
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })}
+                    </span>
+                    <p>{event.title}</p>
+                    <small>
+                      {schedulerTypeLabels[event.type as CalendarEventType] ??
+                        event.type}
+                      {room ? ` · ${room.name}` : ""}
+                      {classGroup ? ` · ${classGroup.name}` : ""}
+                    </small>
+                  </article>
+                );
+              })}
+            </div>
+          ))
+        ) : (
+          <div className="platform-empty-state">
+            <CalendarDays size={18} />
+            <strong>No scheduled dates</strong>
+            <span>{emptyText}</span>
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
+
 function EventList({
   state,
   events = state.events,
   limit = 5,
+  emptyText = "Create an event or adjust the role filters.",
 }: {
   state: WorkflowProps["state"];
   events?: WorkflowProps["state"]["events"];
   limit?: number;
+  emptyText?: string;
 }) {
   return (
     <section className="platform-workflow-card">
@@ -3471,17 +7448,31 @@ function EventList({
         <strong>Upcoming events</strong>
       </div>
       <div className="platform-row-list">
-        {events.slice(0, limit).map(event => (
-          <article key={event.id}>
+        {events.length ? (
+          events
+            .slice()
+            .sort((a, b) => new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime())
+            .slice(0, limit)
+            .map(event => (
+              <article key={event.id}>
+                <div>
+                  <strong>{event.title}</strong>
+                  <small>
+                    {event.type} · {new Date(event.startsAt).toLocaleString()}
+                  </small>
+                </div>
+                <span>{event.status}</span>
+              </article>
+            ))
+        ) : (
+          <article>
             <div>
-              <strong>{event.title}</strong>
-              <small>
-                {event.type} · {new Date(event.startsAt).toLocaleString()}
-              </small>
+              <strong>No events in scope</strong>
+              <small>{emptyText}</small>
             </div>
-            <span>{event.status}</span>
+            <span>empty</span>
           </article>
-        ))}
+        )}
       </div>
     </section>
   );

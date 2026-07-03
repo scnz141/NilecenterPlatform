@@ -88,6 +88,7 @@ const featureRoutes: { path: string; role: Role; pageId: string }[] = [
   { path: "/app/hod/curriculum", role: "headofdepartment", pageId: "curriculum" },
   { path: "/app/hod/teachers", role: "headofdepartment", pageId: "teachers" },
   { path: "/app/hod/classes", role: "headofdepartment", pageId: "classes" },
+  { path: "/app/hod/schedule", role: "headofdepartment", pageId: "schedule" },
   { path: "/app/hod/assessments", role: "headofdepartment", pageId: "assessments" },
   { path: "/app/hod/certificates", role: "headofdepartment", pageId: "certificates" },
   { path: "/app/hod/reports", role: "headofdepartment", pageId: "reports" },
@@ -112,6 +113,8 @@ const featureRoutes: { path: string; role: Role; pageId: string }[] = [
   { path: "/app/admin/departments", role: "superadmin", pageId: "departments" },
   { path: "/app/admin/programs", role: "superadmin", pageId: "programs" },
   { path: "/app/admin/courses", role: "superadmin", pageId: "courses" },
+  { path: "/app/admin/certificates", role: "superadmin", pageId: "certificates" },
+  { path: "/app/admin/schedule", role: "superadmin", pageId: "schedule" },
   { path: "/app/admin/moodle-source", role: "superadmin", pageId: "moodle-source" },
   { path: "/app/admin/settings", role: "superadmin", pageId: "settings" },
   { path: "/app/admin/integrations", role: "superadmin", pageId: "integrations" },
@@ -157,6 +160,7 @@ function Router() {
         <Route path="/courses/:slug">{(params) => <PublicSitePage mode="course" slug={params.slug} />}</Route>
         <Route path="/book-free-trial"><PublicSitePage mode="trial" /></Route>
         <Route path="/book-placement-test"><PublicSitePage mode="placement" /></Route>
+        <Route path="/verify-certificate"><PublicSitePage mode="verify" /></Route>
         <Route path="/faq"><PublicSitePage mode="faq" /></Route>
         <Route path="/contact"><PublicSitePage mode="contact" /></Route>
         <Route path="/about"><PublicSitePage mode="about" /></Route>
@@ -167,14 +171,14 @@ function Router() {
 
         {dashboardRoutes.map((route) => (
           <Route key={route.path} path={route.path}>
-            <ProtectedRoute role={route.role}>
+            <ProtectedRoute role={route.role} pageId="dashboard">
               <RoleDashboard role={route.role} />
             </ProtectedRoute>
           </Route>
         ))}
 
         <Route path="/app/admin/platform-blueprint">
-          <ProtectedRoute role="superadmin">
+          <ProtectedRoute role="superadmin" pageId="platform-blueprint">
             <PlatformBlueprintPage />
           </ProtectedRoute>
         </Route>
@@ -182,7 +186,7 @@ function Router() {
         {featureRoutes.map((route) => (
           <Route key={route.path} path={route.path}>
             {(params) => (
-              <ProtectedRoute role={route.role}>
+              <ProtectedRoute role={route.role} pageId={route.pageId}>
                 <FeaturePage role={route.role} pageId={route.pageId} params={params} />
               </ProtectedRoute>
             )}

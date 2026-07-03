@@ -5,6 +5,7 @@ import {
   applyStartLesson,
   applySubmitAssignment,
   applySubmitQuizAttempt,
+  type AssignTeacherActionInput,
   type PlatformWorkflowAction,
 } from "./actions";
 import { runPlatformWorkflowActionRequest } from "../backend/api";
@@ -25,6 +26,8 @@ import type {
   PlatformState,
   QuranProgressRecord,
   RecitationSubmission,
+  ReportPreset,
+  ReportType,
 } from "./types";
 
 const STORAGE_KEY = "nilelearn.platform.state.v1";
@@ -50,7 +53,7 @@ type CreateCalendarEventInput = {
   type: CalendarEventType;
   startsAt: string;
   endsAt: string;
-  ownerId: string;
+  ownerId?: string;
   branchId?: string;
   roomId?: string;
   classGroupId?: string;
@@ -67,9 +70,22 @@ type CreateAssignmentInput = {
 type CreateQuizInput = {
   courseRunId: string;
   title: string;
+  dueAt: string;
   durationMinutes: number;
   questionTypes: string[];
+  questionIds?: string[];
   attemptsAllowed: number;
+};
+
+type CreateQuestionInput = {
+  courseRunId: string;
+  prompt: string;
+  questionType: PlatformState["questionBankItems"][number]["type"];
+  difficulty: PlatformState["questionBankItems"][number]["difficulty"];
+  tags: string[];
+  choices?: string[];
+  answerKey?: string;
+  rubric?: string[];
 };
 
 type SendMessageInput = {
@@ -114,6 +130,28 @@ function messageRouteForUser(user?: PlatformState["users"][number]) {
 
 function cloneSeed(): PlatformState {
   return JSON.parse(JSON.stringify(seedPlatformState)) as PlatformState;
+}
+
+function mergeById<T extends { id: string }>(seedItems: T[], storedItems?: T[]) {
+  const merged = new Map((storedItems ?? []).map((item) => [item.id, item]));
+  seedItems.forEach((item) => {
+    if (!merged.has(item.id)) merged.set(item.id, item);
+  });
+  return Array.from(merged.values());
+}
+
+function normalizeStoredState(value: unknown): PlatformState {
+  if (!value || typeof value !== "object") return cloneSeed();
+  const seed = cloneSeed();
+  const stored = value as Partial<PlatformState>;
+  return {
+    ...seed,
+    ...stored,
+    users: mergeById(seed.users, stored.users),
+    courseRuns: mergeById(seed.courseRuns, stored.courseRuns),
+    classGroups: mergeById(seed.classGroups, stored.classGroups),
+    events: mergeById(seed.events, stored.events),
+  };
 }
 
 class PlatformStore {
@@ -161,7 +199,7 @@ class PlatformStore {
       return state;
     }
     try {
-      return { ...cloneSeed(), ...(JSON.parse(raw) as PlatformState) };
+      return normalizeStoredState(JSON.parse(raw));
     } catch {
       const state = cloneSeed();
       this.setState(state);
@@ -282,6 +320,14 @@ class PlatformStore {
     return this.applyAction({ type: "quiz.create", ...input, actorId }).result as PlatformState["quizzes"][number];
   }
 
+  createQuestionBankItem(input: CreateQuestionInput, actorId = "usr_teacher_demo") {
+    return this.applyAction({ type: "question.create", ...input, actorId }).result as PlatformState["questionBankItems"][number];
+  }
+
+  setQuizQuestions(quizId: string, questionIds: string[], actorId = "usr_teacher_demo") {
+    return this.applyAction({ type: "quiz.questions.set", quizId, questionIds, actorId }).result as PlatformState["quizzes"][number];
+  }
+
   gradeAssignmentSubmission(
     submissionId: string,
     score: number,
@@ -290,6 +336,17 @@ class PlatformStore {
   ) {
     return this.applyAction({ type: "assignment.grade", submissionId, score, feedback, actorId }).result as
       | PlatformState["assignmentSubmissions"][number]
+      | undefined;
+  }
+
+  reviewQuizAttempt(
+    attemptId: string,
+    score: number,
+    feedback: string,
+    actorId = "usr_teacher_demo"
+  ) {
+    return this.applyAction({ type: "quiz.review", attemptId, score, feedback, actorId }).result as
+      | PlatformState["quizAttempts"][number]
       | undefined;
   }
 
@@ -310,6 +367,7 @@ class PlatformStore {
     return this.applyAction({ type: "calendar.create", ...eventInput, eventType, actorId }).result as {
       event: CalendarEvent;
       conflicts: CalendarEvent[];
+      availabilityGaps: string[];
     };
   }
 
@@ -325,8 +383,12 @@ class PlatformStore {
     return this.applyAction({ type: "certificate.issue", certificateId, actorId }).result as Certificate | undefined;
   }
 
-  recordPayment(invoiceId: string, actorId = "usr_registrar_demo") {
-    return this.applyAction({ type: "payment.record", invoiceId, actorId }).result as Payment | undefined;
+  recordPayment(
+    invoiceId: string,
+    actorId = "usr_registrar_demo",
+    input: { amount?: number; method?: Payment["method"]; reference?: string } = {}
+  ) {
+    return this.applyAction({ type: "payment.record", invoiceId, actorId, ...input }).result as Payment | undefined;
   }
 
   recordPlacementResult(
@@ -350,6 +412,44 @@ class PlatformStore {
     return this.applyAction({ type: "lead.convert", leadId, actorId }).result as PlatformState["applications"][number] | undefined;
   }
 
+  activateEnrollmentWorkflow(
+    workflowId: string,
+    options: { courseRunId?: string; classGroupId?: string; actorId?: string } = {}
+  ) {
+    return this.applyAction({
+      type: "enrollment.activate",
+      workflowId,
+      courseRunId: options.courseRunId,
+      classGroupId: options.classGroupId,
+      actorId: options.actorId ?? "usr_registrar_demo",
+    }).result as PlatformState["students"][number] | undefined;
+  }
+
+  assignTeacherToCourseRun(
+    userId: string,
+    courseRunId: string,
+    options: Omit<AssignTeacherActionInput, "userId" | "courseRunId" | "type"> = {}
+  ) {
+    return this.applyAction({
+      type: "teacher.assign",
+      userId,
+      courseRunId,
+      status: options.status,
+      departmentId: options.departmentId,
+      specialties: options.specialties,
+      availability: options.availability,
+      actorId: options.actorId ?? "usr_admin_demo",
+	    }).result as {
+	      teacher: PlatformState["users"][number];
+        previousTeacher?: PlatformState["users"][number];
+        previousTeacherId?: string;
+	      profile?: PlatformState["teachers"][number];
+	      courseRun: PlatformState["courseRuns"][number];
+	      classGroups: PlatformState["classGroups"];
+      availability: PlatformState["teacherAvailability"];
+    };
+  }
+
   verifyCertificate(code: string) {
     const state = this.getState();
     const normalized = code.trim().toLowerCase();
@@ -363,11 +463,17 @@ class PlatformStore {
     );
     const user = state.users.find(item => item.id === student?.userId);
     const course = state.courses.find(item => item.id === certificate.courseId);
-    return { certificate, student, user, course };
+    return {
+      verificationCode: certificate.verificationCode,
+      studentName: user?.name ?? "Nile Learn student",
+      courseTitle: course?.title ?? "Nile Learn course",
+      status: "issued" as const,
+      issuedAt: certificate.issuedAt,
+    };
   }
 
   exportReportRows(
-    reportType: "enrollments" | "attendance" | "finance" | "audit"
+    reportType: ReportType
   ) {
     const state = this.getState();
     if (reportType === "attendance") {
@@ -420,6 +526,21 @@ class PlatformStore {
       attendanceRate: enrollment.attendanceRate,
       currentGrade: enrollment.currentGrade,
     }));
+  }
+
+  saveReportPreset(input: {
+    role: ReportPreset["role"];
+    label: string;
+    reportType: ReportType;
+    search?: string;
+    status?: string;
+    rowCount?: number;
+    actorId?: string;
+  }) {
+    return this.applyAction({
+      type: "report.preset.save",
+      ...input,
+    }).result as ReportPreset;
   }
 
   buildCsv(

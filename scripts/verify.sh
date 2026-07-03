@@ -110,13 +110,17 @@ start_portal_qa_server() {
   local base_url="${QA_BASE_URL:-http://127.0.0.1:${port}}"
   export QA_BASE_URL="$base_url"
 
+  if [[ "${QA_RESET_LOCAL_STATE:-1}" == "1" ]]; then
+    rm -f ".local-data/platform-state.json"
+  fi
+
   if node -e "fetch(process.argv[1]).then((res) => process.exit(res.ok ? 0 : 1)).catch(() => process.exit(1))" "${base_url}/auth/login"; then
     printf 'Using existing portal server at %s\n' "$base_url"
     return 0
   fi
 
   printf 'Starting portal QA server at %s\n' "$base_url"
-  PORT="$port" NODE_ENV=production node dist-server/index.js >/tmp/nile-learn-portal-qa.log 2>&1 &
+  PORT="$port" NODE_ENV=production NILE_PLATFORM_STATE_LOCAL_ONLY=1 node dist-server/index.js >/tmp/nile-learn-portal-qa.log 2>&1 &
   QA_SERVER_PID="$!"
   wait_for_url "${base_url}/auth/login"
 }

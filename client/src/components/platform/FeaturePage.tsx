@@ -10,6 +10,7 @@ import {
   Building2,
   CalendarDays,
   CheckCircle2,
+  ClipboardCheck,
   ClipboardList,
   CreditCard,
   Database,
@@ -44,7 +45,7 @@ import {
   X,
 } from "lucide-react";
 import { toast } from "sonner";
-import { saveBackendRecord } from "@/lib/backend/api";
+import { runPlatformWorkflowActionRequest, saveBackendRecord } from "@/lib/backend/api";
 import {
   getDemoUser,
   getPageConfig,
@@ -58,10 +59,12 @@ import {
   type Stat,
 } from "@/lib/platformData";
 import { platformStore } from "@/lib/domain/store";
+import type { PlatformWorkflowAction } from "@/lib/domain/actions";
 import { getMoodleSourceCourseSnapshot } from "@/lib/moodle/client";
-import type { AttendanceStatus, CalendarEventType, EntityStatus, IntegrationConfig, IntegrationStatus, Lead } from "@/lib/domain/types";
+import type { AttendanceStatus, CalendarEventType, Certificate, EntityStatus, IntegrationConfig, IntegrationStatus, Lead, Payment } from "@/lib/domain/types";
 import type { MoodleActivity, MoodleActivityType, MoodleSection } from "@/lib/moodle/types";
 import PlatformShell from "./PlatformShell";
+import { PlatformPageHeader, PlatformWorkspaceHeader, platformReveal } from "./PlatformPrimitives";
 import StatefulWorkflowExperience, { isStatefulWorkflowPage } from "./WorkflowExperiences";
 
 const toneColor: Record<Stat["tone"], string> = {
@@ -73,14 +76,7 @@ const toneColor: Record<Stat["tone"], string> = {
   slate: "#1A1A1A",
 };
 
-const pageReveal = {
-  hidden: { opacity: 0, y: 18 },
-  visible: (delay = 0) => ({
-    opacity: 1,
-    y: 0,
-    transition: { duration: 0.42, delay, ease: [0.23, 1, 0.32, 1] as const },
-  }),
-};
+const pageReveal = platformReveal;
 
 type FeaturePageProps = {
   role: Role;
@@ -123,6 +119,46 @@ export default function FeaturePage({ role, pageId, params }: FeaturePageProps) 
     );
   }
 
+  if (role === "headofdepartment" && pageId === "certificates") {
+    return (
+      <PlatformShell role={role} title={config.title}>
+        <StatefulWorkflowExperience config={config} role={role} pageId={pageId} params={params} />
+      </PlatformShell>
+    );
+  }
+
+  if (config.kind === "certificate") {
+    return (
+      <PlatformShell role={role} title={config.title}>
+        <StatefulWorkflowExperience config={config} role={role} pageId={pageId} params={params} />
+      </PlatformShell>
+    );
+  }
+
+  if (config.kind === "attendance") {
+    return (
+      <PlatformShell role={role} title={config.title}>
+        <StatefulWorkflowExperience config={config} role={role} pageId={pageId} params={params} />
+      </PlatformShell>
+    );
+  }
+
+  if (config.kind === "assessment") {
+    return (
+      <PlatformShell role={role} title={config.title}>
+        <StatefulWorkflowExperience config={config} role={role} pageId={pageId} params={params} />
+      </PlatformShell>
+    );
+  }
+
+  if (role === "headofdepartment" && (pageId === "reports" || pageId === "assessments")) {
+    return (
+      <PlatformShell role={role} title={config.title}>
+        <StatefulWorkflowExperience config={config} role={role} pageId={pageId} params={params} />
+      </PlatformShell>
+    );
+  }
+
   if (role === "headofdepartment" && academicGovernancePages.has(pageId)) {
     return (
       <PlatformShell role={role} title={config.title}>
@@ -131,10 +167,42 @@ export default function FeaturePage({ role, pageId, params }: FeaturePageProps) 
     );
   }
 
+  if (config.kind === "calendar") {
+    return (
+      <PlatformShell role={role} title={config.title}>
+        <StatefulWorkflowExperience config={config} role={role} pageId={pageId} params={params} />
+      </PlatformShell>
+    );
+  }
+
+  if (role === "branchadmin" && pageId === "schedule") {
+    return (
+      <PlatformShell role={role} title={config.title}>
+        <StatefulWorkflowExperience config={config} role={role} pageId={pageId} params={params} />
+      </PlatformShell>
+    );
+  }
+
+  if (role === "branchadmin" && pageId === "reports") {
+    return (
+      <PlatformShell role={role} title={config.title}>
+        <StatefulWorkflowExperience config={config} role={role} pageId={pageId} params={params} />
+      </PlatformShell>
+    );
+  }
+
   if (role === "branchadmin" && branchOperationsPages.has(pageId)) {
     return (
       <PlatformShell role={role} title={config.title}>
         <BranchOperationsExperience pageId={pageId} />
+      </PlatformShell>
+    );
+  }
+
+  if (role === "registrar" && pageId === "schedule") {
+    return (
+      <PlatformShell role={role} title={config.title}>
+        <StatefulWorkflowExperience config={config} role={role} pageId={pageId} params={params} />
       </PlatformShell>
     );
   }
@@ -157,13 +225,12 @@ export default function FeaturePage({ role, pageId, params }: FeaturePageProps) 
 
   return (
     <PlatformShell role={role} title={config.title}>
-      <motion.section className="platform-page-header" initial="hidden" animate="visible" custom={0} variants={pageReveal}>
-        <div>
-          <span className="platform-eyebrow">{config.eyebrow}</span>
-          <h1>{params ? decorateTitle(config.title, params) : config.title}</h1>
-          <p>{config.description}</p>
-        </div>
-        <div className="platform-header-actions">
+      <PlatformPageHeader
+        compact
+        title={params ? decorateTitle(config.title, params) : config.title}
+        description={config.description}
+        actions={
+          <>
           <button className="platform-secondary-button" onClick={() => toast.info(config.secondaryAction ?? "Opened")}>
             <Download size={15} />
             {config.secondaryAction}
@@ -172,8 +239,9 @@ export default function FeaturePage({ role, pageId, params }: FeaturePageProps) 
             <Plus size={15} />
             {config.primaryAction}
           </button>
-        </div>
-      </motion.section>
+          </>
+        }
+      />
 
       <MetricGrid stats={config.stats} />
 
@@ -205,6 +273,9 @@ function KindExperience({ config, role, pageId, params }: { config: PageConfig; 
   if (role === "superadmin" && adminAccessPages.has(pageId)) return <AdminAccessExperience pageId={pageId} params={params} />;
   if (role === "superadmin" && adminSystemPages.has(pageId)) return <AdminSystemExperience pageId={pageId} />;
   if (role === "superadmin" && adminAcademicPages.has(pageId)) return <SuperAdminAcademicExperience pageId={pageId} />;
+  if (role === "headofdepartment" && pageId === "assessments") {
+    return <StatefulWorkflowExperience config={config} role={role} pageId={pageId} params={params} />;
+  }
   if (role === "headofdepartment" && academicGovernancePages.has(pageId)) return <AcademicGovernanceExperience pageId={pageId} scope="hod" />;
   if (role === "branchadmin" && branchOperationsPages.has(pageId)) return <BranchOperationsExperience pageId={pageId} />;
   if (role === "registrar" && registrarAdmissionsPages.has(pageId)) return <RegistrarAdmissionsExperience pageId={pageId} params={params} />;
@@ -254,8 +325,22 @@ function formatPermission(permission: Permission) {
     .join(" / ");
 }
 
+function getDefaultDueAt(daysFromNow = 1) {
+  const date = new Date();
+  date.setDate(date.getDate() + daysFromNow);
+  date.setHours(18, 0, 0, 0);
+  return date.toISOString();
+}
+
 function clonePlatformState() {
   return JSON.parse(JSON.stringify(platformStore.getState())) as ReturnType<typeof platformStore.getState>;
+}
+
+function splitListInput(value: string) {
+  return value
+    .split(/[,\n]/)
+    .map((item) => item.trim())
+    .filter(Boolean);
 }
 
 function StudentAccountExperience({ pageId }: { pageId: string }) {
@@ -341,13 +426,14 @@ function StudentAccountExperience({ pageId }: { pageId: string }) {
 
   return (
     <div className="student-account-workspace">
-      <section className="student-account-hero">
-        <div>
-          <span className="platform-eyebrow">{focusCopy}</span>
-          <h2>Keep learning details, support requests, notices, and documents connected to one student account.</h2>
-          <p>Designed for repeated use by active learners: fast support, clear status, and no hunting across separate portals.</p>
-        </div>
-        <div className="student-account-nav" aria-label="Student account navigation">
+      <PlatformWorkspaceHeader
+        className="student-account-hero"
+        title="Student account"
+        description="Keep learning details, support requests, notices, and documents connected to one student account."
+        context={<span>{focusCopy}</span>}
+        actionsClassName="student-account-nav"
+        actions={
+          <>
           <Link href="/app/student/profile" className={pageId === "profile" ? "active" : ""} aria-current={pageId === "profile" ? "page" : undefined}>
             <UserCircle size={15} />
             Profile
@@ -356,8 +442,9 @@ function StudentAccountExperience({ pageId }: { pageId: string }) {
             <LifeBuoy size={15} />
             Support
           </Link>
-        </div>
-      </section>
+          </>
+        }
+      />
 
       <div className="student-account-kpis">
         <AdminAccessMetric label="Courses" value={String(enrollments.length)} />
@@ -526,17 +613,51 @@ function AdminAccessExperience({ pageId, params }: { pageId: string; params?: Re
   const [query, setQuery] = useState("");
   const [selectedRole, setSelectedRole] = useState<Role>("teacher");
   const [selectedUserId, setSelectedUserId] = useState(params?.userId ?? "usr_teacher_demo");
+  const [creatingAccount, setCreatingAccount] = useState(false);
+  const [createAccountError, setCreateAccountError] = useState("");
+  const [assigningTeacher, setAssigningTeacher] = useState(false);
+  const [teacherAssignError, setTeacherAssignError] = useState("");
+  const [teacherAssignStatus, setTeacherAssignStatus] = useState("");
+  const [savingAccess, setSavingAccess] = useState(false);
+  const [accessUpdateError, setAccessUpdateError] = useState("");
+  const [savingGovernance, setSavingGovernance] = useState(false);
+  const [governanceUpdateError, setGovernanceUpdateError] = useState("");
+  const [teacherAssignmentDraft, setTeacherAssignmentDraft] = useState({
+    courseRunId: "",
+    departmentId: "",
+    specialties: "",
+    availability: "",
+  });
   const [newUser, setNewUser] = useState({
     name: "",
     email: "",
+    phone: "",
     role: "teacher" as Role,
     branchId: "br_online",
     departmentId: "dep_arabic",
+    status: "active" as EntityStatus,
+    preferredLanguage: "English",
+    courseRunId: "run_ar_l3_2026",
+    classGroupId: "class_ar_l3_a",
+    currentLevel: "Placement pending",
+    ageGroup: "Adult",
+    guardianName: "",
+    guardianPhone: "",
+    subjects: "Arabic grammar",
+    specialization: "Arabic Level 3",
+    availability: "Mon 09:00, Wed 09:00",
+    notes: "",
   });
   const state = useMemo(() => platformStore.getState(), [version]);
   const refresh = () => setVersion((value) => value + 1);
   const actorId = getDemoUser("superadmin").id;
+  const isRole = (value: unknown): value is Role => typeof value === "string" && value in roleMeta;
+  const safeRole = (value: unknown, fallback: Role = "teacher"): Role => isRole(value) ? value : fallback;
+  const metaForRole = (role?: Role) => roleMeta[safeRole(role)];
+  const selectedRoleMeta = metaForRole(selectedRole);
+  const draftRoleMeta = metaForRole(newUser.role);
   const selectedUser = state.users.find((user) => user.id === selectedUserId) ?? state.users[0];
+  const selectedUserMeta = metaForRole(selectedUser?.activeRole);
   const activeBranch = state.branches.find((branch) => branch.id === selectedUser?.branchId);
   const activeDepartment = state.departments.find((department) => department.id === selectedUser?.departmentId);
   const visibleUsers = state.users.filter((user) => {
@@ -545,12 +666,59 @@ function AdminAccessExperience({ pageId, params }: { pageId: string; params?: Re
     const text = `${user.name} ${user.email} ${user.activeRole} ${branch?.name ?? ""} ${department?.name ?? ""}`.toLowerCase();
     return text.includes(query.toLowerCase());
   });
-  const permissionCoverage = Math.round((state.permissions[selectedRole].length / allPermissions.length) * 100);
+  const permissionCoverage = Math.round(((state.permissions[selectedRole] ?? []).length / allPermissions.length) * 100);
   const activeUsers = state.users.filter((user) => user.status === "active").length;
   const multiRoleUsers = state.users.filter((user) => user.roles.length > 1).length;
   const selectedRoleUsers = state.users.filter((user) => user.roles.includes(selectedRole)).length;
+  const selectedDraftCourseRun = state.courseRuns.find((run) => run.id === newUser.courseRunId);
+  const selectedDraftCourse = state.courses.find((course) => course.id === selectedDraftCourseRun?.courseId);
+  const selectedDraftClass = state.classGroups.find((group) => group.id === newUser.classGroupId);
+  const draftClassOptions = state.classGroups.filter((group) => group.courseRunId === newUser.courseRunId);
+  const draftBranch = state.branches.find((branch) => branch.id === newUser.branchId);
+  const draftDepartment = state.departments.find((department) => department.id === newUser.departmentId);
+  const draftTeacherClassCount = newUser.role === "teacher" ? state.classGroups.filter((group) => group.courseRunId === newUser.courseRunId).length : 0;
+  const selectedTeacherProfile = selectedUser ? state.teachers.find((teacher) => teacher.userId === selectedUser.id) : undefined;
+  const selectedTeacherRuns = selectedUser ? state.courseRuns.filter((run) => run.teacherId === selectedUser.id) : [];
+  const selectedTeacherRunIds = new Set(selectedTeacherRuns.map((run) => run.id));
+  const selectedTeacherClasses = state.classGroups.filter((group) => selectedTeacherRunIds.has(group.courseRunId));
+  const selectedTeacherClassIds = new Set(selectedTeacherClasses.map((group) => group.id));
+  const selectedTeacherEvents = state.events.filter(
+    (event) => event.ownerId === selectedUser?.id || (event.classGroupId ? selectedTeacherClassIds.has(event.classGroupId) : false),
+  );
+  const selectedTeacherAssignments = state.assignments.filter((assignment) => selectedTeacherRunIds.has(assignment.courseRunId));
+  const selectedTeacherQuizzes = state.quizzes.filter((quiz) => selectedTeacherRunIds.has(quiz.courseRunId));
+  const selectedTeacherResources = state.resources.filter((resource) => {
+    const lesson = state.lessons.find((item) => item.id === resource.lessonId);
+    const moduleItem = state.modules.find((item) => item.id === lesson?.moduleId);
+    return selectedTeacherRuns.some((run) => run.courseId === moduleItem?.courseId);
+  });
+  const selectedTeacherAvailability = selectedUser ? state.teacherAvailability.filter((slot) => slot.teacherId === selectedUser.id) : [];
+  const selectedAssignmentRun = state.courseRuns.find((run) => run.id === teacherAssignmentDraft.courseRunId);
+  const selectedAssignmentCourse = state.courses.find((course) => course.id === selectedAssignmentRun?.courseId);
+  const selectedAssignmentProgram = state.programs.find((program) => program.id === selectedAssignmentCourse?.programId);
+  const selectedAssignmentBranch = state.branches.find((branch) => branch.id === selectedAssignmentRun?.branchId);
+  const selectedAssignmentValidDepartments = state.departments.filter((department) => {
+    if (!selectedAssignmentRun) return department.id === selectedUser?.departmentId;
+    const branchMatches = department.branchIds.includes(selectedAssignmentRun.branchId) || selectedAssignmentRun.branchId === "br_global";
+    const programMatches = !selectedAssignmentProgram || selectedAssignmentProgram.departmentId === department.id;
+    return branchMatches && programMatches;
+  });
+  const selectedAssignmentDepartment = state.departments.find((department) => department.id === teacherAssignmentDraft.departmentId);
+  const selectedAssignmentClasses = state.classGroups.filter((group) => group.courseRunId === selectedAssignmentRun?.id);
+  const selectedAssignmentPreviousTeacher = state.users.find((user) => user.id === selectedAssignmentRun?.teacherId);
+  const teacherWorkspaceLinks = selectedTeacherClasses[0]
+    ? [
+        { label: "Class", href: `/app/teacher/classes/${selectedTeacherClasses[0].id}`, value: selectedTeacherClasses[0].name },
+        { label: "Sessions", href: `/app/teacher/classes/${selectedTeacherClasses[0].id}/sessions`, value: `${selectedTeacherEvents.length} scheduled` },
+        { label: "Attendance", href: `/app/teacher/classes/${selectedTeacherClasses[0].id}/attendance`, value: `${selectedTeacherClasses[0].studentIds.length} learners` },
+        { label: "Materials", href: "/app/teacher/materials", value: `${selectedTeacherResources.length} resources` },
+        { label: "Assignments", href: "/app/teacher/assignments", value: `${selectedTeacherAssignments.length} active` },
+        { label: "Grading", href: "/app/teacher/grading", value: "Course scoped" },
+        { label: "Quizzes", href: "/app/teacher/quizzes", value: `${selectedTeacherQuizzes.length} quizzes` },
+      ]
+    : [];
   const auditRows = state.auditLogs
-    .filter((audit) => /user|role|permission|branch|record|rbac/i.test(`${audit.action} ${audit.entityType} ${audit.summary}`))
+    .filter((audit) => /user|role|permission|branch|record|rbac|teacher/i.test(`${audit.action} ${audit.entityType} ${audit.summary}`))
     .slice(0, 5);
   const focusLabel =
     pageId === "branches"
@@ -562,110 +730,319 @@ function AdminAccessExperience({ pageId, params }: { pageId: string; params?: Re
       : "Identity directory";
 
   useEffect(() => {
+    setTeacherAssignError("");
+    setTeacherAssignStatus("");
+    const currentRun = selectedTeacherRuns.find((run) => run.status === "active" || run.status === "pending") ?? selectedTeacherRuns[0];
+    const fallbackDepartmentId = selectedTeacherProfile?.departmentId ?? selectedUser?.departmentId ?? "";
+    setTeacherAssignmentDraft({
+      courseRunId: currentRun?.id ?? "",
+      departmentId: fallbackDepartmentId,
+      specialties: selectedTeacherProfile?.specialties.join(", ") ?? "",
+      availability: selectedTeacherAvailability.map((slot) => `${slot.weekday} ${slot.startsAt}-${slot.endsAt}`).join(", "),
+    });
+  }, [selectedUserId]);
+
+  useEffect(() => {
     if (params?.userId && params.userId !== selectedUserId) {
       setSelectedUserId(params.userId);
     }
   }, [params?.userId, selectedUserId]);
 
-  const audit = (action: string, entityType: string, entityId: string, summary: string) => {
-    platformStore.audit(action, entityType, entityId, summary, actorId);
+  const updateUserAccess = async (action: Extract<PlatformWorkflowAction, { type: "user.update" }>, successMessage: string) => {
+    if (savingAccess) return;
+    setSavingAccess(true);
+    setAccessUpdateError("");
+    const response = await runPlatformWorkflowActionRequest(action);
+    setSavingAccess(false);
+    if (!response.ok || !response.data) {
+      const message = response.error ?? "User access could not be updated.";
+      setAccessUpdateError(message);
+      toast.error("User access update failed", { description: message });
+      return;
+    }
+    platformStore.setState(response.data.state);
     refresh();
+    toast.success(successMessage);
   };
 
-  const updateUser = (userId: string, updater: (user: typeof state.users[number]) => typeof state.users[number], summary: string) => {
-    const next = clonePlatformState();
-    next.users = next.users.map((user) => (user.id === userId ? updater(user) : user));
-    platformStore.setState(next);
-    audit("user.updated", "User", userId, summary);
-    toast.success("User access updated");
-  };
-
-  const setUserRole = (userId: string, role: Role) => {
-    updateUser(userId, (user) => {
-      const roles = user.roles.includes(role) ? user.roles : [...user.roles, role];
-      return { ...user, roles, activeRole: role };
-    }, `Assigned ${roleMeta[role].label} as active role.`);
+  const setUserRole = (userId: string, roleValue: unknown) => {
+    const role = safeRole(roleValue);
+    const user = state.users.find((item) => item.id === userId);
+    const roles = user?.roles.includes(role) ? user.roles : [...(user?.roles ?? []), role];
+    void updateUserAccess({
+      type: "user.update",
+      userId,
+      activeRole: role,
+      roles,
+      branchId: user?.branchId,
+      departmentId: user?.departmentId,
+      status: user?.status,
+    }, `${metaForRole(role).label} set as active role`);
     setSelectedRole(role);
   };
 
-  const toggleUserRole = (userId: string, role: Role) => {
-    updateUser(userId, (user) => {
-      const hasRole = user.roles.includes(role);
-      const roles = hasRole ? user.roles.filter((item) => item !== role) : [...user.roles, role];
-      const safeRoles = roles.length ? roles : [user.activeRole];
-      const activeRole = safeRoles.includes(user.activeRole) ? user.activeRole : safeRoles[0];
-      return { ...user, roles: safeRoles, activeRole };
-    }, `Changed ${roleMeta[role].label} access.`);
+  const toggleUserRole = (userId: string, roleValue: unknown) => {
+    const role = safeRole(roleValue);
+    const user = state.users.find((item) => item.id === userId);
+    if (!user) return;
+    const hasRole = user.roles.includes(role);
+    const roles = hasRole ? user.roles.filter((item) => item !== role) : [...user.roles, role];
+    const safeRoles = roles.length ? roles : [user.activeRole];
+    const activeRole = safeRole(safeRoles.includes(user.activeRole) ? user.activeRole : safeRoles[0]);
+    void updateUserAccess({
+      type: "user.update",
+      userId,
+      activeRole,
+      roles: safeRoles,
+      branchId: user.branchId,
+      departmentId: user.departmentId,
+      status: user.status,
+    }, `${metaForRole(role).label} access updated`);
   };
 
   const updateUserScope = (field: "branchId" | "departmentId", value: string) => {
     if (!selectedUser) return;
-    updateUser(selectedUser.id, (user) => ({ ...user, [field]: value }), `Updated ${field === "branchId" ? "branch" : "department"} scope.`);
+    void updateUserAccess({
+      type: "user.update",
+      userId: selectedUser.id,
+      activeRole: selectedUser.activeRole,
+      roles: selectedUser.roles,
+      branchId: field === "branchId" ? value : selectedUser.branchId,
+      departmentId: field === "departmentId" ? value : selectedUser.departmentId,
+      status: selectedUser.status,
+    }, `${field === "branchId" ? "Branch" : "Department"} scope updated`);
   };
 
   const toggleUserStatus = () => {
     if (!selectedUser) return;
     const nextStatus: EntityStatus = selectedUser.status === "active" ? "paused" : "active";
-    updateUser(selectedUser.id, (user) => ({ ...user, status: nextStatus }), `Set user status to ${nextStatus}.`);
+    void updateUserAccess({
+      type: "user.update",
+      userId: selectedUser.id,
+      activeRole: selectedUser.activeRole,
+      roles: selectedUser.roles,
+      branchId: selectedUser.branchId,
+      departmentId: selectedUser.departmentId,
+      status: nextStatus,
+    }, `User ${nextStatus === "active" ? "activated" : "paused"}`);
   };
 
-  const togglePermission = (role: Role, permission: Permission) => {
-    const next = clonePlatformState();
-    const current = next.permissions[role] ?? [];
-    next.permissions[role] = current.includes(permission)
-      ? current.filter((item) => item !== permission)
-      : [...current, permission];
-    platformStore.setState(next);
-    audit("permission.updated", "Role", role, `${roleMeta[role].label}: ${formatPermission(permission)} ${current.includes(permission) ? "removed" : "granted"}.`);
-    toast.success("Permission matrix updated");
+  const updateGovernance = async (
+    action: Extract<PlatformWorkflowAction, { type: "permission.update" | "branch.update" }>,
+    successMessage: string,
+  ) => {
+    if (savingGovernance) return;
+    setSavingGovernance(true);
+    setGovernanceUpdateError("");
+    const response = await runPlatformWorkflowActionRequest(action);
+    setSavingGovernance(false);
+    if (!response.ok || !response.data) {
+      const message = response.error ?? "Governance update could not be saved.";
+      setGovernanceUpdateError(message);
+      toast.error("Governance update failed", { description: message });
+      return;
+    }
+    platformStore.setState(response.data.state);
+    refresh();
+    toast.success(successMessage);
+  };
+
+  const togglePermission = (roleValue: unknown, permission: Permission) => {
+    const role = safeRole(roleValue);
+    const current = state.permissions[role] ?? [];
+    const granted = !current.includes(permission);
+    void updateGovernance({
+      type: "permission.update",
+      role,
+      permission,
+      granted,
+    }, `${metaForRole(role).label} permission ${granted ? "granted" : "removed"}`);
   };
 
   const updateBranchStatus = (branchId: string, status: EntityStatus) => {
-    const next = clonePlatformState();
-    next.branches = next.branches.map((branch) => (branch.id === branchId ? { ...branch, status } : branch));
-    platformStore.setState(next);
-    audit("branch.updated", "Branch", branchId, `Set branch status to ${status}.`);
-    toast.success("Branch status updated");
+    void updateGovernance({
+      type: "branch.update",
+      branchId,
+      status,
+    }, "Branch status updated");
   };
 
-  const addUser = (event: React.FormEvent) => {
+  const addUser = async (event: React.FormEvent) => {
     event.preventDefault();
-    if (!newUser.name.trim() || !newUser.email.trim()) {
-      toast.error("Name and email are required");
+    if (creatingAccount) return;
+    const name = newUser.name.trim();
+    const email = newUser.email.trim().toLowerCase();
+    const phone = newUser.phone.trim();
+    setCreateAccountError("");
+    if (!name || !email || !phone) {
+      const message = "Name, email, and phone are required";
+      setCreateAccountError(message);
+      toast.error(message);
       return;
     }
-    const next = clonePlatformState();
-    const id = `usr_${newUser.role}_${Date.now().toString(36)}`;
-    next.users = [
-      {
-        id,
-        name: newUser.name.trim(),
-        email: newUser.email.trim(),
-        roles: [newUser.role],
-        activeRole: newUser.role,
-        branchId: newUser.branchId,
-        departmentId: newUser.departmentId,
-        status: "active",
-      },
-      ...next.users,
-    ];
-    platformStore.setState(next);
+    if (state.users.some((user) => user.email.toLowerCase() === email)) {
+      const message = "This email is already in the identity directory";
+      setCreateAccountError(message);
+      toast.error(message);
+      return;
+    }
+    if (newUser.role === "student") {
+      const classGroup = state.classGroups.find((group) => group.id === newUser.classGroupId);
+      if (!newUser.courseRunId || !classGroup) {
+        const message = "Choose a course run and class group for the student";
+        setCreateAccountError(message);
+        toast.error(message);
+        return;
+      }
+      if (classGroup.studentIds.length >= classGroup.capacity) {
+        const message = "Selected class is already at capacity";
+        setCreateAccountError(message);
+        toast.error(message);
+        return;
+      }
+    }
+    if (newUser.role === "teacher" && !splitListInput(newUser.subjects).length) {
+      const message = "Add at least one subject taught by the teacher";
+      setCreateAccountError(message);
+      toast.error(message);
+      return;
+    }
+    if (newUser.role === "teacher" && !state.courseRuns.some((run) => run.id === newUser.courseRunId)) {
+      const message = "Choose a course run for the teacher";
+      setCreateAccountError(message);
+      toast.error(message);
+      return;
+    }
+    setCreatingAccount(true);
+    const response = await runPlatformWorkflowActionRequest({
+      type: "user.create",
+      name,
+      email,
+      phone,
+      role: newUser.role,
+      branchId: newUser.branchId,
+      departmentId: newUser.departmentId,
+      status: newUser.status,
+      preferredLanguage: newUser.preferredLanguage,
+      courseRunId: newUser.courseRunId,
+      classGroupId: newUser.classGroupId,
+      currentLevel: newUser.currentLevel,
+      ageGroup: newUser.ageGroup,
+      guardianName: newUser.guardianName,
+      guardianPhone: newUser.guardianPhone,
+      subjects: splitListInput(newUser.subjects),
+      specialization: splitListInput(newUser.specialization),
+      availability: splitListInput(newUser.availability),
+      notes: newUser.notes.trim() || undefined,
+    });
+    setCreatingAccount(false);
+    if (!response.ok || !response.data) {
+      const message = response.error ?? "Account could not be created.";
+      setCreateAccountError(message);
+      toast.error("Account creation failed", { description: message });
+      return;
+    }
+    platformStore.setState(response.data.state);
+    const created = response.data.result.result as
+      | {
+          user?: {
+            id: string;
+            name: string;
+            activeRole: Role;
+          };
+          relationshipSummary?: string;
+        }
+      | undefined;
+    const id = created?.user?.id ?? response.data.result.entityId;
     setSelectedUserId(id);
-    setNewUser({ name: "", email: "", role: "teacher", branchId: "br_online", departmentId: "dep_arabic" });
-    audit("user.created", "User", id, `Created ${roleMeta[newUser.role].label} account for ${newUser.name.trim()}.`);
-    toast.success("User created locally");
+    setSelectedRole(created?.user?.activeRole ?? newUser.role);
+    setNewUser({
+      name: "",
+      email: "",
+      phone: "",
+      role: "teacher",
+      branchId: "br_online",
+      departmentId: "dep_arabic",
+      status: "active",
+      preferredLanguage: "English",
+      courseRunId: "run_ar_l3_2026",
+      classGroupId: "class_ar_l3_a",
+      currentLevel: "Placement pending",
+      ageGroup: "Adult",
+      guardianName: "",
+      guardianPhone: "",
+      subjects: "Arabic grammar",
+      specialization: "Arabic Level 3",
+      availability: "Mon 09:00, Wed 09:00",
+      notes: "",
+    });
+    refresh();
+    toast.success("Account created and connected", {
+      description: created?.relationshipSummary ?? `${draftRoleMeta.label} account created through server action.`,
+    });
+  };
+
+  const assignSelectedTeacher = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!selectedUser || safeRole(selectedUser.activeRole) !== "teacher") {
+      setTeacherAssignError("Select a teacher account before assigning a course run.");
+      return;
+    }
+    if (!teacherAssignmentDraft.courseRunId || !teacherAssignmentDraft.departmentId) {
+      setTeacherAssignError("Choose a course run and department.");
+      return;
+    }
+    if (!selectedAssignmentValidDepartments.some((department) => department.id === teacherAssignmentDraft.departmentId)) {
+      setTeacherAssignError("Choose a department that owns this course and is available in the run branch.");
+      return;
+    }
+    setAssigningTeacher(true);
+    setTeacherAssignError("");
+    setTeacherAssignStatus("");
+    const response = await runPlatformWorkflowActionRequest({
+      type: "teacher.assign",
+      userId: selectedUser.id,
+      courseRunId: teacherAssignmentDraft.courseRunId,
+      departmentId: teacherAssignmentDraft.departmentId,
+      specialties: splitListInput(teacherAssignmentDraft.specialties),
+      availability: splitListInput(teacherAssignmentDraft.availability),
+    });
+    setAssigningTeacher(false);
+    if (!response.ok || !response.data) {
+      const message = response.error ?? "Teacher assignment could not be saved.";
+      setTeacherAssignError(message);
+      toast.error("Teacher assignment failed", { description: message });
+      return;
+    }
+    platformStore.setState(response.data.state);
+    refresh();
+    const result = response.data.result.result as
+      | {
+          teacher?: { name: string };
+          previousTeacher?: { name: string };
+          classGroups?: Array<{ id: string }>;
+          availability?: Array<{ id: string }>;
+        }
+      | undefined;
+    toast.success(result?.previousTeacher ? "Teacher reassigned" : "Teacher assigned", {
+      description: `${result?.teacher?.name ?? selectedUser.name} now owns ${result?.classGroups?.length ?? selectedAssignmentClasses.length} class group(s).`,
+    });
+    setTeacherAssignStatus(
+      `${result?.teacher?.name ?? selectedUser.name} saved for ${result?.classGroups?.length ?? selectedAssignmentClasses.length} class group(s).`,
+    );
   };
 
   return (
     <div className="admin-access-workspace">
-      <section className="admin-access-hero">
-        <div>
-          <span className="platform-eyebrow">{focusLabel}</span>
-          <h2>Access control</h2>
-          <p>Manage users, roles, permissions, and branch scope with auditable RBAC changes.</p>
-        </div>
-        <div className="admin-access-hero-actions">
-          <button className={pageId === "users" || pageId === "user-detail" ? "active" : ""} onClick={() => setSelectedRole(selectedUser?.activeRole ?? "teacher")}>
+      <PlatformWorkspaceHeader
+        className="admin-access-hero"
+        title="Access control"
+        description="Manage users, roles, permissions, and branch scope with auditable RBAC changes."
+        context={<span>{focusLabel}</span>}
+        actionsClassName="admin-access-hero-actions"
+        actions={
+          <>
+          <button className={pageId === "users" || pageId === "user-detail" ? "active" : ""} onClick={() => setSelectedRole(safeRole(selectedUser?.activeRole))}>
             <Users size={15} />
             Users
           </button>
@@ -681,12 +1058,13 @@ function AdminAccessExperience({ pageId, params }: { pageId: string; params?: Re
             <Building2 size={15} />
             Branches
           </button>
-        </div>
-      </section>
+          </>
+        }
+      />
 
       <div className="admin-access-kpis">
         <AdminAccessMetric label="Active users" value={`${activeUsers}/${state.users.length}`} />
-        <AdminAccessMetric label="Selected role" value={roleMeta[selectedRole].label} />
+        <AdminAccessMetric label="Selected role" value={selectedRoleMeta.label} />
         <AdminAccessMetric label="Role users" value={String(selectedRoleUsers)} />
         <AdminAccessMetric label="RBAC coverage" value={`${permissionCoverage}%`} />
         <AdminAccessMetric label="Multi-role" value={String(multiRoleUsers)} />
@@ -709,12 +1087,13 @@ function AdminAccessExperience({ pageId, params }: { pageId: string; params?: Re
             {visibleUsers.map((user) => {
               const branch = state.branches.find((item) => item.id === user.branchId);
               const department = state.departments.find((item) => item.id === user.departmentId);
+              const userMeta = metaForRole(user.activeRole);
               return (
                 <button key={user.id} className={selectedUser?.id === user.id ? "active" : ""} onClick={() => {
                   setSelectedUserId(user.id);
-                  setSelectedRole(user.activeRole);
+                  setSelectedRole(safeRole(user.activeRole));
                 }}>
-                  <span style={{ background: roleMeta[user.activeRole].tint, color: roleMeta[user.activeRole].color }}>{roleMeta[user.activeRole].shortLabel}</span>
+                  <span style={{ background: userMeta.tint, color: userMeta.color }}>{userMeta.shortLabel}</span>
                   <div>
                     <strong>{user.name}</strong>
                     <small>{branch?.name ?? "No branch"} · {department?.name ?? "No department"}</small>
@@ -726,18 +1105,20 @@ function AdminAccessExperience({ pageId, params }: { pageId: string; params?: Re
           </div>
         </section>
 
-        <section className="admin-access-panel selected-user">
+        <section className="admin-access-panel selected-user" aria-busy={savingAccess}>
           <div className="admin-access-panel-head">
             <div>
               <span>Selected account</span>
               <strong>{selectedUser?.name ?? "No user"}</strong>
             </div>
-            <button onClick={toggleUserStatus}>{selectedUser?.status === "active" ? "Pause" : "Activate"}</button>
+            <button onClick={toggleUserStatus} disabled={savingAccess}>
+              {savingAccess ? "Saving" : selectedUser?.status === "active" ? "Pause" : "Activate"}
+            </button>
           </div>
           {selectedUser ? (
             <>
               <div className="admin-access-user-profile">
-                <span style={{ background: roleMeta[selectedUser.activeRole].color }}>{roleMeta[selectedUser.activeRole].shortLabel}</span>
+                <span style={{ background: selectedUserMeta.color }}>{selectedUserMeta.shortLabel}</span>
                 <div>
                   <strong>{selectedUser.email}</strong>
                   <small>{activeBranch?.name ?? "No branch"} · {activeDepartment?.name ?? "No department"}</small>
@@ -747,19 +1128,19 @@ function AdminAccessExperience({ pageId, params }: { pageId: string; params?: Re
               <div className="admin-access-field-grid">
                 <label>
                   Active role
-                  <select value={selectedUser.activeRole} onChange={(event) => setUserRole(selectedUser.id, event.target.value as Role)}>
+                  <select value={safeRole(selectedUser.activeRole)} disabled={savingAccess} onChange={(event) => setUserRole(selectedUser.id, event.target.value)}>
                     {roleOrder.map((role) => <option key={role} value={role}>{roleMeta[role].label}</option>)}
                   </select>
                 </label>
                 <label>
                   Branch
-                  <select value={selectedUser.branchId ?? ""} onChange={(event) => updateUserScope("branchId", event.target.value)}>
+                  <select value={selectedUser.branchId ?? ""} disabled={savingAccess} onChange={(event) => updateUserScope("branchId", event.target.value)}>
                     {state.branches.map((branch) => <option key={branch.id} value={branch.id}>{branch.name}</option>)}
                   </select>
                 </label>
                 <label>
                   Department
-                  <select value={selectedUser.departmentId ?? ""} onChange={(event) => updateUserScope("departmentId", event.target.value)}>
+                  <select value={selectedUser.departmentId ?? ""} disabled={savingAccess} onChange={(event) => updateUserScope("departmentId", event.target.value)}>
                     {state.departments.map((department) => <option key={department.id} value={department.id}>{department.name}</option>)}
                   </select>
                 </label>
@@ -767,13 +1148,137 @@ function AdminAccessExperience({ pageId, params }: { pageId: string; params?: Re
 
               <div className="admin-access-role-grid" aria-label={`${selectedUser.name} roles`}>
                 {roleOrder.map((role) => (
-                  <button key={role} className={selectedUser.roles.includes(role) ? "active" : ""} onClick={() => toggleUserRole(selectedUser.id, role)}>
+                  <button key={role} className={selectedUser.roles.includes(role) ? "active" : ""} disabled={savingAccess} onClick={() => toggleUserRole(selectedUser.id, role)}>
                     <span style={{ background: roleMeta[role].tint, color: roleMeta[role].color }}>{roleMeta[role].shortLabel}</span>
                     <strong>{roleMeta[role].label}</strong>
                     {selectedUser.activeRole === role ? <em>active</em> : null}
                   </button>
                 ))}
               </div>
+
+              {accessUpdateError ? (
+                <div className="platform-empty-state error">
+                  <strong>Access update was not saved</strong>
+                  <span>{accessUpdateError}</span>
+                </div>
+              ) : null}
+
+              {selectedUser.activeRole === "teacher" ? (
+                <div className="admin-access-teacher-links">
+                  <div>
+                    <span>Teacher workspace ready</span>
+                    <strong>{selectedTeacherClasses.length} class group(s)</strong>
+                    <small>
+                      {selectedTeacherProfile?.specialties.join(", ") || "No subjects added"} · {selectedTeacherAvailability.length} availability slot(s)
+                    </small>
+                  </div>
+                  <div className="admin-access-teacher-link-grid">
+                    {teacherWorkspaceLinks.length ? (
+                      teacherWorkspaceLinks.map((item) => (
+                        <Link key={item.label} href={item.href}>
+                          <span>{item.label}</span>
+                          <strong>{item.value}</strong>
+                        </Link>
+                      ))
+                    ) : (
+                      <span className="admin-access-empty-note">
+                        Assign this teacher to a course run to enable class, attendance, grading, materials, and feedback tools.
+                      </span>
+                    )}
+                  </div>
+                  <form className="admin-access-form admin-access-teacher-assignment-form" onSubmit={assignSelectedTeacher} aria-busy={assigningTeacher}>
+                    <div className="admin-access-form-section">
+                      <span>Course run assignment</span>
+                      <label>
+                        Course run
+                        <select
+                          value={teacherAssignmentDraft.courseRunId}
+                          disabled={assigningTeacher}
+                          onChange={(event) => setTeacherAssignmentDraft((value) => ({ ...value, courseRunId: event.target.value }))}
+                        >
+                          <option value="">Choose a live course run</option>
+                          {state.courseRuns.filter((run) => run.status === "active" || run.status === "pending").map((run) => {
+                            const course = state.courses.find((item) => item.id === run.courseId);
+                            const branch = state.branches.find((item) => item.id === run.branchId);
+                            const teacher = state.users.find((item) => item.id === run.teacherId);
+                            return (
+                              <option key={run.id} value={run.id}>
+                                {course?.title ?? run.id} · {branch?.name ?? "Branch"} · {teacher?.name ?? "Unassigned"}
+                              </option>
+                            );
+                          })}
+                        </select>
+                      </label>
+                      <label>
+                        Department
+                        <select
+                          value={teacherAssignmentDraft.departmentId}
+                          disabled={assigningTeacher || !teacherAssignmentDraft.courseRunId}
+                          onChange={(event) => setTeacherAssignmentDraft((value) => ({ ...value, departmentId: event.target.value }))}
+                        >
+                          <option value="">Choose department</option>
+                          {selectedAssignmentValidDepartments.map((department) => (
+                            <option key={department.id} value={department.id}>
+                              {department.name}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <label>
+                        Subjects / specialties
+                        <input
+                          value={teacherAssignmentDraft.specialties}
+                          disabled={assigningTeacher}
+                          onChange={(event) => setTeacherAssignmentDraft((value) => ({ ...value, specialties: event.target.value }))}
+                        />
+                      </label>
+                      <label>
+                        Availability
+                        <input
+                          value={teacherAssignmentDraft.availability}
+                          disabled={assigningTeacher}
+                          onChange={(event) => setTeacherAssignmentDraft((value) => ({ ...value, availability: event.target.value }))}
+                        />
+                      </label>
+                    </div>
+                    <div className="admin-access-review-card">
+                      <strong>{selectedAssignmentCourse?.title ?? "Selected course run"}</strong>
+                      <small>
+                        {selectedAssignmentBranch?.name ?? "No branch"} · {selectedAssignmentDepartment?.name ?? "No department"} ·{" "}
+                        {selectedAssignmentClasses.length} class group(s)
+                      </small>
+                      <span>
+                        {selectedAssignmentPreviousTeacher && selectedAssignmentPreviousTeacher.id !== selectedUser.id
+                          ? `Reassigns from ${selectedAssignmentPreviousTeacher.name}; class events, attendance, grading, materials, quizzes, and feedback move to ${selectedUser.name}.`
+                          : `Keeps ${selectedUser.name} connected to class events, attendance, grading, materials, quizzes, and feedback.`}
+                      </span>
+                    </div>
+                    {teacherAssignError ? (
+                      <div className="platform-empty-state error">
+                        <strong>Assignment was not saved</strong>
+                        <span>{teacherAssignError}</span>
+                      </div>
+                    ) : null}
+                    {teacherAssignStatus ? (
+                      <div className="platform-empty-state success">
+                        <strong>Assignment saved</strong>
+                        <span>{teacherAssignStatus}</span>
+                      </div>
+                    ) : null}
+                    <button
+                      type="submit"
+                      disabled={assigningTeacher || !teacherAssignmentDraft.courseRunId || !teacherAssignmentDraft.departmentId}
+                    >
+                      <ClipboardCheck size={15} />
+                      {assigningTeacher
+                        ? "Saving assignment"
+                        : selectedAssignmentPreviousTeacher && selectedAssignmentPreviousTeacher.id !== selectedUser.id
+                          ? "Reassign teacher"
+                          : "Assign teacher"}
+                    </button>
+                  </form>
+                </div>
+              ) : null}
             </>
           ) : null}
         </section>
@@ -782,70 +1287,225 @@ function AdminAccessExperience({ pageId, params }: { pageId: string; params?: Re
           <div className="admin-access-panel-head">
             <div>
               <span>Create account</span>
-              <strong>Staff or learner</strong>
+              <strong>{draftRoleMeta.label} setup</strong>
             </div>
             <CheckCircle2 size={18} />
           </div>
-          <form className="admin-access-form" onSubmit={addUser}>
-            <label>
-              Full name
-              <input value={newUser.name} onChange={(event) => setNewUser((value) => ({ ...value, name: event.target.value }))} placeholder="New staff member" />
-            </label>
-            <label>
-              Email
-              <input type="email" value={newUser.email} onChange={(event) => setNewUser((value) => ({ ...value, email: event.target.value }))} placeholder="name@nilecenter.org" />
-            </label>
-            <label>
-              Role
-              <select value={newUser.role} onChange={(event) => setNewUser((value) => ({ ...value, role: event.target.value as Role }))}>
-                {roleOrder.map((role) => <option key={role} value={role}>{roleMeta[role].label}</option>)}
-              </select>
-            </label>
-            <label>
-              Branch
-              <select value={newUser.branchId} onChange={(event) => setNewUser((value) => ({ ...value, branchId: event.target.value }))}>
-                {state.branches.map((branch) => <option key={branch.id} value={branch.id}>{branch.name}</option>)}
-              </select>
-            </label>
-            <label>
-              Department
-              <select value={newUser.departmentId} onChange={(event) => setNewUser((value) => ({ ...value, departmentId: event.target.value }))}>
-                {state.departments.map((department) => <option key={department.id} value={department.id}>{department.name}</option>)}
-              </select>
-            </label>
-            <button type="submit">
+          <form className="admin-access-form admin-access-guided-form" onSubmit={addUser}>
+            <div className="admin-access-step-strip" aria-label="Account creation steps">
+              <span>Identity</span>
+              <span>Role scope</span>
+              <span>Portal links</span>
+            </div>
+
+            <div className="admin-access-form-section">
+              <span>Identity</span>
+              <label>
+                Full name
+                <input value={newUser.name} onChange={(event) => setNewUser((value) => ({ ...value, name: event.target.value }))} placeholder="New account name" />
+              </label>
+              <label>
+                Email
+                <input type="email" value={newUser.email} onChange={(event) => setNewUser((value) => ({ ...value, email: event.target.value }))} placeholder="name@nilelearn.local" />
+              </label>
+              <label>
+                Phone / WhatsApp
+                <input value={newUser.phone} onChange={(event) => setNewUser((value) => ({ ...value, phone: event.target.value }))} placeholder="+20 100 000 0000" />
+              </label>
+            </div>
+
+            <div className="admin-access-form-section">
+              <span>Role scope</span>
+              <label>
+                Role
+                <select
+                  value={newUser.role}
+                  onChange={(event) => {
+                    const role = safeRole(event.target.value);
+                    setNewUser((value) => ({ ...value, role }));
+                  }}
+                >
+                  {roleOrder.map((role) => <option key={role} value={role}>{roleMeta[role].label}</option>)}
+                </select>
+              </label>
+              <label>
+                Branch
+                <select value={newUser.branchId} onChange={(event) => setNewUser((value) => ({ ...value, branchId: event.target.value }))}>
+                  {state.branches.map((branch) => <option key={branch.id} value={branch.id}>{branch.name}</option>)}
+                </select>
+              </label>
+              <label>
+                Department
+                <select value={newUser.departmentId} onChange={(event) => setNewUser((value) => ({ ...value, departmentId: event.target.value }))}>
+                  {state.departments.map((department) => <option key={department.id} value={department.id}>{department.name}</option>)}
+                </select>
+              </label>
+              <label>
+                Status
+                <select value={newUser.status} onChange={(event) => setNewUser((value) => ({ ...value, status: event.target.value as EntityStatus }))}>
+                  <option value="active">Active</option>
+                  <option value="pending">Pending</option>
+                  <option value="paused">Paused</option>
+                </select>
+              </label>
+            </div>
+
+            {newUser.role === "student" ? (
+              <div className="admin-access-form-section">
+                <span>Student placement</span>
+                <label>
+                  Preferred language
+                  <select value={newUser.preferredLanguage} onChange={(event) => setNewUser((value) => ({ ...value, preferredLanguage: event.target.value }))}>
+                    <option value="English">English</option>
+                    <option value="Arabic">Arabic</option>
+                    <option value="Turkish">Turkish</option>
+                    <option value="Russian">Russian</option>
+                  </select>
+                </label>
+                <label>
+                  Course / subject
+                  <select
+                    value={newUser.courseRunId}
+                    onChange={(event) => {
+                      const courseRunId = event.target.value;
+                      const classGroupId = state.classGroups.find((group) => group.courseRunId === courseRunId)?.id ?? "";
+                      setNewUser((value) => ({ ...value, courseRunId, classGroupId }));
+                    }}
+                  >
+                    {state.courseRuns.map((run) => {
+                      const course = state.courses.find((item) => item.id === run.courseId);
+                      const branch = state.branches.find((item) => item.id === run.branchId);
+                      return <option key={run.id} value={run.id}>{course?.title ?? run.id} · {branch?.name ?? "Branch"} · {run.term}</option>;
+                    })}
+                  </select>
+                </label>
+                <label>
+                  Class / group
+                  <select value={newUser.classGroupId} onChange={(event) => setNewUser((value) => ({ ...value, classGroupId: event.target.value }))}>
+                    {draftClassOptions.map((group) => <option key={group.id} value={group.id}>{group.name} · {group.schedule} · {group.studentIds.length}/{group.capacity}</option>)}
+                  </select>
+                </label>
+                <label>
+                  Current level / placement
+                  <input value={newUser.currentLevel} onChange={(event) => setNewUser((value) => ({ ...value, currentLevel: event.target.value }))} />
+                </label>
+                <label>
+                  Age group
+                  <select value={newUser.ageGroup} onChange={(event) => setNewUser((value) => ({ ...value, ageGroup: event.target.value }))}>
+                    <option value="Adult">Adult</option>
+                    <option value="Teen">Teen</option>
+                    <option value="Child">Child</option>
+                  </select>
+                </label>
+                <label>
+                  Guardian name
+                  <input value={newUser.guardianName} onChange={(event) => setNewUser((value) => ({ ...value, guardianName: event.target.value }))} placeholder="Required for minors" />
+                </label>
+                <label>
+                  Guardian phone
+                  <input value={newUser.guardianPhone} onChange={(event) => setNewUser((value) => ({ ...value, guardianPhone: event.target.value }))} placeholder="+20 ..." />
+                </label>
+              </div>
+            ) : null}
+
+            {newUser.role === "teacher" ? (
+              <div className="admin-access-form-section">
+                <span>Teacher assignment</span>
+                <label>
+                  Subjects taught
+                  <input value={newUser.subjects} onChange={(event) => setNewUser((value) => ({ ...value, subjects: event.target.value }))} placeholder="Arabic, Quran, Tajweed" />
+                </label>
+                <label>
+                  Teaching level / specialization
+                  <input value={newUser.specialization} onChange={(event) => setNewUser((value) => ({ ...value, specialization: event.target.value }))} placeholder="Arabic Level 3" />
+                </label>
+                <label>
+                  Availability
+                  <input value={newUser.availability} onChange={(event) => setNewUser((value) => ({ ...value, availability: event.target.value }))} placeholder="Mon 09:00, Thu 10:30" />
+                </label>
+                <label>
+                  Assign course run
+                  <select value={newUser.courseRunId} onChange={(event) => setNewUser((value) => ({ ...value, courseRunId: event.target.value }))}>
+                    {state.courseRuns.map((run) => {
+                      const course = state.courses.find((item) => item.id === run.courseId);
+                      const branch = state.branches.find((item) => item.id === run.branchId);
+                      return <option key={run.id} value={run.id}>{course?.title ?? run.id} · {branch?.name ?? "Branch"} · {run.term}</option>;
+                    })}
+                  </select>
+                </label>
+              </div>
+            ) : null}
+
+            <div className="admin-access-form-section">
+              <span>Notes</span>
+              <label>
+                Operational notes
+                <input value={newUser.notes} onChange={(event) => setNewUser((value) => ({ ...value, notes: event.target.value }))} placeholder="Optional context for admissions or operations" />
+              </label>
+            </div>
+
+            <div className="admin-access-review-card">
+              <strong>{newUser.name.trim() || "New account"}</strong>
+              <small>
+                {draftRoleMeta.label} · {draftBranch?.name ?? "No branch"} · {draftDepartment?.name ?? "No department"}
+              </small>
+              {newUser.role === "student" ? (
+                <span>Links to {selectedDraftCourse?.title ?? "selected course"} and {selectedDraftClass?.name ?? "selected class"}.</span>
+              ) : newUser.role === "teacher" ? (
+                <span>
+                  Links to {selectedDraftCourse?.title ?? "selected course"} with {draftTeacherClassCount} class group(s), {splitListInput(newUser.availability).length} availability slot(s), attendance, materials, assignments, grading, quizzes, and feedback tools.
+                </span>
+              ) : (
+                <span>Uses existing RBAC permissions for {draftRoleMeta.label}.</span>
+              )}
+            </div>
+
+            {createAccountError ? (
+              <div className="platform-empty-state error">
+                <strong>Account was not created</strong>
+                <span>{createAccountError}</span>
+              </div>
+            ) : null}
+
+            <button type="submit" disabled={creatingAccount}>
               <UserPlus size={15} />
-              Create user
+              {creatingAccount ? "Creating account" : "Create connected account"}
             </button>
           </form>
         </section>
       </div>
 
       <div className="admin-access-lower-grid">
-        <section className="admin-access-panel permission-matrix">
+        <section className="admin-access-panel permission-matrix" aria-busy={savingGovernance}>
           <div className="admin-access-panel-head">
             <div>
               <span>Permission matrix</span>
-              <strong>{roleMeta[selectedRole].label}</strong>
+              <strong>{selectedRoleMeta.label}</strong>
             </div>
-            <select value={selectedRole} onChange={(event) => setSelectedRole(event.target.value as Role)} aria-label="Permission role">
+            <select value={safeRole(selectedRole)} disabled={savingGovernance} onChange={(event) => setSelectedRole(safeRole(event.target.value))} aria-label="Permission role">
               {roleOrder.map((role) => <option key={role} value={role}>{roleMeta[role].label}</option>)}
             </select>
           </div>
           <div className="admin-permission-grid">
             {allPermissions.map((permission) => {
-              const granted = state.permissions[selectedRole].includes(permission);
+              const granted = (state.permissions[selectedRole] ?? []).includes(permission);
               return (
-                <button key={permission} className={granted ? "granted" : ""} onClick={() => togglePermission(selectedRole, permission)}>
+                <button key={permission} className={granted ? "granted" : ""} disabled={savingGovernance} onClick={() => togglePermission(selectedRole, permission)}>
                   <span>{granted ? <CheckCircle2 size={14} /> : <X size={14} />}</span>
                   <strong>{formatPermission(permission)}</strong>
                 </button>
               );
             })}
           </div>
+          {governanceUpdateError ? (
+            <div className="platform-empty-state error">
+              <strong>Governance update was not saved</strong>
+              <span>{governanceUpdateError}</span>
+            </div>
+          ) : null}
         </section>
 
-        <section className="admin-access-panel branch-scope">
+        <section className="admin-access-panel branch-scope" aria-busy={savingGovernance}>
           <div className="admin-access-panel-head">
             <div>
               <span>Branch scope</span>
@@ -863,7 +1523,7 @@ function AdminAccessExperience({ pageId, params }: { pageId: string; params?: Re
                     <strong>{branch.name}</strong>
                     <small>{branch.code} · {branch.timezone} · {users} users · {departments} departments</small>
                   </div>
-                  <select value={branch.status} onChange={(event) => updateBranchStatus(branch.id, event.target.value as EntityStatus)} aria-label={`${branch.name} status`}>
+                  <select value={branch.status} disabled={savingGovernance} onChange={(event) => updateBranchStatus(branch.id, event.target.value as EntityStatus)} aria-label={`${branch.name} status`}>
                     <option value="active">Active</option>
                     <option value="paused">Paused</option>
                     <option value="pending">Pending</option>
@@ -918,6 +1578,8 @@ function AdminSystemExperience({ pageId }: { pageId: string }) {
     retentionDays: "365",
   });
   const [integrationCheck, setIntegrationCheck] = useState("");
+  const [savingSystemAction, setSavingSystemAction] = useState(false);
+  const [systemActionError, setSystemActionError] = useState("");
   const state = useMemo(() => platformStore.getState(), [version]);
   const refresh = () => setVersion((value) => value + 1);
   const actorId = getDemoUser("superadmin").id;
@@ -993,34 +1655,49 @@ function AdminSystemExperience({ pageId }: { pageId: string }) {
           ? "Platform settings"
           : "Integration control";
 
-  const setIntegrationStatus = (integrationId: IntegrationConfig["id"], status: IntegrationStatus) => {
-    const next = clonePlatformState();
-    next.integrations = next.integrations.map((integration) =>
-      integration.id === integrationId
-        ? {
-            ...integration,
-            status,
-            lastSyncAt: status === "connected" || status === "mock_mode" ? new Date().toISOString() : integration.lastSyncAt,
-          }
-        : integration,
-    );
-    platformStore.setState(next);
-    platformStore.audit("integration.status_updated", "IntegrationConfig", integrationId, `${integrationId} set to ${status}.`, actorId);
+  const runSystemAction = async (
+    action: Extract<PlatformWorkflowAction, { type: "integration.status.update" | "integration.local_check" | "system.health_check" }>,
+    successMessage: string,
+  ) => {
+    if (savingSystemAction) return undefined;
+    setSavingSystemAction(true);
+    setSystemActionError("");
+    const response = await runPlatformWorkflowActionRequest(action);
+    setSavingSystemAction(false);
+    if (!response.ok || !response.data) {
+      const message = response.error ?? "System action could not be saved.";
+      setSystemActionError(message);
+      toast.error("System action failed", { description: message });
+      return undefined;
+    }
+    platformStore.setState(response.data.state);
     refresh();
-    toast.success("Integration status updated", { description: `${integrationId} is now ${status.replace("_", " ")}.` });
+    toast.success(successMessage);
+    return response.data.result.result;
+  };
+
+  const setIntegrationStatus = (integrationId: IntegrationConfig["id"], status: IntegrationStatus) => {
+    void runSystemAction({
+      type: "integration.status.update",
+      integrationId,
+      status,
+    }, "Integration status updated");
   };
 
   const runHealthChecks = () => {
-    platformStore.audit("system.health_checked", "PlatformSystem", "health", `System health check scored ${healthScore}%.`, actorId);
-    refresh();
-    toast.success("System health checked", { description: `${healthScore}% readiness based on local platform signals.` });
+    void runSystemAction({
+      type: "system.health_check",
+      score: healthScore,
+    }, "System health checked");
   };
   const runIntegrationLocalCheck = () => {
-    const checkedAt = new Date().toLocaleString();
-    setIntegrationCheck(`Checked at ${checkedAt}`);
-    platformStore.audit("integration.local_checked", "IntegrationConfig", selectedIntegration.id, `${selectedIntegration.label} checked locally.`, actorId);
-    refresh();
-    toast.success("Local integration check logged", { description: selectedIntegration.label });
+    void runSystemAction({
+      type: "integration.local_check",
+      integrationId: selectedIntegration.id,
+    }, "Local integration check logged").then((result) => {
+      const checkedAt = (result as { checkedAt?: string } | undefined)?.checkedAt;
+      setIntegrationCheck(`Checked at ${checkedAt ? new Date(checkedAt).toLocaleString() : new Date().toLocaleString()}`);
+    });
   };
 
   const exportAuditCsv = () => {
@@ -1067,13 +1744,14 @@ function AdminSystemExperience({ pageId }: { pageId: string }) {
 
   return (
     <div className="admin-system-workspace">
-      <section className="admin-system-hero">
-        <div>
-          <span className="platform-eyebrow">{focusCopy}</span>
-          <h2>Platform operations</h2>
-          <p>Manage integrations, health, audit logs, and settings with server-side credential boundaries.</p>
-        </div>
-        <div className="admin-system-nav" aria-label="Admin system navigation">
+      <PlatformWorkspaceHeader
+        className="admin-system-hero"
+        title="Platform operations"
+        description="Manage integrations, health, audit logs, and settings with server-side credential boundaries."
+        context={<span>{focusCopy}</span>}
+        actionsClassName="admin-system-nav"
+        actions={
+          <>
           {[
             { label: "Integrations", routeId: "integrations", Icon: Puzzle },
             { label: "Audit logs", routeId: "audit-logs", Icon: FileText },
@@ -1085,8 +1763,9 @@ function AdminSystemExperience({ pageId }: { pageId: string }) {
               {label}
             </Link>
           ))}
-        </div>
-      </section>
+          </>
+        }
+      />
 
       <div className="admin-system-kpis">
         <AdminAccessMetric label="Connectors" value={`${connectedCount}/${integrations.length}`} />
@@ -1105,9 +1784,9 @@ function AdminSystemExperience({ pageId }: { pageId: string }) {
                   <span>Connector registry</span>
                   <strong>{integrations.length} integration boundaries</strong>
                 </div>
-                <button onClick={() => setIntegrationStatus(selectedIntegration.id, "mock_mode")}>
+                <button onClick={() => setIntegrationStatus(selectedIntegration.id, "mock_mode")} disabled={savingSystemAction}>
                   <RefreshCcw size={15} />
-                  Review selected
+                  {savingSystemAction ? "Saving" : "Review selected"}
                 </button>
               </div>
               <div className="admin-system-integration-grid">
@@ -1121,13 +1800,13 @@ function AdminSystemExperience({ pageId }: { pageId: string }) {
               </div>
               <div className="admin-system-detail">
                 <div>
-                  <span className="platform-eyebrow">Selected connector</span>
+                  <span className="platform-section-kicker">Selected connector</span>
                   <h3>{selectedIntegration.label}</h3>
                   <p>{selectedIntegration.notes}</p>
                 </div>
                 <label>
                   Status
-                  <select value={selectedIntegration.status} onChange={(event) => setIntegrationStatus(selectedIntegration.id, event.target.value as IntegrationStatus)}>
+                  <select value={selectedIntegration.status} disabled={savingSystemAction} onChange={(event) => setIntegrationStatus(selectedIntegration.id, event.target.value as IntegrationStatus)}>
                     <option value="not_configured">Not configured</option>
                     <option value="mock_mode">Mock mode</option>
                     <option value="connected">Connected</option>
@@ -1138,9 +1817,15 @@ function AdminSystemExperience({ pageId }: { pageId: string }) {
                   {selectedIntegration.envVars.length ? selectedIntegration.envVars.map((envVar) => <code key={envVar}>{envVar}</code>) : <code>No env vars required</code>}
                 </div>
                 <div className="platform-action-grid">
-                  <button onClick={runIntegrationLocalCheck}>Run local check</button>
+                  <button onClick={runIntegrationLocalCheck} disabled={savingSystemAction}>Run local check</button>
                   <button disabled={selectedIntegration.status !== "connected"}>Start sync</button>
                 </div>
+                {systemActionError ? (
+                  <div className="platform-empty-state error">
+                    <strong>System action was not saved</strong>
+                    <span>{systemActionError}</span>
+                  </div>
+                ) : null}
                 {integrationCheck ? <small>{integrationCheck}</small> : null}
                 <small>Last sync: {selectedIntegration.lastSyncAt ? new Date(selectedIntegration.lastSyncAt).toLocaleString() : "Not run"}</small>
               </div>
@@ -1201,11 +1886,17 @@ function AdminSystemExperience({ pageId }: { pageId: string }) {
                   <span>Operational checks</span>
                   <strong>{healthScore}% readiness</strong>
                 </div>
-                <button onClick={runHealthChecks}>
+                <button onClick={runHealthChecks} disabled={savingSystemAction}>
                   <RefreshCcw size={15} />
-                  Run checks
+                  {savingSystemAction ? "Checking" : "Run checks"}
                 </button>
               </div>
+              {systemActionError ? (
+                <div className="platform-empty-state error">
+                  <strong>Health check was not saved</strong>
+                  <span>{systemActionError}</span>
+                </div>
+              ) : null}
               <div className="admin-system-health-grid">
                 {healthChecks.map((check) => (
                   <article key={check.id}>
@@ -1345,6 +2036,7 @@ function AcademicGovernanceExperience({
     title: "",
     outcomes: "",
   });
+  const [certificateSavingKey, setCertificateSavingKey] = useState("");
   const state = useMemo(() => platformStore.getState(), [version]);
   const refresh = () => setVersion((value) => value + 1);
   const actorRole = scope === "admin" ? "superadmin" : "headofdepartment";
@@ -1423,6 +2115,39 @@ function AcademicGovernanceExperience({
     const text = `${program.title} ${program.category} ${program.language} ${department?.name ?? ""}`.toLowerCase();
     return text.includes(query.toLowerCase());
   });
+  const runAcademicCertificateAction = async (
+    actionType: "certificate.approve" | "certificate.issue",
+    certificate: Certificate,
+  ) => {
+    const nextKey = `${actionType}:${certificate.id}`;
+    setCertificateSavingKey(nextKey);
+    const response = await runPlatformWorkflowActionRequest({
+      type: actionType,
+      certificateId: certificate.id,
+    });
+    setCertificateSavingKey("");
+    if (!response.ok || !response.data) {
+      toast.error("Certificate action failed", {
+        description: response.error ?? "The server could not save this certificate action.",
+      });
+      return;
+    }
+
+    platformStore.setState(response.data.state);
+    refresh();
+    const changed = response.data.result.result as Certificate | undefined;
+    if (!changed) {
+      toast.info(
+        actionType === "certificate.issue"
+          ? "Approve the certificate before issuing it"
+          : "Certificate state did not change",
+      );
+      return;
+    }
+    toast.success(actionType === "certificate.approve" ? "Certificate approved" : "Certificate issued", {
+      description: `${changed.verificationCode} · ${response.data.persistence}`,
+    });
+  };
   useEffect(() => {
     if (!programs.length) return;
     if (!selectedProgramId || !programs.some((program) => program.id === selectedProgramId)) {
@@ -1450,6 +2175,22 @@ function AcademicGovernanceExperience({
     ...scopedClasses.map((classGroup) => ({ type: "Class", name: classGroup.name, status: `${classGroup.studentIds.length}/${classGroup.capacity}`, owner: classGroup.schedule })),
     ...scopedCertificates.map((certificate) => ({ type: "Certificate", name: certificate.verificationCode, status: certificate.status, owner: `${certificate.grade}% grade` })),
   ];
+  const scopedClassIds = new Set(scopedClasses.map((classGroup) => classGroup.id));
+  const scopedSessions = state.classSessions.filter((session) => scopedClassIds.has(session.classGroupId));
+  const scopedAttendance = state.attendance.filter((record) => scopedClassIds.has(record.classGroupId));
+  const expectedAttendanceRows = scopedSessions.reduce((total, session) => {
+    const classGroup = scopedClasses.find((item) => item.id === session.classGroupId);
+    return total + (classGroup?.studentIds.length ?? 0);
+  }, 0);
+  const attendanceStatusCounts = (["present", "late", "absent", "excused"] as AttendanceStatus[]).map((status) => ({
+    status,
+    label: status.charAt(0).toUpperCase() + status.slice(1),
+    count: scopedAttendance.filter((record) => record.status === status).length,
+  }));
+  const attendanceCompletion = expectedAttendanceRows ? Math.round((scopedAttendance.length / expectedAttendanceRows) * 100) : 0;
+  const attendanceAuditRows = state.auditLogs
+    .filter((audit) => audit.action === "attendance.saved" && scopedClassIds.has(audit.entityId))
+    .slice(0, 4);
 
   const audit = (action: string, entityType: string, entityId: string, summary: string) => {
     platformStore.audit(action, entityType, entityId, summary, actorId);
@@ -1514,6 +2255,7 @@ function AcademicGovernanceExperience({
         {
           courseRunId: run.id,
           title: assessmentDraft.title.trim(),
+          dueAt: getDefaultDueAt(2),
           durationMinutes: 30,
           attemptsAllowed: 1,
           questionTypes: ["multiple_choice", "short_answer", "oral_record"],
@@ -1593,13 +2335,14 @@ function AcademicGovernanceExperience({
 
   return (
     <div className="academic-governance-workspace">
-      <section className="academic-governance-hero">
-        <div>
-          <span className="platform-eyebrow">{focusLabel}</span>
-          <h2>Academic governance</h2>
-          <p>Manage programs, courses, curriculum, teachers, classes, and academic approvals.</p>
-        </div>
-        <div className="academic-governance-actions">
+      <PlatformWorkspaceHeader
+        className="academic-governance-hero"
+        title="Academic governance"
+        description="Manage programs, courses, curriculum, teachers, classes, and academic approvals."
+        context={<span>{focusLabel}</span>}
+        actionsClassName="academic-governance-actions"
+        actions={
+          <>
           {academicNavItems.map(([label, routeId, Icon]) => (
             <Link
               key={String(routeId)}
@@ -1611,8 +2354,9 @@ function AcademicGovernanceExperience({
               {label as string}
             </Link>
           ))}
-        </div>
-      </section>
+          </>
+        }
+      />
 
       <div className="academic-governance-kpis">
         <AdminAccessMetric label="Programs" value={String(programs.length)} />
@@ -1621,6 +2365,78 @@ function AcademicGovernanceExperience({
         <AdminAccessMetric label="Seat usage" value={`${enrolledSeats}/${classCapacity}`} />
         <AdminAccessMetric label="Lessons" value={String(scopedLessons.length)} />
       </div>
+
+      {pageId === "reports" ? (
+        <section className="academic-panel academic-attendance-panel">
+          <div className="academic-panel-head">
+            <div>
+              <span>Attendance health</span>
+              <strong>{scopedSessions.filter((session) => session.attendanceSaved).length}/{scopedSessions.length} saved sessions</strong>
+            </div>
+            <ClipboardCheck size={18} />
+          </div>
+          <div className="academic-course-stats">
+            <article>
+              <span>Saved sessions</span>
+              <strong>{scopedSessions.filter((session) => session.attendanceSaved).length}</strong>
+            </article>
+            <article>
+              <span>Pending sessions</span>
+              <strong>{scopedSessions.filter((session) => !session.attendanceSaved).length}</strong>
+            </article>
+            <article>
+              <span>Roster records</span>
+              <strong>{scopedAttendance.length}/{expectedAttendanceRows}</strong>
+            </article>
+            <article>
+              <span>Completion</span>
+              <strong>{attendanceCompletion}%</strong>
+            </article>
+          </div>
+          <div className="platform-attendance-status-grid">
+            {attendanceStatusCounts.map((item) => (
+              <article key={item.status}>
+                <span className={`platform-attendance-chip ${item.status}`}>{item.label}</span>
+                <strong>{item.count}</strong>
+              </article>
+            ))}
+          </div>
+          <div className="academic-class-list compact">
+            {scopedSessions.slice(0, 4).map((session) => {
+              const classGroup = scopedClasses.find((item) => item.id === session.classGroupId);
+              return (
+                <article key={session.id}>
+                  <div>
+                    <strong>{session.title}</strong>
+                    <small>{classGroup?.name ?? "Class"} · {new Date(session.startsAt).toLocaleString()}</small>
+                  </div>
+                  <span>{session.attendanceSaved ? "saved" : "pending"}</span>
+                </article>
+              );
+            })}
+          </div>
+          <div className="academic-class-list compact">
+            {attendanceAuditRows.length ? (
+              attendanceAuditRows.map((audit) => (
+                <article key={audit.id}>
+                  <div>
+                    <strong>Attendance saved</strong>
+                    <small>{audit.summary}</small>
+                  </div>
+                  <span>{new Date(audit.createdAt).toLocaleDateString()}</span>
+                </article>
+              ))
+            ) : (
+              <article>
+                <div>
+                  <strong>No attendance audit rows</strong>
+                  <small>Saved attendance will appear after a teacher or branch admin marks a session.</small>
+                </div>
+              </article>
+            )}
+          </div>
+        </section>
+      ) : null}
 
       <div className="academic-governance-layout">
         <section className="academic-panel academic-program-rail">
@@ -1869,7 +2685,7 @@ function AcademicGovernanceExperience({
               <article key={item.id}>
                 <div>
                   <strong>{item.title}</strong>
-                  <small>{item.status} · {"dueAt" in item ? new Date(item.dueAt).toLocaleDateString() : `${item.durationMinutes} min quiz`}</small>
+                  <small>{item.status} · due {new Date(item.dueAt).toLocaleDateString()}</small>
                 </div>
                 <em>{"submissionType" in item ? item.submissionType : `${item.attemptsAllowed} attempts`}</em>
               </article>
@@ -1908,39 +2724,37 @@ function AcademicGovernanceExperience({
               const user = state.users.find((item) => item.id === student?.userId);
               const course = state.courses.find((item) => item.id === certificate.courseId);
               const approved = certificate.status === "approved" || certificate.status === "issued";
+              const eligible = certificate.grade >= 80 && certificate.attendanceRate >= 80;
+              const canApprove = certificate.status === "pending_approval" && eligible;
               const canIssue = certificate.status === "approved";
               const issued = certificate.status === "issued";
+              const approveKey = `certificate.approve:${certificate.id}`;
+              const issueKey = `certificate.issue:${certificate.id}`;
               return (
                 <article key={certificate.id}>
                   <div>
                     <strong>{certificate.verificationCode}</strong>
-                    <small>{user?.name ?? "Student"} · {course?.title ?? "Course"} · {certificate.grade}% grade</small>
+                    <small>{user?.name ?? "Student"} · {course?.title ?? "Course"} · {certificate.grade}% grade · {certificate.attendanceRate}% attendance</small>
                   </div>
-                  <span>{certificate.status}</span>
+                  <span className={`platform-certificate-status ${certificate.status}`}>{certificate.status}</span>
                   <div className="platform-row-actions">
                     <button
-                      disabled={approved}
-                      onClick={() => {
-                        platformStore.approveCertificate(certificate.id, actorId);
-                        refresh();
-                        toast.success("Certificate approved");
-                      }}
+                      disabled={!canApprove || Boolean(certificateSavingKey)}
+                      onClick={() => runAcademicCertificateAction("certificate.approve", certificate)}
                     >
-                      {approved ? "Approved" : "Approve"}
+                      {certificateSavingKey === approveKey
+                        ? "Approving"
+                        : approved
+                          ? "Approved"
+                          : eligible
+                            ? "Approve"
+                            : "Not eligible"}
                     </button>
                     <button
-                      disabled={!canIssue || issued}
-                      onClick={() => {
-                        const issuedCertificate = platformStore.issueCertificate(certificate.id, actorId);
-                        refresh();
-                        if (issuedCertificate?.status === "issued") {
-                          toast.success("Certificate issued");
-                        } else {
-                          toast.info("Approve the certificate before issuing it");
-                        }
-                      }}
+                      disabled={!canIssue || issued || Boolean(certificateSavingKey)}
+                      onClick={() => runAcademicCertificateAction("certificate.issue", certificate)}
                     >
-                      {issued ? "Issued" : canIssue ? "Issue" : "Approve first"}
+                      {certificateSavingKey === issueKey ? "Issuing" : issued ? "Issued" : canIssue ? "Issue" : "Approve first"}
                     </button>
                   </div>
                 </article>
@@ -2046,6 +2860,7 @@ function BranchOperationsExperience({ pageId }: { pageId: string }) {
     roomId: "",
     classGroupId: "",
   });
+  const [eventSaving, setEventSaving] = useState(false);
   const [messageDraft, setMessageDraft] = useState({
     recipientId: "usr_registrar_demo",
     subject: "Branch operations update",
@@ -2151,7 +2966,7 @@ function BranchOperationsExperience({ pageId }: { pageId: string }) {
     }));
   }, [branchClassKey, branchRoomKey]);
 
-  const createBranchEvent = (event: React.FormEvent) => {
+  const createBranchEvent = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!branch || !eventDraft.title.trim() || !eventDraft.date || !eventDraft.starts || !eventDraft.ends || eventDraft.starts >= eventDraft.ends) {
       toast.error("Valid title, date, and time range are required");
@@ -2168,22 +2983,29 @@ function BranchOperationsExperience({ pageId }: { pageId: string }) {
       return;
     }
     const roomId = branchRooms.some((room) => room.id === eventDraft.roomId) ? eventDraft.roomId : branchRooms[0]?.id;
-    const result = platformStore.createCalendarEvent(
-      {
-        title: eventDraft.title.trim(),
-        type: eventDraft.type,
-        startsAt: `${eventDraft.date}T${eventDraft.starts}:00+03:00`,
-        endsAt: `${eventDraft.date}T${eventDraft.ends}:00+03:00`,
-        ownerId: actorId,
-        branchId: branch.id,
-        roomId,
-        classGroupId,
-      },
-      actorId,
-    );
+    setEventSaving(true);
+    const result = await runPlatformWorkflowActionRequest({
+      type: "calendar.create",
+      eventType: eventDraft.type,
+      title: eventDraft.title.trim(),
+      startsAt: `${eventDraft.date}T${eventDraft.starts}:00+03:00`,
+      endsAt: `${eventDraft.date}T${eventDraft.ends}:00+03:00`,
+      branchId: branch.id,
+      roomId,
+      classGroupId,
+    });
+    setEventSaving(false);
+    if (!result.ok || !result.data) {
+      toast.error("Event save failed", {
+        description: result.error ?? "The server could not save this branch event.",
+      });
+      return;
+    }
+    const payload = result.data.result.result as { conflicts?: unknown[] } | undefined;
+    platformStore.setState(result.data.state);
     refresh();
-    toast.success(result.conflicts.length ? "Event saved with conflict" : "Event scheduled", {
-      description: eventDraft.title.trim(),
+    toast.success(payload?.conflicts?.length ? "Event saved with conflict" : "Event scheduled", {
+      description: `${eventDraft.title.trim()} · ${result.data.persistence}`,
     });
   };
 
@@ -2239,13 +3061,14 @@ function BranchOperationsExperience({ pageId }: { pageId: string }) {
 
   return (
     <div className="branch-ops-workspace">
-      <section className="branch-ops-hero">
-        <div>
-          <span className="platform-eyebrow">{focusLabel}</span>
-          <h2>Branch operations</h2>
-          <p>Manage local students, teachers, rooms, classes, attendance, payments, and schedules.</p>
-        </div>
-        <div className="branch-ops-actions">
+      <PlatformWorkspaceHeader
+        className="branch-ops-hero"
+        title="Branch operations"
+        description="Manage local students, teachers, rooms, classes, attendance, payments, and schedules."
+        context={<span>{focusLabel}</span>}
+        actionsClassName="branch-ops-actions"
+        actions={
+          <>
           {[
             ["Students", "students", Users],
             ["Teachers", "teachers", UserPlus],
@@ -2268,8 +3091,9 @@ function BranchOperationsExperience({ pageId }: { pageId: string }) {
               {label as string}
             </Link>
           ))}
-        </div>
-      </section>
+          </>
+        }
+      />
 
       <div className="branch-ops-kpis">
         <AdminAccessMetric label="Branch users" value={String(branchUsers.length)} />
@@ -2523,9 +3347,9 @@ function BranchOperationsExperience({ pageId }: { pageId: string }) {
                 {branchClasses.length ? branchClasses.map((classGroup) => <option key={classGroup.id} value={classGroup.id}>{classGroup.name}</option>) : <option value="">General branch event</option>}
               </select>
             </label>
-            <button type="submit">
+            <button type="submit" disabled={eventSaving}>
               <Plus size={15} />
-              Create event
+              {eventSaving ? "Saving event" : "Create event"}
             </button>
           </form>
         </section>
@@ -2690,6 +3514,12 @@ function RegistrarAdmissionsExperience({ pageId, params }: { pageId: string; par
   const [selectedPlacementId, setSelectedPlacementId] = useState(params?.bookingId ?? "");
   const [recommendedLevel, setRecommendedLevel] = useState("Arabic Level 2");
   const [score, setScore] = useState(78);
+  const [paymentSearch, setPaymentSearch] = useState("");
+  const [paymentStatusFilter, setPaymentStatusFilter] = useState<"all" | "open" | "paid" | "overdue">("all");
+  const [paymentAmountDrafts, setPaymentAmountDrafts] = useState<Record<string, string>>({});
+  const [paymentMethodDrafts, setPaymentMethodDrafts] = useState<Record<string, Payment["method"]>>({});
+  const [paymentReferenceDrafts, setPaymentReferenceDrafts] = useState<Record<string, string>>({});
+  const [pendingRegistrarAction, setPendingRegistrarAction] = useState<string | null>(null);
   const state = useMemo(() => platformStore.getState(), [version]);
   const refresh = () => setVersion((value) => value + 1);
   const actorId = getDemoUser("registrar").id;
@@ -2726,6 +3556,37 @@ function RegistrarAdmissionsExperience({ pageId, params }: { pageId: string; par
   const registrarAuditRows = state.auditLogs
     .filter((audit) => /lead|application|placement|enrollment|payment|invoice|student/i.test(`${audit.action} ${audit.entityType} ${audit.summary}`))
     .slice(0, 6);
+  const paymentRows = state.invoices.map((invoice) => {
+    const student = state.students.find((item) => item.id === invoice.studentId);
+    const user = state.users.find((item) => item.id === student?.userId);
+    const branch = state.branches.find((item) => item.id === user?.branchId);
+    const payments = state.payments.filter((payment) => payment.invoiceId === invoice.id && payment.status === "paid");
+    const paid = payments.reduce((sum, payment) => sum + payment.amount, 0);
+    const balance = Math.max(0, invoice.amount - paid);
+    const lastPayment = [...payments].sort((a, b) => b.paidAt.localeCompare(a.paidAt))[0];
+    const status = balance <= 0 ? "paid" : invoice.status;
+    return { invoice, student, user, branch, payments, paid, balance, lastPayment, status };
+  });
+  const filteredPaymentRows = paymentRows.filter((row) => {
+    const query = paymentSearch.trim().toLowerCase();
+    const matchesQuery = !query || [row.invoice.id, row.user?.name, row.user?.email, row.branch?.name, row.status]
+      .filter(Boolean)
+      .some((value) => String(value).toLowerCase().includes(query));
+    const matchesStatus =
+      paymentStatusFilter === "all" ||
+      (paymentStatusFilter === "open" && row.balance > 0 && row.status !== "overdue") ||
+      (paymentStatusFilter === "paid" && row.balance <= 0) ||
+      (paymentStatusFilter === "overdue" && row.status === "overdue");
+    return matchesQuery && matchesStatus;
+  });
+  const paymentTotals = {
+    invoices: paymentRows.length,
+    open: paymentRows.filter((row) => row.balance > 0).length,
+    paid: paymentRows.filter((row) => row.balance <= 0).length,
+    collected: paymentRows.reduce((sum, row) => sum + row.paid, 0),
+    balance: paymentRows.reduce((sum, row) => sum + row.balance, 0),
+  };
+  const paymentMethods: Payment["method"][] = ["manual", "cash", "bank_transfer", "card"];
   const focusLabel =
     activePage === "payments"
       ? "Payment desk"
@@ -2737,13 +3598,38 @@ function RegistrarAdmissionsExperience({ pageId, params }: { pageId: string; par
             ? "Student records"
             : "Admissions pipeline";
 
-  const createLead = (event: React.FormEvent) => {
+  const runRegistrarAction = async (
+    actionKey: string,
+    action: Parameters<typeof runPlatformWorkflowActionRequest>[0],
+    successMessage: string,
+    successDescription?: string,
+  ) => {
+    setPendingRegistrarAction(actionKey);
+    try {
+      const response = await runPlatformWorkflowActionRequest(action);
+      if (!response.data) throw new Error(response.error ?? "Registrar action returned no state.");
+      platformStore.setState(response.data.state);
+      refresh();
+      toast.success(successMessage, successDescription ? { description: successDescription } : undefined);
+      return response.data.result;
+    } catch (error) {
+      toast.error("Registrar action could not be saved", {
+        description: error instanceof Error ? error.message : "Check your session and try again.",
+      });
+      return undefined;
+    } finally {
+      setPendingRegistrarAction(null);
+    }
+  };
+
+  const createLead = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!leadDraft.fullName.trim() || !leadDraft.phone.trim()) {
       toast.error("Name and phone are required");
       return;
     }
-    platformStore.createLead({
+    const result = await runRegistrarAction("lead.create", {
+      type: "lead.create",
       fullName: leadDraft.fullName.trim(),
       email: leadDraft.email.trim() || `${Date.now().toString(36)}@nilelearn.local`,
       phone: leadDraft.phone.trim(),
@@ -2751,49 +3637,89 @@ function RegistrarAdmissionsExperience({ pageId, params }: { pageId: string; par
       subject: leadDraft.subject.trim() || "Arabic Language",
       source: leadDraft.source,
       notes: leadDraft.notes.trim(),
-    });
-    setLeadDraft({ fullName: "", email: "", phone: "", country: "", subject: "Arabic Language", source: "manual", notes: "" });
-    refresh();
-    toast.success("Lead added to admissions");
+      actorId,
+    }, "Lead added to admissions");
+    if (result) {
+      setLeadDraft({ fullName: "", email: "", phone: "", country: "", subject: "Arabic Language", source: "manual", notes: "" });
+    }
   };
 
-  const convertLead = (leadId: string) => {
-    platformStore.convertLeadToApplication(leadId, actorId);
-    refresh();
-    toast.success("Lead converted to application");
+  const convertLead = async (leadId: string) => {
+    await runRegistrarAction(`lead.convert:${leadId}`, { type: "lead.convert", leadId, actorId }, "Lead converted to application");
   };
 
-  const recordPlacement = () => {
+  const recordPlacement = async () => {
     if (!selectedPlacement) {
       toast.error("No placement booking selected");
       return;
     }
-    platformStore.recordPlacementResult(
-      selectedPlacement.id,
-      recommendedLevel.trim() || "Arabic Level 2",
-      Math.max(0, Math.min(100, Number(score) || 0)),
-      "Recorded from registrar admissions workspace.",
-      actorId,
+    await runRegistrarAction(
+      `placement.result.record:${selectedPlacement.id}`,
+      {
+        type: "placement.result.record",
+        bookingId: selectedPlacement.id,
+        recommendedLevel: recommendedLevel.trim() || "Arabic Level 2",
+        score: Math.max(0, Math.min(100, Number(score) || 0)),
+        notes: "Recorded from registrar admissions workspace.",
+        actorId,
+      },
+      "Placement result recorded",
     );
-    refresh();
-    toast.success("Placement result recorded");
   };
 
-  const recordInvoicePayment = (invoiceId: string) => {
-    platformStore.recordPayment(invoiceId, actorId);
-    refresh();
-    toast.success("Payment recorded");
+  const recordInvoicePayment = async (invoiceId: string, balance: number) => {
+    const requestedAmount = Number(paymentAmountDrafts[invoiceId] ?? balance);
+    const result = await runRegistrarAction(
+      `payment.record:${invoiceId}`,
+      {
+        type: "payment.record",
+        invoiceId,
+        amount: Number.isFinite(requestedAmount) ? requestedAmount : balance,
+        method: paymentMethodDrafts[invoiceId] ?? "manual",
+        reference: paymentReferenceDrafts[invoiceId]?.trim() || undefined,
+        actorId,
+      },
+      "Payment recorded",
+    );
+    if (result) {
+      setPaymentAmountDrafts((current) => {
+        const next = { ...current };
+        delete next[invoiceId];
+        return next;
+      });
+      setPaymentReferenceDrafts((current) => {
+        const next = { ...current };
+        delete next[invoiceId];
+        return next;
+      });
+    }
   };
+
+  const activateEnrollment = async (workflowId: string) => {
+    const result = await runRegistrarAction(
+      `enrollment.activate:${workflowId}`,
+      { type: "enrollment.activate", workflowId, actorId },
+      "Student portal activated",
+      "Account, class, enrollment, lesson path, and invoice are connected.",
+    );
+    if (!result) {
+      toast.error("Enrollment could not be activated", { description: "Check class capacity and target course." });
+    }
+  };
+
+  const isActionPending = (actionKey: string) => pendingRegistrarAction === actionKey;
+  const isAnyRegistrarActionPending = Boolean(pendingRegistrarAction);
 
   return (
     <div className="registrar-workspace">
-      <section className="registrar-hero">
-        <div>
-          <span className="platform-eyebrow">{focusLabel}</span>
-          <h2>Admissions workspace</h2>
-          <p>Manage leads, applications, placement, enrollments, payments, and follow-up.</p>
-        </div>
-        <div className="registrar-actions">
+      <PlatformWorkspaceHeader
+        className="registrar-hero"
+        title="Admissions workspace"
+        description="Manage leads, applications, placement, enrollments, payments, and follow-up."
+        context={<span>{focusLabel}</span>}
+        actionsClassName="registrar-actions"
+        actions={
+          <>
           {[
             ["Leads", "leads", Megaphone],
             ["Applications", "applications", FileText],
@@ -2814,8 +3740,9 @@ function RegistrarAdmissionsExperience({ pageId, params }: { pageId: string; par
               {label as string}
             </Link>
           ))}
-        </div>
-      </section>
+          </>
+        }
+      />
 
       <div className="registrar-kpis">
         <AdminAccessMetric label="Leads" value={String(state.leads.length)} />
@@ -2825,6 +3752,189 @@ function RegistrarAdmissionsExperience({ pageId, params }: { pageId: string; par
         <AdminAccessMetric label="Balance" value={`EGP ${paymentBalance}`} />
       </div>
 
+      {activePage === "payments" ? (
+        <div className="registrar-payment-desk">
+          <section className="registrar-payment-command registrar-panel">
+            <div className="registrar-panel-head">
+              <div>
+                <span>Payment operations</span>
+                <strong>Collect, reconcile, and audit invoices</strong>
+              </div>
+              <CreditCard size={18} />
+            </div>
+            <div className="registrar-payment-summary">
+              <article>
+                <span>Total invoices</span>
+                <strong>{paymentTotals.invoices}</strong>
+                <small>Visible in registrar scope</small>
+              </article>
+              <article>
+                <span>Open balances</span>
+                <strong>{paymentTotals.open}</strong>
+                <small>EGP {paymentTotals.balance} remaining</small>
+              </article>
+              <article>
+                <span>Collected</span>
+                <strong>EGP {paymentTotals.collected}</strong>
+                <small>{paymentTotals.paid} settled invoice(s)</small>
+              </article>
+            </div>
+            <div className="registrar-payment-toolbar">
+              <label>
+                <Search size={15} />
+                <input
+                  aria-label="Search registrar payment ledger"
+                  value={paymentSearch}
+                  onChange={(event) => setPaymentSearch(event.target.value)}
+                  placeholder="Search invoice, student, email, branch"
+                />
+              </label>
+              <label>
+                <Filter size={15} />
+                <select value={paymentStatusFilter} onChange={(event) => setPaymentStatusFilter(event.target.value as typeof paymentStatusFilter)}>
+                  <option value="all">All statuses</option>
+                  <option value="open">Open balance</option>
+                  <option value="paid">Paid</option>
+                  <option value="overdue">Overdue</option>
+                </select>
+              </label>
+            </div>
+          </section>
+
+          <section className="registrar-panel registrar-payment-table-card">
+            <div className="registrar-panel-head">
+              <div>
+                <span>Invoice ledger</span>
+                <strong>{filteredPaymentRows.length} row(s)</strong>
+              </div>
+              <ShieldCheck size={18} />
+            </div>
+            <div className="registrar-payment-table" role="table" aria-label="Registrar invoice ledger">
+              <div className="registrar-payment-table-head" role="row">
+                <span role="columnheader">Student</span>
+                <span role="columnheader">Invoice</span>
+                <span role="columnheader">Amount</span>
+                <span role="columnheader">Paid</span>
+                <span role="columnheader">Balance</span>
+                <span role="columnheader">Status</span>
+                <span role="columnheader">Record</span>
+                <span role="columnheader">Action</span>
+              </div>
+              {filteredPaymentRows.map((row) => (
+                <article key={row.invoice.id} className="registrar-payment-row" role="row">
+                  <div role="cell">
+                    <strong>{row.user?.name ?? row.invoice.studentId}</strong>
+                    <small>{row.user?.email ?? "No email"} · {row.branch?.name ?? "No branch"}</small>
+                  </div>
+                  <div role="cell">
+                    <strong>{row.invoice.id}</strong>
+                    <small>
+                      Due {row.invoice.dueAt} ·{" "}
+                      {row.lastPayment
+                        ? `${row.lastPayment.method}${row.lastPayment.reference ? ` · ${row.lastPayment.reference}` : ""} · ${row.lastPayment.paidAt.slice(0, 10)}`
+                        : "No receipt yet"}
+                    </small>
+                  </div>
+                  <span role="cell">{row.invoice.currency} {row.invoice.amount}</span>
+                  <span role="cell">{row.invoice.currency} {row.paid}</span>
+                  <span role="cell" className={row.balance > 0 ? "attention" : "settled"}>{row.invoice.currency} {row.balance}</span>
+                  <span role="cell" className={`registrar-payment-status ${row.status}`}>{row.status}</span>
+                  <div className="registrar-payment-record-fields" role="cell">
+                    <input
+                      className="registrar-payment-amount-input"
+                      type="number"
+                      min="0"
+                      max={row.balance}
+                      value={paymentAmountDrafts[row.invoice.id] ?? String(row.balance)}
+                      disabled={row.balance <= 0 || row.invoice.status === "paid" || isAnyRegistrarActionPending}
+                      aria-label={`Payment amount for ${row.invoice.id}`}
+                      onChange={(event) =>
+                        setPaymentAmountDrafts((current) => ({
+                          ...current,
+                          [row.invoice.id]: event.target.value,
+                        }))
+                      }
+                    />
+                    <select
+                      value={paymentMethodDrafts[row.invoice.id] ?? "manual"}
+                      disabled={row.balance <= 0 || row.invoice.status === "paid" || isAnyRegistrarActionPending}
+                      aria-label={`Payment method for ${row.invoice.id}`}
+                      onChange={(event) =>
+                        setPaymentMethodDrafts((current) => ({
+                          ...current,
+                          [row.invoice.id]: event.target.value as Payment["method"],
+                        }))
+                      }
+                    >
+                      {paymentMethods.map((method) => (
+                        <option key={method} value={method}>
+                          {method.replace("_", " ")}
+                        </option>
+                      ))}
+                    </select>
+                    <input
+                      value={paymentReferenceDrafts[row.invoice.id] ?? ""}
+                      disabled={row.balance <= 0 || row.invoice.status === "paid" || isAnyRegistrarActionPending}
+                      aria-label={`Payment reference for ${row.invoice.id}`}
+                      placeholder="Reference"
+                      onChange={(event) =>
+                        setPaymentReferenceDrafts((current) => ({
+                          ...current,
+                          [row.invoice.id]: event.target.value,
+                        }))
+                      }
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    disabled={row.balance <= 0 || row.invoice.status === "paid" || isAnyRegistrarActionPending}
+                    onClick={() => recordInvoicePayment(row.invoice.id, row.balance)}
+                  >
+                    {isActionPending(`payment.record:${row.invoice.id}`) ? "Recording..." : row.balance <= 0 || row.invoice.status === "paid" ? "Settled" : "Record payment"}
+                  </button>
+                </article>
+              ))}
+              {filteredPaymentRows.length === 0 ? (
+                <div className="registrar-payment-empty">
+                  <CreditCard size={18} />
+                  <strong>No invoices match this view</strong>
+                  <small>Clear the search or switch the status filter.</small>
+                </div>
+              ) : null}
+            </div>
+          </section>
+
+          <section className="registrar-panel registrar-payment-audit">
+            <div className="registrar-panel-head">
+              <div>
+                <span>Reconciliation audit</span>
+                <strong>Recent payment evidence</strong>
+              </div>
+              <ClipboardCheck size={18} />
+            </div>
+            <div className="admin-audit-list">
+              {registrarAuditRows.filter((row) => /payment|invoice/i.test(`${row.action} ${row.entityType} ${row.summary}`)).length ? (
+                registrarAuditRows
+                  .filter((row) => /payment|invoice/i.test(`${row.action} ${row.entityType} ${row.summary}`))
+                  .map((auditRow) => (
+                    <article key={auditRow.id}>
+                      <strong>{auditRow.action}</strong>
+                      <small>{auditRow.summary}</small>
+                      <span>{new Date(auditRow.createdAt).toLocaleString()}</span>
+                    </article>
+                  ))
+              ) : (
+                <article>
+                  <strong>payment.ready</strong>
+                  <small>Payment records will appear here after a registrar records a receipt.</small>
+                  <span>Now</span>
+                </article>
+              )}
+            </div>
+          </section>
+        </div>
+      ) : (
+        <>
       {["lead-detail", "student-detail", "placement-detail"].includes(pageId) ? (
         <section className="registrar-panel registrar-detail-focus">
           <div className="registrar-panel-head">
@@ -2858,9 +3968,12 @@ function RegistrarAdmissionsExperience({ pageId, params }: { pageId: string; par
                   <strong>{selectedLeadApplication ? "Converted" : "Not converted"}</strong>
                   <small>{selectedLeadApplication?.courseInterest ?? selectedLead?.notes ?? "Ready for follow-up"}</small>
                 </article>
-                <button disabled={!selectedLead || Boolean(selectedLeadApplication)} onClick={() => selectedLead && convertLead(selectedLead.id)}>
+                <button
+                  disabled={!selectedLead || Boolean(selectedLeadApplication) || isAnyRegistrarActionPending}
+                  onClick={() => selectedLead && convertLead(selectedLead.id)}
+                >
                   <UserPlus size={15} />
-                  {selectedLeadApplication ? "Application exists" : "Convert lead"}
+                  {isActionPending(`lead.convert:${selectedLead?.id}`) ? "Converting..." : selectedLeadApplication ? "Application exists" : "Convert lead"}
                 </button>
               </>
             ) : pageId === "placement-detail" ? (
@@ -2880,9 +3993,11 @@ function RegistrarAdmissionsExperience({ pageId, params }: { pageId: string; par
                   <strong>{selectedPlacement?.phone ?? "No phone"}</strong>
                   <small>{selectedPlacement?.email ?? "No email"}</small>
                 </article>
-                <button disabled={!selectedPlacement || selectedPlacement.status === "completed"} onClick={recordPlacement}>
+                <button disabled={!selectedPlacement || selectedPlacement.status === "completed" || isAnyRegistrarActionPending} onClick={recordPlacement}>
                   <CheckCircle2 size={15} />
-                  {selectedPlacement?.status === "completed" ? "Result recorded" : "Record placement result"}
+                  {isActionPending(`placement.result.record:${selectedPlacement?.id}`)
+                    ? "Saving result..."
+                    : selectedPlacement?.status === "completed" ? "Result recorded" : "Record placement result"}
                 </button>
               </>
             ) : (
@@ -2931,10 +4046,20 @@ function RegistrarAdmissionsExperience({ pageId, params }: { pageId: string; par
                     <small>{lead.subject} · {lead.phone} · {lead.source}</small>
                   </div>
                   <span>{lead.status}</span>
-                  <button disabled={converted} onClick={() => convertLead(lead.id)}>{converted ? "Converted" : "Convert"}</button>
+                  <button disabled={converted || isAnyRegistrarActionPending} onClick={() => convertLead(lead.id)}>
+                    {isActionPending(`lead.convert:${lead.id}`) ? "Converting..." : converted ? "Converted" : "Convert"}
+                  </button>
                 </article>
               );
             })}
+            {state.leads.length === 0 ? (
+              <article className="registrar-empty-row">
+                <div>
+                  <strong>No active leads</strong>
+                  <small>Add the first enquiry to start the admissions pipeline.</small>
+                </div>
+              </article>
+            ) : null}
           </div>
           <form className="registrar-lead-form" onSubmit={createLead}>
             <label>
@@ -2967,9 +4092,9 @@ function RegistrarAdmissionsExperience({ pageId, params }: { pageId: string; par
               Notes
               <input value={leadDraft.notes} onChange={(event) => setLeadDraft((value) => ({ ...value, notes: event.target.value }))} placeholder="Schedule, branch, or language notes" />
             </label>
-            <button type="submit">
+            <button type="submit" disabled={isAnyRegistrarActionPending}>
               <Plus size={15} />
-              Add lead
+              {isActionPending("lead.create") ? "Adding..." : "Add lead"}
             </button>
           </form>
         </section>
@@ -3003,9 +4128,11 @@ function RegistrarAdmissionsExperience({ pageId, params }: { pageId: string; par
                 <input type="number" min={0} max={100} value={score} onChange={(event) => setScore(Number(event.target.value))} />
               </label>
             </div>
-            <button disabled={!selectedPlacement || selectedPlacement.status === "completed"} onClick={recordPlacement}>
+            <button disabled={!selectedPlacement || selectedPlacement.status === "completed" || isAnyRegistrarActionPending} onClick={recordPlacement}>
               <CheckCircle2 size={15} />
-              {selectedPlacement?.status === "completed" ? "Result recorded" : "Record placement result"}
+              {isActionPending(`placement.result.record:${selectedPlacement?.id}`)
+                ? "Saving result..."
+                : selectedPlacement?.status === "completed" ? "Result recorded" : "Record placement result"}
             </button>
           </div>
         </section>
@@ -3033,12 +4160,20 @@ function RegistrarAdmissionsExperience({ pageId, params }: { pageId: string; par
                     <small>{invoice.id} · {invoice.currency} {invoice.amount} · balance {balance}</small>
                   </div>
                   <span>{invoice.status}</span>
-                  <button disabled={balance <= 0 || invoice.status === "paid"} onClick={() => recordInvoicePayment(invoice.id)}>
-                    {invoice.status === "paid" ? "Paid" : "Record payment"}
+                  <button disabled={balance <= 0 || invoice.status === "paid" || isAnyRegistrarActionPending} onClick={() => recordInvoicePayment(invoice.id, balance)}>
+                    {isActionPending(`payment.record:${invoice.id}`) ? "Recording..." : invoice.status === "paid" ? "Paid" : "Record payment"}
                   </button>
                 </article>
               );
             })}
+            {state.invoices.length === 0 ? (
+              <article className="registrar-empty-row">
+                <div>
+                  <strong>No invoices</strong>
+                  <small>Activated enrollments will create payment records here.</small>
+                </div>
+              </article>
+            ) : null}
           </div>
         </section>
       </div>
@@ -3083,16 +4218,31 @@ function RegistrarAdmissionsExperience({ pageId, params }: { pageId: string; par
               const student = state.students.find((item) => item.id === workflow.studentId);
               const user = state.users.find((item) => item.id === student?.userId);
               const course = state.courses.find((item) => item.id === workflow.targetCourseId);
+              const courseRun = state.courseRuns.find((item) => item.courseId === workflow.targetCourseId && item.status === "active");
+              const classGroup = state.classGroups.find((item) => item.courseRunId === courseRun?.id);
+              const invoice = state.invoices.find((item) => item.studentId === student?.id);
+              const isActivated = Boolean(workflow.studentId && student);
               return (
                 <article key={workflow.id}>
                   <div>
                     <strong>{lead?.fullName ?? user?.name ?? workflow.id}</strong>
-                    <small>{course?.title ?? "Course"} · {workflow.nextStep}</small>
+                    <small>{course?.title ?? "Course"} · {classGroup?.name ?? "Class pending"} · {workflow.nextStep}</small>
                   </div>
-                  <span>{workflow.status}</span>
+                  <span>{isActivated ? "active" : workflow.status}</span>
+                  <button disabled={isActivated || workflow.status !== "ready_to_enroll" || isAnyRegistrarActionPending} onClick={() => activateEnrollment(workflow.id)}>
+                    {isActionPending(`enrollment.activate:${workflow.id}`) ? "Activating..." : isActivated ? `Invoice ${invoice?.status ?? "pending"}` : "Activate"}
+                  </button>
                 </article>
               );
             })}
+            {state.enrollmentWorkflows.length === 0 ? (
+              <article className="registrar-empty-row">
+                <div>
+                  <strong>No enrollment handoffs</strong>
+                  <small>Convert a lead or record placement to prepare enrollment.</small>
+                </div>
+              </article>
+            ) : null}
           </div>
         </section>
 
@@ -3149,6 +4299,8 @@ function RegistrarAdmissionsExperience({ pageId, params }: { pageId: string; par
           </div>
         </section>
       </div>
+        </>
+      )}
     </div>
   );
 }
@@ -3177,6 +4329,8 @@ function TeacherDeliveryExperience({ pageId, params }: { pageId: string; params?
     score: 92,
     feedback: "Clear answer structure. Add one more example in the next draft.",
   });
+  const [sessionSaving, setSessionSaving] = useState(false);
+  const [attendanceSaving, setAttendanceSaving] = useState(false);
   const state = useMemo(() => platformStore.getState(), [version]);
   const refresh = () => setVersion((value) => value + 1);
   const actorId = getDemoUser("teacher").id;
@@ -3260,31 +4414,40 @@ function TeacherDeliveryExperience({ pageId, params }: { pageId: string; params?
                     : "classes";
   const classBaseHref = selectedClass ? `/app/teacher/classes/${selectedClass.id}` : "/app/teacher/classes";
 
-  const createSession = (event: React.FormEvent) => {
+  const createSession = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!selectedClass || !selectedRun || !sessionDraft.title.trim()) {
       toast.error("Select a class and enter a session title");
       return;
     }
-    platformStore.createCalendarEvent(
-      {
-        type: "live_session",
-        title: sessionDraft.title.trim(),
-        startsAt: new Date(sessionDraft.startsAt).toISOString(),
-        endsAt: new Date(sessionDraft.endsAt).toISOString(),
-        ownerId: actorId,
-        branchId: selectedRun.branchId,
-        roomId: selectedClass.roomId,
-        classGroupId: selectedClass.id,
-      },
-      actorId,
-    );
+    setSessionSaving(true);
+    const result = await runPlatformWorkflowActionRequest({
+      type: "calendar.create",
+      eventType: "live_session",
+      title: sessionDraft.title.trim(),
+      startsAt: new Date(sessionDraft.startsAt).toISOString(),
+      endsAt: new Date(sessionDraft.endsAt).toISOString(),
+      ownerId: actorId,
+      branchId: selectedRun.branchId,
+      roomId: selectedClass.roomId,
+      classGroupId: selectedClass.id,
+    });
+    setSessionSaving(false);
+    if (!result.ok || !result.data) {
+      toast.error("Class session save failed", {
+        description: result.error ?? "Check the selected class and time.",
+      });
+      return;
+    }
+    platformStore.setState(result.data.state);
     setSessionDraft({ title: "Focused live class", startsAt: "2026-06-29T09:00", endsAt: "2026-06-29T10:30" });
     refresh();
-    toast.success("Class session created");
+    toast.success("Class session created", {
+      description: result.data.persistence,
+    });
   };
 
-  const saveAllPresent = () => {
+  const saveAllPresent = async () => {
     if (!selectedClass || !activeSession) {
       toast.error("Create a session before saving attendance");
       return;
@@ -3293,9 +4456,25 @@ function TeacherDeliveryExperience({ pageId, params }: { pageId: string; params?
       acc[row.student.id] = "present";
       return acc;
     }, {});
-    platformStore.saveAttendanceBulk(selectedClass.id, activeSession.id, statuses, actorId);
+    setAttendanceSaving(true);
+    const result = await runPlatformWorkflowActionRequest({
+      type: "attendance.save",
+      classGroupId: selectedClass.id,
+      sessionId: activeSession.id,
+      statuses,
+    });
+    setAttendanceSaving(false);
+    if (!result.ok || !result.data) {
+      toast.error("Attendance save failed", {
+        description: result.error ?? "Check the current session and roster.",
+      });
+      return;
+    }
+    platformStore.setState(result.data.state);
     refresh();
-    toast.success("Attendance saved");
+    toast.success("Attendance saved", {
+      description: `${selectedClass.name} · ${result.data.persistence}`,
+    });
   };
 
   const sendClassReminder = () => {
@@ -3364,6 +4543,7 @@ function TeacherDeliveryExperience({ pageId, params }: { pageId: string; params?
       {
         courseRunId: selectedRun.id,
         title: quizDraft.title.trim(),
+        dueAt: getDefaultDueAt(2),
         durationMinutes: Number(quizDraft.durationMinutes) || 20,
         attemptsAllowed: Math.max(1, Number(quizDraft.attemptsAllowed) || 1),
         questionTypes: quizDraft.questionTypes
@@ -3398,13 +4578,14 @@ function TeacherDeliveryExperience({ pageId, params }: { pageId: string; params?
 
   return (
     <div className="teacher-delivery-workspace">
-      <section className="teacher-delivery-hero">
-        <div>
-          <span className="platform-eyebrow">{selectedCourse?.title ?? "Class delivery"}</span>
-          <h2>Class delivery</h2>
-          <p>Run sessions, attendance, materials, assignments, quizzes, and grading from one workspace.</p>
-        </div>
-        <div className="teacher-delivery-actions">
+      <PlatformWorkspaceHeader
+        className="teacher-delivery-hero"
+        title="Class delivery"
+        description="Run sessions, attendance, materials, assignments, quizzes, and grading from one workspace."
+        context={<span>{selectedCourse?.title ?? "Class delivery"}</span>}
+        actionsClassName="teacher-delivery-actions"
+        actions={
+          <>
           {[
             ["Classes", "/app/teacher/classes", "classes", BookOpen],
             ["Overview", classBaseHref, "class-detail", MonitorPlay],
@@ -3427,8 +4608,9 @@ function TeacherDeliveryExperience({ pageId, params }: { pageId: string; params?
               {label as string}
             </Link>
           ))}
-        </div>
-      </section>
+          </>
+        }
+      />
 
       <div className="teacher-delivery-kpis">
         <AdminAccessMetric label="Classes" value={String(teacherClasses.length)} />
@@ -3589,9 +4771,9 @@ function TeacherDeliveryExperience({ pageId, params }: { pageId: string; params?
               <small>{activeSession ? `${activeSession.status} · attendance ${activeSession.attendanceSaved ? "saved" : "pending"}` : "The session will create a calendar event and class session record."}</small>
             </div>
             <div className="teacher-session-actions">
-              <button onClick={saveAllPresent} disabled={!activeSession || !classStudents.length}>
+              <button onClick={saveAllPresent} disabled={!activeSession || !classStudents.length || attendanceSaving}>
                 <CheckCircle2 size={15} />
-                Save all present
+                {attendanceSaving ? "Saving" : "Save all present"}
               </button>
               <button onClick={sendClassReminder} disabled={!classStudents.length}>
                 <MessageSquare size={15} />
@@ -3612,9 +4794,9 @@ function TeacherDeliveryExperience({ pageId, params }: { pageId: string; params?
               Ends
               <input type="datetime-local" value={sessionDraft.endsAt} onChange={(event) => setSessionDraft((value) => ({ ...value, endsAt: event.target.value }))} />
             </label>
-            <button type="submit">
+            <button type="submit" disabled={sessionSaving}>
               <Plus size={15} />
-              Create session
+              {sessionSaving ? "Saving session" : "Create session"}
             </button>
           </form>
         </section>
@@ -3821,30 +5003,34 @@ function MoodleSourceExperience({ config, role }: { config: PageConfig; role: Ro
 
   return (
     <div className="moodle-source-layout">
-      <section className="moodle-source-hero">
-        <div className="moodle-source-hero-copy">
-          <span className="platform-eyebrow">Moodle course {course.id}</span>
-          <h2>{course.shortname}</h2>
-          <p>{course.fullname}</p>
+      <PlatformWorkspaceHeader
+        className="moodle-source-hero"
+        copyClassName="moodle-source-hero-copy"
+        title="Course source"
+        description={course.fullname}
+        context={<span>Moodle course {course.shortname}</span>}
+        meta={
           <div className="moodle-source-meta">
             <span><Layers size={14} /> {course.moodleFormat}</span>
             <span><BookOpen size={14} /> section {course.observedSectionId}</span>
             <span><Server size={14} /> {course.integration.restAccess}</span>
           </div>
-        </div>
-        <div className="moodle-source-sync">
-          <strong>Integration status</strong>
-          <span className="platform-status danger">
-            <AlertTriangle size={14} />
-            REST permissions required
-          </span>
-          <p>{course.integration.blockedReason}</p>
-          <button className="platform-primary-button" style={{ background: roleMeta[role].color }} onClick={logSyncReview}>
-            <RefreshCcw size={15} />
-            {config.primaryAction}
-          </button>
-        </div>
-      </section>
+        }
+        aside={
+          <div className="moodle-source-sync">
+            <strong>Integration status</strong>
+            <span className="platform-status danger">
+              <AlertTriangle size={14} />
+              REST permissions required
+            </span>
+            <p>{course.integration.blockedReason}</p>
+            <button className="platform-primary-button" style={{ background: roleMeta[role].color }} onClick={logSyncReview}>
+              <RefreshCcw size={15} />
+              {config.primaryAction}
+            </button>
+          </div>
+        }
+      />
 
       <div className="moodle-source-total-grid">
         {Object.entries(course.activityTotals)

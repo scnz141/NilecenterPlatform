@@ -5,7 +5,7 @@ import type {
   PlatformWorkflowAction,
   PlatformWorkflowActionResult,
 } from "@/lib/domain/actions";
-import type { PlatformState } from "@/lib/domain/types";
+import type { CertificateVerificationResult, PlatformState } from "@/lib/domain/types";
 
 export type AuthSessionDto = {
   userId: string;
@@ -84,6 +84,16 @@ export type PlatformWorkflowActionDto = PlatformStateDto & {
   result: PlatformWorkflowActionResult;
 };
 
+export type PublicCertificateVerificationDto =
+  | {
+      valid: true;
+      certificate: CertificateVerificationResult;
+    }
+  | {
+      valid: false;
+      error?: string;
+    };
+
 export function fetchPlatformStateRequest() {
   return apiJson<PlatformStateDto>("/api/platform/state");
 }
@@ -100,4 +110,10 @@ export function runPlatformWorkflowActionRequest(action: PlatformWorkflowAction)
     method: "POST",
     body: JSON.stringify(action),
   });
+}
+
+export function verifyPublicCertificateRequest(code: string) {
+  return apiJson<PublicCertificateVerificationDto>(
+    `/api/certificates/verify?code=${encodeURIComponent(code)}`,
+  );
 }

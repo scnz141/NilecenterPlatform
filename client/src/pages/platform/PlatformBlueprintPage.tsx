@@ -10,6 +10,7 @@ import {
   ShieldCheck,
 } from "lucide-react";
 import PlatformShell from "@/components/platform/PlatformShell";
+import { PlatformPageHeader, PlatformWorkspaceHeader } from "@/components/platform/PlatformPrimitives";
 import { platformModules } from "@/lib/domain/modules";
 import { platformStore } from "@/lib/domain/store";
 import type { IntegrationConfig } from "@/lib/domain/types";
@@ -45,16 +46,12 @@ export default function PlatformBlueprintPage() {
 
   return (
     <PlatformShell role="superadmin" title="Platform blueprint">
-      <section className="platform-page-header">
-        <div>
-          <span className="platform-eyebrow">Super Admin</span>
-          <h1>Platform blueprint</h1>
-          <p>
-            The operating map for Nile Learn: product modules, route ownership, domain entities, services,
-            integrations, and the backend work still required before production launch.
-          </p>
-        </div>
-        <div className="platform-header-actions">
+      <PlatformPageHeader
+        compact
+        title="Platform blueprint"
+        description="The operating map for Nile Learn: product modules, route ownership, domain entities, services, integrations, and the backend work still required before production launch."
+        actions={
+          <>
           <a className="platform-secondary-button" href="/app/admin/integrations">
             <PlugZap size={15} />
             Open integrations
@@ -63,20 +60,18 @@ export default function PlatformBlueprintPage() {
             <ScrollText size={15} />
             Review audit logs
           </a>
-        </div>
-      </section>
+          </>
+        }
+      />
 
-      <section className="platform-blueprint-hero">
-        <div>
-          <span className="platform-eyebrow">System model</span>
-          <h2>Designed as a long-lived LMS plus EMS platform.</h2>
-          <p>
-            Public website intake, registrar operations, student learning, teaching tools, academic management,
-            branch operations, certificates, reporting, and integrations are separated by ownership and data
-            boundaries. The current app uses local mock storage with server-only integration placeholders.
-          </p>
-        </div>
-        <div className="platform-blueprint-kpis">
+      <PlatformWorkspaceHeader
+        className="platform-blueprint-hero"
+        title="Designed as a long-lived LMS plus EMS platform."
+        description="Public website intake, registrar operations, student learning, teaching tools, academic management, branch operations, certificates, reporting, and integrations are separated by ownership and data boundaries. The current app uses local mock storage with server-only integration placeholders."
+        context={<span>System model</span>}
+        actionsClassName="platform-blueprint-kpis"
+        actions={
+          <>
           <article>
             <Network size={18} />
             <strong>{platformModules.length}</strong>
@@ -92,8 +87,9 @@ export default function PlatformBlueprintPage() {
             <strong>6</strong>
             <span>Protected roles</span>
           </article>
-        </div>
-      </section>
+          </>
+        }
+      />
 
       <section className="platform-entity-grid">
         {entityCounts.map((item) => (

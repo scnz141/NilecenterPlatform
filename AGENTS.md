@@ -10,6 +10,7 @@ Before any implementation work, read:
 
 - `CLAUDE.md` for engineering discipline, verification, simplicity, and anti-pattern rules.
 - `AGENTS.md` for Nile Learn product, role, security, and portal-specific rules.
+- `DESIGN.md` before creating or editing any UI.
 - The matching `.codex/prompts/*.md` file for the feature or portal being changed.
 
 If these files conflict, follow the stricter rule and preserve auth, backend behavior, and RBAC.
@@ -32,6 +33,8 @@ Build a full role-based learning platform replacing or recreating:
 
 ## Design Source Of Truth
 
+Before creating or editing any UI, read `DESIGN.md`. All pages must follow the Nile Learn design language. Do not create plain default shadcn/dashboard UI. Do not create random colors, random spacing, or generic ugly admin screens. Reuse the design tokens and page components from `DESIGN.md`.
+
 Match the existing Nile Learn visual direction:
 
 - modern SaaS LMS UI
@@ -41,6 +44,27 @@ Match the existing Nile Learn visual direction:
 - English and Arabic/RTL readiness
 - premium, highly respected education platform feel
 - no disposable prototype-only pages
+
+## UI quality rule
+
+The landing page at https://nile-center-platform.vercel.app/ is the visual source of truth.
+
+Before editing UI:
+
+1. Read DESIGN.md.
+2. Inspect existing landing page components/styles.
+3. Reuse the Nile Learn design language.
+4. Do not create generic admin dashboard UI.
+5. Do not create plain default shadcn pages.
+6. Do not use random colors or spacing.
+7. Every page must have a designed PageHeader/PageHero.
+8. Every table must be inside a DataTableCard.
+9. Every dashboard must have role-specific personality.
+10. Every form must use FormSection/card layout.
+11. Every page must include responsive design.
+12. Every page must include empty/loading/error states when relevant.
+
+The UI should feel like a premium modern learning platform inspired by Apple clarity, Airbnb warmth, and Cursor-style SaaS polish, without copying any brand.
 
 ## Roles
 

@@ -25,6 +25,11 @@ function getProjectRef(url: string) {
   }
 }
 
+function getRestTimeoutMs(env: SupabaseServerEnv) {
+  const value = Number(env.SUPABASE_REST_TIMEOUT_MS);
+  return Number.isFinite(value) && value > 0 ? value : 4500;
+}
+
 export function getSupabaseServerConfig(env: SupabaseServerEnv = process.env) {
   const url = normalizeUrl(env.SUPABASE_URL || env.VITE_SUPABASE_URL || "");
   const publishableKey = clean(env.SUPABASE_PUBLISHABLE_KEY || env.VITE_SUPABASE_PUBLISHABLE_KEY || env.VITE_SUPABASE_ANON_KEY);
@@ -60,8 +65,17 @@ export async function supabaseAdminRestFetch(path: string, init: RequestInit = {
   headers.set("Authorization", `Bearer ${config.secretKey}`);
   headers.set("Content-Type", headers.get("Content-Type") ?? "application/json");
 
-  return fetch(`${config.url}/rest/v1/${path.replace(/^\/+/, "")}`, {
-    ...init,
-    headers,
-  });
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), getRestTimeoutMs(env));
+  timeout.unref?.();
+
+  try {
+    return await fetch(`${config.url}/rest/v1/${path.replace(/^\/+/, "")}`, {
+      ...init,
+      headers,
+      signal: init.signal ?? controller.signal,
+    });
+  } finally {
+    clearTimeout(timeout);
+  }
 }

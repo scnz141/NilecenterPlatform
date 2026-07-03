@@ -75,6 +75,8 @@ export type User = {
   id: string;
   name: string;
   email: string;
+  phone?: string;
+  notes?: string;
   roles: Role[];
   activeRole: Role;
   branchId?: string;
@@ -181,6 +183,11 @@ export type StudentProfile = {
   userId: string;
   status: StudentStatus;
   guardianId?: string;
+  guardianName?: string;
+  guardianPhone?: string;
+  currentLevel?: string;
+  ageGroup?: string;
+  notes?: string;
   country: string;
   preferredLanguage: string;
   timezone: string;
@@ -229,10 +236,40 @@ export type Quiz = {
   id: string;
   courseRunId: string;
   title: string;
+  dueAt: string;
   durationMinutes: number;
   questionTypes: string[];
+  questionIds: string[];
   attemptsAllowed: number;
   status: EntityStatus;
+};
+
+export type QuestionBankItem = {
+  id: string;
+  courseRunId: string;
+  prompt: string;
+  type:
+    | "multiple_choice"
+    | "true_false"
+    | "short_answer"
+    | "essay"
+    | "oral_record"
+    | "file_upload";
+  difficulty: "foundation" | "core" | "challenge";
+  tags: string[];
+  choices: string[];
+  answerKey?: string;
+  rubric: string[];
+  createdBy: string;
+  updatedAt: string;
+  status: EntityStatus;
+};
+
+export type QuizQuestionPreview = Pick<
+  QuestionBankItem,
+  "id" | "courseRunId" | "prompt" | "type" | "difficulty" | "tags" | "choices" | "status"
+> & {
+  quizId: string;
 };
 
 export type QuizAttempt = {
@@ -396,6 +433,7 @@ export type Payment = {
   invoiceId: string;
   amount: number;
   method: "cash" | "bank_transfer" | "card" | "manual";
+  reference?: string;
   paidAt: string;
   status: PaymentStatus;
 };
@@ -427,6 +465,17 @@ export type Certificate = {
   attendanceRate: number;
   verificationCode: string;
   approvedBy?: string;
+  approvedAt?: string;
+  issuedBy?: string;
+  issuedAt?: string;
+};
+
+export type CertificateVerificationResult = {
+  verificationCode: string;
+  studentName: string;
+  courseTitle: string;
+  status: "issued";
+  issuedAt?: string;
 };
 
 export type QuranMemorizationPlan = {
@@ -527,6 +576,20 @@ export type AuditLog = {
   createdAt: string;
 };
 
+export type ReportType = "enrollments" | "attendance" | "finance" | "audit";
+
+export type ReportPreset = {
+  id: string;
+  ownerUserId: string;
+  role: Role;
+  label: string;
+  reportType: ReportType;
+  search: string;
+  status: string;
+  rowCount: number;
+  createdAt: string;
+};
+
 export type IntegrationStatus = "not_configured" | "mock_mode" | "connected" | "error";
 
 export type IntegrationConfig = {
@@ -558,6 +621,8 @@ export type PlatformState = {
   assignments: Assignment[];
   assignmentSubmissions: AssignmentSubmission[];
   quizzes: Quiz[];
+  questionBankItems: QuestionBankItem[];
+  quizQuestionPreviews: QuizQuestionPreview[];
   quizAttempts: QuizAttempt[];
   grades: Grade[];
   events: CalendarEvent[];
@@ -585,6 +650,7 @@ export type PlatformState = {
   documents: Document[];
   notifications: Notification[];
   supportTickets: SupportTicket[];
+  reportPresets: ReportPreset[];
   auditLogs: AuditLog[];
   integrations: IntegrationConfig[];
   permissions: Record<Role, Permission[]>;
