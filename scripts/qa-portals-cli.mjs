@@ -1169,7 +1169,7 @@ const deepWorkflowCases = [
       value?.response?.startsWith("QA response"),
   },
   {
-    name: "student quiz workflow creates attempt and grade",
+    name: "student manual quiz workflow creates pending review attempt",
     role: "student",
     route: "/app/student/quizzes/quiz_ar_3",
     setupSource: workflowSetupSource(`
@@ -1188,14 +1188,13 @@ const deepWorkflowCases = [
       await delay(120);
       const before = readState();
       const beforeAttempts = before.quizAttempts?.length ?? 0;
-      const beforeGrades = before.grades?.length ?? 0;
       await answerQuizQuestions();
       await clickButtonWithin(".platform-workflow-main .platform-workflow-card:nth-of-type(2)", "Submit attempt");
       const state = await waitFor(() => {
         const next = readState();
         const attempt = next.quizAttempts?.find((item) => item.quizId === "quiz_ar_3");
         const grade = next.grades?.find((item) => item.itemId === "quiz_ar_3");
-        return attempt && grade && (next.quizAttempts?.length ?? 0) >= beforeAttempts && (next.grades?.length ?? 0) >= beforeGrades ? next : null;
+        return attempt?.status === "pending" && !grade && (next.quizAttempts?.length ?? 0) >= beforeAttempts ? next : null;
       });
       const attempt = state?.quizAttempts?.find((item) => item.quizId === "quiz_ar_3");
       const grade = state?.grades?.find((item) => item.itemId === "quiz_ar_3");
@@ -1203,9 +1202,9 @@ const deepWorkflowCases = [
         ok: Boolean(state),
         beforeAttempts,
         afterAttempts: state?.quizAttempts?.length,
-        beforeGrades,
         afterGrades: state?.grades?.length,
         attemptQuizId: attempt?.quizId,
+        attemptStatus: attempt?.status,
         gradeItemId: grade?.itemId,
         lastAudit: state?.auditLogs?.[0]?.action
       };
@@ -1213,7 +1212,8 @@ const deepWorkflowCases = [
     predicate: value =>
       value?.ok &&
       value?.attemptQuizId === "quiz_ar_3" &&
-      value?.gradeItemId === "quiz_ar_3",
+      value?.attemptStatus === "pending" &&
+      !value?.gradeItemId,
   },
   {
     name: "student assignment detail route submits the selected assignment",
@@ -1274,12 +1274,17 @@ const deepWorkflowCases = [
       await clickButtonWithin(".platform-workflow-main .platform-workflow-card:nth-of-type(2)", "Submit attempt");
       const state = await waitFor(() => {
         const next = readState();
-        return next.quizAttempts?.some((item) => item.quizId === "quiz_qt_madd") ? next : null;
+        const attempt = next.quizAttempts?.find((item) => item.quizId === "quiz_qt_madd");
+        const grade = next.grades?.find((item) => item.itemId === "quiz_qt_madd");
+        return attempt?.status === "pending" && !grade ? next : null;
       });
       const attempt = state?.quizAttempts?.find((item) => item.quizId === "quiz_qt_madd");
+      const grade = state?.grades?.find((item) => item.itemId === "quiz_qt_madd");
       return {
         ok: Boolean(state),
         quizId: attempt?.quizId,
+        status: attempt?.status,
+        gradeItemId: grade?.itemId,
         beforeAttempts: before.quizAttempts?.length,
         afterAttempts: state?.quizAttempts?.length
       };
@@ -1287,6 +1292,8 @@ const deepWorkflowCases = [
     predicate: value =>
       value?.ok &&
       value?.quizId === "quiz_qt_madd" &&
+      value?.status === "pending" &&
+      !value?.gradeItemId &&
       value?.afterAttempts >= value?.beforeAttempts,
   },
   {
@@ -1584,7 +1591,7 @@ const deepWorkflowCases = [
       const attempt = state.quizAttempts?.find((item) => item.id === "attempt_ar_3_demo");
       state.quizAttempts = attempt
         ? [
-            { ...attempt, status: "submitted", score: 64 },
+            { ...attempt, status: "pending", score: 0 },
             ...(state.quizAttempts || []).filter((item) => item.id !== "attempt_ar_3_demo"),
           ]
         : (state.quizAttempts || []);

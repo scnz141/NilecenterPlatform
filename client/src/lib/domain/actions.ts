@@ -474,44 +474,56 @@ export function applySubmitQuizAttempt(
     throw new Error("Quiz answer is required.");
   }
 
-  const score =
-    attachedQuestions.length > 0
-      ? Math.round(
-          attachedQuestions.reduce((total, question) => {
-            const answer = submittedAnswers[question.id] ?? "";
-            if (!answer) return total;
-            if ((question.type === "multiple_choice" || question.type === "true_false") && question.answerKey) {
-              return total + (answer.trim().toLowerCase() === question.answerKey.trim().toLowerCase() ? 100 : 0);
-            }
-            return total + 80;
-          }, 0) / attachedQuestions.length,
-        )
-      : Math.max(70, 100 - Object.values(submittedAnswers).filter((answer) => answer.trim().length < 2).length * 10);
+  const objectiveQuestionTypes = new Set<QuestionBankItem["type"]>(["multiple_choice", "true_false"]);
+  const requiresManualReview =
+    attachedQuestions.length === 0 ||
+    attachedQuestions.some((question) => !objectiveQuestionTypes.has(question.type) || !question.answerKey);
+  const score = requiresManualReview
+    ? 0
+    : Math.round(
+        attachedQuestions.reduce((total, question) => {
+          const answer = submittedAnswers[question.id] ?? "";
+          if (!answer) return total;
+          return total + (answer.trim().toLowerCase() === question.answerKey?.trim().toLowerCase() ? 100 : 0);
+        }, 0) / attachedQuestions.length,
+      );
   const attempt: QuizAttempt = {
     id: ctx.createId("attempt"),
     quizId: quiz.id,
     studentId,
     startedAt: ctx.now(),
     submittedAt: ctx.now(),
-    status: "completed" as EntityStatus,
+    status: (requiresManualReview ? "pending" : "completed") as EntityStatus,
     score,
     maxScore: 100,
     answers: submittedAnswers,
   };
-  const grade: Grade = {
-    id: ctx.createId("grade"),
-    studentId,
-    courseRunId: quiz.courseRunId,
-    itemId: quiz.id,
-    itemTitle: quiz.title,
-    score,
-    maxScore: 100,
-    feedback: score >= 80 ? "Auto-graded pass. Teacher can add manual feedback." : "Auto-graded with manual review recommended.",
-  };
 
   state.quizAttempts = [attempt, ...state.quizAttempts];
-  state.grades = [grade, ...state.grades];
-  appendAudit(state, ctx, "quiz.submitted", "QuizAttempt", attempt.id, `Submitted ${quiz.title} with ${score}/100.`, actorId);
+  if (!requiresManualReview) {
+    const grade: Grade = {
+      id: ctx.createId("grade"),
+      studentId,
+      courseRunId: quiz.courseRunId,
+      itemId: quiz.id,
+      itemTitle: quiz.title,
+      score,
+      maxScore: 100,
+      feedback: score >= 80 ? "Auto-graded pass. Teacher can add manual feedback." : "Auto-graded with manual review recommended.",
+    };
+    state.grades = [grade, ...state.grades];
+  }
+  appendAudit(
+    state,
+    ctx,
+    "quiz.submitted",
+    "QuizAttempt",
+    attempt.id,
+    requiresManualReview
+      ? `Submitted ${quiz.title} for teacher review.`
+      : `Submitted ${quiz.title} with ${score}/100.`,
+    actorId,
+  );
   return attempt;
 }
 
@@ -889,6 +901,8 @@ function applyReviewQuizAttempt(
   );
   const maxScore = 100;
   if (existingGrade) {
+    existingGrade.itemId = quiz?.id ?? existingGrade.itemId;
+    existingGrade.itemTitle = quiz?.title ?? existingGrade.itemTitle;
     existingGrade.score = score;
     existingGrade.maxScore = maxScore;
     existingGrade.feedback = feedback;

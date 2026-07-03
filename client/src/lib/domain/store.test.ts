@@ -662,7 +662,7 @@ describe("platformStore workflow guards", () => {
     expect(after.grades.some(item => item.itemId === quiz!.id)).toBe(false);
   });
 
-  it("stores quiz answers keyed by attached question-bank ids", () => {
+  it("stores manual quiz answers as pending review without creating a grade", () => {
     const quiz = platformStore
       .getState()
       .quizzes.find(item => item.id === "quiz_qt_madd");
@@ -675,13 +675,18 @@ describe("platformStore workflow guards", () => {
     expect(attempt).toMatchObject({
       quizId: quiz!.id,
       studentId: "stu_demo",
-      status: "completed",
-      score: 80,
+      status: "pending",
+      score: 0,
       maxScore: 100,
       answers: {
         qbi_qt_madd_oral: "Recorded Madd Munfasil example with stretch length.",
       },
     });
+    expect(
+      platformStore
+        .getState()
+        .grades.some(item => item.itemId === quiz!.id && item.studentId === "stu_demo")
+    ).toBe(false);
   });
 
   it("reviews quiz attempts and updates grade, notification, and audit evidence", () => {
@@ -690,6 +695,22 @@ describe("platformStore workflow guards", () => {
       .quizzes.find(item => item.id === "quiz_qt_madd");
     const attempt = platformStore.submitQuizAttempt(quiz!.id, {
       qbi_qt_madd_oral: "Recorded Madd Munfasil example.",
+    });
+    expect(attempt.status).toBe("pending");
+    platformStore.setState({
+      ...platformStore.getState(),
+      grades: [
+        {
+          id: "legacy_qt_grade",
+          studentId: "stu_demo",
+          courseRunId: quiz!.courseRunId,
+          itemTitle: quiz!.title,
+          score: 72,
+          maxScore: 100,
+          feedback: "Legacy title-only grade.",
+        },
+        ...platformStore.getState().grades,
+      ],
     });
 
     const reviewed = platformStore.reviewQuizAttempt(
@@ -708,6 +729,8 @@ describe("platformStore workflow guards", () => {
       status: "completed",
     });
     expect(grade).toMatchObject({
+      itemId: quiz!.id,
+      itemTitle: quiz!.title,
       score: 94,
       feedback: "Strong recitation. Review stretch length once more.",
     });

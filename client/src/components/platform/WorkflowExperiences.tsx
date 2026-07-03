@@ -1863,7 +1863,21 @@ function AssessmentWorkflow({ role, state, refresh, params }: WorkflowProps) {
   );
   const hodCourseIds = new Set(
     role === "headofdepartment"
-      ? state.courses.map(course => course.id)
+      ? (() => {
+          const departmentIds = new Set(
+            state.departments
+              .filter(department => department.ownerUserId === actorUser.id || department.id === actorUser.departmentId)
+              .map(department => department.id)
+          );
+          const programIds = new Set(
+            state.programs
+              .filter(program => departmentIds.has(program.departmentId))
+              .map(program => program.id)
+          );
+          return state.courses
+            .filter(course => programIds.has(course.programId))
+            .map(course => course.id);
+        })()
       : []
   );
   const staffRunOptions = state.courseRuns.filter(run => {
@@ -2004,14 +2018,25 @@ function AssessmentWorkflow({ role, state, refresh, params }: WorkflowProps) {
   const selectedPendingUser = state.users.find(
     item => item.id === selectedPendingStudent?.userId
   );
-  const reviewableQuizAttempts = editableAssessments
+  const isReviewNeededQuizAttempt = (status: unknown) => {
+    const normalized = String(status);
+    return normalized === "pending" || normalized === "submitted";
+  };
+  const scopedQuizAttempts = editableAssessments
     ? state.quizAttempts
         .filter(attempt => {
           const attemptQuiz = state.quizzes.find(item => item.id === attempt.quizId);
           return Boolean(attemptQuiz && scopedRunIds.has(attemptQuiz.courseRunId));
         })
-        .sort((a, b) => new Date(b.submittedAt ?? b.startedAt).getTime() - new Date(a.submittedAt ?? a.startedAt).getTime())
+        .sort((a, b) => {
+          const statusPriority = (value: typeof a.status) => isReviewNeededQuizAttempt(value) ? 0 : 1;
+          const priorityDelta = statusPriority(a.status) - statusPriority(b.status);
+          if (priorityDelta !== 0) return priorityDelta;
+          return new Date(b.submittedAt ?? b.startedAt).getTime() - new Date(a.submittedAt ?? a.startedAt).getTime();
+        })
     : [];
+  const reviewableQuizAttempts = scopedQuizAttempts.filter(attempt => isReviewNeededQuizAttempt(attempt.status));
+  const reviewedQuizAttempts = scopedQuizAttempts.filter(attempt => !isReviewNeededQuizAttempt(attempt.status)).slice(0, 4);
   const reviewableQuizAttemptKey = reviewableQuizAttempts.map(attempt => attempt.id).join("|");
   const selectedQuizAttempt =
     reviewableQuizAttempts.find(attempt => attempt.id === selectedQuizAttemptId) ??
@@ -2903,7 +2928,7 @@ function AssessmentWorkflow({ role, state, refresh, params }: WorkflowProps) {
               <span>
                 <ListChecks size={16} /> Quiz review
               </span>
-              <strong>{selectedQuizAttempt ? "Attempt evidence" : "No attempts"}</strong>
+              <strong>{selectedQuizAttempt ? "Needs review" : "No pending review"}</strong>
             </div>
             {selectedQuizAttempt ? (
               <>
@@ -2920,7 +2945,7 @@ function AssessmentWorkflow({ role, state, refresh, params }: WorkflowProps) {
                         >
                           <div>
                             <strong>{attemptQuiz?.title ?? attempt.quizId}</strong>
-                            <small>{user?.name ?? attempt.studentId} · {attempt.status} · {attempt.score}/{attempt.maxScore}</small>
+                            <small>{user?.name ?? attempt.studentId} · needs review · {attempt.score}/{attempt.maxScore}</small>
                           </div>
                           <button type="button" onClick={() => setSelectedQuizAttemptId(attempt.id)}>
                             Review
@@ -2986,10 +3011,28 @@ function AssessmentWorkflow({ role, state, refresh, params }: WorkflowProps) {
               </>
             ) : (
               <div className="platform-empty-state">
-                <strong>No quiz attempts yet</strong>
-                <span>Submitted attempts from scoped learners will appear here for feedback.</span>
+                <strong>No pending quiz review</strong>
+                <span>Manual quiz attempts from scoped learners will appear here for feedback.</span>
               </div>
             )}
+            {reviewedQuizAttempts.length ? (
+              <div className="platform-row-list compact">
+                {reviewedQuizAttempts.map(attempt => {
+                  const attemptQuiz = state.quizzes.find(item => item.id === attempt.quizId);
+                  const student = state.students.find(item => item.id === attempt.studentId);
+                  const user = state.users.find(item => item.id === student?.userId);
+                  return (
+                    <article key={attempt.id}>
+                      <div>
+                        <strong>{attemptQuiz?.title ?? attempt.quizId}</strong>
+                        <small>{user?.name ?? attempt.studentId} · reviewed · {attempt.score}/{attempt.maxScore}</small>
+                      </div>
+                      <span className="platform-status completed">Reviewed</span>
+                    </article>
+                  );
+                })}
+              </div>
+            ) : null}
           </section>
         ) : null}
         </div>

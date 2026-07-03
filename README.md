@@ -16,6 +16,19 @@ npm test
 npm run build
 ```
 
+Portal workflow QA should run against isolated local platform state when it
+creates attempts, attendance records, payments, or grades:
+
+```bash
+QA_PLATFORM_STATE_LOCAL_ONLY=1 npm run dev -- --port 3001
+QA_BASE_URL=http://localhost:3001 QA_ONLY_WORKFLOWS=quiz npm run qa:portals
+QA_BASE_URL=http://localhost:3001 QA_ONLY_WORKFLOWS=grading npm run qa:portals
+```
+
+Without `QA_PLATFORM_STATE_LOCAL_ONLY=1`, the server may read the shared
+Supabase demo snapshot and repeat runs can hit real workflow limits, such as
+exhausted quiz attempts.
+
 ## Environment
 
 Copy `.env.example` to `.env.local` when real services are connected. Keep real tokens and credentials out of the repository.
