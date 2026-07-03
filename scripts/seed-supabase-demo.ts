@@ -36,7 +36,7 @@ type SeedSummary = {
   };
 };
 
-const DEMO_PASSWORD = process.env.NILE_DEMO_PASSWORD || "demo1234";
+const DEMO_PASSWORD = process.env.NILE_DEMO_PASSWORD || "12345";
 const DEMO_ENTITIES_TABLE = sanitizeTableName(process.env.SUPABASE_PLATFORM_DEMO_ENTITIES_TABLE || "platform_demo_entities");
 const PLATFORM_RECORDS_TABLE = sanitizeTableName(process.env.SUPABASE_PLATFORM_RECORDS_TABLE || "platform_records");
 const PLATFORM_STATE_TABLE = sanitizeTableName(process.env.SUPABASE_PLATFORM_STATE_TABLE || "platform_state_snapshots");

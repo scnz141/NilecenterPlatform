@@ -24,6 +24,7 @@ Required placeholders:
 
 - `VITE_APP_NAME`
 - `VITE_DEMO_AUTH_ENABLED`
+- `DEMO_AUTH_ENABLED`
 - `VITE_OAUTH_PORTAL_URL`
 - `VITE_APP_ID`
 - `VITE_FRONTEND_FORGE_API_KEY`
@@ -70,6 +71,8 @@ The legacy local emails still work for compatibility:
 
 No real passwords, Moodle credentials, EMS credentials, API keys, or private data should be committed.
 
+For a hosted demo deployment, set `DEMO_AUTH_ENABLED=true` only when the fake demo accounts should be available on that environment. Set `NILE_DEMO_PASSWORD` to the shared fake demo password and redeploy after changing Vercel environment variables. If `/api/auth/login` returns a Vercel function error instead of a JSON `401`, run `vercel build --prod` locally and fix the API function build before checking Supabase credentials.
+
 ## Supabase
 
 Supabase is wired as a first-class integration without changing the current demo auth/local store. Browser code reads only:
@@ -102,7 +105,7 @@ Seed Supabase Auth users and demo database rows with:
 npm run seed:supabase
 ```
 
-The seeder creates or updates the six role demo Auth users plus the six short aliases with role claims in `app_metadata`, verifies password sign-in for each role, and upserts the full seed into the server-only demo tables. The default demo password is `demo1234`; override it with `NILE_DEMO_PASSWORD` in `.env.local`.
+The seeder creates or updates the six role demo Auth users plus the six short aliases with role claims in `app_metadata`, verifies password sign-in for each role, and upserts the full seed into the server-only demo tables. The default fake demo password is `12345`; override it with `NILE_DEMO_PASSWORD` in `.env.local` or the deployment environment.
 
 ## Route Groups
 

@@ -1,4 +1,4 @@
-import express, { type Express, type Request } from "express";
+import express from "express";
 import { attachSession, endRequestSession, getRequestSession, isServerRole, signIn } from "./auth.js";
 import { loadServerEnv } from "./env.js";
 import { getPlatformBackendState, savePlatformBackendRecord } from "./platformRecords.js";
@@ -9,13 +9,47 @@ const certificateVerifyAttempts = new Map<string, { count: number; resetAt: numb
 const certificateVerifyWindowMs = 10 * 60 * 1000;
 const certificateVerifyLimit = 40;
 const certificateCodePattern = /^[a-z0-9][a-z0-9-]{5,63}$/i;
+const platformRecordTypes = ["lead", "placement", "operational"] as const;
+type PlatformRecordType = (typeof platformRecordTypes)[number];
 
-function certificateVerifyClientKey(req: Request) {
+type ApiRequest = {
+  method: string;
+  body?: Record<string, unknown>;
+  query: Record<string, unknown>;
+  headers: {
+    cookie?: string;
+  };
+  ip?: string;
+  get(name: string): string | undefined;
+};
+
+type ApiResponse = {
+  setHeader(name: string, value: string): void;
+  status(code: number): ApiResponse;
+  json(body: unknown): void;
+};
+
+type ApiNext = () => void;
+type ApiMiddleware = (req: ApiRequest, res: ApiResponse, next: ApiNext) => void;
+type ApiRouteHandler = (req: ApiRequest, res: ApiResponse) => void | Promise<void>;
+type ApiApp = {
+  use(handler: unknown): void;
+  use(path: string, handler: ApiMiddleware): void;
+  get(path: string, handler: ApiRouteHandler): void;
+  post(path: string, handler: ApiRouteHandler): void;
+};
+type HeaderRequest = Pick<ApiRequest, "get" | "ip">;
+
+function isPlatformRecordType(value: unknown): value is PlatformRecordType {
+  return typeof value === "string" && platformRecordTypes.includes(value as PlatformRecordType);
+}
+
+function certificateVerifyClientKey(req: HeaderRequest) {
   const forwarded = req.get("x-forwarded-for") ?? req.ip ?? "local";
   return forwarded.split(",")[0]?.trim() || "local";
 }
 
-function consumeCertificateVerifyAttempt(req: Request) {
+function consumeCertificateVerifyAttempt(req: HeaderRequest) {
   const now = Date.now();
   const key = certificateVerifyClientKey(req);
   const bucket = certificateVerifyAttempts.get(key);
@@ -28,7 +62,7 @@ function consumeCertificateVerifyAttempt(req: Request) {
   return true;
 }
 
-export function registerApiRoutes(app: Express) {
+export function registerApiRoutes(app: ApiApp) {
   loadServerEnv();
   app.use(express.json());
   app.use("/api", (req, res, next) => {
@@ -181,7 +215,7 @@ export function registerApiRoutes(app: Express) {
 
   app.post("/api/platform/records", async (req, res) => {
     const { type, payload } = req.body ?? {};
-    if (!["lead", "placement", "operational"].includes(type) || !payload || typeof payload !== "object") {
+    if (!isPlatformRecordType(type) || !payload || typeof payload !== "object") {
       res.status(400).json({ error: "Valid record type and payload are required." });
       return;
     }
@@ -196,7 +230,7 @@ export function registerApiRoutes(app: Express) {
         return;
       }
     }
-    const record = await savePlatformBackendRecord(type, payload, session?.userId);
+    const record = await savePlatformBackendRecord(type, payload as Record<string, unknown>, session?.userId);
     res.status(201).json(record);
   });
 }

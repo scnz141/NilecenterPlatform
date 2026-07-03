@@ -1,5 +1,4 @@
 import crypto from "node:crypto";
-import type { Request, Response } from "express";
 
 export type ServerRole = "student" | "teacher" | "registrar" | "headofdepartment" | "branchadmin" | "superadmin";
 
@@ -36,6 +35,16 @@ const demoEmailAliases: Record<ServerRole, string> = {
   superadmin: "a@nl.test",
 };
 
+type SessionCookieRequest = {
+  headers: {
+    cookie?: string;
+  };
+};
+
+type SessionCookieResponse = {
+  setHeader(name: string, value: string): void;
+};
+
 function clean(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
 }
@@ -50,7 +59,13 @@ function demoAuthEnabled() {
   return process.env.NODE_ENV !== "production";
 }
 
-function parseCookies(req: Request) {
+function demoPasswordAccepted(password: string) {
+  const configuredPassword = clean(process.env.NILE_DEMO_PASSWORD);
+  if (configuredPassword) return clean(password) === configuredPassword;
+  return clean(password).length >= 4;
+}
+
+function parseCookies(req: SessionCookieRequest) {
   return Object.fromEntries(
     (req.headers.cookie ?? "")
       .split(";")
@@ -63,7 +78,7 @@ function parseCookies(req: Request) {
   );
 }
 
-function writeSessionCookie(res: Response, sessionId: string) {
+function writeSessionCookie(res: SessionCookieResponse, sessionId: string) {
   const secure = process.env.NODE_ENV === "production" ? "; Secure" : "";
   res.setHeader(
     "Set-Cookie",
@@ -71,7 +86,7 @@ function writeSessionCookie(res: Response, sessionId: string) {
   );
 }
 
-export function clearSessionCookie(res: Response) {
+export function clearSessionCookie(res: SessionCookieResponse) {
   res.setHeader("Set-Cookie", `${COOKIE_NAME}=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax`);
 }
 
@@ -84,7 +99,7 @@ function createSession(input: Omit<ServerSession, "id" | "createdAt" | "expiresA
   return session;
 }
 
-export function getRequestSession(req: Request) {
+export function getRequestSession(req: SessionCookieRequest) {
   const sessionId = parseCookies(req)[COOKIE_NAME];
   if (!sessionId) return null;
   const session = sessions.get(sessionId);
@@ -96,7 +111,7 @@ export function getRequestSession(req: Request) {
   return session;
 }
 
-export function endRequestSession(req: Request, res: Response) {
+export function endRequestSession(req: SessionCookieRequest, res: SessionCookieResponse) {
   const sessionId = parseCookies(req)[COOKIE_NAME];
   if (sessionId) sessions.delete(sessionId);
   clearSessionCookie(res);
@@ -169,7 +184,7 @@ function signInWithDemo(email: string, password: string, requestedRole: ServerRo
   if (!demoAuthEnabled()) return null;
   const user = demoUsers[requestedRole];
   const emailValue = clean(email).toLowerCase();
-  if (![user.email, demoEmailAliases[requestedRole]].includes(emailValue) || clean(password).length < 4) return null;
+  if (![user.email, demoEmailAliases[requestedRole]].includes(emailValue) || !demoPasswordAccepted(password)) return null;
 
   return createSession({
     userId: user.id,
@@ -191,7 +206,7 @@ export async function signIn(email: string, password: string, requestedRole: Ser
   throw new Error("Invalid email, password, or role.");
 }
 
-export function attachSession(res: Response, session: ServerSession) {
+export function attachSession(res: SessionCookieResponse, session: ServerSession) {
   writeSessionCookie(res, session.id);
   return {
     userId: session.userId,

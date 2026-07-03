@@ -12,7 +12,7 @@ function readPositiveIntegerEnv(name, fallback) {
 
 const baseUrl = process.env.QA_BASE_URL || "http://localhost:3001";
 const session = process.env.QA_SESSION || `nile-portals-qa-${process.pid}`;
-const password = process.env.NILE_DEMO_PASSWORD || "demo1234";
+const password = process.env.NILE_DEMO_PASSWORD || "12345";
 const commandTimeoutMs = readPositiveIntegerEnv("QA_COMMAND_TIMEOUT_MS", 45000);
 const routeReadyTimeoutMs = readPositiveIntegerEnv("QA_ROUTE_READY_TIMEOUT_MS", 5000);
 const routeMatrixRouteTimeoutMs = readPositiveIntegerEnv(
