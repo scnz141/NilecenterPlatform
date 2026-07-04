@@ -1,10 +1,7 @@
-import fs from "node:fs";
-import path from "node:path";
 import {
   applyPlatformWorkflowAction as applyWorkflowMutation,
   type PlatformWorkflowAction,
 } from "../client/src/lib/domain/actions.js";
-import { seedPlatformState } from "../client/src/lib/domain/seed.js";
 import type {
   AttendanceStatus,
   CalendarEventType,
@@ -21,19 +18,7 @@ import type {
 } from "../client/src/lib/domain/types.js";
 import { roleOrder, rolePermissions, type Permission, type Role } from "../client/src/lib/platformData.js";
 import type { ServerSession } from "./auth.js";
-import { supabaseAdminRestFetch } from "./supabase.js";
-
-const DATA_DIR = process.env.VERCEL ? "/tmp" : path.resolve(process.cwd(), ".local-data");
-const STATE_FILE = path.join(DATA_DIR, "platform-state.json");
-const DEFAULT_STATE_ID = "nile-learn-demo";
-
-type PersistenceMode = "supabase" | "local";
-
-export type PlatformStatePayload = {
-  state: PlatformState;
-  persistence: PersistenceMode;
-  syncedAt: string;
-};
+import { getPlatformStateRepository, normalizePlatformState, type PlatformStatePayload } from "./platformRepository.js";
 
 function now() {
   return new Date().toISOString();
@@ -43,165 +28,8 @@ function createId(prefix: string) {
   return `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
 }
 
-function sanitizeTableName(value: string, fallback: string) {
-  const table = (value || fallback).trim();
-  if (!/^[a-zA-Z][a-zA-Z0-9_]*$/.test(table)) return fallback;
-  return table;
-}
-
-function snapshotId() {
-  return process.env.SUPABASE_PLATFORM_STATE_ID?.trim() || DEFAULT_STATE_ID;
-}
-
-function snapshotTable() {
-  return sanitizeTableName(process.env.SUPABASE_PLATFORM_STATE_TABLE || "", "platform_state_snapshots");
-}
-
-function eventsTable() {
-  return sanitizeTableName(process.env.SUPABASE_PLATFORM_EVENTS_TABLE || "", "platform_events");
-}
-
-function useLocalPlatformStateOnly() {
-  return process.env.NILE_PLATFORM_STATE_LOCAL_ONLY === "1" || process.env.QA_PLATFORM_STATE_LOCAL_ONLY === "1";
-}
-
-function cloneSeed(): PlatformState {
-  return JSON.parse(JSON.stringify(seedPlatformState)) as PlatformState;
-}
-
-function mergeById<T extends { id: string }>(seedItems: T[], storedItems?: T[]) {
-  const merged = new Map((storedItems ?? []).map((item) => [item.id, item]));
-  seedItems.forEach((item) => {
-    if (!merged.has(item.id)) merged.set(item.id, item);
-  });
-  return Array.from(merged.values());
-}
-
-function normalizeState(value: unknown): PlatformState {
-  if (!value || typeof value !== "object") return cloneSeed();
-  const seed = cloneSeed();
-  const stored = value as Partial<PlatformState>;
-  return {
-    ...seed,
-    ...stored,
-    users: mergeById(seed.users, stored.users),
-    staffProfiles: mergeById(seed.staffProfiles, stored.staffProfiles),
-    courseRuns: mergeById(seed.courseRuns, stored.courseRuns),
-    classGroups: mergeById(seed.classGroups, stored.classGroups),
-    events: mergeById(seed.events, stored.events),
-    reportPresets: mergeById(seed.reportPresets, stored.reportPresets),
-  };
-}
-
-function ensureDataDir() {
-  if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true, mode: 0o700 });
-}
-
-function readLocalState() {
-  try {
-    if (!fs.existsSync(STATE_FILE)) return null;
-    const payload = JSON.parse(fs.readFileSync(STATE_FILE, "utf-8")) as { state?: unknown };
-    return normalizeState(payload.state);
-  } catch {
-    return null;
-  }
-}
-
-function writeLocalState(state: PlatformState) {
-  ensureDataDir();
-  fs.writeFileSync(STATE_FILE, JSON.stringify({ state, updatedAt: now() }, null, 2), { mode: 0o600 });
-}
-
-async function readSupabaseState() {
-  const table = snapshotTable();
-  const response = await supabaseAdminRestFetch(
-    `${table}?id=eq.${encodeURIComponent(snapshotId())}&select=id,state,updated_at&limit=1`,
-    { method: "GET" },
-  );
-  if (!response.ok) throw new Error(`Supabase platform state read failed with ${response.status}`);
-  const rows = (await response.json()) as { state?: unknown }[];
-  return rows[0]?.state ? normalizeState(rows[0].state) : null;
-}
-
-async function writeSupabaseState(state: PlatformState) {
-  const table = snapshotTable();
-  const updatedAt = now();
-  const response = await supabaseAdminRestFetch(`${table}?on_conflict=id`, {
-    method: "POST",
-    headers: { Prefer: "resolution=merge-duplicates,return=minimal" },
-    body: JSON.stringify([
-      {
-        id: snapshotId(),
-        state,
-        updated_at: updatedAt,
-      },
-    ]),
-  });
-  if (!response.ok) throw new Error(`Supabase platform state write failed with ${response.status}`);
-}
-
-async function writeSupabaseEvent(input: {
-  action: string;
-  actorId: string;
-  entityType: string;
-  entityId: string;
-  summary: string;
-  payload: Record<string, unknown>;
-}) {
-  const table = eventsTable();
-  const response = await supabaseAdminRestFetch(table, {
-    method: "POST",
-    headers: { Prefer: "return=minimal" },
-    body: JSON.stringify({
-      id: createId("evtlog"),
-      actor_id: input.actorId,
-      action: input.action,
-      entity_type: input.entityType,
-      entity_id: input.entityId,
-      summary: input.summary,
-      payload: input.payload,
-      created_at: now(),
-    }),
-  });
-  if (!response.ok) throw new Error(`Supabase platform event write failed with ${response.status}`);
-}
-
-async function persistState(state: PlatformState) {
-  if (useLocalPlatformStateOnly()) {
-    writeLocalState(state);
-    return "local" as const;
-  }
-  try {
-    await writeSupabaseState(state);
-    writeLocalState(state);
-    return "supabase" as const;
-  } catch {
-    writeLocalState(state);
-    return "local" as const;
-  }
-}
-
 export async function getPlatformStateSnapshot(): Promise<PlatformStatePayload> {
-  if (useLocalPlatformStateOnly()) {
-    const localState = readLocalState() ?? cloneSeed();
-    writeLocalState(localState);
-    return { state: localState, persistence: "local", syncedAt: now() };
-  }
-  try {
-    const supabaseState = await readSupabaseState();
-    if (supabaseState) {
-      writeLocalState(supabaseState);
-      return { state: supabaseState, persistence: "supabase", syncedAt: now() };
-    }
-
-    const seededState = readLocalState() ?? cloneSeed();
-    const persistence = await persistState(seededState);
-    return { state: seededState, persistence, syncedAt: now() };
-  } catch {
-    const localState = readLocalState() ?? cloneSeed();
-    writeLocalState(localState);
-    return { state: localState, persistence: "local", syncedAt: now() };
-  }
+  return getPlatformStateRepository().readSnapshot();
 }
 
 function studentIdForSession(state: PlatformState, session: ServerSession) {
@@ -1447,14 +1275,14 @@ export const parsePlatformLearningAction = parsePlatformWorkflowAction;
 
 export async function applyPlatformWorkflowAction(action: PlatformWorkflowAction, session: ServerSession) {
   const snapshot = await getPlatformStateSnapshot();
-  const nextState = normalizeState(snapshot.state);
+  const nextState = normalizePlatformState(snapshot.state);
   const serverAction = applyServerActor(action, session, nextState);
   assertScopedAction(nextState, serverAction, session);
   const result = applyWorkflowMutation(nextState, serverAction, { createId, now });
-  const persistence = await persistState(nextState);
+  const persistence = await getPlatformStateRepository().writeSnapshot(nextState);
 
   try {
-    if (!useLocalPlatformStateOnly()) await writeSupabaseEvent({
+    await getPlatformStateRepository().recordEvent({
       action: result.action,
       actorId: session.userId,
       entityType: result.entityType,
