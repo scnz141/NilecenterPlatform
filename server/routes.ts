@@ -525,7 +525,7 @@ function safeUnmappedRoleState(state: PlatformStatePayload, session: NonNullable
   };
 }
 
-function scopePlatformStateForSession(state: PlatformStatePayload, session: NonNullable<ReturnType<typeof getRequestSession>>) {
+export function scopePlatformStateForSession(state: PlatformStatePayload, session: NonNullable<ReturnType<typeof getRequestSession>>) {
   if (session.activeRole === "superadmin") return { ...state, reportPresets: reportPresetsForSession(state, session) };
 
   const user = state.users.find((item) => item.id === session.userId);
