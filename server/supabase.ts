@@ -57,7 +57,7 @@ export function getSupabaseServerStatus(env: SupabaseServerEnv = process.env): S
 export async function supabaseAdminRestFetch(path: string, init: RequestInit = {}, env: SupabaseServerEnv = process.env) {
   const config = getSupabaseServerConfig(env);
   if (!config.url || !config.secretKey) {
-    throw new Error("Supabase admin config is missing SUPABASE_URL and SUPABASE_SECRET_KEY.");
+    throw new Error("Supabase admin config is missing SUPABASE_URL and SUPABASE_SECRET_KEY or SUPABASE_SERVICE_ROLE_KEY.");
   }
 
   const headers = new Headers(init.headers);

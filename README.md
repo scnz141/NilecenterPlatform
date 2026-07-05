@@ -102,23 +102,40 @@ Server-only admin access reads:
 - `SUPABASE_SERVICE_ROLE_KEY`, legacy fallback
 - `SUPABASE_PLATFORM_RECORDS_TABLE`
 - `SUPABASE_PLATFORM_DEMO_ENTITIES_TABLE`
+- `SUPABASE_PLATFORM_STATE_TABLE`
+- `SUPABASE_PLATFORM_EVENTS_TABLE`
+- `SUPABASE_PLATFORM_STATE_ID`
+- `SUPABASE_DEMO_PASSWORD`, required for Supabase Auth demo seeding
 
 Never put `SUPABASE_SECRET_KEY` or `SUPABASE_SERVICE_ROLE_KEY` in any `VITE_` variable. The admin integration page can run a browser-safe Supabase REST check when `VITE_SUPABASE_URL` and a browser-safe key are configured.
 
 Public and portal submissions write through `/api/platform/records`. The server attempts `SUPABASE_PLATFORM_RECORDS_TABLE` first with the server-only key, then falls back to `.local-data/platform-records.json` if the table or policy is not ready yet.
 
-Apply `supabase/migrations/20260626185139_platform_demo_seed_tables.sql` before remote demo seeding. It creates:
+Apply the demo Supabase migrations before remote demo seeding:
+
+```bash
+supabase db push
+```
+
+The current migrations are:
+
+- `supabase/migrations/20260626185139_platform_demo_seed_tables.sql`
+- `supabase/migrations/20260627110345_platform_state_snapshots.sql`
+
+They create:
 
 - `platform_records` for server-side public and portal submissions.
 - `platform_demo_entities` for a durable JSONB copy of the full demo state from `client/src/lib/domain/seed.ts`.
+- `platform_state_snapshots` for server-side demo platform snapshots.
+- `platform_events` for server-side demo events and audit evidence.
 
 Seed Supabase Auth users and demo database rows with:
 
 ```bash
-npm run seed:supabase
+SUPABASE_DEMO_PASSWORD=<fake-demo-password> npm run seed:supabase
 ```
 
-The seeder creates or updates the six role demo Auth users plus the six short aliases with role claims in `app_metadata`, verifies password sign-in for each role, and upserts the full seed into the server-only demo tables. The default fake demo password is `12345`; override it with `NILE_DEMO_PASSWORD` in `.env.local` or the deployment environment.
+The seeder creates or updates fake role demo Auth users plus short aliases with role claims in `app_metadata`, verifies password sign-in for each role, and upserts the full seed into the server-only demo tables. `SUPABASE_DEMO_PASSWORD` must be supplied by the shell or environment and must not be committed.
 
 ## Route Groups
 

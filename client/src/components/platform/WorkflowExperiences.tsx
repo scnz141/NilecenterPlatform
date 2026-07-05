@@ -63,7 +63,13 @@ import {
   type PageConfig,
   type Role,
 } from "@/lib/platformData";
-import { PlatformPageHeader, PlatformWorkspaceHeader, StatCard, StatusBadge, DataTableCard } from "./PlatformPrimitives";
+import {
+  PlatformPageHeader,
+  PlatformWorkspaceHeader,
+  StatCard,
+  StatusBadge,
+  DataTableCard,
+} from "./PlatformPrimitives";
 
 const assessmentPages = new Set([
   "assignments",
@@ -93,7 +99,7 @@ const reportLabels = {
   enrollments: "Enrollment",
   attendance: "Attendance",
   finance: "Finance",
-  audit: "Audit",
+  audit: "Activity",
 } as const;
 const reportTypesByRole: Record<Role, ReportType[]> = {
   student: ["enrollments", "attendance"],
@@ -120,6 +126,11 @@ type DisplayReportRow = {
 };
 type ReportSortKey = "primary" | "status" | "metric" | "updated";
 type ReportSortDirection = "asc" | "desc";
+
+function formatConnectionStatus(status: string) {
+  return status === "mock_mode" ? "Test mode" : status.replace("_", " ");
+}
+
 const PLATFORM_STATE_UPDATED_EVENT = "nilelearn:platform-state-updated";
 const PROTECTED_STATEFUL_PAGE_IDS = new Set([
   ...Array.from(learningPages),
@@ -130,7 +141,12 @@ const PROTECTED_STATEFUL_PAGE_IDS = new Set([
   "system-health",
   "audit-logs",
 ]);
-const attendanceStatusOptions: AttendanceStatus[] = ["present", "late", "absent", "excused"];
+const attendanceStatusOptions: AttendanceStatus[] = [
+  "present",
+  "late",
+  "absent",
+  "excused",
+];
 const attendanceStatusLabels: Record<AttendanceStatus, string> = {
   present: "Present",
   late: "Late",
@@ -144,7 +160,11 @@ const attendanceStatusShortLabels: Record<AttendanceStatus, string> = {
   excused: "E",
 };
 type AttendanceSessionFilter = "all" | "saved" | "pending";
-type AttendanceRosterFilter = "all" | AttendanceStatus | "unsaved" | "exceptions";
+type AttendanceRosterFilter =
+  | "all"
+  | AttendanceStatus
+  | "unsaved"
+  | "exceptions";
 const certificateStatusLabels: Record<Certificate["status"], string> = {
   draft: "Draft",
   pending_approval: "Pending approval",
@@ -186,7 +206,9 @@ type ScheduleBoardEvent = {
   classGroupId?: string;
 };
 
-function getSchedulerTypeOptions(role: Role): Array<{ value: CalendarEventType; label: string }> {
+function getSchedulerTypeOptions(
+  role: Role
+): Array<{ value: CalendarEventType; label: string }> {
   if (role === "registrar") {
     return [
       { value: "placement_test", label: "Placement test" },
@@ -240,11 +262,15 @@ function getCertificateEligibility(certificate: Certificate) {
     {
       label: "Approval",
       detail: certificateStatusLabels[certificate.status],
-      passed: certificate.status === "approved" || certificate.status === "issued",
+      passed:
+        certificate.status === "approved" || certificate.status === "issued",
     },
     {
       label: "Issue state",
-      detail: certificate.status === "issued" ? certificate.verificationCode : "Not issued",
+      detail:
+        certificate.status === "issued"
+          ? certificate.verificationCode
+          : "Not issued",
       passed: certificate.status === "issued",
     },
   ];
@@ -255,7 +281,9 @@ function getCertificateSummary(
   certificateIds?: Set<string>
 ) {
   const certificates = certificateIds
-    ? state.certificates.filter(certificate => certificateIds.has(certificate.id))
+    ? state.certificates.filter(certificate =>
+        certificateIds.has(certificate.id)
+      )
     : state.certificates;
   const statusCounts = Object.fromEntries(
     certificateStatusOptions.map(status => [
@@ -340,13 +368,23 @@ function CertificateEligibilityEvidence({
       </article>
       <article>
         <span>Eligibility</span>
-        <strong>{certificate.grade}% grade · {certificate.attendanceRate}% attendance</strong>
-        <small>{eligible ? "Meets current issue rules" : "Needs grade and attendance evidence"}</small>
+        <strong>
+          {certificate.grade}% grade · {certificate.attendanceRate}% attendance
+        </strong>
+        <small>
+          {eligible
+            ? "Meets current issue rules"
+            : "Needs grade and attendance evidence"}
+        </small>
       </article>
       <article>
         <span>Document</span>
-        <strong>{issued ? documentStatus ?? "ready" : "not issued"}</strong>
-        <small>{issued ? "Public verification enabled" : "Hidden from public verification"}</small>
+        <strong>{issued ? (documentStatus ?? "ready") : "not issued"}</strong>
+        <small>
+          {issued
+            ? "Public verification enabled"
+            : "Hidden from public verification"}
+        </small>
       </article>
       <article>
         <span>Governance</span>
@@ -403,7 +441,9 @@ function CertificatePreview({
         <small>
           {issued
             ? `Document ${documentStatus ?? "ready"} · public verification enabled${
-                certificate.issuedAt ? ` · issued ${formatDateTime(certificate.issuedAt)}` : ""
+                certificate.issuedAt
+                  ? ` · issued ${formatDateTime(certificate.issuedAt)}`
+                  : ""
               }`
             : context === "student"
               ? "Approval or issue is still pending. Verification and print stay disabled."
@@ -539,7 +579,10 @@ export default function StatefulWorkflowExperience({
     const syncLocalPlatformState = () => {
       setVersion(value => value + 1);
     };
-    window.addEventListener(PLATFORM_STATE_UPDATED_EVENT, syncLocalPlatformState);
+    window.addEventListener(
+      PLATFORM_STATE_UPDATED_EVENT,
+      syncLocalPlatformState
+    );
     return () => {
       window.removeEventListener(
         PLATFORM_STATE_UPDATED_EVENT,
@@ -563,7 +606,9 @@ export default function StatefulWorkflowExperience({
         <span aria-hidden="true" className="platform-route-loading-spinner" />
         <small>Syncing role scope</small>
         <strong>{config.title}</strong>
-        <p>Loading the server-scoped workspace before showing protected records.</p>
+        <p>
+          Loading the server-scoped workspace before showing protected records.
+        </p>
       </section>
     );
   }
@@ -600,7 +645,10 @@ export default function StatefulWorkflowExperience({
       />
     );
   }
-  if (role === "student" && (assessmentPages.has(pageId) || config.kind === "assessment"))
+  if (
+    role === "student" &&
+    (assessmentPages.has(pageId) || config.kind === "assessment")
+  )
     return (
       <AssessmentWorkflow
         role={role}
@@ -646,9 +694,18 @@ export default function StatefulWorkflowExperience({
   if (role === "student" && config.kind === "quran")
     return <StudentQuranWorkflow role={role} state={state} refresh={refresh} />;
   if (role === "student" && config.kind === "messages")
-    return <StudentMessageWorkflow role={role} state={state} refresh={refresh} />;
+    return (
+      <StudentMessageWorkflow role={role} state={state} refresh={refresh} />
+    );
   if (assessmentPages.has(pageId) || config.kind === "assessment")
-    return <AssessmentWorkflow role={role} state={state} refresh={refresh} params={params} />;
+    return (
+      <AssessmentWorkflow
+        role={role}
+        state={state}
+        refresh={refresh}
+        params={params}
+      />
+    );
   if (config.kind === "attendance")
     return (
       <AttendancePageFrame
@@ -668,7 +725,10 @@ export default function StatefulWorkflowExperience({
     );
   if (admissionsPages.has(pageId))
     return <AdmissionsWorkflow role={role} state={state} refresh={refresh} />;
-  if (config.kind === "calendar" && (role === "headofdepartment" || role === "superadmin"))
+  if (
+    config.kind === "calendar" &&
+    (role === "headofdepartment" || role === "superadmin")
+  )
     return (
       <ScheduleGovernanceWorkflow
         role={role}
@@ -703,7 +763,14 @@ export default function StatefulWorkflowExperience({
     return <FinanceWorkflow role={role} state={state} refresh={refresh} />;
   if (pageId === "integrations")
     return <IntegrationsWorkflow role={role} state={state} refresh={refresh} />;
-  return <ReportsWorkflow role={role} state={state} refresh={refresh} pageId={pageId} />;
+  return (
+    <ReportsWorkflow
+      role={role}
+      state={state}
+      refresh={refresh}
+      pageId={pageId}
+    />
+  );
 }
 
 type WorkflowProps = {
@@ -757,9 +824,15 @@ function AttendancePageFrame({
         </div>
         <div className="platform-attendance-page-metrics">
           <span>{scopeLabel}</span>
-          <span>{summary.savedSessions}/{summary.sessions.length} saved</span>
+          <span>
+            {summary.savedSessions}/{summary.sessions.length} saved
+          </span>
           <span>{summary.pendingSessions} pending</span>
-          <span>{backendSyncStatus === "loading" ? "Syncing" : `${backendSyncStatus} state`}</span>
+          <span>
+            {backendSyncStatus === "loading"
+              ? "Syncing"
+              : `${backendSyncStatus} state`}
+          </span>
         </div>
       </section>
       {children}
@@ -767,10 +840,7 @@ function AttendancePageFrame({
   );
 }
 
-function getAttendanceScopeClassIds(
-  state: PlatformStateSnapshot,
-  role: Role
-) {
+function getAttendanceScopeClassIds(state: PlatformStateSnapshot, role: Role) {
   const actor = getRoleActorUser(state, role);
   if (role === "student") return getStudentScope(state).classIds;
   if (role === "teacher") {
@@ -849,14 +919,17 @@ function isAttendanceSessionSaved(
   session: PlatformStateSnapshot["classSessions"][number]
 ) {
   if (session.attendanceSaved) return true;
-  const group = state.classGroups.find(item => item.id === session.classGroupId);
+  const group = state.classGroups.find(
+    item => item.id === session.classGroupId
+  );
   if (!group?.studentIds.length) return false;
   return group.studentIds.every(studentId =>
     state.attendance.some(
       record =>
         record.classGroupId === group.id &&
         record.studentId === studentId &&
-        (record.sessionId === session.id || record.sessionId === session.eventId)
+        (record.sessionId === session.id ||
+          record.sessionId === session.eventId)
     )
   );
 }
@@ -922,7 +995,11 @@ function getHodCertificateIds(state: PlatformStateSnapshot, actorId: string) {
   const studentIds = getHodStudentIds(state, actorId);
   return new Set(
     state.certificates
-      .filter(certificate => courseIds.has(certificate.courseId) && studentIds.has(certificate.studentId))
+      .filter(
+        certificate =>
+          courseIds.has(certificate.courseId) &&
+          studentIds.has(certificate.studentId)
+      )
       .map(certificate => certificate.id)
   );
 }
@@ -933,7 +1010,9 @@ function getRoleActorUser(state: PlatformStateSnapshot, role: Role) {
     state.users.find(user => user.id === demoUser.id) ??
     state.users.find(user => user.activeRole === role) ??
     state.users.find(user => user.roles.includes(role));
-  const demoBranch = state.branches.find(branch => branch.name === demoUser.branch);
+  const demoBranch = state.branches.find(
+    branch => branch.name === demoUser.branch
+  );
   const demoDepartment = state.departments.find(
     department => department.name === demoUser.department
   );
@@ -965,7 +1044,9 @@ function getStudentScope(state: PlatformStateSnapshot) {
   const classIds = new Set(classGroups.map(group => group.id));
   const courses = enrollments
     .map(enrollment => {
-      const run = state.courseRuns.find(item => item.id === enrollment.courseRunId);
+      const run = state.courseRuns.find(
+        item => item.id === enrollment.courseRunId
+      );
       const course = state.courses.find(item => item.id === run?.courseId);
       return run && course ? { enrollment, run, course } : null;
     })
@@ -1007,24 +1088,42 @@ function statusLabel(value?: string | number) {
 }
 
 function userNameForStudent(state: PlatformStateSnapshot, studentId?: string) {
-  const student = state.students.find((item) => item.id === studentId);
-  return state.users.find((item) => item.id === student?.userId)?.name ?? studentId ?? "Unassigned student";
+  const student = state.students.find(item => item.id === studentId);
+  return (
+    state.users.find(item => item.id === student?.userId)?.name ??
+    studentId ??
+    "Unassigned student"
+  );
 }
 
 function courseTitleForRun(state: PlatformStateSnapshot, courseRunId?: string) {
-  const run = state.courseRuns.find((item) => item.id === courseRunId);
-  const course = state.courses.find((item) => item.id === run?.courseId);
+  const run = state.courseRuns.find(item => item.id === courseRunId);
+  const course = state.courses.find(item => item.id === run?.courseId);
   return course?.title ?? courseRunId ?? "Unassigned course";
 }
 
 function classNameForId(state: PlatformStateSnapshot, classGroupId?: string) {
-  return state.classGroups.find((item) => item.id === classGroupId)?.name ?? classGroupId ?? "Unassigned class";
+  return (
+    state.classGroups.find(item => item.id === classGroupId)?.name ??
+    classGroupId ??
+    "Unassigned class"
+  );
 }
 
-function formatReportRow(row: ReportRow, reportType: ReportType, state: PlatformStateSnapshot): DisplayReportRow {
+function formatReportRow(
+  row: ReportRow,
+  reportType: ReportType,
+  state: PlatformStateSnapshot
+): DisplayReportRow {
   if (reportType === "attendance") {
-    const studentName = userNameForStudent(state, "studentId" in row ? String(row.studentId) : undefined);
-    const className = classNameForId(state, "classGroupId" in row ? String(row.classGroupId) : undefined);
+    const studentName = userNameForStudent(
+      state,
+      "studentId" in row ? String(row.studentId) : undefined
+    );
+    const className = classNameForId(
+      state,
+      "classGroupId" in row ? String(row.classGroupId) : undefined
+    );
     const status = statusLabel("status" in row ? row.status : "saved");
     const sessionId = "sessionId" in row ? String(row.sessionId) : "Session";
     return {
@@ -1046,9 +1145,13 @@ function formatReportRow(row: ReportRow, reportType: ReportType, state: Platform
   if (reportType === "finance") {
     const amount = "amount" in row ? Number(row.amount) : 0;
     const paid = "paid" in row ? Number(row.paid) : 0;
-    const balance = "balance" in row ? Number(row.balance) : Math.max(0, amount - paid);
+    const balance =
+      "balance" in row ? Number(row.balance) : Math.max(0, amount - paid);
     const currency = "currency" in row ? String(row.currency) : "EGP";
-    const studentName = userNameForStudent(state, "studentId" in row ? String(row.studentId) : undefined);
+    const studentName = userNameForStudent(
+      state,
+      "studentId" in row ? String(row.studentId) : undefined
+    );
     const dueAt = "dueAt" in row ? String(row.dueAt) : "";
     const status = statusLabel("status" in row ? row.status : "pending");
     return {
@@ -1068,7 +1171,10 @@ function formatReportRow(row: ReportRow, reportType: ReportType, state: Platform
   }
 
   if (reportType === "audit") {
-    const actor = state.users.find((item) => item.id === ("actorId" in row ? row.actorId : ""))?.name ?? ("actorId" in row ? String(row.actorId) : "System");
+    const actor =
+      state.users.find(
+        item => item.id === ("actorId" in row ? row.actorId : "")
+      )?.name ?? ("actorId" in row ? String(row.actorId) : "System");
     const action = "action" in row ? String(row.action) : "Audit row";
     const createdAt = "createdAt" in row ? String(row.createdAt) : "";
     return {
@@ -1087,16 +1193,26 @@ function formatReportRow(row: ReportRow, reportType: ReportType, state: Platform
     };
   }
 
-  const studentName = userNameForStudent(state, "studentId" in row ? String(row.studentId) : undefined);
+  const studentName = userNameForStudent(
+    state,
+    "studentId" in row ? String(row.studentId) : undefined
+  );
   const progress = "progress" in row ? Number(row.progress) : 0;
   const status = statusLabel("status" in row ? row.status : "active");
   return {
     eyebrow: "Enrollment",
     title: studentName,
-    subtitle: courseTitleForRun(state, "courseRunId" in row ? String(row.courseRunId) : undefined),
+    subtitle: courseTitleForRun(
+      state,
+      "courseRunId" in row ? String(row.courseRunId) : undefined
+    ),
     status,
-    metric: "progress" in row ? `${row.progress}% progress` : "Progress pending",
-    meta: "attendanceRate" in row ? `${row.attendanceRate}% attendance · grade ${"currentGrade" in row ? row.currentGrade : "n/a"}` : "Academic record",
+    metric:
+      "progress" in row ? `${row.progress}% progress` : "Progress pending",
+    meta:
+      "attendanceRate" in row
+        ? `${row.attendanceRate}% attendance · grade ${"currentGrade" in row ? row.currentGrade : "n/a"}`
+        : "Academic record",
     sort: {
       primary: studentName,
       status,
@@ -1139,7 +1255,11 @@ function LearningWorkflow({
       const course = state.courses.find(item => item.id === run?.courseId);
       const classGroup =
         state.classGroups.find(item => item.id === enrollment.classGroupId) ??
-        state.classGroups.find(item => item.courseRunId === run?.id && item.studentIds.includes(enrollment.studentId)) ??
+        state.classGroups.find(
+          item =>
+            item.courseRunId === run?.id &&
+            item.studentIds.includes(enrollment.studentId)
+        ) ??
         state.classGroups.find(item => item.courseRunId === run?.id);
       return run && course ? { enrollment, run, course, classGroup } : null;
     })
@@ -1301,8 +1421,7 @@ function LearningWorkflow({
           <strong>No active enrollment</strong>
         </div>
         <p>
-          The student does not have an active course enrollment in the local
-          platform state.
+          The student does not have an active course enrollment in system data.
         </p>
       </section>
     );
@@ -1585,14 +1704,16 @@ function LearningWorkflow({
               <span>
                 <Award size={16} /> Certificate path
               </span>
-	              <strong>
-	                {state.certificates.find(item => item.courseId === course.id && item.studentId === studentId)
-                  ?.verificationCode ?? "Pending"}
-	              </strong>
+              <strong>
+                {state.certificates.find(
+                  item =>
+                    item.courseId === course.id && item.studentId === studentId
+                )?.verificationCode ?? "Pending"}
+              </strong>
             </div>
             <p>
               Eligibility uses lesson completion, grade, attendance, and teacher
-              approval from the platform state.
+              approval from system data.
             </p>
           </section>
         </aside>
@@ -1866,11 +1987,18 @@ function AssessmentWorkflow({ role, state, refresh, params }: WorkflowProps) {
     questionTypes: "multiple_choice, short_answer",
   });
   const [selectedStaffRunId, setSelectedStaffRunId] = useState("");
-  const [selectedPendingSubmissionId, setSelectedPendingSubmissionId] = useState("");
+  const [selectedPendingSubmissionId, setSelectedPendingSubmissionId] =
+    useState("");
   const [selectedQuizAttemptId, setSelectedQuizAttemptId] = useState("");
   const [questionDraft, setQuestionDraft] = useState({
     prompt: "Choose the correct answer and explain the grammar rule.",
-    questionType: "short_answer" as "multiple_choice" | "true_false" | "short_answer" | "essay" | "oral_record" | "file_upload",
+    questionType: "short_answer" as
+      | "multiple_choice"
+      | "true_false"
+      | "short_answer"
+      | "essay"
+      | "oral_record"
+      | "file_upload",
     difficulty: "core" as "foundation" | "core" | "challenge",
     tags: "grammar, review",
     choices: "",
@@ -1880,7 +2008,8 @@ function AssessmentWorkflow({ role, state, refresh, params }: WorkflowProps) {
   const [selectedAttachQuizId, setSelectedAttachQuizId] = useState("");
   const [gradeDraft, setGradeDraft] = useState({
     score: 86,
-    feedback: "Clear response. Add one more example before final portfolio review.",
+    feedback:
+      "Clear response. Add one more example before final portfolio review.",
   });
   const [quizReviewDraft, setQuizReviewDraft] = useState({
     score: 88,
@@ -1902,7 +2031,11 @@ function AssessmentWorkflow({ role, state, refresh, params }: WorkflowProps) {
       ? (() => {
           const departmentIds = new Set(
             state.departments
-              .filter(department => department.ownerUserId === actorUser.id || department.id === actorUser.departmentId)
+              .filter(
+                department =>
+                  department.ownerUserId === actorUser.id ||
+                  department.id === actorUser.departmentId
+              )
               .map(department => department.id)
           );
           const programIds = new Set(
@@ -1938,7 +2071,9 @@ function AssessmentWorkflow({ role, state, refresh, params }: WorkflowProps) {
       ? state.assignments.filter(assignment =>
           studentRunIds.has(assignment.courseRunId)
         )
-      : state.assignments.filter(assignment => scopedRunIds.has(assignment.courseRunId));
+      : state.assignments.filter(assignment =>
+          scopedRunIds.has(assignment.courseRunId)
+        );
   const quizOptions =
     role === "student"
       ? state.quizzes.filter(quiz => studentRunIds.has(quiz.courseRunId))
@@ -1948,9 +2083,14 @@ function AssessmentWorkflow({ role, state, refresh, params }: WorkflowProps) {
       ? []
       : state.questionBankItems
           .filter(question => scopedRunIds.has(question.courseRunId))
-          .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+          .sort(
+            (a, b) =>
+              new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
+          );
   const selectedRunQuestions = selectedStaffRun
-    ? questionBankItems.filter(question => question.courseRunId === selectedStaffRun.id)
+    ? questionBankItems.filter(
+        question => question.courseRunId === selectedStaffRun.id
+      )
     : questionBankItems;
   const selectedRunQuizzes = selectedStaffRun
     ? quizOptions.filter(item => item.courseRunId === selectedStaffRun.id)
@@ -1959,7 +2099,10 @@ function AssessmentWorkflow({ role, state, refresh, params }: WorkflowProps) {
     if (!selectedAttachQuizId && selectedRunQuizzes[0]?.id) {
       setSelectedAttachQuizId(selectedRunQuizzes[0].id);
     }
-    if (selectedAttachQuizId && !selectedRunQuizzes.some(item => item.id === selectedAttachQuizId)) {
+    if (
+      selectedAttachQuizId &&
+      !selectedRunQuizzes.some(item => item.id === selectedAttachQuizId)
+    ) {
       setSelectedAttachQuizId(selectedRunQuizzes[0]?.id ?? "");
     }
   }, [selectedAttachQuizId, selectedRunQuizzes]);
@@ -1974,13 +2117,17 @@ function AssessmentWorkflow({ role, state, refresh, params }: WorkflowProps) {
   const assignment =
     routedAssignment ??
     (routedQuiz
-      ? assignmentOptions.find(item => item.courseRunId === routedQuiz.courseRunId)
+      ? assignmentOptions.find(
+          item => item.courseRunId === routedQuiz.courseRunId
+        )
       : undefined) ??
     assignmentOptions[0];
   const quiz =
     routedQuiz ??
     (routedAssignment
-      ? quizOptions.find(item => item.courseRunId === routedAssignment.courseRunId)
+      ? quizOptions.find(
+          item => item.courseRunId === routedAssignment.courseRunId
+        )
       : undefined) ??
     quizOptions[0];
   const latestSubmission = state.assignmentSubmissions.find(
@@ -2004,7 +2151,8 @@ function AssessmentWorkflow({ role, state, refresh, params }: WorkflowProps) {
       (role !== "student" || item.studentId === studentScope.studentId)
   );
   const attemptsUsed = state.quizAttempts.filter(
-    item => item.quizId === quiz?.id && item.studentId === studentScope.studentId
+    item =>
+      item.quizId === quiz?.id && item.studentId === studentScope.studentId
   ).length;
   const attemptsRemaining = Math.max(
     0,
@@ -2024,13 +2172,18 @@ function AssessmentWorkflow({ role, state, refresh, params }: WorkflowProps) {
   );
   const quizQuestionPreviews =
     quiz && role === "student"
-      ? state.quizQuestionPreviews.filter(question => question.quizId === quiz.id && question.status === "active")
+      ? state.quizQuestionPreviews.filter(
+          question =>
+            question.quizId === quiz.id && question.status === "active"
+        )
       : [];
   const quizHasAttachedQuestions = Boolean(quiz?.questionIds.length);
   const quizHasSafeQuestionPreview = quizQuestionPreviews.length > 0;
   const quizFallbackAnswer = quizAnswers.__fallback ?? "";
   const quizHasAnswer = quizHasSafeQuestionPreview
-    ? quizQuestionPreviews.some(question => (quizAnswers[question.id] ?? "").trim().length > 0)
+    ? quizQuestionPreviews.some(
+        question => (quizAnswers[question.id] ?? "").trim().length > 0
+      )
     : quizFallbackAnswer.trim().length > 0;
   const pendingSubmissions = state.assignmentSubmissions.filter(submission => {
     const submissionAssignment = state.assignments.find(
@@ -2038,13 +2191,19 @@ function AssessmentWorkflow({ role, state, refresh, params }: WorkflowProps) {
     );
     return (
       submission.status === "pending" &&
-      Boolean(submissionAssignment && scopedRunIds.has(submissionAssignment.courseRunId))
+      Boolean(
+        submissionAssignment &&
+          scopedRunIds.has(submissionAssignment.courseRunId)
+      )
     );
   });
-  const pendingSubmissionKey = pendingSubmissions.map(submission => submission.id).join("|");
+  const pendingSubmissionKey = pendingSubmissions
+    .map(submission => submission.id)
+    .join("|");
   const selectedPendingSubmission =
-    pendingSubmissions.find(submission => submission.id === selectedPendingSubmissionId) ??
-    pendingSubmissions[0];
+    pendingSubmissions.find(
+      submission => submission.id === selectedPendingSubmissionId
+    ) ?? pendingSubmissions[0];
   const selectedPendingAssignment = state.assignments.find(
     item => item.id === selectedPendingSubmission?.assignmentId
   );
@@ -2061,33 +2220,59 @@ function AssessmentWorkflow({ role, state, refresh, params }: WorkflowProps) {
   const scopedQuizAttempts = editableAssessments
     ? state.quizAttempts
         .filter(attempt => {
-          const attemptQuiz = state.quizzes.find(item => item.id === attempt.quizId);
-          return Boolean(attemptQuiz && scopedRunIds.has(attemptQuiz.courseRunId));
+          const attemptQuiz = state.quizzes.find(
+            item => item.id === attempt.quizId
+          );
+          return Boolean(
+            attemptQuiz && scopedRunIds.has(attemptQuiz.courseRunId)
+          );
         })
         .sort((a, b) => {
-          const statusPriority = (value: typeof a.status) => isReviewNeededQuizAttempt(value) ? 0 : 1;
-          const priorityDelta = statusPriority(a.status) - statusPriority(b.status);
+          const statusPriority = (value: typeof a.status) =>
+            isReviewNeededQuizAttempt(value) ? 0 : 1;
+          const priorityDelta =
+            statusPriority(a.status) - statusPriority(b.status);
           if (priorityDelta !== 0) return priorityDelta;
-          return new Date(b.submittedAt ?? b.startedAt).getTime() - new Date(a.submittedAt ?? a.startedAt).getTime();
+          return (
+            new Date(b.submittedAt ?? b.startedAt).getTime() -
+            new Date(a.submittedAt ?? a.startedAt).getTime()
+          );
         })
     : [];
-  const reviewableQuizAttempts = scopedQuizAttempts.filter(attempt => isReviewNeededQuizAttempt(attempt.status));
-  const reviewedQuizAttempts = scopedQuizAttempts.filter(attempt => !isReviewNeededQuizAttempt(attempt.status)).slice(0, 4);
-  const reviewableQuizAttemptKey = reviewableQuizAttempts.map(attempt => attempt.id).join("|");
+  const reviewableQuizAttempts = scopedQuizAttempts.filter(attempt =>
+    isReviewNeededQuizAttempt(attempt.status)
+  );
+  const reviewedQuizAttempts = scopedQuizAttempts
+    .filter(attempt => !isReviewNeededQuizAttempt(attempt.status))
+    .slice(0, 4);
+  const reviewableQuizAttemptKey = reviewableQuizAttempts
+    .map(attempt => attempt.id)
+    .join("|");
   const selectedQuizAttempt =
-    reviewableQuizAttempts.find(attempt => attempt.id === selectedQuizAttemptId) ??
-    reviewableQuizAttempts[0];
-  const selectedReviewQuiz = state.quizzes.find(item => item.id === selectedQuizAttempt?.quizId);
-  const selectedReviewStudent = state.students.find(item => item.id === selectedQuizAttempt?.studentId);
-  const selectedReviewUser = state.users.find(item => item.id === selectedReviewStudent?.userId);
+    reviewableQuizAttempts.find(
+      attempt => attempt.id === selectedQuizAttemptId
+    ) ?? reviewableQuizAttempts[0];
+  const selectedReviewQuiz = state.quizzes.find(
+    item => item.id === selectedQuizAttempt?.quizId
+  );
+  const selectedReviewStudent = state.students.find(
+    item => item.id === selectedQuizAttempt?.studentId
+  );
+  const selectedReviewUser = state.users.find(
+    item => item.id === selectedReviewStudent?.userId
+  );
   const selectedReviewQuestions = selectedReviewQuiz
     ? selectedReviewQuiz.questionIds
-        .map(questionId => questionBankItems.find(question => question.id === questionId))
+        .map(questionId =>
+          questionBankItems.find(question => question.id === questionId)
+        )
         .filter(Boolean)
     : [];
   const recentAssessmentAudits = state.auditLogs
     .filter(audit =>
-      /assignment|quiz|grade|question/i.test(`${audit.action} ${audit.entityType}`)
+      /assignment|quiz|grade|question/i.test(
+        `${audit.action} ${audit.entityType}`
+      )
     )
     .slice(0, 4);
 
@@ -2097,7 +2282,8 @@ function AssessmentWorkflow({ role, state, refresh, params }: WorkflowProps) {
 
   useEffect(() => {
     setSelectedPendingSubmissionId(current =>
-      current && pendingSubmissions.some(submission => submission.id === current)
+      current &&
+      pendingSubmissions.some(submission => submission.id === current)
         ? current
         : (pendingSubmissions[0]?.id ?? "")
     );
@@ -2137,7 +2323,8 @@ function AssessmentWorkflow({ role, state, refresh, params }: WorkflowProps) {
       assignmentId: assignment.id,
       response: submissionText.trim(),
     });
-    if (result) toast.success("Assignment submitted", { description: result.entityId });
+    if (result)
+      toast.success("Assignment submitted", { description: result.entityId });
   };
 
   const submitQuiz = async () => {
@@ -2145,7 +2332,10 @@ function AssessmentWorkflow({ role, state, refresh, params }: WorkflowProps) {
     const answers = quizHasSafeQuestionPreview
       ? Object.fromEntries(
           quizQuestionPreviews
-            .map(question => [question.id, (quizAnswers[question.id] ?? "").trim()])
+            .map(question => [
+              question.id,
+              (quizAnswers[question.id] ?? "").trim(),
+            ])
             .filter(([, answer]) => answer.length > 0)
         )
       : { q1: quizFallbackAnswer.trim() };
@@ -2157,7 +2347,9 @@ function AssessmentWorkflow({ role, state, refresh, params }: WorkflowProps) {
     const attempt = result?.result as typeof latestAttempt | undefined;
     if (result) {
       toast.success("Quiz submitted", {
-        description: attempt ? `${attempt.score}/${attempt.maxScore}` : result.entityId,
+        description: attempt
+          ? `${attempt.score}/${attempt.maxScore}`
+          : result.entityId,
       });
     }
   };
@@ -2169,11 +2361,16 @@ function AssessmentWorkflow({ role, state, refresh, params }: WorkflowProps) {
   const renderQuizQuestionInput = (question: QuizQuestionPreview) => {
     const value = quizAnswers[question.id] ?? "";
     if (question.type === "multiple_choice" || question.type === "true_false") {
-      const choices = question.type === "true_false" && question.choices.length === 0
-        ? ["True", "False"]
-        : question.choices;
+      const choices =
+        question.type === "true_false" && question.choices.length === 0
+          ? ["True", "False"]
+          : question.choices;
       return (
-        <div className="platform-quiz-choice-grid" role="radiogroup" aria-label={question.prompt}>
+        <div
+          className="platform-quiz-choice-grid"
+          role="radiogroup"
+          aria-label={question.prompt}
+        >
           {choices.map(choice => (
             <button
               key={choice}
@@ -2191,7 +2388,11 @@ function AssessmentWorkflow({ role, state, refresh, params }: WorkflowProps) {
     if (question.type === "oral_record" || question.type === "file_upload") {
       return (
         <div className="platform-quiz-storage-state">
-          <strong>{question.type === "oral_record" ? "Audio response" : "File response"}</strong>
+          <strong>
+            {question.type === "oral_record"
+              ? "Audio response"
+              : "File response"}
+          </strong>
           <span>
             Storage upload is not connected in this slice. Attach a pending
             response so the attempt can move into teacher review.
@@ -2218,7 +2419,9 @@ function AssessmentWorkflow({ role, state, refresh, params }: WorkflowProps) {
       <textarea
         aria-label={question.prompt}
         value={value}
-        onChange={event => setQuizQuestionAnswer(question.id, event.target.value)}
+        onChange={event =>
+          setQuizQuestionAnswer(question.id, event.target.value)
+        }
         placeholder="Write your response"
       />
     );
@@ -2237,7 +2440,8 @@ function AssessmentWorkflow({ role, state, refresh, params }: WorkflowProps) {
         .map(item => item.trim())
         .filter(Boolean),
     });
-    if (result) toast.success("Assignment created", { description: result.entityId });
+    if (result)
+      toast.success("Assignment created", { description: result.entityId });
   };
 
   const createQuiz = async () => {
@@ -2279,7 +2483,8 @@ function AssessmentWorkflow({ role, state, refresh, params }: WorkflowProps) {
         .map(item => item.trim())
         .filter(Boolean),
     });
-    if (result) toast.success("Question saved", { description: result.entityId });
+    if (result)
+      toast.success("Question saved", { description: result.entityId });
   };
 
   const setQuizQuestions = async (questionIds: string[]) => {
@@ -2289,7 +2494,8 @@ function AssessmentWorkflow({ role, state, refresh, params }: WorkflowProps) {
       quizId: selectedAttachQuiz.id,
       questionIds,
     });
-    if (result) toast.success("Quiz questions updated", { description: result.entityId });
+    if (result)
+      toast.success("Quiz questions updated", { description: result.entityId });
   };
 
   const attachQuestionToQuiz = (questionId: string) => {
@@ -2310,7 +2516,8 @@ function AssessmentWorkflow({ role, state, refresh, params }: WorkflowProps) {
       score: Math.min(100, Math.max(0, Number(gradeDraft.score) || 0)),
       feedback: gradeDraft.feedback.trim() || "Reviewed by teacher.",
     });
-    if (result) toast.success("Submission graded", { description: result.entityId });
+    if (result)
+      toast.success("Submission graded", { description: result.entityId });
   };
 
   const reviewQuizAttempt = async () => {
@@ -2321,7 +2528,8 @@ function AssessmentWorkflow({ role, state, refresh, params }: WorkflowProps) {
       score: Math.min(100, Math.max(0, Number(quizReviewDraft.score) || 0)),
       feedback: quizReviewDraft.feedback.trim() || "Reviewed by teacher.",
     });
-    if (result) toast.success("Quiz reviewed", { description: result.entityId });
+    if (result)
+      toast.success("Quiz reviewed", { description: result.entityId });
   };
 
   return (
@@ -2338,7 +2546,9 @@ function AssessmentWorkflow({ role, state, refresh, params }: WorkflowProps) {
             <span>
               <ClipboardCheck size={16} /> Assignment workflow
             </span>
-            <strong>{role === "student" ? assignment?.title : "Assignment queue"}</strong>
+            <strong>
+              {role === "student" ? assignment?.title : "Assignment queue"}
+            </strong>
           </div>
           {assignment ? (
             <>
@@ -2364,13 +2574,21 @@ function AssessmentWorkflow({ role, state, refresh, params }: WorkflowProps) {
                 ))}
               </div>
               {role === "student" ? (
-                <div className={`platform-assessment-feedback ${selectedAssignmentGrade ? "reviewed" : latestSubmission ? "pending" : "empty"}`}>
+                <div
+                  className={`platform-assessment-feedback ${selectedAssignmentGrade ? "reviewed" : latestSubmission ? "pending" : "empty"}`}
+                >
                   <div>
-                    <span>{selectedAssignmentGrade ? "Reviewed assignment" : latestSubmission ? "Submitted for review" : "No submission yet"}</span>
+                    <span>
+                      {selectedAssignmentGrade
+                        ? "Reviewed assignment"
+                        : latestSubmission
+                          ? "Submitted for review"
+                          : "No submission yet"}
+                    </span>
                     <strong>
                       {selectedAssignmentGrade
                         ? `${selectedAssignmentGrade.score}/${selectedAssignmentGrade.maxScore}`
-                        : latestSubmission?.status ?? "Ready"}
+                        : (latestSubmission?.status ?? "Ready")}
                     </strong>
                     <p>
                       {selectedAssignmentGrade?.feedback ??
@@ -2387,11 +2605,19 @@ function AssessmentWorkflow({ role, state, refresh, params }: WorkflowProps) {
                     </div>
                     <div>
                       <dt>Status</dt>
-                      <dd>{selectedAssignmentGrade ? "recorded" : latestSubmission?.status ?? "not started"}</dd>
+                      <dd>
+                        {selectedAssignmentGrade
+                          ? "recorded"
+                          : (latestSubmission?.status ?? "not started")}
+                      </dd>
                     </div>
                     <div>
                       <dt>Submitted</dt>
-                      <dd>{latestSubmission ? formatDateTime(latestSubmission.submittedAt) : "none"}</dd>
+                      <dd>
+                        {latestSubmission
+                          ? formatDateTime(latestSubmission.submittedAt)
+                          : "none"}
+                      </dd>
                     </div>
                   </dl>
                 </div>
@@ -2406,16 +2632,23 @@ function AssessmentWorkflow({ role, state, refresh, params }: WorkflowProps) {
                   <button
                     className="platform-primary-button"
                     style={{ background: roleMeta[role].color }}
-                    disabled={!submissionText.trim() || savingAction === "Assignment submission"}
+                    disabled={
+                      !submissionText.trim() ||
+                      savingAction === "Assignment submission"
+                    }
                     onClick={submitAssignment}
                   >
                     <Send size={15} />
-                    {savingAction === "Assignment submission" ? "Submitting" : "Submit assignment"}
+                    {savingAction === "Assignment submission"
+                      ? "Submitting"
+                      : "Submit assignment"}
                   </button>
                 </>
               ) : (
                 <div className="platform-empty-state">
-                  <strong>{pendingSubmissions.length} pending submission(s)</strong>
+                  <strong>
+                    {pendingSubmissions.length} pending submission(s)
+                  </strong>
                   <span>
                     {selectedPendingSubmission
                       ? `${selectedPendingUser?.name ?? "Learner"} submitted ${selectedPendingAssignment?.title ?? selectedPendingSubmission.assignmentId}.`
@@ -2427,7 +2660,9 @@ function AssessmentWorkflow({ role, state, refresh, params }: WorkflowProps) {
           ) : (
             <div className="platform-empty-state">
               <strong>No assignment available</strong>
-              <span>This learner has no assignment in the selected course run.</span>
+              <span>
+                This learner has no assignment in the selected course run.
+              </span>
             </div>
           )}
         </section>
@@ -2448,20 +2683,32 @@ function AssessmentWorkflow({ role, state, refresh, params }: WorkflowProps) {
               </p>
               <div className="platform-row-list compact">
                 {quizOptions.slice(0, 4).map(item => (
-                  <article key={item.id} className={item.id === quiz.id ? "selected" : ""}>
+                  <article
+                    key={item.id}
+                    className={item.id === quiz.id ? "selected" : ""}
+                  >
                     <div>
                       <strong>{item.title}</strong>
                       <small>
-                        {item.durationMinutes} minutes · {item.attemptsAllowed} attempts
+                        {item.durationMinutes} minutes · {item.attemptsAllowed}{" "}
+                        attempts
                       </small>
                     </div>
                   </article>
                 ))}
               </div>
               {role === "student" ? (
-                <div className={`platform-assessment-feedback ${selectedQuizGrade ? "reviewed" : latestAttempt ? "pending" : "empty"}`}>
+                <div
+                  className={`platform-assessment-feedback ${selectedQuizGrade ? "reviewed" : latestAttempt ? "pending" : "empty"}`}
+                >
                   <div>
-                    <span>{selectedQuizGrade ? "Reviewed quiz" : latestAttempt ? "Attempt submitted" : "No attempt yet"}</span>
+                    <span>
+                      {selectedQuizGrade
+                        ? "Reviewed quiz"
+                        : latestAttempt
+                          ? "Attempt submitted"
+                          : "No attempt yet"}
+                    </span>
                     <strong>
                       {selectedQuizGrade
                         ? `${selectedQuizGrade.score}/${selectedQuizGrade.maxScore}`
@@ -2483,11 +2730,19 @@ function AssessmentWorkflow({ role, state, refresh, params }: WorkflowProps) {
                     </div>
                     <div>
                       <dt>Status</dt>
-                      <dd>{selectedQuizGrade ? "recorded" : latestAttempt?.status ?? "not started"}</dd>
+                      <dd>
+                        {selectedQuizGrade
+                          ? "recorded"
+                          : (latestAttempt?.status ?? "not started")}
+                      </dd>
                     </div>
                     <div>
                       <dt>Submitted</dt>
-                      <dd>{latestAttempt?.submittedAt ? formatDateTime(latestAttempt.submittedAt) : "none"}</dd>
+                      <dd>
+                        {latestAttempt?.submittedAt
+                          ? formatDateTime(latestAttempt.submittedAt)
+                          : "none"}
+                      </dd>
                     </div>
                   </dl>
                 </div>
@@ -2495,7 +2750,10 @@ function AssessmentWorkflow({ role, state, refresh, params }: WorkflowProps) {
               {role === "student" && quizHasSafeQuestionPreview ? (
                 <div className="platform-quiz-question-list">
                   {quizQuestionPreviews.map((question, index) => (
-                    <article key={question.id} className="platform-quiz-question-card">
+                    <article
+                      key={question.id}
+                      className="platform-quiz-question-card"
+                    >
                       <div className="platform-quiz-question-head">
                         <span>Question {index + 1}</span>
                         <div>
@@ -2518,7 +2776,10 @@ function AssessmentWorkflow({ role, state, refresh, params }: WorkflowProps) {
               ) : role === "student" && quizHasAttachedQuestions ? (
                 <div className="platform-empty-state">
                   <strong>No deliverable questions</strong>
-                  <span>This quiz has attached questions, but none are available for your enrolled course right now.</span>
+                  <span>
+                    This quiz has attached questions, but none are available for
+                    your enrolled course right now.
+                  </span>
                 </div>
               ) : (
                 <div className="platform-inline-form">
@@ -2526,13 +2787,20 @@ function AssessmentWorkflow({ role, state, refresh, params }: WorkflowProps) {
                     Short answer
                     <input
                       value={quizFallbackAnswer}
-                      onChange={event => setQuizAnswers({ __fallback: event.target.value })}
+                      onChange={event =>
+                        setQuizAnswers({ __fallback: event.target.value })
+                      }
                     />
                   </label>
                 </div>
               )}
               <button
-                disabled={role !== "student" || !quizHasAnswer || attemptsRemaining <= 0 || savingAction === "Quiz attempt"}
+                disabled={
+                  role !== "student" ||
+                  !quizHasAnswer ||
+                  attemptsRemaining <= 0 ||
+                  savingAction === "Quiz attempt"
+                }
                 onClick={role === "student" ? submitQuiz : undefined}
               >
                 {role !== "student"
@@ -2568,7 +2836,9 @@ function AssessmentWorkflow({ role, state, refresh, params }: WorkflowProps) {
                   onChange={event => setSelectedStaffRunId(event.target.value)}
                 >
                   {staffRunOptions.map(run => {
-                    const course = state.courses.find(item => item.id === run.courseId);
+                    const course = state.courses.find(
+                      item => item.id === run.courseId
+                    );
                     return (
                       <option key={run.id} value={run.id}>
                         {course?.title ?? run.courseId} · {run.term}
@@ -2584,7 +2854,10 @@ function AssessmentWorkflow({ role, state, refresh, params }: WorkflowProps) {
                 <input
                   value={assignmentDraft.title}
                   onChange={event =>
-                    setAssignmentDraft(value => ({ ...value, title: event.target.value }))
+                    setAssignmentDraft(value => ({
+                      ...value,
+                      title: event.target.value,
+                    }))
                   }
                 />
               </label>
@@ -2594,7 +2867,10 @@ function AssessmentWorkflow({ role, state, refresh, params }: WorkflowProps) {
                   type="date"
                   value={assignmentDraft.dueAt}
                   onChange={event =>
-                    setAssignmentDraft(value => ({ ...value, dueAt: event.target.value }))
+                    setAssignmentDraft(value => ({
+                      ...value,
+                      dueAt: event.target.value,
+                    }))
                   }
                 />
               </label>
@@ -2605,7 +2881,11 @@ function AssessmentWorkflow({ role, state, refresh, params }: WorkflowProps) {
                   onChange={event =>
                     setAssignmentDraft(value => ({
                       ...value,
-                      submissionType: event.target.value as "text" | "file" | "audio" | "video",
+                      submissionType: event.target.value as
+                        | "text"
+                        | "file"
+                        | "audio"
+                        | "video",
                     }))
                   }
                 >
@@ -2620,13 +2900,20 @@ function AssessmentWorkflow({ role, state, refresh, params }: WorkflowProps) {
                 <input
                   value={assignmentDraft.rubric}
                   onChange={event =>
-                    setAssignmentDraft(value => ({ ...value, rubric: event.target.value }))
+                    setAssignmentDraft(value => ({
+                      ...value,
+                      rubric: event.target.value,
+                    }))
                   }
                 />
               </label>
               <button
                 type="button"
-                disabled={!selectedStaffRun || !assignmentDraft.title.trim() || savingAction === "Assignment create"}
+                disabled={
+                  !selectedStaffRun ||
+                  !assignmentDraft.title.trim() ||
+                  savingAction === "Assignment create"
+                }
                 onClick={createAssignment}
               >
                 Create assignment
@@ -2638,7 +2925,10 @@ function AssessmentWorkflow({ role, state, refresh, params }: WorkflowProps) {
                 <input
                   value={quizDraft.title}
                   onChange={event =>
-                    setQuizDraft(value => ({ ...value, title: event.target.value }))
+                    setQuizDraft(value => ({
+                      ...value,
+                      title: event.target.value,
+                    }))
                   }
                 />
               </label>
@@ -2648,7 +2938,10 @@ function AssessmentWorkflow({ role, state, refresh, params }: WorkflowProps) {
                   type="date"
                   value={quizDraft.dueAt}
                   onChange={event =>
-                    setQuizDraft(value => ({ ...value, dueAt: event.target.value }))
+                    setQuizDraft(value => ({
+                      ...value,
+                      dueAt: event.target.value,
+                    }))
                   }
                 />
               </label>
@@ -2685,13 +2978,20 @@ function AssessmentWorkflow({ role, state, refresh, params }: WorkflowProps) {
                 <input
                   value={quizDraft.questionTypes}
                   onChange={event =>
-                    setQuizDraft(value => ({ ...value, questionTypes: event.target.value }))
+                    setQuizDraft(value => ({
+                      ...value,
+                      questionTypes: event.target.value,
+                    }))
                   }
                 />
               </label>
               <button
                 type="button"
-                disabled={!selectedStaffRun || !quizDraft.title.trim() || savingAction === "Quiz create"}
+                disabled={
+                  !selectedStaffRun ||
+                  !quizDraft.title.trim() ||
+                  savingAction === "Quiz create"
+                }
                 onClick={createQuiz}
               >
                 Create quiz
@@ -2718,7 +3018,9 @@ function AssessmentWorkflow({ role, state, refresh, params }: WorkflowProps) {
                   Target quiz
                   <select
                     value={selectedAttachQuiz?.id ?? ""}
-                    onChange={event => setSelectedAttachQuizId(event.target.value)}
+                    onChange={event =>
+                      setSelectedAttachQuizId(event.target.value)
+                    }
                   >
                     {selectedRunQuizzes.map(item => (
                       <option key={item.id} value={item.id}>
@@ -2738,7 +3040,11 @@ function AssessmentWorkflow({ role, state, refresh, params }: WorkflowProps) {
                 </small>
                 <button
                   type="button"
-                  disabled={!selectedAttachQuiz || !selectedRunQuestions.length || savingAction === "Quiz question attach"}
+                  disabled={
+                    !selectedAttachQuiz ||
+                    !selectedRunQuestions.length ||
+                    savingAction === "Quiz question attach"
+                  }
                   onClick={attachAllRunQuestions}
                 >
                   Attach all
@@ -2751,7 +3057,10 @@ function AssessmentWorkflow({ role, state, refresh, params }: WorkflowProps) {
                 <textarea
                   value={questionDraft.prompt}
                   onChange={event =>
-                    setQuestionDraft(value => ({ ...value, prompt: event.target.value }))
+                    setQuestionDraft(value => ({
+                      ...value,
+                      prompt: event.target.value,
+                    }))
                   }
                 />
               </label>
@@ -2762,7 +3071,8 @@ function AssessmentWorkflow({ role, state, refresh, params }: WorkflowProps) {
                   onChange={event =>
                     setQuestionDraft(value => ({
                       ...value,
-                      questionType: event.target.value as typeof questionDraft.questionType,
+                      questionType: event.target
+                        .value as typeof questionDraft.questionType,
                     }))
                   }
                 >
@@ -2781,7 +3091,8 @@ function AssessmentWorkflow({ role, state, refresh, params }: WorkflowProps) {
                   onChange={event =>
                     setQuestionDraft(value => ({
                       ...value,
-                      difficulty: event.target.value as typeof questionDraft.difficulty,
+                      difficulty: event.target
+                        .value as typeof questionDraft.difficulty,
                     }))
                   }
                 >
@@ -2795,7 +3106,10 @@ function AssessmentWorkflow({ role, state, refresh, params }: WorkflowProps) {
                 <input
                   value={questionDraft.tags}
                   onChange={event =>
-                    setQuestionDraft(value => ({ ...value, tags: event.target.value }))
+                    setQuestionDraft(value => ({
+                      ...value,
+                      tags: event.target.value,
+                    }))
                   }
                 />
               </label>
@@ -2804,7 +3118,10 @@ function AssessmentWorkflow({ role, state, refresh, params }: WorkflowProps) {
                 <input
                   value={questionDraft.choices}
                   onChange={event =>
-                    setQuestionDraft(value => ({ ...value, choices: event.target.value }))
+                    setQuestionDraft(value => ({
+                      ...value,
+                      choices: event.target.value,
+                    }))
                   }
                   placeholder="Comma separated for MCQ"
                 />
@@ -2814,7 +3131,10 @@ function AssessmentWorkflow({ role, state, refresh, params }: WorkflowProps) {
                 <input
                   value={questionDraft.answerKey}
                   onChange={event =>
-                    setQuestionDraft(value => ({ ...value, answerKey: event.target.value }))
+                    setQuestionDraft(value => ({
+                      ...value,
+                      answerKey: event.target.value,
+                    }))
                   }
                 />
               </label>
@@ -2823,16 +3143,25 @@ function AssessmentWorkflow({ role, state, refresh, params }: WorkflowProps) {
                 <input
                   value={questionDraft.rubric}
                   onChange={event =>
-                    setQuestionDraft(value => ({ ...value, rubric: event.target.value }))
+                    setQuestionDraft(value => ({
+                      ...value,
+                      rubric: event.target.value,
+                    }))
                   }
                 />
               </label>
               <button
                 type="button"
-                disabled={!selectedStaffRun || !questionDraft.prompt.trim() || savingAction === "Question create"}
+                disabled={
+                  !selectedStaffRun ||
+                  !questionDraft.prompt.trim() ||
+                  savingAction === "Question create"
+                }
                 onClick={createQuestion}
               >
-                {savingAction === "Question create" ? "Saving" : "Save question"}
+                {savingAction === "Question create"
+                  ? "Saving"
+                  : "Save question"}
               </button>
             </div>
             <div className="platform-row-list compact">
@@ -2845,8 +3174,8 @@ function AssessmentWorkflow({ role, state, refresh, params }: WorkflowProps) {
                     <div>
                       <strong>{question.prompt}</strong>
                       <small>
-                        {question.type.replaceAll("_", " ")} · {question.difficulty} ·{" "}
-                        {question.tags.join(", ")}
+                        {question.type.replaceAll("_", " ")} ·{" "}
+                        {question.difficulty} · {question.tags.join(", ")}
                       </small>
                     </div>
                     {attachedQuestionIds.has(question.id) ? (
@@ -2854,7 +3183,10 @@ function AssessmentWorkflow({ role, state, refresh, params }: WorkflowProps) {
                     ) : (
                       <button
                         type="button"
-                        disabled={!selectedAttachQuiz || savingAction === "Quiz question attach"}
+                        disabled={
+                          !selectedAttachQuiz ||
+                          savingAction === "Quiz question attach"
+                        }
                         onClick={() => attachQuestionToQuiz(question.id)}
                       >
                         Attach
@@ -2866,7 +3198,9 @@ function AssessmentWorkflow({ role, state, refresh, params }: WorkflowProps) {
                 <article>
                   <div>
                     <strong>No questions in this run yet</strong>
-                    <small>Add the first reusable question for this course run.</small>
+                    <small>
+                      Add the first reusable question for this course run.
+                    </small>
                   </div>
                 </article>
               )}
@@ -2880,24 +3214,48 @@ function AssessmentWorkflow({ role, state, refresh, params }: WorkflowProps) {
               <span>
                 <GraduationCap size={16} /> Manual review
               </span>
-              <strong>{selectedPendingSubmission ? "Ready to grade" : "No pending work"}</strong>
+              <strong>
+                {selectedPendingSubmission
+                  ? "Ready to grade"
+                  : "No pending work"}
+              </strong>
             </div>
             {pendingSubmissions.length > 1 ? (
               <div className="platform-row-list compact">
                 {pendingSubmissions.map(submission => {
-                  const assignment = state.assignments.find(item => item.id === submission.assignmentId);
-                  const student = state.students.find(item => item.id === submission.studentId);
-                  const user = state.users.find(item => item.id === student?.userId);
+                  const assignment = state.assignments.find(
+                    item => item.id === submission.assignmentId
+                  );
+                  const student = state.students.find(
+                    item => item.id === submission.studentId
+                  );
+                  const user = state.users.find(
+                    item => item.id === student?.userId
+                  );
                   return (
                     <article
                       key={submission.id}
-                      className={selectedPendingSubmission?.id === submission.id ? "selected" : ""}
+                      className={
+                        selectedPendingSubmission?.id === submission.id
+                          ? "selected"
+                          : ""
+                      }
                     >
                       <div>
-                        <strong>{assignment?.title ?? submission.assignmentId}</strong>
-                        <small>{user?.name ?? submission.studentId} · {submission.status}</small>
+                        <strong>
+                          {assignment?.title ?? submission.assignmentId}
+                        </strong>
+                        <small>
+                          {user?.name ?? submission.studentId} ·{" "}
+                          {submission.status}
+                        </small>
                       </div>
-                      <button type="button" onClick={() => setSelectedPendingSubmissionId(submission.id)}>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setSelectedPendingSubmissionId(submission.id)
+                        }
+                      >
                         Review
                       </button>
                     </article>
@@ -2909,7 +3267,8 @@ function AssessmentWorkflow({ role, state, refresh, params }: WorkflowProps) {
               <>
                 <p>
                   {selectedPendingUser?.name ?? "Learner"} ·{" "}
-                  {selectedPendingAssignment?.title ?? selectedPendingSubmission.assignmentId}
+                  {selectedPendingAssignment?.title ??
+                    selectedPendingSubmission.assignmentId}
                 </p>
                 <blockquote>{selectedPendingSubmission.response}</blockquote>
                 <div className="platform-inline-form">
@@ -2952,7 +3311,9 @@ function AssessmentWorkflow({ role, state, refresh, params }: WorkflowProps) {
             ) : (
               <div className="platform-empty-state">
                 <strong>No pending submissions</strong>
-                <span>New learner submissions will appear here for manual feedback.</span>
+                <span>
+                  New learner submissions will appear here for manual feedback.
+                </span>
               </div>
             )}
           </section>
@@ -2964,26 +3325,46 @@ function AssessmentWorkflow({ role, state, refresh, params }: WorkflowProps) {
               <span>
                 <ListChecks size={16} /> Quiz review
               </span>
-              <strong>{selectedQuizAttempt ? "Needs review" : "No pending review"}</strong>
+              <strong>
+                {selectedQuizAttempt ? "Needs review" : "No pending review"}
+              </strong>
             </div>
             {selectedQuizAttempt ? (
               <>
                 {reviewableQuizAttempts.length > 1 ? (
                   <div className="platform-row-list compact">
                     {reviewableQuizAttempts.map(attempt => {
-                      const attemptQuiz = state.quizzes.find(item => item.id === attempt.quizId);
-                      const student = state.students.find(item => item.id === attempt.studentId);
-                      const user = state.users.find(item => item.id === student?.userId);
+                      const attemptQuiz = state.quizzes.find(
+                        item => item.id === attempt.quizId
+                      );
+                      const student = state.students.find(
+                        item => item.id === attempt.studentId
+                      );
+                      const user = state.users.find(
+                        item => item.id === student?.userId
+                      );
                       return (
                         <article
                           key={attempt.id}
-                          className={selectedQuizAttempt?.id === attempt.id ? "selected" : ""}
+                          className={
+                            selectedQuizAttempt?.id === attempt.id
+                              ? "selected"
+                              : ""
+                          }
                         >
                           <div>
-                            <strong>{attemptQuiz?.title ?? attempt.quizId}</strong>
-                            <small>{user?.name ?? attempt.studentId} · needs review · {attempt.score}/{attempt.maxScore}</small>
+                            <strong>
+                              {attemptQuiz?.title ?? attempt.quizId}
+                            </strong>
+                            <small>
+                              {user?.name ?? attempt.studentId} · needs review ·{" "}
+                              {attempt.score}/{attempt.maxScore}
+                            </small>
                           </div>
-                          <button type="button" onClick={() => setSelectedQuizAttemptId(attempt.id)}>
+                          <button
+                            type="button"
+                            onClick={() => setSelectedQuizAttemptId(attempt.id)}
+                          >
                             Review
                           </button>
                         </article>
@@ -2994,19 +3375,26 @@ function AssessmentWorkflow({ role, state, refresh, params }: WorkflowProps) {
                 <p>
                   {selectedReviewUser?.name ?? "Learner"} ·{" "}
                   {selectedReviewQuiz?.title ?? selectedQuizAttempt.quizId} ·{" "}
-                  Current score {selectedQuizAttempt.score}/{selectedQuizAttempt.maxScore}
+                  Current score {selectedQuizAttempt.score}/
+                  {selectedQuizAttempt.maxScore}
                 </p>
                 <div className="platform-quiz-review-list">
-                  {Object.entries(selectedQuizAttempt.answers).map(([questionId, answer]) => {
-                    const question = selectedReviewQuestions.find(item => item?.id === questionId);
-                    return (
-                      <article key={questionId}>
-                        <span>{question?.type?.replace(/_/g, " ") ?? "response"}</span>
-                        <strong>{question?.prompt ?? questionId}</strong>
-                        <p>{answer}</p>
-                      </article>
-                    );
-                  })}
+                  {Object.entries(selectedQuizAttempt.answers).map(
+                    ([questionId, answer]) => {
+                      const question = selectedReviewQuestions.find(
+                        item => item?.id === questionId
+                      );
+                      return (
+                        <article key={questionId}>
+                          <span>
+                            {question?.type?.replace(/_/g, " ") ?? "response"}
+                          </span>
+                          <strong>{question?.prompt ?? questionId}</strong>
+                          <p>{answer}</p>
+                        </article>
+                      );
+                    }
+                  )}
                 </div>
                 <div className="platform-inline-form">
                   <label>
@@ -3041,29 +3429,45 @@ function AssessmentWorkflow({ role, state, refresh, params }: WorkflowProps) {
                     disabled={savingAction === "Quiz review"}
                     onClick={reviewQuizAttempt}
                   >
-                    {savingAction === "Quiz review" ? "Saving review" : "Save quiz review"}
+                    {savingAction === "Quiz review"
+                      ? "Saving review"
+                      : "Save quiz review"}
                   </button>
                 </div>
               </>
             ) : (
               <div className="platform-empty-state">
                 <strong>No pending quiz review</strong>
-                <span>Manual quiz attempts from scoped learners will appear here for feedback.</span>
+                <span>
+                  Manual quiz attempts from scoped learners will appear here for
+                  feedback.
+                </span>
               </div>
             )}
             {reviewedQuizAttempts.length ? (
               <div className="platform-row-list compact">
                 {reviewedQuizAttempts.map(attempt => {
-                  const attemptQuiz = state.quizzes.find(item => item.id === attempt.quizId);
-                  const student = state.students.find(item => item.id === attempt.studentId);
-                  const user = state.users.find(item => item.id === student?.userId);
+                  const attemptQuiz = state.quizzes.find(
+                    item => item.id === attempt.quizId
+                  );
+                  const student = state.students.find(
+                    item => item.id === attempt.studentId
+                  );
+                  const user = state.users.find(
+                    item => item.id === student?.userId
+                  );
                   return (
                     <article key={attempt.id}>
                       <div>
                         <strong>{attemptQuiz?.title ?? attempt.quizId}</strong>
-                        <small>{user?.name ?? attempt.studentId} · reviewed · {attempt.score}/{attempt.maxScore}</small>
+                        <small>
+                          {user?.name ?? attempt.studentId} · reviewed ·{" "}
+                          {attempt.score}/{attempt.maxScore}
+                        </small>
                       </div>
-                      <span className="platform-status completed">Reviewed</span>
+                      <span className="platform-status completed">
+                        Reviewed
+                      </span>
                     </article>
                   );
                 })}
@@ -3071,8 +3475,8 @@ function AssessmentWorkflow({ role, state, refresh, params }: WorkflowProps) {
             ) : null}
           </section>
         ) : null}
-        </div>
-        <aside className="platform-workflow-side">
+      </div>
+      <aside className="platform-workflow-side">
         <MiniMetric
           label="Latest submission"
           value={latestSubmission?.status ?? "none"}
@@ -3085,8 +3489,16 @@ function AssessmentWorkflow({ role, state, refresh, params }: WorkflowProps) {
               : "none"
           }
         />
-        <MiniMetric label="Pending review" value={String(pendingSubmissions.length + reviewableQuizAttempts.length)} />
-        <MiniMetric label="Bank questions" value={String(questionBankItems.length)} />
+        <MiniMetric
+          label="Pending review"
+          value={String(
+            pendingSubmissions.length + reviewableQuizAttempts.length
+          )}
+        />
+        <MiniMetric
+          label="Bank questions"
+          value={String(questionBankItems.length)}
+        />
         <MiniMetric label="Grade items" value={String(state.grades.length)} />
         <div className="platform-row-list compact">
           {recentAssessmentAudits.length ? (
@@ -3102,14 +3514,16 @@ function AssessmentWorkflow({ role, state, refresh, params }: WorkflowProps) {
             <article>
               <div>
                 <strong>No assessment audit yet</strong>
-                <small>Submissions, attempts, and grading will appear here.</small>
+                <small>
+                  Submissions, attempts, and grading will appear here.
+                </small>
               </div>
             </article>
           )}
         </div>
         <WorkflowAudit state={state} />
-        </aside>
-      </div>
+      </aside>
+    </div>
   );
 }
 
@@ -3156,7 +3570,9 @@ function StudentAttendanceWorkflow({
       (a, b) => new Date(b.startsAt).getTime() - new Date(a.startsAt).getTime()
     )
     .slice(0, 6);
-  const sessionRows = upcomingSessions.length ? upcomingSessions : latestSessions;
+  const sessionRows = upcomingSessions.length
+    ? upcomingSessions
+    : latestSessions;
   const computedAttendance = records.length
     ? Math.round(
         (records.filter(record => record.status !== "absent").length /
@@ -3174,7 +3590,9 @@ function StudentAttendanceWorkflow({
           ) / scope.enrollments.length
         )
       : 0);
-  const exceptionCount = records.filter(record => record.status !== "present").length;
+  const exceptionCount = records.filter(
+    record => record.status !== "present"
+  ).length;
   const reviewRecipientForRecord = (
     record?: PlatformStateSnapshot["attendance"][number]
   ) => {
@@ -3200,7 +3618,8 @@ function StudentAttendanceWorkflow({
 
     const session = record
       ? state.classSessions.find(
-          item => item.id === record.sessionId || item.eventId === record.sessionId
+          item =>
+            item.id === record.sessionId || item.eventId === record.sessionId
         )
       : undefined;
     const group = record
@@ -3246,14 +3665,17 @@ function StudentAttendanceWorkflow({
             <span>{scope.user?.name ?? "Student"}</span>
             <span>{scope.classGroups.length} class(es)</span>
             <span>{records.length} saved record(s)</span>
-            <span>{backendSyncStatus === "loading" ? "Syncing" : "Read only"}</span>
+            <span>
+              {backendSyncStatus === "loading" ? "Syncing" : "Read only"}
+            </span>
           </div>
           <div className="platform-row-list">
             {records.length ? (
               records.map(record => {
                 const session = state.classSessions.find(
                   item =>
-                    item.id === record.sessionId || item.eventId === record.sessionId
+                    item.id === record.sessionId ||
+                    item.eventId === record.sessionId
                 );
                 const group = state.classGroups.find(
                   item => item.id === record.classGroupId
@@ -3261,13 +3683,18 @@ function StudentAttendanceWorkflow({
                 return (
                   <article key={record.id}>
                     <div>
-                      <strong>{session?.title ?? group?.name ?? "Class session"}</strong>
+                      <strong>
+                        {session?.title ?? group?.name ?? "Class session"}
+                      </strong>
                       <small>
-                        {group?.name ?? "Class"} · {formatDateTime(session?.startsAt)}
+                        {group?.name ?? "Class"} ·{" "}
+                        {formatDateTime(session?.startsAt)}
                       </small>
                     </div>
                     <div className="platform-row-actions">
-                      <span className={`platform-attendance-chip ${record.status}`}>
+                      <span
+                        className={`platform-attendance-chip ${record.status}`}
+                      >
                         {attendanceStatusLabels[record.status]}
                       </span>
                       <button
@@ -3290,7 +3717,10 @@ function StudentAttendanceWorkflow({
             ) : (
               <div className="platform-empty-state">
                 <strong>No attendance saved yet</strong>
-                <span>Your classes are active, but no teacher attendance rows are saved.</span>
+                <span>
+                  Your classes are active, but no teacher attendance rows are
+                  saved.
+                </span>
                 <button
                   type="button"
                   disabled={
@@ -3334,10 +3764,13 @@ function StudentAttendanceWorkflow({
                     <div>
                       <strong>{session.title}</strong>
                       <small>
-                        {group?.name ?? "Class"} · {formatDateTime(session.startsAt)}
+                        {group?.name ?? "Class"} ·{" "}
+                        {formatDateTime(session.startsAt)}
                       </small>
                     </div>
-                    <span className={`platform-attendance-chip ${sessionSaved ? "saved" : "pending"}`}>
+                    <span
+                      className={`platform-attendance-chip ${sessionSaved ? "saved" : "pending"}`}
+                    >
                       {sessionSaved ? "Saved" : "Pending"}
                     </span>
                   </article>
@@ -3347,20 +3780,22 @@ function StudentAttendanceWorkflow({
               <article>
                 <div>
                   <strong>No class sessions</strong>
-                  <small>New class sessions will appear here after scheduling.</small>
+                  <small>
+                    New class sessions will appear here after scheduling.
+                  </small>
                 </div>
               </article>
             )}
           </div>
         </section>
-        </div>
-        <aside className="platform-workflow-side">
+      </div>
+      <aside className="platform-workflow-side">
         <MiniMetric label="Attendance" value={`${averageAttendance}%`} />
         <MiniMetric label="Recorded sessions" value={String(records.length)} />
         <MiniMetric label="Exceptions" value={String(exceptionCount)} />
         <MiniMetric label="Classes" value={String(scope.classGroups.length)} />
-        </aside>
-      </div>
+      </aside>
+    </div>
   );
 }
 
@@ -3393,7 +3828,11 @@ function StudentCalendarWorkflow({
       type: "quiz_due" as const,
       status: quiz.status,
     }));
-  const timelineItems: ScheduleBoardEvent[] = [...classEvents, ...assignmentEvents, ...quizEvents].sort(
+  const timelineItems: ScheduleBoardEvent[] = [
+    ...classEvents,
+    ...assignmentEvents,
+    ...quizEvents,
+  ].sort(
     (a, b) =>
       new Date(a.startsAt || "2999-01-01").getTime() -
       new Date(b.startsAt || "2999-01-01").getTime()
@@ -3443,7 +3882,10 @@ function StudentCalendarWorkflow({
             limit={viewMode === "day" ? 4 : viewMode === "week" ? 8 : 12}
             emptyText="No future classes or due dates are scheduled for this learner."
           />
-          <div className="platform-segmented" aria-label="Student calendar view">
+          <div
+            className="platform-segmented"
+            aria-label="Student calendar view"
+          >
             {(["day", "week", "month"] as const).map(mode => (
               <button
                 key={mode}
@@ -3461,7 +3903,8 @@ function StudentCalendarWorkflow({
                   <div>
                     <strong>{event.title}</strong>
                     <small>
-                      {event.type.replace("_", " ")} · {formatDateTime(event.startsAt)}
+                      {event.type.replace("_", " ")} ·{" "}
+                      {formatDateTime(event.startsAt)}
                     </small>
                   </div>
                   <div className="platform-row-actions">
@@ -3476,7 +3919,9 @@ function StudentCalendarWorkflow({
                         )
                       }
                     >
-                      {event.type === "live_session" ? "Open live" : "Remind me"}
+                      {event.type === "live_session"
+                        ? "Open live"
+                        : "Remind me"}
                     </button>
                   </div>
                 </article>
@@ -3484,7 +3929,9 @@ function StudentCalendarWorkflow({
             ) : (
               <div className="platform-empty-state">
                 <strong>No upcoming items</strong>
-                <span>Recent and unscheduled course items remain visible below.</span>
+                <span>
+                  Recent and unscheduled course items remain visible below.
+                </span>
               </div>
             )}
           </div>
@@ -3499,7 +3946,9 @@ function StudentCalendarWorkflow({
                   <div>
                     <strong>{event.title}</strong>
                     <small>
-                      {schedulerTypeLabels[event.type as CalendarEventType] ?? event.type} · {formatDateTime(event.startsAt)}
+                      {schedulerTypeLabels[event.type as CalendarEventType] ??
+                        event.type}{" "}
+                      · {formatDateTime(event.startsAt)}
                     </small>
                   </div>
                   <span>{event.status ?? "scheduled"}</span>
@@ -3509,7 +3958,9 @@ function StudentCalendarWorkflow({
               <article>
                 <div>
                   <strong>No recent items</strong>
-                  <small>Past classes and unscheduled assessments will appear here.</small>
+                  <small>
+                    Past classes and unscheduled assessments will appear here.
+                  </small>
                 </div>
                 <span>empty</span>
               </article>
@@ -3519,7 +3970,10 @@ function StudentCalendarWorkflow({
       </div>
       <aside className="platform-workflow-side">
         <MiniMetric label="Class events" value={String(classEvents.length)} />
-        <MiniMetric label="Assignments" value={String(assignmentEvents.length)} />
+        <MiniMetric
+          label="Assignments"
+          value={String(assignmentEvents.length)}
+        />
         <MiniMetric label="Quizzes" value={String(quizEvents.length)} />
         <MiniMetric label="View" value={viewMode} />
       </aside>
@@ -3580,17 +4034,22 @@ function StudentCertificateWorkflow({
                 return (
                   <article
                     key={certificate.id}
-                    className={selected?.id === certificate.id ? "selected" : ""}
+                    className={
+                      selected?.id === certificate.id ? "selected" : ""
+                    }
                   >
                     <div>
                       <strong>{course?.title ?? "Course certificate"}</strong>
                       <small>
                         Grade {certificate.grade}% · Attendance{" "}
-                        {certificate.attendanceRate}% · {certificateStatusLabels[certificate.status]}
+                        {certificate.attendanceRate}% ·{" "}
+                        {certificateStatusLabels[certificate.status]}
                       </small>
                     </div>
                     <div className="platform-row-actions">
-                      <span className={`platform-certificate-status ${certificate.status}`}>
+                      <span
+                        className={`platform-certificate-status ${certificate.status}`}
+                      >
                         {certificateStatusLabels[certificate.status]}
                       </span>
                       <button
@@ -3613,7 +4072,10 @@ function StudentCertificateWorkflow({
             ) : (
               <div className="platform-empty-state">
                 <strong>No certificates yet</strong>
-                <span>Complete grade and attendance requirements to unlock certificates.</span>
+                <span>
+                  Complete grade and attendance requirements to unlock
+                  certificates.
+                </span>
               </div>
             )}
           </div>
@@ -3632,12 +4094,16 @@ function StudentCertificateWorkflow({
       <aside className="platform-workflow-side">
         <MiniMetric
           label="Issued"
-          value={String(certificates.filter(item => item.status === "issued").length)}
+          value={String(
+            certificates.filter(item => item.status === "issued").length
+          )}
         />
         <MiniMetric
           label="Eligible"
           value={String(
-            certificates.filter(item => item.grade >= 80 && item.attendanceRate >= 80).length
+            certificates.filter(
+              item => item.grade >= 80 && item.attendanceRate >= 80
+            ).length
           )}
         />
         <MiniMetric
@@ -3646,7 +4112,9 @@ function StudentCertificateWorkflow({
             state.documents.filter(
               item =>
                 item.type === "certificate" &&
-                certificates.some(certificate => certificate.studentId === item.ownerId)
+                certificates.some(
+                  certificate => certificate.studentId === item.ownerId
+                )
             ).length
           )}
         />
@@ -3686,7 +4154,8 @@ function QuranProgressSummary({
         <span>Plan</span>
         <strong>{plan?.target ?? progress?.surah ?? "No plan"}</strong>
         <small>
-          {plan?.currentJuz ?? progress?.juz ?? "-"} · {plan?.revisionCycle ?? "revision pending"}
+          {plan?.currentJuz ?? progress?.juz ?? "-"} ·{" "}
+          {plan?.revisionCycle ?? "revision pending"}
         </small>
       </div>
       <div className="platform-chart-bars">
@@ -3695,7 +4164,8 @@ function QuranProgressSummary({
             <span
               style={{
                 height: `${Math.min(96, Math.max(18, bar.value))}%`,
-                background: index % 2 ? roleMeta[role].accent : roleMeta[role].color,
+                background:
+                  index % 2 ? roleMeta[role].accent : roleMeta[role].color,
               }}
             />
             <small>{bar.label}</small>
@@ -3740,7 +4210,9 @@ function RecitationWaveformPlaceholder({
 
 function StudentQuranWorkflow({ role, state, refresh }: WorkflowProps) {
   const scope = getStudentScope(state);
-  const plan = state.quranPlans.find(item => item.studentId === scope.studentId);
+  const plan = state.quranPlans.find(
+    item => item.studentId === scope.studentId
+  );
   const progress = state.quranProgress.find(
     item => item.studentId === scope.studentId
   );
@@ -3748,7 +4220,9 @@ function StudentQuranWorkflow({ role, state, refresh }: WorkflowProps) {
     item => item.studentId === scope.studentId
   );
   const [title, setTitle] = useState(
-    progress ? `${progress.surah} ${progress.juz} recitation` : "Daily recitation"
+    progress
+      ? `${progress.surah} ${progress.juz} recitation`
+      : "Daily recitation"
   );
   const [saving, setSaving] = useState(false);
   const [workflowError, setWorkflowError] = useState("");
@@ -3775,7 +4249,9 @@ function StudentQuranWorkflow({ role, state, refresh }: WorkflowProps) {
     }
     platformStore.setState(result.data.state);
     refresh();
-    setWorkflowMessage(`Submitted to your Quran teacher · ${result.data.persistence}`);
+    setWorkflowMessage(
+      `Submitted to your Quran teacher · ${result.data.persistence}`
+    );
     toast.success("Recitation submitted", {
       description: result.data.persistence,
     });
@@ -3789,7 +4265,9 @@ function StudentQuranWorkflow({ role, state, refresh }: WorkflowProps) {
             <span>
               <Headphones size={16} /> Quran learner progress
             </span>
-            <strong>{progress?.surah ?? plan?.target ?? "Memorization plan"}</strong>
+            <strong>
+              {progress?.surah ?? plan?.target ?? "Memorization plan"}
+            </strong>
           </div>
           <p>
             {plan?.target ?? "Teacher plan"} · Current Juz{" "}
@@ -3804,18 +4282,27 @@ function StudentQuranWorkflow({ role, state, refresh }: WorkflowProps) {
                 plan={plan}
                 recitationCount={submissions.length}
               />
-              <RecitationWaveformPlaceholder role={role} label="Recitation practice visual" />
+              <RecitationWaveformPlaceholder
+                role={role}
+                label="Recitation practice visual"
+              />
             </>
           ) : (
             <div className="platform-empty-state">
               <strong>No Quran plan assigned</strong>
-              <span>Your teacher will assign a memorization and revision plan before recitation submission opens.</span>
+              <span>
+                Your teacher will assign a memorization and revision plan before
+                recitation submission opens.
+              </span>
             </div>
           )}
           <div className="platform-inline-form">
             <label>
               Recitation title
-              <input value={title} onChange={event => setTitle(event.target.value)} />
+              <input
+                value={title}
+                onChange={event => setTitle(event.target.value)}
+              />
             </label>
             <button
               className="platform-primary-button"
@@ -3827,8 +4314,14 @@ function StudentQuranWorkflow({ role, state, refresh }: WorkflowProps) {
               {saving ? "Submitting" : "Submit recitation"}
             </button>
           </div>
-          {workflowMessage ? <p className="platform-scheduler-feedback success">{workflowMessage}</p> : null}
-          {workflowError ? <p className="platform-attendance-error">{workflowError}</p> : null}
+          {workflowMessage ? (
+            <p className="platform-scheduler-feedback success">
+              {workflowMessage}
+            </p>
+          ) : null}
+          {workflowError ? (
+            <p className="platform-attendance-error">{workflowError}</p>
+          ) : null}
         </section>
         <section className="platform-workflow-card">
           <div className="platform-workflow-title">
@@ -3838,22 +4331,29 @@ function StudentQuranWorkflow({ role, state, refresh }: WorkflowProps) {
             <strong>{submissions.length} submissions</strong>
           </div>
           <div className="platform-row-list compact">
-            {submissions.length ? submissions.map(submission => (
-              <article key={submission.id}>
-                <div>
-                  <strong>{submission.title}</strong>
-                  <small>
-                    {formatDateTime(submission.submittedAt)}
-                    {submission.feedback ? ` · ${submission.feedback}` : ""}
-                  </small>
-                </div>
-                <span className={`platform-status ${submission.status}`}>{submission.status}</span>
-              </article>
-            )) : (
+            {submissions.length ? (
+              submissions.map(submission => (
+                <article key={submission.id}>
+                  <div>
+                    <strong>{submission.title}</strong>
+                    <small>
+                      {formatDateTime(submission.submittedAt)}
+                      {submission.feedback ? ` · ${submission.feedback}` : ""}
+                    </small>
+                  </div>
+                  <span className={`platform-status ${submission.status}`}>
+                    {submission.status}
+                  </span>
+                </article>
+              ))
+            ) : (
               <article>
                 <div>
                   <strong>No recitations submitted</strong>
-                  <small>Submit your next assigned recitation when your plan is ready.</small>
+                  <small>
+                    Submit your next assigned recitation when your plan is
+                    ready.
+                  </small>
                 </div>
               </article>
             )}
@@ -3861,7 +4361,10 @@ function StudentQuranWorkflow({ role, state, refresh }: WorkflowProps) {
         </section>
       </div>
       <aside className="platform-workflow-side">
-        <MiniMetric label="Memorized" value={`${progress?.memorizedPercent ?? 0}%`} />
+        <MiniMetric
+          label="Memorized"
+          value={`${progress?.memorizedPercent ?? 0}%`}
+        />
         <MiniMetric label="Tajweed" value={`${progress?.tajweedScore ?? 0}%`} />
         <MiniMetric label="Current Juz" value={plan?.currentJuz ?? "-"} />
       </aside>
@@ -3872,11 +4375,7 @@ function StudentQuranWorkflow({ role, state, refresh }: WorkflowProps) {
 function StudentMessageWorkflow({ role, state, refresh }: WorkflowProps) {
   const scope = getStudentScope(state);
   const teacherIds = Array.from(
-    new Set(
-      scope.courses
-        .map(({ run }) => run.teacherId)
-        .filter(Boolean)
-    )
+    new Set(scope.courses.map(({ run }) => run.teacherId).filter(Boolean))
   );
   const recipients = state.users.filter(
     user =>
@@ -3888,7 +4387,9 @@ function StudentMessageWorkflow({ role, state, refresh }: WorkflowProps) {
     recipients[0]?.id ?? getDemoUser("teacher").id
   );
   const [subject, setSubject] = useState("Question about my lesson");
-  const [body, setBody] = useState("Please review my question before the next class.");
+  const [body, setBody] = useState(
+    "Please review my question before the next class."
+  );
   const messages = state.messages.filter(
     message =>
       message.fromUserId === scope.userId || message.toUserId === scope.userId
@@ -3907,7 +4408,10 @@ function StudentMessageWorkflow({ role, state, refresh }: WorkflowProps) {
           <div className="platform-inline-form grid">
             <label>
               Recipient
-              <select value={toUserId} onChange={event => setToUserId(event.target.value)}>
+              <select
+                value={toUserId}
+                onChange={event => setToUserId(event.target.value)}
+              >
                 {recipients.map(user => (
                   <option key={user.id} value={user.id}>
                     {user.name} · {roleMeta[user.activeRole].label}
@@ -3917,10 +4421,16 @@ function StudentMessageWorkflow({ role, state, refresh }: WorkflowProps) {
             </label>
             <label>
               Subject
-              <input value={subject} onChange={event => setSubject(event.target.value)} />
+              <input
+                value={subject}
+                onChange={event => setSubject(event.target.value)}
+              />
             </label>
           </div>
-          <textarea value={body} onChange={event => setBody(event.target.value)} />
+          <textarea
+            value={body}
+            onChange={event => setBody(event.target.value)}
+          />
           <button
             className="platform-primary-button"
             style={{ background: roleMeta[role].color }}
@@ -3950,8 +4460,12 @@ function StudentMessageWorkflow({ role, state, refresh }: WorkflowProps) {
           <div className="platform-row-list">
             {messages.length ? (
               messages.map(message => {
-                const from = state.users.find(user => user.id === message.fromUserId);
-                const to = state.users.find(user => user.id === message.toUserId);
+                const from = state.users.find(
+                  user => user.id === message.fromUserId
+                );
+                const to = state.users.find(
+                  user => user.id === message.toUserId
+                );
                 return (
                   <article key={message.id}>
                     <div>
@@ -3968,7 +4482,10 @@ function StudentMessageWorkflow({ role, state, refresh }: WorkflowProps) {
             ) : (
               <div className="platform-empty-state">
                 <strong>No messages yet</strong>
-                <span>Send your teacher or support team a message when you need help.</span>
+                <span>
+                  Send your teacher or support team a message when you need
+                  help.
+                </span>
               </div>
             )}
           </div>
@@ -3992,15 +4509,21 @@ function StudentReportsWorkflow({
   pageId,
 }: Omit<WorkflowProps, "refresh"> & { pageId: string }) {
   const scope = getStudentScope(state);
-  const grades = state.grades.filter(grade => grade.studentId === scope.studentId);
+  const grades = state.grades.filter(
+    grade => grade.studentId === scope.studentId
+  );
   const submissions = state.assignmentSubmissions.filter(
     item => item.studentId === scope.studentId
   );
-  const attempts = state.quizAttempts.filter(item => item.studentId === scope.studentId);
+  const attempts = state.quizAttempts.filter(
+    item => item.studentId === scope.studentId
+  );
   const feedbackItems = grades
     .map(grade => {
       const quiz = state.quizzes.find(item => item.id === grade.itemId);
-      const assignment = state.assignments.find(item => item.id === grade.itemId);
+      const assignment = state.assignments.find(
+        item => item.id === grade.itemId
+      );
       const attempt = quiz
         ? attempts.find(item => item.quizId === quiz.id)
         : undefined;
@@ -4008,7 +4531,9 @@ function StudentReportsWorkflow({
         ? submissions.find(item => item.assignmentId === assignment.id)
         : undefined;
       const course = state.courseRuns.find(run => run.id === grade.courseRunId);
-      const courseTitle = state.courses.find(item => item.id === course?.courseId)?.title;
+      const courseTitle = state.courses.find(
+        item => item.id === course?.courseId
+      )?.title;
       return {
         grade,
         quiz,
@@ -4016,14 +4541,19 @@ function StudentReportsWorkflow({
         attempt,
         submission,
         courseTitle,
-        percent: grade.maxScore ? Math.round((grade.score / grade.maxScore) * 100) : grade.score,
+        percent: grade.maxScore
+          ? Math.round((grade.score / grade.maxScore) * 100)
+          : grade.score,
         reviewedAt: attempt?.submittedAt ?? submission?.submittedAt ?? "",
       };
     })
     .sort((a, b) => {
       const aTime = Date.parse(a.reviewedAt);
       const bTime = Date.parse(b.reviewedAt);
-      return (Number.isFinite(bTime) ? bTime : 0) - (Number.isFinite(aTime) ? aTime : 0);
+      return (
+        (Number.isFinite(bTime) ? bTime : 0) -
+        (Number.isFinite(aTime) ? aTime : 0)
+      );
     });
   const latestFeedback = feedbackItems[0];
   const rows = [
@@ -4044,15 +4574,18 @@ function StudentReportsWorkflow({
     ...submissions.map(submission => ({
       type: "assignment",
       title:
-        state.assignments.find(assignment => assignment.id === submission.assignmentId)
-          ?.title ?? submission.assignmentId,
+        state.assignments.find(
+          assignment => assignment.id === submission.assignmentId
+        )?.title ?? submission.assignmentId,
       progress: formatDateTime(submission.submittedAt),
       score: submission.score ? `${submission.score}%` : "pending",
       status: submission.status,
     })),
     ...attempts.map(attempt => ({
       type: "quiz",
-      title: state.quizzes.find(quiz => quiz.id === attempt.quizId)?.title ?? attempt.quizId,
+      title:
+        state.quizzes.find(quiz => quiz.id === attempt.quizId)?.title ??
+        attempt.quizId,
       progress: formatDateTime(attempt.submittedAt),
       score: `${attempt.score}/${attempt.maxScore}`,
       status: attempt.status,
@@ -4071,7 +4604,9 @@ function StudentReportsWorkflow({
     anchor.download = `nile-student-${pageId}.csv`;
     anchor.click();
     URL.revokeObjectURL(url);
-    toast.success("Student CSV exported", { description: `${rows.length} row(s)` });
+    toast.success("Student CSV exported", {
+      description: `${rows.length} row(s)`,
+    });
   };
 
   return (
@@ -4082,7 +4617,9 @@ function StudentReportsWorkflow({
             <span>
               <Activity size={16} /> Student report
             </span>
-            <strong>{pageId === "grades" ? "Gradebook" : "Progress report"}</strong>
+            <strong>
+              {pageId === "grades" ? "Gradebook" : "Progress report"}
+            </strong>
           </div>
           <div className="platform-report-controls">
             <button onClick={exportCsv}>
@@ -4100,11 +4637,19 @@ function StudentReportsWorkflow({
               <dl>
                 <div>
                   <dt>Score</dt>
-                  <dd>{latestFeedback.grade.score}/{latestFeedback.grade.maxScore}</dd>
+                  <dd>
+                    {latestFeedback.grade.score}/{latestFeedback.grade.maxScore}
+                  </dd>
                 </div>
                 <div>
                   <dt>Result</dt>
-                  <dd>{latestFeedback.percent >= 80 ? "Strong" : latestFeedback.percent >= 70 ? "Passing" : "Review"}</dd>
+                  <dd>
+                    {latestFeedback.percent >= 80
+                      ? "Strong"
+                      : latestFeedback.percent >= 70
+                        ? "Passing"
+                        : "Review"}
+                  </dd>
                 </div>
                 <div>
                   <dt>Course</dt>
@@ -4113,15 +4658,19 @@ function StudentReportsWorkflow({
               </dl>
               {latestFeedback.attempt ? (
                 <div className="platform-student-feedback-evidence">
-                  {Object.entries(latestFeedback.attempt.answers).slice(0, 2).map(([key, value]) => {
-                    const question = state.quizQuestionPreviews.find(item => item.id === key);
-                    return (
-                      <article key={key}>
-                        <span>{question?.prompt ?? key}</span>
-                        <strong>{value}</strong>
-                      </article>
-                    );
-                  })}
+                  {Object.entries(latestFeedback.attempt.answers)
+                    .slice(0, 2)
+                    .map(([key, value]) => {
+                      const question = state.quizQuestionPreviews.find(
+                        item => item.id === key
+                      );
+                      return (
+                        <article key={key}>
+                          <span>{question?.prompt ?? key}</span>
+                          <strong>{value}</strong>
+                        </article>
+                      );
+                    })}
                 </div>
               ) : latestFeedback.submission ? (
                 <div className="platform-student-feedback-evidence">
@@ -4135,7 +4684,10 @@ function StudentReportsWorkflow({
           ) : (
             <div className="platform-empty-state">
               <strong>No feedback yet</strong>
-              <span>Your teacher feedback will appear here after an assignment or quiz is reviewed.</span>
+              <span>
+                Your teacher feedback will appear here after an assignment or
+                quiz is reviewed.
+              </span>
             </div>
           )}
           {feedbackItems.length ? (
@@ -4143,22 +4695,36 @@ function StudentReportsWorkflow({
               {feedbackItems.slice(0, 6).map(item => (
                 <article key={item.grade.id}>
                   <div>
-                    <span>{item.quiz ? "Quiz feedback" : "Assignment feedback"}</span>
+                    <span>
+                      {item.quiz ? "Quiz feedback" : "Assignment feedback"}
+                    </span>
                     <strong>{item.grade.itemTitle}</strong>
                     <p>{item.grade.feedback}</p>
                   </div>
                   <dl>
                     <div>
                       <dt>Score</dt>
-                      <dd>{item.grade.score}/{item.grade.maxScore}</dd>
+                      <dd>
+                        {item.grade.score}/{item.grade.maxScore}
+                      </dd>
                     </div>
                     <div>
                       <dt>Result</dt>
-                      <dd>{item.percent >= 80 ? "Strong" : item.percent >= 70 ? "Passing" : "Review"}</dd>
+                      <dd>
+                        {item.percent >= 80
+                          ? "Strong"
+                          : item.percent >= 70
+                            ? "Passing"
+                            : "Review"}
+                      </dd>
                     </div>
                     <div>
                       <dt>Evidence</dt>
-                      <dd>{item.reviewedAt ? formatDateTime(item.reviewedAt) : "recorded"}</dd>
+                      <dd>
+                        {item.reviewedAt
+                          ? formatDateTime(item.reviewedAt)
+                          : "recorded"}
+                      </dd>
                     </div>
                   </dl>
                 </article>
@@ -4203,9 +4769,7 @@ function AttendanceWorkflow({
   const [saveError, setSaveError] = useState("");
   const studentScope = getStudentScope(state);
   const ownedTeacherRunIds = new Set(
-    state.courseRuns
-      .filter(run => run.teacherId === actorId)
-      .map(run => run.id)
+    state.courseRuns.filter(run => run.teacherId === actorId).map(run => run.id)
   );
   const teacherRunIds = ownedTeacherRunIds;
   const studentRunIds = new Set(
@@ -4233,32 +4797,33 @@ function AttendanceWorkflow({
     (!routeClassOutOfScope ? classOptions[0]?.id : undefined) ??
     "";
   const [selectedClassId, setSelectedClassId] = useState(initialClassId);
-  const selectedClass =
-    routeClassOutOfScope
-      ? undefined
-      : classOptions.find(group => group.id === selectedClassId) ??
-        routeClass ??
-        classOptions[0];
+  const selectedClass = routeClassOutOfScope
+    ? undefined
+    : (classOptions.find(group => group.id === selectedClassId) ??
+      routeClass ??
+      classOptions[0]);
   const sessions = state.classSessions
     .filter(session => session.classGroupId === selectedClass?.id)
     .sort(
       (a, b) => new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime()
     );
-  const [sessionFilter, setSessionFilter] = useState<AttendanceSessionFilter>("all");
-  const [rosterFilter, setRosterFilter] = useState<AttendanceRosterFilter>("all");
+  const [sessionFilter, setSessionFilter] =
+    useState<AttendanceSessionFilter>("all");
+  const [rosterFilter, setRosterFilter] =
+    useState<AttendanceRosterFilter>("all");
   const filteredSessions = sessions.filter(item => {
     if (sessionFilter === "all") return true;
     const sessionSaved = isAttendanceSessionSaved(state, item);
     return sessionFilter === "saved" ? sessionSaved : !sessionSaved;
   });
-  const sessionOptionKey = filteredSessions.map(session => session.id).join("|");
+  const sessionOptionKey = filteredSessions
+    .map(session => session.id)
+    .join("|");
   const defaultSession =
     filteredSessions.find(item => !isAttendanceSessionSaved(state, item)) ??
     filteredSessions[0];
   const defaultSessionId = defaultSession?.id ?? "";
-  const [selectedSessionId, setSelectedSessionId] = useState(
-    defaultSessionId
-  );
+  const [selectedSessionId, setSelectedSessionId] = useState(defaultSessionId);
   const session =
     filteredSessions.find(item => item.id === selectedSessionId) ??
     defaultSession;
@@ -4266,15 +4831,25 @@ function AttendanceWorkflow({
     {}
   );
   const [notes, setNotes] = useState<Record<string, string>>({});
-  const [initialStatuses, setInitialStatuses] = useState<Record<string, AttendanceStatus>>(
-    {}
-  );
+  const [initialStatuses, setInitialStatuses] = useState<
+    Record<string, AttendanceStatus>
+  >({});
   const [initialNotes, setInitialNotes] = useState<Record<string, string>>({});
-  const selectedRun = state.courseRuns.find(run => run.id === selectedClass?.courseRunId);
-  const selectedCourse = state.courses.find(course => course.id === selectedRun?.courseId);
-  const selectedBranch = state.branches.find(branch => branch.id === selectedRun?.branchId);
-  const selectedTeacher = state.users.find(user => user.id === selectedRun?.teacherId);
-  const selectedRoom = state.rooms.find(room => room.id === selectedClass?.roomId);
+  const selectedRun = state.courseRuns.find(
+    run => run.id === selectedClass?.courseRunId
+  );
+  const selectedCourse = state.courses.find(
+    course => course.id === selectedRun?.courseId
+  );
+  const selectedBranch = state.branches.find(
+    branch => branch.id === selectedRun?.branchId
+  );
+  const selectedTeacher = state.users.find(
+    user => user.id === selectedRun?.teacherId
+  );
+  const selectedRoom = state.rooms.find(
+    room => room.id === selectedClass?.roomId
+  );
   const presentCount = Object.values(statuses).filter(
     value => value === "present"
   ).length;
@@ -4292,7 +4867,7 @@ function AttendanceWorkflow({
         record =>
           record.classGroupId === selectedClass?.id &&
           (record.sessionId === session.id ||
-          record.sessionId === session.eventId)
+            record.sessionId === session.eventId)
       )
     : [];
   const selectedSessionSaved = session
@@ -4302,12 +4877,15 @@ function AttendanceWorkflow({
     isAttendanceSessionSaved(state, item)
   ).length;
   const missingSessionCount = sessions.length - savedSessionCount;
-  const savedRecordStudentIds = new Set(savedRecords.map(record => record.studentId));
+  const savedRecordStudentIds = new Set(
+    savedRecords.map(record => record.studentId)
+  );
   const dirtyStudentIds = selectedClass
     ? selectedClass.studentIds.filter(
         studentId =>
           statuses[studentId] !== initialStatuses[studentId] ||
-          (notes[studentId] ?? "").trim() !== (initialNotes[studentId] ?? "").trim()
+          (notes[studentId] ?? "").trim() !==
+            (initialNotes[studentId] ?? "").trim()
       )
     : [];
   const dirtyStudentIdSet = new Set(dirtyStudentIds);
@@ -4317,8 +4895,10 @@ function AttendanceWorkflow({
   const visibleStudentIds = selectedClass
     ? selectedClass.studentIds.filter(studentId => {
         if (rosterFilter === "all") return true;
-        if (rosterFilter === "unsaved") return !savedRecordStudentIds.has(studentId);
-        if (rosterFilter === "exceptions") return statuses[studentId] !== "present";
+        if (rosterFilter === "unsaved")
+          return !savedRecordStudentIds.has(studentId);
+        if (rosterFilter === "exceptions")
+          return statuses[studentId] !== "present";
         return statuses[studentId] === rosterFilter;
       })
     : [];
@@ -4370,7 +4950,10 @@ function AttendanceWorkflow({
             (record.sessionId === session.id ||
               record.sessionId === session.eventId)
         );
-        return [studentId, savedRecord?.status ?? statuses[studentId] ?? "present"];
+        return [
+          studentId,
+          savedRecord?.status ?? statuses[studentId] ?? "present",
+        ];
       })
     ) as Record<string, AttendanceStatus>;
     const savedNotes = Object.fromEntries(
@@ -4396,7 +4979,8 @@ function AttendanceWorkflow({
     });
   };
   const markAll = (status: AttendanceStatus) => {
-    if (!selectedClass || saving || isSyncLoading || !editableAttendance) return;
+    if (!selectedClass || saving || isSyncLoading || !editableAttendance)
+      return;
     setStatuses(
       Object.fromEntries(
         selectedClass.studentIds.map(studentId => [studentId, status])
@@ -4445,7 +5029,7 @@ function AttendanceWorkflow({
         );
         return [studentId, current?.status ?? "present"];
       })
-      ) as Record<string, AttendanceStatus>;
+    ) as Record<string, AttendanceStatus>;
     const nextNotes = Object.fromEntries(
       selectedClass.studentIds.map(studentId => {
         const current = state.attendance.find(
@@ -4466,7 +5050,7 @@ function AttendanceWorkflow({
 
   const scopeLabel =
     role === "branchadmin"
-      ? `Branch scope: ${selectedBranch?.name ?? "Assigned branch"}`
+      ? `Branch access: ${selectedBranch?.name ?? "Assigned branch"}`
       : `Teacher: ${selectedTeacher?.name ?? actorUser.name}`;
 
   if (!selectedClass) {
@@ -4474,15 +5058,15 @@ function AttendanceWorkflow({
       ? "Class outside your scope"
       : "No class available";
     const emptyMessage = routeClassOutOfScope
-      ? "This class is not assigned to the current role scope, so attendance controls stay locked."
-      : "No class group is available for this role in the local platform state.";
+      ? "This class is not assigned to the current role access, so attendance controls stay locked."
+      : "No class group is available in system data.";
     return (
       <section className="platform-workflow-card">
         <div className="platform-workflow-title">
-            <span>
-              <SlidersHorizontal size={16} /> Class roster attendance
-            </span>
-            <strong>{emptyTitle}</strong>
+          <span>
+            <SlidersHorizontal size={16} /> Class roster attendance
+          </span>
+          <strong>{emptyTitle}</strong>
         </div>
         <p>{emptyMessage}</p>
       </section>
@@ -4505,11 +5089,24 @@ function AttendanceWorkflow({
             <span>{selectedClass.name}</span>
             <span>{selectedCourse?.title ?? "Course"}</span>
             <span>{scopeLabel}</span>
-            <span>{selectedRoom?.name ?? selectedTeacher?.name ?? "Assigned class"}</span>
-            <span>{session ? `${selectedSessionSaved ? "Saved" : "Pending"} session` : "No session"}</span>
-            <span>{backendSyncStatus === "loading" ? "Syncing state" : `${backendSyncStatus} state`}</span>
+            <span>
+              {selectedRoom?.name ?? selectedTeacher?.name ?? "Assigned class"}
+            </span>
+            <span>
+              {session
+                ? `${selectedSessionSaved ? "Saved" : "Pending"} session`
+                : "No session"}
+            </span>
+            <span>
+              {backendSyncStatus === "loading"
+                ? "Syncing state"
+                : `${backendSyncStatus} state`}
+            </span>
           </div>
-          <div id="attendance-control-status" className="platform-attendance-notice">
+          <div
+            id="attendance-control-status"
+            className="platform-attendance-notice"
+          >
             {isSyncLoading
               ? "Attendance state is syncing. Marking controls unlock when the current state is loaded."
               : editableAttendance
@@ -4540,7 +5137,9 @@ function AttendanceWorkflow({
               <select
                 value={sessionFilter}
                 onChange={event =>
-                  setSessionFilter(event.target.value as AttendanceSessionFilter)
+                  setSessionFilter(
+                    event.target.value as AttendanceSessionFilter
+                  )
                 }
                 disabled={saving || !sessions.length}
               >
@@ -4587,14 +5186,22 @@ function AttendanceWorkflow({
               </select>
             </label>
           </div>
-          <div className="platform-attendance-toolbar" aria-label="Bulk attendance actions">
+          <div
+            className="platform-attendance-toolbar"
+            aria-label="Bulk attendance actions"
+          >
             {attendanceStatusOptions.map(status => (
               <button
                 key={status}
                 type="button"
                 aria-label={`Mark all learners ${attendanceStatusLabels[status].toLowerCase()}`}
                 aria-describedby="attendance-control-status"
-                disabled={!selectedClass.studentIds.length || saving || isSyncLoading || !editableAttendance}
+                disabled={
+                  !selectedClass.studentIds.length ||
+                  saving ||
+                  isSyncLoading ||
+                  !editableAttendance
+                }
                 onClick={() => markAll(status)}
                 title={`Mark all ${attendanceStatusLabels[status].toLowerCase()}`}
               >
@@ -4603,10 +5210,14 @@ function AttendanceWorkflow({
               </button>
             ))}
           </div>
-          <div className="platform-attendance-count-strip" aria-label="Attendance status totals">
+          <div
+            className="platform-attendance-count-strip"
+            aria-label="Attendance status totals"
+          >
             {attendanceStatusOptions.map(status => (
               <span key={status}>
-                {attendanceStatusLabels[status]} <strong>{statusCounts[status]}</strong>
+                {attendanceStatusLabels[status]}{" "}
+                <strong>{statusCounts[status]}</strong>
               </span>
             ))}
             <span>
@@ -4635,7 +5246,7 @@ function AttendanceWorkflow({
           ) : !selectedClass.studentIds.length ? (
             <div className="platform-empty-state">
               <strong>No students enrolled</strong>
-              <span>This class has no roster in the local platform state.</span>
+              <span>This class has no roster in system data.</span>
               <button
                 type="button"
                 onClick={() =>
@@ -4654,10 +5265,7 @@ function AttendanceWorkflow({
                 Clear the roster filter or switch session status to inspect the
                 full class.
               </span>
-              <button
-                type="button"
-                onClick={() => setRosterFilter("all")}
-              >
+              <button type="button" onClick={() => setRosterFilter("all")}>
                 Show all learners
               </button>
             </div>
@@ -4690,7 +5298,11 @@ function AttendanceWorkflow({
                       <small className="platform-attendance-roster-meta">
                         Attendance {enrollment?.attendanceRate ?? 0}% · Grade{" "}
                         {enrollment?.currentGrade ?? 0}% ·{" "}
-                        {rowDirty ? "unsaved change" : rowSaved ? "saved" : "pending"}
+                        {rowDirty
+                          ? "unsaved change"
+                          : rowSaved
+                            ? "saved"
+                            : "pending"}
                       </small>
                     </div>
                     <div>
@@ -4699,7 +5311,9 @@ function AttendanceWorkflow({
                           key={status}
                           type="button"
                           aria-pressed={statuses[studentId] === status}
-                          disabled={saving || isSyncLoading || !editableAttendance}
+                          disabled={
+                            saving || isSyncLoading || !editableAttendance
+                          }
                           aria-describedby="attendance-control-status"
                           className={
                             statuses[studentId] === status ? "active" : ""
@@ -4713,7 +5327,9 @@ function AttendanceWorkflow({
                             }))
                           }
                         >
-                          <span aria-hidden="true">{attendanceStatusShortLabels[status]}</span>
+                          <span aria-hidden="true">
+                            {attendanceStatusShortLabels[status]}
+                          </span>
                           <strong>{attendanceStatusLabels[status]}</strong>
                         </button>
                       ))}
@@ -4726,7 +5342,9 @@ function AttendanceWorkflow({
                         className="platform-attendance-note-input"
                         value={notes[studentId] ?? ""}
                         placeholder="Short attendance note"
-                        disabled={saving || isSyncLoading || !editableAttendance}
+                        disabled={
+                          saving || isSyncLoading || !editableAttendance
+                        }
                         aria-label={`${user?.name ?? studentId} attendance note`}
                         onChange={event =>
                           setNotes(prev => ({
@@ -4754,17 +5372,18 @@ function AttendanceWorkflow({
           </button>
           <div className="platform-attendance-status-line">
             <span>
-              {savedRecordStudentIds.size}/{selectedClass.studentIds.length} roster
-              rows saved for this session.
+              {savedRecordStudentIds.size}/{selectedClass.studentIds.length}{" "}
+              roster rows saved for this session.
             </span>
             <span>
-              {savedSessionCount} saved · {missingSessionCount} missing session(s)
+              {savedSessionCount} saved · {missingSessionCount} missing
+              session(s)
             </span>
-            <span>
-              {dirtyStudentIds.length} unsaved change(s)
-            </span>
+            <span>{dirtyStudentIds.length} unsaved change(s)</span>
           </div>
-          {saveError ? <p className="platform-attendance-error">{saveError}</p> : null}
+          {saveError ? (
+            <p className="platform-attendance-error">{saveError}</p>
+          ) : null}
           {!editableAttendance ? (
             <p className="platform-attendance-error">
               This attendance view is read-only for {roleMeta[role].label}.
@@ -4792,7 +5411,9 @@ function AttendanceWorkflow({
                     <article key={record.id}>
                       <div>
                         <strong>{user?.name ?? record.studentId}</strong>
-                        <span className={`platform-attendance-chip ${record.status}`}>
+                        <span
+                          className={`platform-attendance-chip ${record.status}`}
+                        >
                           {attendanceStatusLabels[record.status]}
                         </span>
                         {record.notes ? <small>{record.notes}</small> : null}
@@ -4817,9 +5438,7 @@ function AttendanceWorkflow({
       <aside className="platform-workflow-side">
         <MiniMetric
           label="Session status"
-          value={
-            selectedSessionSaved ? "saved" : session ? "pending" : "none"
-          }
+          value={selectedSessionSaved ? "saved" : session ? "pending" : "none"}
         />
         <MiniMetric
           label="Students"
@@ -4837,11 +5456,15 @@ function AttendanceWorkflow({
           <div className="platform-row-list compact">
             {recentAttendanceAudits.length ? (
               recentAttendanceAudits.map(audit => {
-                const actor = state.users.find(user => user.id === audit.actorId);
+                const actor = state.users.find(
+                  user => user.id === audit.actorId
+                );
                 return (
                   <article key={audit.id}>
                     <div>
-                      <strong>{actor?.name ?? "System"} saved attendance</strong>
+                      <strong>
+                        {actor?.name ?? "System"} saved attendance
+                      </strong>
                       <small>
                         {audit.summary} · {formatDateTime(audit.createdAt)}
                       </small>
@@ -4877,12 +5500,20 @@ function ScheduleGovernanceWorkflow({
   const scopedEvents = state.events
     .filter(event => {
       if (role === "superadmin") return true;
-      return event.classGroupId ? classIds.has(event.classGroupId) : event.ownerId === actorUser.id;
+      return event.classGroupId
+        ? classIds.has(event.classGroupId)
+        : event.ownerId === actorUser.id;
     })
-    .sort((a, b) => new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime());
-  const pendingEvents = scopedEvents.filter(event => event.status === "pending");
+    .sort(
+      (a, b) => new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime()
+    );
+  const pendingEvents = scopedEvents.filter(
+    event => event.status === "pending"
+  );
   const activeEvents = scopedEvents.filter(event => event.status === "active");
-  const classSessionEvents = scopedEvents.filter(event => event.type === "class_session" || event.type === "live_session");
+  const classSessionEvents = scopedEvents.filter(
+    event => event.type === "class_session" || event.type === "live_session"
+  );
   const auditIds = new Set(scopedEvents.map(event => event.id));
   const recentAudits = state.auditLogs
     .filter(
@@ -4902,24 +5533,37 @@ function ScheduleGovernanceWorkflow({
               <CalendarDays size={16} /> Schedule governance
             </span>
             <strong>
-              {role === "superadmin" ? "Platform calendar" : "Academic calendar"}
+              {role === "superadmin"
+                ? "Platform calendar"
+                : "Academic calendar"}
             </strong>
           </div>
           <div className="platform-calendar-brief">
             <div>
               <strong>
-                {role === "superadmin" ? "All branches" : `${classIds.size} class scope`}
+                {role === "superadmin"
+                  ? "All branches"
+                  : `${classIds.size} class scope`}
               </strong>
               <span>
-                {activeEvents.length} active · {pendingEvents.length} pending · {classSessionEvents.length} class sessions
+                {activeEvents.length} active · {pendingEvents.length} pending ·{" "}
+                {classSessionEvents.length} class sessions
               </span>
             </div>
-            <span>{backendSyncStatus === "loading" ? "Syncing" : `${backendSyncStatus} state`}</span>
+            <span>
+              {backendSyncStatus === "loading"
+                ? "Syncing"
+                : `${backendSyncStatus} state`}
+            </span>
           </div>
           <div className="platform-calendar-scope compact">
             <span>{roleMeta[role].label}</span>
             <span>{scopedEvents.length} events</span>
-            <span>{pendingEvents.length ? `${pendingEvents.length} need review` : "No pending conflicts"}</span>
+            <span>
+              {pendingEvents.length
+                ? `${pendingEvents.length} need review`
+                : "No pending conflicts"}
+            </span>
           </div>
         </section>
         <ScheduleBoard
@@ -4950,7 +5594,9 @@ function ScheduleGovernanceWorkflow({
           <div className="platform-row-list compact">
             {recentAudits.length ? (
               recentAudits.map(audit => {
-                const actor = state.users.find(user => user.id === audit.actorId);
+                const actor = state.users.find(
+                  user => user.id === audit.actorId
+                );
                 return (
                   <article key={audit.id}>
                     <div>
@@ -4960,7 +5606,8 @@ function ScheduleGovernanceWorkflow({
                           : "Scheduled"}
                       </strong>
                       <small>
-                        {actor?.name ?? "System"} · {audit.summary} · {formatDateTime(audit.createdAt)}
+                        {actor?.name ?? "System"} · {audit.summary} ·{" "}
+                        {formatDateTime(audit.createdAt)}
                       </small>
                     </div>
                   </article>
@@ -4988,8 +5635,12 @@ function SchedulingWorkflow({
   backendSyncStatus = "offline",
 }: WorkflowProps) {
   const [viewMode, setViewMode] = useState<"day" | "week" | "month">("week");
-  const [typeFilter, setTypeFilter] = useState<"all" | CalendarEventType>("all");
-  const [statusFilter, setStatusFilter] = useState<"all" | "active" | "pending">("all");
+  const [typeFilter, setTypeFilter] = useState<"all" | CalendarEventType>(
+    "all"
+  );
+  const [statusFilter, setStatusFilter] = useState<
+    "all" | "active" | "pending"
+  >("all");
   const [title, setTitle] = useState("Arabic L3 review session");
   const [date, setDate] = useState(() => getFutureDateInput());
   const [starts, setStarts] = useState("09:00");
@@ -5030,7 +5681,8 @@ function SchedulingWorkflow({
     return run?.branchId === branchId;
   });
   const roomOptions = state.rooms.filter(room => {
-    if (!branchId) return role === "teacher" ? branchIds.has(room.branchId) : true;
+    if (!branchId)
+      return role === "teacher" ? branchIds.has(room.branchId) : true;
     return room.branchId === branchId;
   });
   const [roomId, setRoomId] = useState(roomOptions[0]?.id ?? "");
@@ -5040,9 +5692,15 @@ function SchedulingWorkflow({
   const roomOptionKey = roomOptions.map(room => room.id).join("|");
   const selectedBranch = state.branches.find(branch => branch.id === branchId);
   const selectedRoom = state.rooms.find(room => room.id === roomId);
-  const selectedClass = state.classGroups.find(group => group.id === classGroupId);
-  const selectedRun = state.courseRuns.find(run => run.id === selectedClass?.courseRunId);
-  const selectedTeacher = state.users.find(user => user.id === selectedRun?.teacherId);
+  const selectedClass = state.classGroups.find(
+    group => group.id === classGroupId
+  );
+  const selectedRun = state.courseRuns.find(
+    run => run.id === selectedClass?.courseRunId
+  );
+  const selectedTeacher = state.users.find(
+    user => user.id === selectedRun?.teacherId
+  );
   const selectedTeacherId = selectedRun?.teacherId;
   const getEventAssignedTeacherId = (event: CalendarEvent) => {
     const eventGroup = event.classGroupId
@@ -5054,7 +5712,8 @@ function SchedulingWorkflow({
     return eventRun?.teacherId ?? event.ownerId;
   };
   const needsClass = type === "class_session" || type === "live_session";
-  const usesRoom = type !== "assignment_due" && type !== "quiz_due" && type !== "reminder";
+  const usesRoom =
+    type !== "assignment_due" && type !== "quiz_due" && type !== "reminder";
   const requiresRoom = type === "room_booking";
   const submitRoomId = usesRoom ? roomId || undefined : undefined;
   const submitClassGroupId = needsClass ? classGroupId || undefined : undefined;
@@ -5066,7 +5725,14 @@ function SchedulingWorkflow({
   const candidateEndsAt = date && ends ? `${date}T${ends}:00+03:00` : "";
   const startsMs = Date.parse(candidateStartsAt);
   const endsMs = Date.parse(candidateEndsAt);
-  const hasValidRange = Boolean(date && starts && ends && starts < ends && Number.isFinite(startsMs) && Number.isFinite(endsMs));
+  const hasValidRange = Boolean(
+    date &&
+      starts &&
+      ends &&
+      starts < ends &&
+      Number.isFinite(startsMs) &&
+      Number.isFinite(endsMs)
+  );
   const isSyncLoading = backendSyncStatus === "loading";
   const invalidEvent =
     !title.trim() ||
@@ -5115,7 +5781,9 @@ function SchedulingWorkflow({
       }
       return true;
     })
-    .sort((a, b) => new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime());
+    .sort(
+      (a, b) => new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime()
+    );
   const filteredEvents = scopedEvents.filter(event => {
     if (typeFilter !== "all" && event.type !== typeFilter) return false;
     if (statusFilter !== "all" && event.status !== statusFilter) return false;
@@ -5140,8 +5808,11 @@ function SchedulingWorkflow({
     const reasons = [
       submitRoomId && event.roomId === submitRoomId ? "room" : "",
       event.ownerId === actorId ? "owner" : "",
-      submitClassGroupId && event.classGroupId === submitClassGroupId ? "class" : "",
-      selectedTeacherId && getEventAssignedTeacherId(event) === selectedTeacherId
+      submitClassGroupId && event.classGroupId === submitClassGroupId
+        ? "class"
+        : "",
+      selectedTeacherId &&
+      getEventAssignedTeacherId(event) === selectedTeacherId
         ? "teacher"
         : "",
     ].filter(Boolean);
@@ -5153,9 +5824,12 @@ function SchedulingWorkflow({
   const availabilityMatches =
     hasValidRange && selectedRun && needsClass
       ? state.teacherAvailability.filter(item => {
-          const weekday = new Date(candidateStartsAt).toLocaleDateString("en-US", {
-            weekday: "long",
-          });
+          const weekday = new Date(candidateStartsAt).toLocaleDateString(
+            "en-US",
+            {
+              weekday: "long",
+            }
+          );
           return (
             item.teacherId === selectedRun.teacherId &&
             item.branchId === submitBranchId &&
@@ -5166,7 +5840,8 @@ function SchedulingWorkflow({
         })
       : [];
   const hasAvailabilityGap =
-    hasValidRange && Boolean(selectedRun && needsClass && !availabilityMatches.length);
+    hasValidRange &&
+    Boolean(selectedRun && needsClass && !availabilityMatches.length);
   const eventStatusCounts = {
     active: scopedEvents.filter(event => event.status === "active").length,
     pending: scopedEvents.filter(event => event.status === "pending").length,
@@ -5196,13 +5871,18 @@ function SchedulingWorkflow({
     if (!roomId || !roomOptions.some(room => room.id === roomId)) {
       setRoomId(roomOptions[0]?.id ?? "");
     }
-    if (!classGroupId || !classOptions.some(group => group.id === classGroupId)) {
+    if (
+      !classGroupId ||
+      !classOptions.some(group => group.id === classGroupId)
+    ) {
       setClassGroupId(classOptions[0]?.id ?? "");
     }
   }, [classGroupId, classOptionKey, roomId, roomOptionKey, type, typeOptions]);
 
   const useConflictSlot = () => {
-    const event = scopedEvents.find(item => item.roomId || item.classGroupId) ?? scopedEvents[0];
+    const event =
+      scopedEvents.find(item => item.roomId || item.classGroupId) ??
+      scopedEvents[0];
     if (!event) return;
     setTitle(`${event.title} overlap check`);
     setDate(event.startsAt.slice(0, 10));
@@ -5240,11 +5920,13 @@ function SchedulingWorkflow({
       toast.error("Event save failed", { description: message });
       return;
     }
-    const payload = result.data.result.result as {
-      event?: CalendarEvent;
-      conflicts?: CalendarEvent[];
-      availabilityGaps?: string[];
-    } | undefined;
+    const payload = result.data.result.result as
+      | {
+          event?: CalendarEvent;
+          conflicts?: CalendarEvent[];
+          availabilityGaps?: string[];
+        }
+      | undefined;
     platformStore.setState(result.data.state);
     refresh();
     setLastResult({
@@ -5254,7 +5936,9 @@ function SchedulingWorkflow({
       availabilityGaps: payload?.availabilityGaps?.length ?? 0,
     });
     toast.success(
-      payload?.conflicts?.length ? "Event saved with conflict" : "Event scheduled",
+      payload?.conflicts?.length
+        ? "Event saved with conflict"
+        : "Event scheduled",
       { description: `${title.trim()} · ${result.data.persistence}` }
     );
   };
@@ -5273,18 +5957,41 @@ function SchedulingWorkflow({
             <div>
               <strong>{selectedBranch?.name ?? "Global scope"}</strong>
               <span>
-                {eventStatusCounts.visible}/{eventStatusCounts.total} visible · {eventStatusCounts.pending} pending
+                {eventStatusCounts.visible}/{eventStatusCounts.total} visible ·{" "}
+                {eventStatusCounts.pending} pending
               </span>
             </div>
-            <span>{backendSyncStatus === "loading" ? "Syncing" : `${backendSyncStatus} state`}</span>
+            <span>
+              {backendSyncStatus === "loading"
+                ? "Syncing"
+                : `${backendSyncStatus} state`}
+            </span>
           </div>
           <div className="platform-calendar-scope compact">
             <span>{selectedBranch?.name ?? "Global scope"}</span>
-            <span>{usesRoom ? selectedRoom?.name ?? "No room selected" : "No room required"}</span>
-            <span>{needsClass ? selectedClass?.name ?? "Class required" : "No class required"}</span>
-            <span>{needsClass ? selectedTeacher?.name ?? "Teacher required" : "No teacher required"}</span>
-            <span>{typeFilter === "all" ? "All event types" : schedulerTypeLabels[typeFilter]}</span>
-            <span>{statusFilter === "all" ? "All statuses" : statusFilter}</span>
+            <span>
+              {usesRoom
+                ? (selectedRoom?.name ?? "No room selected")
+                : "No room required"}
+            </span>
+            <span>
+              {needsClass
+                ? (selectedClass?.name ?? "Class required")
+                : "No class required"}
+            </span>
+            <span>
+              {needsClass
+                ? (selectedTeacher?.name ?? "Teacher required")
+                : "No teacher required"}
+            </span>
+            <span>
+              {typeFilter === "all"
+                ? "All event types"
+                : schedulerTypeLabels[typeFilter]}
+            </span>
+            <span>
+              {statusFilter === "all" ? "All statuses" : statusFilter}
+            </span>
             <span>
               {previewConflicts.length || hasAvailabilityGap
                 ? `${previewConflicts.length + (hasAvailabilityGap ? 1 : 0)} schedule review`
@@ -5307,7 +6014,9 @@ function SchedulingWorkflow({
               Event filter
               <select
                 value={typeFilter}
-                onChange={event => setTypeFilter(event.target.value as "all" | CalendarEventType)}
+                onChange={event =>
+                  setTypeFilter(event.target.value as "all" | CalendarEventType)
+                }
               >
                 <option value="all">All event types</option>
                 {typeOptions.map(option => (
@@ -5321,7 +6030,11 @@ function SchedulingWorkflow({
               Status filter
               <select
                 value={statusFilter}
-                onChange={event => setStatusFilter(event.target.value as "all" | "active" | "pending")}
+                onChange={event =>
+                  setStatusFilter(
+                    event.target.value as "all" | "active" | "pending"
+                  )
+                }
               >
                 <option value="all">All statuses</option>
                 <option value="active">Active</option>
@@ -5435,7 +6148,9 @@ function SchedulingWorkflow({
               </select>
             </label>
           </div>
-          <div className={`platform-conflict-panel ${previewConflicts.length || hasAvailabilityGap ? "warning" : "clear"}`}>
+          <div
+            className={`platform-conflict-panel ${previewConflicts.length || hasAvailabilityGap ? "warning" : "clear"}`}
+          >
             <strong>Conflict preview</strong>
             <span>
               {hasValidRange
@@ -5451,22 +6166,25 @@ function SchedulingWorkflow({
                   </small>
                 ))
             ) : (
-              <small>No room, teacher, or class overlap detected for this slot.</small>
+              <small>
+                No room, teacher, or class overlap detected for this slot.
+              </small>
             )}
             {hasAvailabilityGap ? (
               <small>
-                {selectedTeacher?.name ?? "Teacher"} has no availability block for
-                {" "}
+                {selectedTeacher?.name ?? "Teacher"} has no availability block
+                for{" "}
                 {new Date(candidateStartsAt).toLocaleDateString("en-US", {
                   weekday: "long",
-                })}
-                {" "}
+                })}{" "}
                 {starts}-{ends}.
               </small>
             ) : null}
           </div>
           {lastResult ? (
-            <div className={`platform-scheduler-feedback ${lastResult.conflicts || lastResult.availabilityGaps ? "warning" : "success"}`}>
+            <div
+              className={`platform-scheduler-feedback ${lastResult.conflicts || lastResult.availabilityGaps ? "warning" : "success"}`}
+            >
               <strong>{lastResult.title}</strong>
               <span>
                 {lastResult.status} ·{" "}
@@ -5476,9 +6194,15 @@ function SchedulingWorkflow({
               </span>
             </div>
           ) : null}
-          {saveError ? <p className="platform-attendance-error">{saveError}</p> : null}
+          {saveError ? (
+            <p className="platform-attendance-error">{saveError}</p>
+          ) : null}
           <div className="platform-calendar-actions">
-            <button type="button" onClick={useConflictSlot} disabled={!scopedEvents.length}>
+            <button
+              type="button"
+              onClick={useConflictSlot}
+              disabled={!scopedEvents.length}
+            >
               Use conflict slot
             </button>
             <button
@@ -5498,7 +6222,7 @@ function SchedulingWorkflow({
                 ? "This will save as pending so operations can resolve the conflict."
                 : hasAvailabilityGap
                   ? "This will save as pending because teacher availability needs review."
-                : "This event is ready to save through the server action endpoint.")}
+                  : "This event is ready to save through the server action endpoint.")}
           </p>
         </section>
         <ScheduleBoard
@@ -5516,10 +6240,19 @@ function SchedulingWorkflow({
       </div>
       <aside className="platform-workflow-side">
         <div className="platform-calendar-status-grid">
-          <MiniMetric label="Scoped events" value={String(eventStatusCounts.total)} />
-          <MiniMetric label="Visible" value={String(eventStatusCounts.visible)} />
+          <MiniMetric
+            label="Scoped events"
+            value={String(eventStatusCounts.total)}
+          />
+          <MiniMetric
+            label="Visible"
+            value={String(eventStatusCounts.visible)}
+          />
           <MiniMetric label="Active" value={String(eventStatusCounts.active)} />
-          <MiniMetric label="Pending" value={String(eventStatusCounts.pending)} />
+          <MiniMetric
+            label="Pending"
+            value={String(eventStatusCounts.pending)}
+          />
         </div>
         <MiniMetric label="Rooms" value={String(roomOptions.length)} />
         <MiniMetric
@@ -5536,7 +6269,9 @@ function SchedulingWorkflow({
           <div className="platform-row-list compact">
             {recentCalendarAudits.length ? (
               recentCalendarAudits.map(audit => {
-                const actor = state.users.find(user => user.id === audit.actorId);
+                const actor = state.users.find(
+                  user => user.id === audit.actorId
+                );
                 return (
                   <article key={audit.id}>
                     <div>
@@ -5546,7 +6281,8 @@ function SchedulingWorkflow({
                           : "Event scheduled"}
                       </strong>
                       <small>
-                        {actor?.name ?? "System"} · {audit.summary} · {formatDateTime(audit.createdAt)}
+                        {actor?.name ?? "System"} · {audit.summary} ·{" "}
+                        {formatDateTime(audit.createdAt)}
                       </small>
                     </div>
                   </article>
@@ -5615,17 +6351,28 @@ function CertificateWorkflow({
   const canManageCertificates = role === "headofdepartment";
   const actor = getRoleActorUser(state, role);
   const hodCertificateIds =
-    role === "headofdepartment" ? getHodCertificateIds(state, actor.id) : undefined;
-  const [statusFilter, setStatusFilter] = useState<Certificate["status"] | "all">("all");
+    role === "headofdepartment"
+      ? getHodCertificateIds(state, actor.id)
+      : undefined;
+  const [statusFilter, setStatusFilter] = useState<
+    Certificate["status"] | "all"
+  >("all");
   const [searchTerm, setSearchTerm] = useState("");
-  const [rejectReasons, setRejectReasons] = useState<Record<string, string>>({});
+  const [rejectReasons, setRejectReasons] = useState<Record<string, string>>(
+    {}
+  );
   const certificateOptions = state.certificates.filter(certificate => {
-    if (hodCertificateIds && !hodCertificateIds.has(certificate.id)) return false;
-    if (statusFilter !== "all" && certificate.status !== statusFilter) return false;
-    const student = state.students.find(item => item.id === certificate.studentId);
+    if (hodCertificateIds && !hodCertificateIds.has(certificate.id))
+      return false;
+    if (statusFilter !== "all" && certificate.status !== statusFilter)
+      return false;
+    const student = state.students.find(
+      item => item.id === certificate.studentId
+    );
     const user = state.users.find(item => item.id === student?.userId);
     const course = state.courses.find(item => item.id === certificate.courseId);
-    const searchable = `${certificate.verificationCode} ${user?.name ?? ""} ${course?.title ?? ""}`.toLowerCase();
+    const searchable =
+      `${certificate.verificationCode} ${user?.name ?? ""} ${course?.title ?? ""}`.toLowerCase();
     return searchable.includes(searchTerm.trim().toLowerCase());
   });
   const [selectedId, setSelectedId] = useState(state.certificates[0]?.id ?? "");
@@ -5653,8 +6400,12 @@ function CertificateWorkflow({
         document.title.includes(selected.verificationCode))
   );
   const selectedIssued = selected?.status === "issued";
-  const selectedApprover = state.users.find(user => user.id === selected?.approvedBy);
-  const selectedIssuer = state.users.find(user => user.id === selected?.issuedBy);
+  const selectedApprover = state.users.find(
+    user => user.id === selected?.approvedBy
+  );
+  const selectedIssuer = state.users.find(
+    user => user.id === selected?.issuedBy
+  );
   const selectedAudits = state.auditLogs
     .filter(
       audit =>
@@ -5671,7 +6422,8 @@ function CertificateWorkflow({
     );
   const certificateSummary = getCertificateSummary(
     state,
-    hodCertificateIds ?? new Set(state.certificates.map(certificate => certificate.id))
+    hodCertificateIds ??
+      new Set(state.certificates.map(certificate => certificate.id))
   );
   const [verificationCode, setVerificationCode] = useState(
     selected?.status === "issued" ? selected.verificationCode : ""
@@ -5690,7 +6442,10 @@ function CertificateWorkflow({
   }, [certificateOptions, selected]);
 
   const runCertificateAction = async (
-    actionType: "certificate.approve" | "certificate.issue" | "certificate.reject",
+    actionType:
+      | "certificate.approve"
+      | "certificate.issue"
+      | "certificate.reject",
     certificate: Certificate
   ) => {
     const nextKey = `${actionType}:${certificate.id}`;
@@ -5699,7 +6454,7 @@ function CertificateWorkflow({
     setWorkflowError("");
     const rejectionReason =
       actionType === "certificate.reject"
-        ? rejectReasons[certificate.id]?.trim() ?? ""
+        ? (rejectReasons[certificate.id]?.trim() ?? "")
         : "";
     const result = await runPlatformWorkflowActionRequest(
       actionType === "certificate.reject"
@@ -5711,7 +6466,7 @@ function CertificateWorkflow({
         : {
             type: actionType,
             certificateId: certificate.id,
-          },
+          }
     );
     setSavingKey("");
     if (!result.ok || !result.data) {
@@ -5733,7 +6488,7 @@ function CertificateWorkflow({
           ? "Certificate was not issued because it is not approved yet."
           : actionType === "certificate.reject"
             ? "Certificate state did not change."
-          : "Certificate state did not change.";
+            : "Certificate state did not change.";
       setWorkflowMessage(message);
       toast.info(message);
       return;
@@ -5752,8 +6507,8 @@ function CertificateWorkflow({
           ? "Certificate issued"
           : "Certificate rejected",
       {
-      description: result.data.persistence,
-      },
+        description: result.data.persistence,
+      }
     );
   };
 
@@ -5768,8 +6523,15 @@ function CertificateWorkflow({
             <strong>{certificateOptions.length} in scope</strong>
           </div>
           <div className="platform-certificate-toolbar">
-            <div className="platform-status-tabs" aria-label="Certificate status filter">
-              {(["all", ...certificateStatusOptions] as Array<Certificate["status"] | "all">).map(status => (
+            <div
+              className="platform-status-tabs"
+              aria-label="Certificate status filter"
+            >
+              {(
+                ["all", ...certificateStatusOptions] as Array<
+                  Certificate["status"] | "all"
+                >
+              ).map(status => (
                 <button
                   key={status}
                   type="button"
@@ -5791,120 +6553,164 @@ function CertificateWorkflow({
           </div>
           {!canManageCertificates ? (
             <p className="platform-muted-copy">
-              Super admin reviews platform certificate health and audit evidence here.
-              Approval and issue actions remain HOD-scoped on the server.
+              Super admin reviews platform certificate health and audit evidence
+              here. Approval and issue actions remain HOD-scoped on the server.
             </p>
           ) : null}
           <div className="platform-row-list">
             {certificateOptions.length ? (
               certificateOptions.map(certificate =>
                 (() => {
-                const approved =
-                  certificate.status === "approved" ||
-                  certificate.status === "issued";
-                const issued = certificate.status === "issued";
-                const eligible =
-                  certificate.grade >= 80 && certificate.attendanceRate >= 80;
-                const canApprove =
-                  certificate.status === "pending_approval" && eligible;
-                const canReject =
-                  certificate.status === "pending_approval" ||
-                  certificate.status === "approved";
-                const rejectReason = rejectReasons[certificate.id]?.trim() ?? "";
-                const approveKey = `certificate.approve:${certificate.id}`;
-                const issueKey = `certificate.issue:${certificate.id}`;
-                const rejectKey = `certificate.reject:${certificate.id}`;
-                return (
-                  <article
-                    key={certificate.id}
-                    className={
-                      selected?.id === certificate.id ? "selected" : ""
-                    }
-                  >
-                    <div>
-                      <strong>{certificate.verificationCode}</strong>
-                      <small>
-                        Grade {certificate.grade}% · Attendance{" "}
-                        {certificate.attendanceRate}% · {certificateStatusLabels[certificate.status]}
-                      </small>
-                    </div>
-                    <div className="platform-row-actions">
-                      <span className={`platform-certificate-status ${certificate.status}`}>
-                        {certificateStatusLabels[certificate.status]}
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setSelectedId(certificate.id);
-                          setVerificationCode(
-                            certificate.status === "issued"
-                              ? certificate.verificationCode
-                              : ""
-                          );
-                        }}
-                      >
-                        Preview
-                      </button>
-                      {canManageCertificates ? (
-                        <>
-                          {canReject ? (
-                            <label className="platform-certificate-reject-reason">
-                              Reject reason
-                              <input
-                                value={rejectReasons[certificate.id] ?? ""}
-                                onChange={event =>
-                                  setRejectReasons(current => ({
-                                    ...current,
-                                    [certificate.id]: event.target.value,
-                                  }))
-                                }
-                                placeholder="Eligibility note"
-                              />
-                            </label>
-                          ) : null}
-                          <button
-                            type="button"
-                            disabled={!canApprove || Boolean(savingKey)}
-                            onClick={() => runCertificateAction("certificate.approve", certificate)}
-                          >
-                            {savingKey === approveKey
-                              ? "Approving"
-                              : approved
-                                ? "Approved"
-                                : eligible
-                                  ? "Approve"
-                                  : "Not eligible"}
-                          </button>
-                          <button
-                            type="button"
-                            disabled={!approved || issued || Boolean(savingKey)}
-                            onClick={() => runCertificateAction("certificate.issue", certificate)}
-                          >
-                            {savingKey === issueKey ? "Issuing" : issued ? "Issued" : approved ? "Issue" : "Approve first"}
-                          </button>
-                          <button
-                            type="button"
-                            disabled={!canReject || !rejectReason || Boolean(savingKey)}
-                            onClick={() => runCertificateAction("certificate.reject", certificate)}
-                          >
-                            {savingKey === rejectKey ? "Rejecting" : canReject ? "Reject" : "Closed"}
-                          </button>
-                        </>
-                      ) : null}
-                    </div>
-                  </article>
-                );
-              })()
+                  const approved =
+                    certificate.status === "approved" ||
+                    certificate.status === "issued";
+                  const issued = certificate.status === "issued";
+                  const eligible =
+                    certificate.grade >= 80 && certificate.attendanceRate >= 80;
+                  const canApprove =
+                    certificate.status === "pending_approval" && eligible;
+                  const canReject =
+                    certificate.status === "pending_approval" ||
+                    certificate.status === "approved";
+                  const rejectReason =
+                    rejectReasons[certificate.id]?.trim() ?? "";
+                  const approveKey = `certificate.approve:${certificate.id}`;
+                  const issueKey = `certificate.issue:${certificate.id}`;
+                  const rejectKey = `certificate.reject:${certificate.id}`;
+                  return (
+                    <article
+                      key={certificate.id}
+                      className={
+                        selected?.id === certificate.id ? "selected" : ""
+                      }
+                    >
+                      <div>
+                        <strong>{certificate.verificationCode}</strong>
+                        <small>
+                          Grade {certificate.grade}% · Attendance{" "}
+                          {certificate.attendanceRate}% ·{" "}
+                          {certificateStatusLabels[certificate.status]}
+                        </small>
+                      </div>
+                      <div className="platform-row-actions">
+                        <span
+                          className={`platform-certificate-status ${certificate.status}`}
+                        >
+                          {certificateStatusLabels[certificate.status]}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedId(certificate.id);
+                            setVerificationCode(
+                              certificate.status === "issued"
+                                ? certificate.verificationCode
+                                : ""
+                            );
+                          }}
+                        >
+                          Preview
+                        </button>
+                        {canManageCertificates ? (
+                          <>
+                            {canReject ? (
+                              <label className="platform-certificate-reject-reason">
+                                Reject reason
+                                <input
+                                  value={rejectReasons[certificate.id] ?? ""}
+                                  onChange={event =>
+                                    setRejectReasons(current => ({
+                                      ...current,
+                                      [certificate.id]: event.target.value,
+                                    }))
+                                  }
+                                  placeholder="Eligibility note"
+                                />
+                              </label>
+                            ) : null}
+                            <button
+                              type="button"
+                              disabled={!canApprove || Boolean(savingKey)}
+                              onClick={() =>
+                                runCertificateAction(
+                                  "certificate.approve",
+                                  certificate
+                                )
+                              }
+                            >
+                              {savingKey === approveKey
+                                ? "Approving"
+                                : approved
+                                  ? "Approved"
+                                  : eligible
+                                    ? "Approve"
+                                    : "Not eligible"}
+                            </button>
+                            <button
+                              type="button"
+                              disabled={
+                                !approved || issued || Boolean(savingKey)
+                              }
+                              onClick={() =>
+                                runCertificateAction(
+                                  "certificate.issue",
+                                  certificate
+                                )
+                              }
+                            >
+                              {savingKey === issueKey
+                                ? "Issuing"
+                                : issued
+                                  ? "Issued"
+                                  : approved
+                                    ? "Issue"
+                                    : "Approve first"}
+                            </button>
+                            <button
+                              type="button"
+                              disabled={
+                                !canReject ||
+                                !rejectReason ||
+                                Boolean(savingKey)
+                              }
+                              onClick={() =>
+                                runCertificateAction(
+                                  "certificate.reject",
+                                  certificate
+                                )
+                              }
+                            >
+                              {savingKey === rejectKey
+                                ? "Rejecting"
+                                : canReject
+                                  ? "Reject"
+                                  : "Closed"}
+                            </button>
+                          </>
+                        ) : null}
+                      </div>
+                    </article>
+                  );
+                })()
               )
             ) : (
               <div className="platform-empty-state">
                 <strong>No certificates in scope</strong>
-                <span>Eligible learner certificates will appear after grades and attendance are ready.</span>
+                <span>
+                  Eligible learner certificates will appear after grades and
+                  attendance are ready.
+                </span>
               </div>
             )}
           </div>
-          {workflowMessage ? <p className="platform-scheduler-feedback success">{workflowMessage}</p> : null}
-          {workflowError ? <p className="platform-attendance-error">{workflowError}</p> : null}
+          {workflowMessage ? (
+            <p className="platform-scheduler-feedback success">
+              {workflowMessage}
+            </p>
+          ) : null}
+          {workflowError ? (
+            <p className="platform-attendance-error">{workflowError}</p>
+          ) : null}
         </section>
         {selected ? (
           <CertificateEligibilityEvidence
@@ -5984,7 +6790,9 @@ function CertificateWorkflow({
                           ? "Rejected"
                           : "Approved"}
                     </strong>
-                    <small>{audit.summary} · {formatDateTime(audit.createdAt)}</small>
+                    <small>
+                      {audit.summary} · {formatDateTime(audit.createdAt)}
+                    </small>
                   </div>
                 </article>
               ))
@@ -6008,19 +6816,25 @@ function QuranWorkflow({ role, state, refresh }: WorkflowProps) {
     state.recitationSubmissions[0]?.id ?? ""
   );
   const selectedSubmission =
-    state.recitationSubmissions.find(item => item.id === selectedSubmissionId) ??
-    state.recitationSubmissions[0];
+    state.recitationSubmissions.find(
+      item => item.id === selectedSubmissionId
+    ) ?? state.recitationSubmissions[0];
   const selectedStudent = state.students.find(
     item => item.id === selectedSubmission?.studentId
   );
-  const selectedUser = state.users.find(item => item.id === selectedStudent?.userId);
+  const selectedUser = state.users.find(
+    item => item.id === selectedStudent?.userId
+  );
   const selectedPlan = state.quranPlans.find(
     item => item.studentId === selectedSubmission?.studentId
   );
-  const selectedProgress = state.quranProgress.find(
-    item => item.studentId === selectedSubmission?.studentId
-  ) ?? state.quranProgress[0];
-  const [memorized, setMemorized] = useState(selectedProgress?.memorizedPercent ?? 0);
+  const selectedProgress =
+    state.quranProgress.find(
+      item => item.studentId === selectedSubmission?.studentId
+    ) ?? state.quranProgress[0];
+  const [memorized, setMemorized] = useState(
+    selectedProgress?.memorizedPercent ?? 0
+  );
   const [tajweed, setTajweed] = useState(selectedProgress?.tajweedScore ?? 0);
   const [feedback, setFeedback] = useState(
     selectedSubmission?.feedback ?? selectedProgress?.notes ?? ""
@@ -6056,7 +6870,9 @@ function QuranWorkflow({ role, state, refresh }: WorkflowProps) {
       feedback: [
         feedback.trim(),
         mistakes.length ? `Focus tags: ${mistakes.join(", ")}` : "",
-      ].filter(Boolean).join(" "),
+      ]
+        .filter(Boolean)
+        .join(" "),
     });
     setSavingKey("");
     if (!result.ok || !result.data) {
@@ -6068,7 +6884,9 @@ function QuranWorkflow({ role, state, refresh }: WorkflowProps) {
     platformStore.setState(result.data.state);
     refresh();
     setWorkflowMessage(`Review saved · ${result.data.persistence}`);
-    toast.success("Recitation reviewed", { description: result.data.persistence });
+    toast.success("Recitation reviewed", {
+      description: result.data.persistence,
+    });
   };
 
   const updateProgress = async () => {
@@ -6094,7 +6912,9 @@ function QuranWorkflow({ role, state, refresh }: WorkflowProps) {
     platformStore.setState(result.data.state);
     refresh();
     setWorkflowMessage(`Progress updated · ${result.data.persistence}`);
-    toast.success("Quran progress updated", { description: result.data.persistence });
+    toast.success("Quran progress updated", {
+      description: result.data.persistence,
+    });
   };
 
   return (
@@ -6108,31 +6928,50 @@ function QuranWorkflow({ role, state, refresh }: WorkflowProps) {
             <strong>{selectedUser?.name ?? "No learner selected"}</strong>
           </div>
           <div className="platform-row-list compact">
-            {state.recitationSubmissions.length ? state.recitationSubmissions.map(item => {
-              const student = state.students.find(studentItem => studentItem.id === item.studentId);
-              const user = state.users.find(userItem => userItem.id === student?.userId);
-              return (
-                <article
-                  key={item.id}
-                  className={selectedSubmission?.id === item.id ? "selected" : ""}
-                >
-                  <div>
-                    <strong>{item.title}</strong>
-                    <small>{user?.name ?? "Learner"} · {formatDateTime(item.submittedAt)}</small>
-                  </div>
-                  <div className="platform-row-actions">
-                    <span className={`platform-status ${item.status}`}>{item.status}</span>
-                    <button type="button" onClick={() => setSelectedSubmissionId(item.id)}>
-                      Open
-                    </button>
-                  </div>
-                </article>
-              );
-            }) : (
+            {state.recitationSubmissions.length ? (
+              state.recitationSubmissions.map(item => {
+                const student = state.students.find(
+                  studentItem => studentItem.id === item.studentId
+                );
+                const user = state.users.find(
+                  userItem => userItem.id === student?.userId
+                );
+                return (
+                  <article
+                    key={item.id}
+                    className={
+                      selectedSubmission?.id === item.id ? "selected" : ""
+                    }
+                  >
+                    <div>
+                      <strong>{item.title}</strong>
+                      <small>
+                        {user?.name ?? "Learner"} ·{" "}
+                        {formatDateTime(item.submittedAt)}
+                      </small>
+                    </div>
+                    <div className="platform-row-actions">
+                      <span className={`platform-status ${item.status}`}>
+                        {item.status}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedSubmissionId(item.id)}
+                      >
+                        Open
+                      </button>
+                    </div>
+                  </article>
+                );
+              })
+            ) : (
               <article>
                 <div>
                   <strong>No recitations in scope</strong>
-                  <small>Submitted recitations from assigned Quran learners will appear here.</small>
+                  <small>
+                    Submitted recitations from assigned Quran learners will
+                    appear here.
+                  </small>
                 </div>
               </article>
             )}
@@ -6144,7 +6983,11 @@ function QuranWorkflow({ role, state, refresh }: WorkflowProps) {
             <span>
               <BookMarked size={16} /> Memorization and tajweed
             </span>
-            <strong>{selectedProgress?.surah ?? selectedPlan?.target ?? "No progress record"}</strong>
+            <strong>
+              {selectedProgress?.surah ??
+                selectedPlan?.target ??
+                "No progress record"}
+            </strong>
           </div>
           <QuranProgressSummary
             role={role}
@@ -6205,28 +7048,38 @@ function QuranWorkflow({ role, state, refresh }: WorkflowProps) {
               disabled={!selectedProgress || Boolean(savingKey)}
               onClick={updateProgress}
             >
-              {savingKey === `progress:${selectedProgress?.id}` ? "Updating" : "Update progress"}
+              {savingKey === `progress:${selectedProgress?.id}`
+                ? "Updating"
+                : "Update progress"}
             </button>
             <button
-              disabled={!selectedSubmission || selectedSubmission.status === "approved" || !feedback.trim() || Boolean(savingKey)}
+              disabled={
+                !selectedSubmission ||
+                selectedSubmission.status === "approved" ||
+                !feedback.trim() ||
+                Boolean(savingKey)
+              }
               onClick={submitReview}
             >
               {savingKey === `review:${selectedSubmission?.id}`
                 ? "Saving"
                 : selectedSubmission?.status === "approved"
-                ? "Reviewed"
-                : "Review recitation"}
+                  ? "Reviewed"
+                  : "Review recitation"}
             </button>
           </div>
-          {workflowMessage ? <p className="platform-scheduler-feedback success">{workflowMessage}</p> : null}
-          {workflowError ? <p className="platform-attendance-error">{workflowError}</p> : null}
+          {workflowMessage ? (
+            <p className="platform-scheduler-feedback success">
+              {workflowMessage}
+            </p>
+          ) : null}
+          {workflowError ? (
+            <p className="platform-attendance-error">{workflowError}</p>
+          ) : null}
         </section>
       </div>
       <aside className="platform-workflow-side">
-        <MiniMetric
-          label="Plan"
-          value={selectedPlan?.target ?? "No plan"}
-        />
+        <MiniMetric label="Plan" value={selectedPlan?.target ?? "No plan"} />
         <MiniMetric
           label="Current Juz"
           value={selectedPlan?.currentJuz ?? "-"}
@@ -6243,8 +7096,8 @@ function QuranWorkflow({ role, state, refresh }: WorkflowProps) {
             <strong>Provider pending</strong>
           </div>
           <p>
-            Review evidence is saved now. Audio upload and playback will use
-            the future server-side storage provider.
+            Review evidence is saved now. Audio upload and playback will use the
+            future protected storage provider.
           </p>
         </section>
       </aside>
@@ -6256,9 +7109,7 @@ function MessageWorkflow({ role, state, refresh }: WorkflowProps) {
   const actorUser = getRoleActorUser(state, role);
   const actorId = actorUser.id;
   const teacherRunIds = new Set(
-    state.courseRuns
-      .filter(run => run.teacherId === actorId)
-      .map(run => run.id)
+    state.courseRuns.filter(run => run.teacherId === actorId).map(run => run.id)
   );
   const teacherStudentIds = new Set(
     state.classGroups
@@ -6273,32 +7124,49 @@ function MessageWorkflow({ role, state, refresh }: WorkflowProps) {
     role === "teacher"
       ? state.users.filter(user =>
           state.students.some(
-            student => student.userId === user.id && teacherStudentIds.has(student.id)
+            student =>
+              student.userId === user.id && teacherStudentIds.has(student.id)
           )
         )
       : role === "registrar"
         ? state.users.filter(user =>
-            ["student", "branchadmin", "headofdepartment", "superadmin"].includes(user.activeRole)
+            [
+              "student",
+              "branchadmin",
+              "headofdepartment",
+              "superadmin",
+            ].includes(user.activeRole)
           )
         : role === "branchadmin"
           ? branchRecipients
           : role === "headofdepartment"
-            ? state.users.filter(user => ["teacher", "student", "superadmin"].includes(user.activeRole))
+            ? state.users.filter(user =>
+                ["teacher", "student", "superadmin"].includes(user.activeRole)
+              )
             : state.users.filter(user => user.id !== actorId);
-  const [toUserId, setToUserId] = useState(recipientOptions[0]?.id ?? "usr_student_demo");
+  const [toUserId, setToUserId] = useState(
+    recipientOptions[0]?.id ?? "usr_student_demo"
+  );
   const [subject, setSubject] = useState("Class update");
   const [body, setBody] = useState("Your next Nile Learn update is ready.");
-  const recipientIds = new Set([actorId, ...recipientOptions.map(user => user.id)]);
+  const recipientIds = new Set([
+    actorId,
+    ...recipientOptions.map(user => user.id),
+  ]);
   const scopedMessages =
     role === "superadmin"
       ? state.messages
       : state.messages.filter(
           message =>
-            recipientIds.has(message.fromUserId) || recipientIds.has(message.toUserId)
+            recipientIds.has(message.fromUserId) ||
+            recipientIds.has(message.toUserId)
         );
 
   useEffect(() => {
-    if (recipientOptions.length && !recipientOptions.some(user => user.id === toUserId)) {
+    if (
+      recipientOptions.length &&
+      !recipientOptions.some(user => user.id === toUserId)
+    ) {
       setToUserId(recipientOptions[0].id);
     }
   }, [recipientOptions, toUserId]);
@@ -6309,9 +7177,9 @@ function MessageWorkflow({ role, state, refresh }: WorkflowProps) {
         <section className="platform-workflow-card">
           <div className="platform-workflow-title">
             <span>
-              <MessageSquare size={16} /> Communication center
+              <MessageSquare size={16} /> Messages
             </span>
-            <strong>Compose and log</strong>
+            <strong>Compose message</strong>
           </div>
           <div className="platform-inline-form grid">
             <label>
@@ -6351,7 +7219,7 @@ function MessageWorkflow({ role, state, refresh }: WorkflowProps) {
                 body,
               });
               refresh();
-              toast.success("Message sent and logged");
+              toast.success("Message sent");
             }}
           >
             <Send size={15} />
@@ -6361,15 +7229,7 @@ function MessageWorkflow({ role, state, refresh }: WorkflowProps) {
         <MessageList state={state} messages={scopedMessages} />
       </div>
       <aside className="platform-workflow-side">
-        <MiniMetric label="Messages" value={String(scopedMessages.length)} />
-        <MiniMetric
-          label="Logs"
-          value={String(
-            state.communicationLogs.filter(
-              log => role === "superadmin" || log.actorId === actorId || (log.relatedUserId ? recipientIds.has(log.relatedUserId) : false)
-            ).length
-          )}
-        />
+        <MiniMetric label="Conversations" value={String(scopedMessages.length)} />
         <MiniMetric
           label="Templates"
           value={String(state.messageTemplates.length)}
@@ -6382,38 +7242,64 @@ function MessageWorkflow({ role, state, refresh }: WorkflowProps) {
 function FinanceWorkflow({ role, state, refresh }: WorkflowProps) {
   const actor = getRoleActorUser(state, role);
   const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState<"all" | Payment["status"]>("all");
+  const [statusFilter, setStatusFilter] = useState<"all" | Payment["status"]>(
+    "all"
+  );
   const [amountDrafts, setAmountDrafts] = useState<Record<string, string>>({});
-  const [methodDrafts, setMethodDrafts] = useState<Record<string, Payment["method"]>>({});
-  const [referenceDrafts, setReferenceDrafts] = useState<Record<string, string>>({});
+  const [methodDrafts, setMethodDrafts] = useState<
+    Record<string, Payment["method"]>
+  >({});
+  const [referenceDrafts, setReferenceDrafts] = useState<
+    Record<string, string>
+  >({});
   const [savingInvoiceId, setSavingInvoiceId] = useState("");
   const [actionError, setActionError] = useState("");
-  const paymentMethods: Payment["method"][] = ["manual", "cash", "bank_transfer", "card"];
+  const paymentMethods: Payment["method"][] = [
+    "manual",
+    "cash",
+    "bank_transfer",
+    "card",
+  ];
   const invoiceBranchId = (invoiceId: string) => {
     const invoice = state.invoices.find(item => item.id === invoiceId);
-    const enrollment = state.enrollments.find(item => item.studentId === invoice?.studentId);
-    const run = state.courseRuns.find(item => item.id === enrollment?.courseRunId);
+    const enrollment = state.enrollments.find(
+      item => item.studentId === invoice?.studentId
+    );
+    const run = state.courseRuns.find(
+      item => item.id === enrollment?.courseRunId
+    );
     return run?.branchId;
   };
   const invoiceRows = state.invoices
-    .filter(invoice => role !== "branchadmin" || invoiceBranchId(invoice.id) === actor.branchId)
+    .filter(
+      invoice =>
+        role !== "branchadmin" || invoiceBranchId(invoice.id) === actor.branchId
+    )
     .map(invoice => {
       const payments = state.payments.filter(
         payment => payment.invoiceId === invoice.id && payment.status === "paid"
       );
       const paid = payments.reduce((sum, payment) => sum + payment.amount, 0);
       const balance = Math.max(0, invoice.amount - paid);
-      const student = state.students.find(item => item.id === invoice.studentId);
+      const student = state.students.find(
+        item => item.id === invoice.studentId
+      );
       const user = state.users.find(item => item.id === student?.userId);
       return { invoice, payments, paid, balance, student, user };
     })
     .filter(row => {
-      const haystack = `${row.invoice.id} ${row.user?.name ?? ""} ${row.user?.email ?? ""}`.toLowerCase();
-      const matchesSearch = !search.trim() || haystack.includes(search.trim().toLowerCase());
-      const matchesStatus = statusFilter === "all" || row.invoice.status === statusFilter;
+      const haystack =
+        `${row.invoice.id} ${row.user?.name ?? ""} ${row.user?.email ?? ""}`.toLowerCase();
+      const matchesSearch =
+        !search.trim() || haystack.includes(search.trim().toLowerCase());
+      const matchesStatus =
+        statusFilter === "all" || row.invoice.status === statusFilter;
       return matchesSearch && matchesStatus;
     });
-  const totalDue = invoiceRows.reduce((sum, row) => sum + row.invoice.amount, 0);
+  const totalDue = invoiceRows.reduce(
+    (sum, row) => sum + row.invoice.amount,
+    0
+  );
   const totalPaid = invoiceRows.reduce((sum, row) => sum + row.paid, 0);
   const totalBalance = invoiceRows.reduce((sum, row) => sum + row.balance, 0);
   const recordPayment = async (invoiceId: string, balance: number) => {
@@ -6447,7 +7333,9 @@ function FinanceWorkflow({ role, state, refresh }: WorkflowProps) {
       return next;
     });
     refresh();
-    toast.success("Payment recorded", { description: result.data.result.summary });
+    toast.success("Payment recorded", {
+      description: result.data.result.summary,
+    });
   };
 
   return (
@@ -6464,7 +7352,11 @@ function FinanceWorkflow({ role, state, refresh }: WorkflowProps) {
             <article>
               <span>Invoice scope</span>
               <strong>{invoiceRows.length}</strong>
-              <small>{role === "branchadmin" ? actor.branchId ?? "Branch" : "Admissions desk"}</small>
+              <small>
+                {role === "branchadmin"
+                  ? (actor.branchId ?? "Branch")
+                  : "Admissions desk"}
+              </small>
             </article>
             <article>
               <span>Collected</span>
@@ -6490,7 +7382,9 @@ function FinanceWorkflow({ role, state, refresh }: WorkflowProps) {
               Status
               <select
                 value={statusFilter}
-                onChange={event => setStatusFilter(event.target.value as typeof statusFilter)}
+                onChange={event =>
+                  setStatusFilter(event.target.value as typeof statusFilter)
+                }
               >
                 <option value="all">All</option>
                 <option value="pending">Pending</option>
@@ -6523,17 +7417,27 @@ function FinanceWorkflow({ role, state, refresh }: WorkflowProps) {
                     <strong>{invoice.id}</strong>
                     <small>
                       Due {invoice.dueAt}
-                      {payments[0]?.reference ? ` · ${payments[0].reference}` : ""}
+                      {payments[0]?.reference
+                        ? ` · ${payments[0].reference}`
+                        : ""}
                     </small>
                   </div>
                   <div>
                     <strong>{user?.name ?? invoice.studentId}</strong>
                     <small>{invoice.currency} account</small>
                   </div>
-                  <span>{invoice.currency} {invoice.amount}</span>
+                  <span>
+                    {invoice.currency} {invoice.amount}
+                  </span>
                   <span className={paid ? "settled" : "attention"}>{paid}</span>
-                  <span className={balance ? "attention" : "settled"}>{balance}</span>
-                  <span className={`registrar-payment-status ${invoice.status}`}>{invoice.status}</span>
+                  <span className={balance ? "attention" : "settled"}>
+                    {balance}
+                  </span>
+                  <span
+                    className={`registrar-payment-status ${invoice.status}`}
+                  >
+                    {invoice.status}
+                  </span>
                   <div className="registrar-payment-record-fields">
                     <input
                       className="registrar-payment-amount-input"
@@ -6596,7 +7500,9 @@ function FinanceWorkflow({ role, state, refresh }: WorkflowProps) {
             ) : (
               <div className="registrar-payment-empty">
                 <strong>No invoices match this view</strong>
-                <small>Clear filters or switch branch scope to review more balances.</small>
+                <small>
+                  Clear filters or switch branch access to review more balances.
+                </small>
               </div>
             )}
           </div>
@@ -6738,24 +7644,29 @@ function ReportsWorkflow({
 }: WorkflowProps & { pageId: string }) {
   const allowedReportTypes = reportTypesByRole[role] ?? ["enrollments"];
   const initialReportType =
-    (pageId === "audit-logs" || pageId === "system-health") && allowedReportTypes.includes("audit")
+    (pageId === "audit-logs" || pageId === "system-health") &&
+    allowedReportTypes.includes("audit")
       ? "audit"
       : allowedReportTypes[0];
   const [reportType, setReportType] = useState<ReportType>(initialReportType);
   const [reportSearch, setReportSearch] = useState("");
   const [reportStatusFilter, setReportStatusFilter] = useState("all");
   const [reportSortKey, setReportSortKey] = useState<ReportSortKey>("primary");
-  const [reportSortDirection, setReportSortDirection] = useState<ReportSortDirection>("asc");
+  const [reportSortDirection, setReportSortDirection] =
+    useState<ReportSortDirection>("asc");
   const [isSavingPreset, setIsSavingPreset] = useState(false);
   const actorUser = getRoleActorUser(state, role);
   const actorId = actorUser.id;
   const savedPresets = (state.reportPresets ?? [])
-    .filter((preset) => preset.ownerUserId === actorId && preset.role === role && allowedReportTypes.includes(preset.reportType))
+    .filter(
+      preset =>
+        preset.ownerUserId === actorId &&
+        preset.role === role &&
+        allowedReportTypes.includes(preset.reportType)
+    )
     .slice(0, 5);
   const teacherRunIds = new Set(
-    state.courseRuns
-      .filter(run => run.teacherId === actorId)
-      .map(run => run.id)
+    state.courseRuns.filter(run => run.teacherId === actorId).map(run => run.id)
   );
   const teacherClassIds = new Set(
     state.classGroups
@@ -6777,7 +7688,8 @@ function ReportsWorkflow({
       .filter(enrollment => branchRunIds.has(enrollment.courseRunId))
       .map(enrollment => enrollment.studentId)
   );
-  const hodClassIds = role === "headofdepartment" ? getHodClassIds(state, actorId) : undefined;
+  const hodClassIds =
+    role === "headofdepartment" ? getHodClassIds(state, actorId) : undefined;
   const hodRunIds = new Set(
     role === "headofdepartment"
       ? state.classGroups
@@ -6804,7 +7716,9 @@ function ReportsWorkflow({
             : role === "headofdepartment"
               ? hodClassIds
               : undefined;
-  const effectiveReportType = allowedReportTypes.includes(reportType) ? reportType : allowedReportTypes[0];
+  const effectiveReportType = allowedReportTypes.includes(reportType)
+    ? reportType
+    : allowedReportTypes[0];
   const baseRows = platformStore.exportReportRows(effectiveReportType);
   const rows = baseRows.filter(row => {
     const isScopedAttendanceAudit =
@@ -6814,8 +7728,10 @@ function ReportsWorkflow({
       Boolean(reportAttendanceClassIds?.has(String(row.entityId)));
     if (role === "superadmin") return true;
     if (role === "teacher") {
-      if ("courseRunId" in row) return teacherRunIds.has(String(row.courseRunId));
-      if ("classGroupId" in row) return teacherClassIds.has(String(row.classGroupId));
+      if ("courseRunId" in row)
+        return teacherRunIds.has(String(row.courseRunId));
+      if ("classGroupId" in row)
+        return teacherClassIds.has(String(row.classGroupId));
       if (isScopedAttendanceAudit) return true;
       if ("actorId" in row) return row.actorId === actorId;
       return false;
@@ -6832,11 +7748,15 @@ function ReportsWorkflow({
     }
     if (role === "registrar") {
       if ("studentId" in row) return true;
-      if ("actorId" in row) return /lead|application|placement|payment|enrollment|message/.test(String(row.action ?? ""));
+      if ("actorId" in row)
+        return /lead|application|placement|payment|enrollment|message/.test(
+          String(row.action ?? "")
+        );
       return true;
     }
     if (role === "branchadmin") {
-      if ("studentId" in row) return branchStudentIds.has(String(row.studentId));
+      if ("studentId" in row)
+        return branchStudentIds.has(String(row.studentId));
       if (isScopedAttendanceAudit) return true;
       if ("actorId" in row) return row.actorId === actorId;
       return false;
@@ -6855,10 +7775,11 @@ function ReportsWorkflow({
       );
     const matchesStatus =
       reportStatusFilter === "all" ||
-      ("status" in row && String(row.status).toLowerCase() === reportStatusFilter);
+      ("status" in row &&
+        String(row.status).toLowerCase() === reportStatusFilter);
     return matchesQuery && matchesStatus;
   });
-  const formattedRows = filteredRows.map((row) => ({
+  const formattedRows = filteredRows.map(row => ({
     raw: row,
     display: formatReportRow(row, effectiveReportType, state),
   }));
@@ -6869,36 +7790,41 @@ function ReportsWorkflow({
     if (typeof leftValue === "number" || typeof rightValue === "number") {
       return (Number(leftValue) - Number(rightValue)) * direction;
     }
-    return String(leftValue).localeCompare(String(rightValue), undefined, {
-      numeric: true,
-      sensitivity: "base",
-    }) * direction;
+    return (
+      String(leftValue).localeCompare(String(rightValue), undefined, {
+        numeric: true,
+        sensitivity: "base",
+      }) * direction
+    );
   });
-  const sortedRawRows = sortedReportRows.map((row) => row.raw);
-  const displayRows = sortedReportRows.slice(0, 8).map((row) => row.display);
+  const sortedRawRows = sortedReportRows.map(row => row.raw);
+  const displayRows = sortedReportRows.slice(0, 8).map(row => row.display);
   const reportCertificateIds =
     role === "superadmin"
       ? new Set(state.certificates.map(certificate => certificate.id))
       : role === "headofdepartment"
         ? getHodCertificateIds(state, actorId)
-      : undefined;
+        : undefined;
   const exceptionRows = filteredRows.filter(
-    (row) =>
-      ("status" in row && ["absent", "late", "overdue", "pending"].includes(String(row.status).toLowerCase())) ||
-      ("balance" in row && Number(row.balance) > 0),
+    row =>
+      ("status" in row &&
+        ["absent", "late", "overdue", "pending"].includes(
+          String(row.status).toLowerCase()
+        )) ||
+      ("balance" in row && Number(row.balance) > 0)
   ).length;
   const auditRows = filteredRows.filter(row => "actorId" in row).length;
   const reportScopeLabel =
     role === "superadmin"
       ? "Global platform"
       : role === "branchadmin"
-        ? actorUser.branchId ?? "Branch"
+        ? (actorUser.branchId ?? "Branch")
         : role === "headofdepartment"
-          ? actorUser.departmentId ?? "Department"
+          ? (actorUser.departmentId ?? "Department")
           : roleMeta[role].label;
   const reportPageTitle =
     pageId === "audit-logs"
-      ? "Audit logs"
+      ? "Activity log"
       : role === "branchadmin"
         ? "Branch reports"
         : role === "registrar"
@@ -6956,7 +7882,7 @@ function ReportsWorkflow({
   };
   const sortReport = (key: ReportSortKey) => {
     if (reportSortKey === key) {
-      setReportSortDirection((current) => current === "asc" ? "desc" : "asc");
+      setReportSortDirection(current => (current === "asc" ? "desc" : "asc"));
       return;
     }
     setReportSortKey(key);
@@ -6971,7 +7897,11 @@ function ReportsWorkflow({
         title={reportPageTitle}
         description="Role-scoped attendance, certificate, enrollment, finance, and audit evidence for operational review."
         actions={
-          <button type="button" className="platform-secondary-button" onClick={exportCsv}>
+          <button
+            type="button"
+            className="platform-secondary-button"
+            onClick={exportCsv}
+          >
             <Download size={15} />
             Export CSV
           </button>
@@ -6979,172 +7909,232 @@ function ReportsWorkflow({
       />
       <div className="platform-workflow-layout">
         <div className="platform-workflow-main">
-        <AttendanceGovernancePanel
-          state={state}
-          classIds={reportAttendanceClassIds}
-          title={role === "superadmin" ? "Platform attendance" : "Attendance governance"}
-        />
-        {role === "superadmin" || role === "headofdepartment" ? (
-          <CertificateGovernancePanel
+          <AttendanceGovernancePanel
             state={state}
-            certificateIds={reportCertificateIds}
+            classIds={reportAttendanceClassIds}
             title={
               role === "superadmin"
-                ? "Platform certificates"
-                : "Certificate governance"
+                ? "Platform attendance"
+                : "Attendance governance"
             }
           />
-        ) : null}
-        <section className="platform-workflow-card">
-          <div className="platform-workflow-title">
-            <span>
-              <Activity size={16} /> Reports
-            </span>
-            <strong>{reportLabels[effectiveReportType]} report</strong>
-          </div>
-          <div className="platform-report-controls">
-            <label>
-              Report type
-              <select
-                value={effectiveReportType}
-                onChange={event =>
-                  setReportType(event.target.value as ReportType)
-                }
+          {role === "superadmin" || role === "headofdepartment" ? (
+            <CertificateGovernancePanel
+              state={state}
+              certificateIds={reportCertificateIds}
+              title={
+                role === "superadmin"
+                  ? "Platform certificates"
+                  : "Certificate governance"
+              }
+            />
+          ) : null}
+          <section className="platform-workflow-card">
+            <div className="platform-workflow-title">
+              <span>
+                <Activity size={16} /> Reports
+              </span>
+              <strong>{reportLabels[effectiveReportType]} report</strong>
+            </div>
+            <div className="platform-report-controls">
+              <label>
+                Report type
+                <select
+                  value={effectiveReportType}
+                  onChange={event =>
+                    setReportType(event.target.value as ReportType)
+                  }
+                >
+                  {allowedReportTypes.map(value => (
+                    <option key={value} value={value}>
+                      {reportLabels[value]}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Search rows
+                <input
+                  value={reportSearch}
+                  onChange={event => setReportSearch(event.target.value)}
+                  placeholder="Search IDs, status, actor, student"
+                />
+              </label>
+              <label>
+                Status
+                <select
+                  value={reportStatusFilter}
+                  onChange={event => setReportStatusFilter(event.target.value)}
+                >
+                  <option value="all">All statuses</option>
+                  <option value="active">Active</option>
+                  <option value="pending">Pending</option>
+                  <option value="paid">Paid</option>
+                  <option value="overdue">Overdue</option>
+                  <option value="present">Present</option>
+                  <option value="late">Late</option>
+                  <option value="absent">Absent</option>
+                  <option value="excused">Excused</option>
+                </select>
+              </label>
+              <button
+                type="button"
+                onClick={savePreset}
+                disabled={isSavingPreset}
               >
-                {allowedReportTypes.map((value) => (
-                  <option key={value} value={value}>
-                    {reportLabels[value]}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label>
-              Search rows
-              <input
-                value={reportSearch}
-                onChange={event => setReportSearch(event.target.value)}
-                placeholder="Search IDs, status, actor, student"
-              />
-            </label>
-            <label>
-              Status
-              <select
-                value={reportStatusFilter}
-                onChange={event => setReportStatusFilter(event.target.value)}
-              >
-                <option value="all">All statuses</option>
-                <option value="active">Active</option>
-                <option value="pending">Pending</option>
-                <option value="paid">Paid</option>
-                <option value="overdue">Overdue</option>
-                <option value="present">Present</option>
-                <option value="late">Late</option>
-                <option value="absent">Absent</option>
-                <option value="excused">Excused</option>
-              </select>
-            </label>
-            <button type="button" onClick={savePreset} disabled={isSavingPreset}>
-              {isSavingPreset ? "Saving..." : "Save view"}
-            </button>
-            <button type="button" onClick={exportCsv}>
-              <Download size={15} />
-              Export CSV
-            </button>
-          </div>
-          <div className="platform-report-summary-band">
-            <article>
-              <small>Filtered rows</small>
-              <strong>{filteredRows.length}</strong>
-            </article>
-            <article>
-              <small>Exceptions</small>
-              <strong>{exceptionRows}</strong>
-            </article>
-            <article>
-              <small>Audit rows</small>
-              <strong>{auditRows}</strong>
-            </article>
-            <article>
-              <small>Export scope</small>
-              <strong>{reportScopeLabel}</strong>
-            </article>
-          </div>
-        </section>
-        <section className="platform-workflow-card">
-          <div className="platform-workflow-title">
-            <span>
-              <FileText size={16} /> Result rows
-            </span>
-            <strong>{filteredRows.length} of {rows.length} {reportLabels[effectiveReportType].toLowerCase()} rows</strong>
-          </div>
-          <div className="platform-report-table typed">
-            <div className="platform-report-row header" role="row">
-              <button type="button" onClick={() => sortReport("primary")} aria-pressed={reportSortKey === "primary"}>
-                Record {reportSortKey === "primary" ? (reportSortDirection === "asc" ? "↑" : "↓") : ""}
+                {isSavingPreset ? "Saving..." : "Save view"}
               </button>
-              <button type="button" onClick={() => sortReport("status")} aria-pressed={reportSortKey === "status"}>
-                Status {reportSortKey === "status" ? (reportSortDirection === "asc" ? "↑" : "↓") : ""}
-              </button>
-              <button type="button" onClick={() => sortReport("metric")} aria-pressed={reportSortKey === "metric"}>
-                Metric {reportSortKey === "metric" ? (reportSortDirection === "asc" ? "↑" : "↓") : ""}
+              <button type="button" onClick={exportCsv}>
+                <Download size={15} />
+                Export CSV
               </button>
             </div>
-            {filteredRows.length ? (
-              displayRows.map((row, index) => (
-                <article key={`${effectiveReportType}_${index}`} className="platform-report-row">
-                  <div className="platform-report-row-main">
-                    <small>{row.eyebrow}</small>
-                    <strong>{row.title}</strong>
-                    <span>{row.subtitle}</span>
-                  </div>
-                  <span className={`platform-report-status status-${row.status.replace(/\s+/g, "-")}`}>
-                    {row.status}
-                  </span>
-                  <div className="platform-report-row-metric">
-                    <strong>{row.metric}</strong>
-                    <span>{row.meta}</span>
-                  </div>
-                </article>
-              ))
-            ) : (
-              <article className="platform-report-row empty">
-                <span>
-                  <strong>No rows</strong>
-                  No report rows match this scope and filter.
-                </span>
+            <div className="platform-report-summary-band">
+              <article>
+                <small>Filtered rows</small>
+                <strong>{filteredRows.length}</strong>
               </article>
-            )}
-          </div>
-        </section>
-        <WorkflowAudit state={state} />
+              <article>
+                <small>Exceptions</small>
+                <strong>{exceptionRows}</strong>
+              </article>
+              <article>
+                <small>Audit rows</small>
+                <strong>{auditRows}</strong>
+              </article>
+              <article>
+                <small>Export scope</small>
+                <strong>{reportScopeLabel}</strong>
+              </article>
+            </div>
+          </section>
+          <section className="platform-workflow-card">
+            <div className="platform-workflow-title">
+              <span>
+                <FileText size={16} /> Result rows
+              </span>
+              <strong>
+                {filteredRows.length} of {rows.length}{" "}
+                {reportLabels[effectiveReportType].toLowerCase()} rows
+              </strong>
+            </div>
+            <div className="platform-report-table typed">
+              <div className="platform-report-row header" role="row">
+                <button
+                  type="button"
+                  onClick={() => sortReport("primary")}
+                  aria-pressed={reportSortKey === "primary"}
+                >
+                  Record{" "}
+                  {reportSortKey === "primary"
+                    ? reportSortDirection === "asc"
+                      ? "↑"
+                      : "↓"
+                    : ""}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => sortReport("status")}
+                  aria-pressed={reportSortKey === "status"}
+                >
+                  Status{" "}
+                  {reportSortKey === "status"
+                    ? reportSortDirection === "asc"
+                      ? "↑"
+                      : "↓"
+                    : ""}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => sortReport("metric")}
+                  aria-pressed={reportSortKey === "metric"}
+                >
+                  Metric{" "}
+                  {reportSortKey === "metric"
+                    ? reportSortDirection === "asc"
+                      ? "↑"
+                      : "↓"
+                    : ""}
+                </button>
+              </div>
+              {filteredRows.length ? (
+                displayRows.map((row, index) => (
+                  <article
+                    key={`${effectiveReportType}_${index}`}
+                    className="platform-report-row"
+                  >
+                    <div className="platform-report-row-main">
+                      <small>{row.eyebrow}</small>
+                      <strong>{row.title}</strong>
+                      <span>{row.subtitle}</span>
+                    </div>
+                    <span
+                      className={`platform-report-status status-${row.status.replace(/\s+/g, "-")}`}
+                    >
+                      {row.status}
+                    </span>
+                    <div className="platform-report-row-metric">
+                      <strong>{row.metric}</strong>
+                      <span>{row.meta}</span>
+                    </div>
+                  </article>
+                ))
+              ) : (
+                <article className="platform-report-row empty">
+                  <span>
+                    <strong>No rows</strong>
+                    No report rows match this scope and filter.
+                  </span>
+                </article>
+              )}
+            </div>
+          </section>
+          <WorkflowAudit state={state} />
         </div>
         <aside className="platform-workflow-side">
-        <MiniMetric label="Rows" value={`${filteredRows.length}/${rows.length}`} />
-        <MiniMetric label="Courses" value={String(role === "teacher" ? teacherRunIds.size : state.courses.length)} />
-        <MiniMetric label="Audit rows" value={String(filteredRows.filter(row => "actorId" in row).length)} />
-        <MiniMetric
-          label="Integrations"
-          value={String(state.integrations.length)}
-        />
-        <section className="platform-workflow-card">
-          <div className="platform-workflow-title">
-            <span>
-              <ShieldCheck size={16} /> Saved views
-            </span>
-            <strong>{savedPresets.length} presets</strong>
-          </div>
-          <div className="platform-row-list compact">
-            {savedPresets.map(preset => (
-              <article key={preset.id}>
-                <div>
-                  <strong>{preset.label}</strong>
-                  <small>{reportLabels[preset.reportType]} · {preset.status === "all" ? "all statuses" : preset.status} · {preset.rowCount} row(s)</small>
-                </div>
-                <button type="button" onClick={() => applyPreset(preset)}>Apply</button>
-              </article>
-            ))}
-          </div>
-        </section>
+          <MiniMetric
+            label="Rows"
+            value={`${filteredRows.length}/${rows.length}`}
+          />
+          <MiniMetric
+            label="Courses"
+            value={String(
+              role === "teacher" ? teacherRunIds.size : state.courses.length
+            )}
+          />
+          <MiniMetric
+            label="Activity rows"
+            value={String(filteredRows.filter(row => "actorId" in row).length)}
+          />
+          <MiniMetric
+            label="Connections"
+            value={String(state.integrations.length)}
+          />
+          <section className="platform-workflow-card">
+            <div className="platform-workflow-title">
+              <span>
+                <ShieldCheck size={16} /> Saved views
+              </span>
+              <strong>{savedPresets.length} presets</strong>
+            </div>
+            <div className="platform-row-list compact">
+              {savedPresets.map(preset => (
+                <article key={preset.id}>
+                  <div>
+                    <strong>{preset.label}</strong>
+                    <small>
+                      {reportLabels[preset.reportType]} ·{" "}
+                      {preset.status === "all" ? "all statuses" : preset.status}{" "}
+                      · {preset.rowCount} row(s)
+                    </small>
+                  </div>
+                  <button type="button" onClick={() => applyPreset(preset)}>
+                    Apply
+                  </button>
+                </article>
+              ))}
+            </div>
+          </section>
         </aside>
       </div>
     </div>
@@ -7170,11 +8160,15 @@ function AttendanceGovernancePanel({
     .slice(0, 4);
   const recentSessions = summary.sessions
     .slice()
-    .sort((a, b) => new Date(b.startsAt).getTime() - new Date(a.startsAt).getTime())
+    .sort(
+      (a, b) => new Date(b.startsAt).getTime() - new Date(a.startsAt).getTime()
+    )
     .slice(0, 6);
   const missingSessions = summary.sessions
     .filter(session => !isAttendanceSessionSaved(state, session))
-    .sort((a, b) => new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime())
+    .sort(
+      (a, b) => new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime()
+    )
     .slice(0, 4);
 
   return (
@@ -7186,9 +8180,18 @@ function AttendanceGovernancePanel({
         <strong>{title}</strong>
       </div>
       <div className="platform-attendance-health-grid">
-        <MiniMetric label="Saved sessions" value={`${summary.savedSessions}/${summary.sessions.length}`} />
-        <MiniMetric label="Pending sessions" value={String(summary.pendingSessions)} />
-        <MiniMetric label="Roster records" value={`${summary.records.length}/${summary.expectedRecords}`} />
+        <MiniMetric
+          label="Saved sessions"
+          value={`${summary.savedSessions}/${summary.sessions.length}`}
+        />
+        <MiniMetric
+          label="Pending sessions"
+          value={String(summary.pendingSessions)}
+        />
+        <MiniMetric
+          label="Roster records"
+          value={`${summary.records.length}/${summary.expectedRecords}`}
+        />
         <MiniMetric label="Completion" value={`${summary.completionRate}%`} />
       </div>
       <div className="platform-attendance-status-grid">
@@ -7205,17 +8208,28 @@ function AttendanceGovernancePanel({
         <div className="platform-row-list compact platform-attendance-evidence-list">
           <div className="platform-attendance-list-heading">
             <strong>Session evidence</strong>
-            <span>{missingSessions.length ? `${missingSessions.length} missing` : "all reviewed"}</span>
+            <span>
+              {missingSessions.length
+                ? `${missingSessions.length} missing`
+                : "all reviewed"}
+            </span>
           </div>
           {recentSessions.length ? (
             recentSessions.map(session => {
-              const group = state.classGroups.find(item => item.id === session.classGroupId);
-              const run = state.courseRuns.find(item => item.id === group?.courseRunId);
-              const teacher = state.users.find(item => item.id === run?.teacherId);
+              const group = state.classGroups.find(
+                item => item.id === session.classGroupId
+              );
+              const run = state.courseRuns.find(
+                item => item.id === group?.courseRunId
+              );
+              const teacher = state.users.find(
+                item => item.id === run?.teacherId
+              );
               const records = summary.records.filter(
                 record =>
                   record.classGroupId === session.classGroupId &&
-                  (record.sessionId === session.id || record.sessionId === session.eventId)
+                  (record.sessionId === session.id ||
+                    record.sessionId === session.eventId)
               );
               const sessionSaved = isAttendanceSessionSaved(state, session);
               return (
@@ -7223,10 +8237,13 @@ function AttendanceGovernancePanel({
                   <div>
                     <strong>{session.title}</strong>
                     <small>
-                      {group?.name ?? "Class"} · {teacher?.name ?? "Teacher"} · {formatDateTime(session.startsAt)}
+                      {group?.name ?? "Class"} · {teacher?.name ?? "Teacher"} ·{" "}
+                      {formatDateTime(session.startsAt)}
                     </small>
                   </div>
-                  <span className={`platform-attendance-chip ${sessionSaved ? "saved" : "pending"}`}>
+                  <span
+                    className={`platform-attendance-chip ${sessionSaved ? "saved" : "pending"}`}
+                  >
                     {sessionSaved ? `${records.length} saved` : "Missing"}
                   </span>
                 </article>
@@ -7236,7 +8253,9 @@ function AttendanceGovernancePanel({
             <article>
               <div>
                 <strong>No sessions in scope</strong>
-                <small>Create sessions before attendance can be governed.</small>
+                <small>
+                  Create sessions before attendance can be governed.
+                </small>
               </div>
             </article>
           )}
@@ -7253,9 +8272,13 @@ function AttendanceGovernancePanel({
                 <article key={audit.id}>
                   <div>
                     <strong>{actor?.name ?? "System"} saved attendance</strong>
-                    <small>{audit.summary} · {formatDateTime(audit.createdAt)}</small>
+                    <small>
+                      {audit.summary} · {formatDateTime(audit.createdAt)}
+                    </small>
                   </div>
-                  <span className="platform-attendance-chip saved">Audited</span>
+                  <span className="platform-attendance-chip saved">
+                    Audited
+                  </span>
                 </article>
               );
             })
@@ -7307,10 +8330,22 @@ function CertificateGovernancePanel({
         <strong>{title}</strong>
       </div>
       <div className="platform-attendance-health-grid">
-        <MiniMetric label="Open" value={String(summary.statusCounts.pending_approval)} />
-        <MiniMetric label="Approved" value={String(summary.statusCounts.approved)} />
-        <MiniMetric label="Issued" value={String(summary.statusCounts.issued)} />
-        <MiniMetric label="Rejected" value={String(summary.statusCounts.rejected)} />
+        <MiniMetric
+          label="Open"
+          value={String(summary.statusCounts.pending_approval)}
+        />
+        <MiniMetric
+          label="Approved"
+          value={String(summary.statusCounts.approved)}
+        />
+        <MiniMetric
+          label="Issued"
+          value={String(summary.statusCounts.issued)}
+        />
+        <MiniMetric
+          label="Rejected"
+          value={String(summary.statusCounts.rejected)}
+        />
       </div>
       <div className="platform-attendance-status-grid">
         {certificateStatusOptions.slice(0, 4).map(status => (
@@ -7326,20 +8361,27 @@ function CertificateGovernancePanel({
         <div className="platform-row-list compact">
           {recentCertificates.length ? (
             recentCertificates.map(certificate => {
-              const student = state.students.find(item => item.id === certificate.studentId);
-              const user = state.users.find(item => item.id === student?.userId);
-              const course = state.courses.find(item => item.id === certificate.courseId);
+              const student = state.students.find(
+                item => item.id === certificate.studentId
+              );
+              const user = state.users.find(
+                item => item.id === student?.userId
+              );
+              const course = state.courses.find(
+                item => item.id === certificate.courseId
+              );
               return (
                 <article key={certificate.id}>
                   <div>
                     <strong>{certificate.verificationCode}</strong>
                     <small>
-                      {user?.name ?? "Student"} · {course?.title ?? "Course"} ·
-                      {" "}
+                      {user?.name ?? "Student"} · {course?.title ?? "Course"} ·{" "}
                       grade {certificate.grade}%
                     </small>
                   </div>
-                  <span className={`platform-certificate-status ${certificate.status}`}>
+                  <span
+                    className={`platform-certificate-status ${certificate.status}`}
+                  >
                     {certificateStatusLabels[certificate.status]}
                   </span>
                 </article>
@@ -7349,7 +8391,10 @@ function CertificateGovernancePanel({
             <article>
               <div>
                 <strong>No certificates in scope</strong>
-                <small>Eligible certificates will appear after grades and attendance are ready.</small>
+                <small>
+                  Eligible certificates will appear after grades and attendance
+                  are ready.
+                </small>
               </div>
             </article>
           )}
@@ -7401,7 +8446,7 @@ function IntegrationsWorkflow({ role, state }: WorkflowProps) {
 
     if (active.id !== "supabase") {
       toast.success("Local integration check recorded", {
-        description: `${active.label} remains in ${active.status.replace("_", " ")}.`,
+        description: `${active.label} remains in ${formatConnectionStatus(active.status)}.`,
       });
       return;
     }
@@ -7445,11 +8490,11 @@ function IntegrationsWorkflow({ role, state }: WorkflowProps) {
                 <span
                   className={`platform-integration-status ${integration.status === "connected" ? "green" : integration.status === "mock_mode" ? "amber" : integration.status === "error" ? "red" : "slate"}`}
                 >
-                  {integration.status.replace("_", " ")}
+                  {formatConnectionStatus(integration.status)}
                 </span>
                 <small>
                   {integration.serverOnly
-                    ? "Server-only secrets"
+                    ? "Protected secrets"
                     : "Client visible"}
                 </small>
               </button>
@@ -7482,7 +8527,7 @@ function IntegrationsWorkflow({ role, state }: WorkflowProps) {
       <aside className="platform-workflow-side">
         <MiniMetric label="Providers" value={String(integrations.length)} />
         <MiniMetric
-          label="Mock mode"
+          label="Test mode"
           value={String(
             integrations.filter(item => item.status === "mock_mode").length
           )}
@@ -7522,8 +8567,8 @@ function IntegrationsWorkflow({ role, state }: WorkflowProps) {
             )}
           </div>
           <p style={{ borderTop: "1px solid var(--border)", paddingTop: 10 }}>
-            Real sync jobs stay disabled until server-side credentials and
-            queues are connected.
+            Real sync jobs stay disabled until protected credentials and queues
+            are connected.
           </p>
         </section>
       </aside>
@@ -7643,7 +8688,10 @@ function EventList({
         {events.length ? (
           events
             .slice()
-            .sort((a, b) => new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime())
+            .sort(
+              (a, b) =>
+                new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime()
+            )
             .slice(0, limit)
             .map(event => (
               <article key={event.id}>
@@ -7705,7 +8753,7 @@ function WorkflowAudit({ state }: { state: WorkflowProps["state"] }) {
     <section className="platform-workflow-card">
       <div className="platform-workflow-title">
         <span>
-          <ShieldCheck size={16} /> Audit trail
+          <ShieldCheck size={16} /> Activity
         </span>
         <strong>Latest activity</strong>
       </div>

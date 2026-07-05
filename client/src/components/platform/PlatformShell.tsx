@@ -60,7 +60,15 @@ import {
   type Role,
 } from "@/lib/platformData";
 import { getSidebarForRole } from "@/lib/rbac";
-import { getDirection, localeOptions, t, type Locale } from "@/lib/i18n";
+import {
+  getDirection,
+  isSupportedLocale,
+  localeOptions,
+  t,
+  translateUiLabel,
+  type Locale,
+} from "@/lib/i18n";
+import { UiLanguageProvider } from "@/lib/i18n-context";
 import { platformStore } from "@/lib/domain/store";
 
 const iconMap = {
@@ -155,7 +163,7 @@ const sidebarWorkflowGroups: Record<Role, SidebarSection[]> = {
     },
     { label: "Students", items: ["Question Bank"] },
     { label: "Help", items: ["Messages", "Reports", "Profile"] },
-    { label: "Advanced", items: ["Moodle Source"], collapsible: true },
+    { label: "Advanced", items: ["Moodle"], collapsible: true },
   ],
   registrar: [
     { label: "Today", items: ["Dashboard"] },
@@ -180,7 +188,7 @@ const sidebarWorkflowGroups: Record<Role, SidebarSection[]> = {
       label: "Review",
       items: ["Assessments", "Certificates", "Reports", "Messages"],
     },
-    { label: "Advanced", items: ["Moodle Source"], collapsible: true },
+    { label: "Advanced", items: ["Moodle"], collapsible: true },
   ],
   branchadmin: [
     { label: "Today", items: ["Dashboard", "Classes", "Rooms", "Schedule"] },
@@ -190,7 +198,7 @@ const sidebarWorkflowGroups: Record<Role, SidebarSection[]> = {
   ],
   superadmin: [
     { items: ["Dashboard"] },
-    { label: "People", items: ["Users", "Roles"] },
+    { label: "People", items: ["Users", "Roles & access"] },
     {
       label: "Learning",
       items: ["Courses", "Certificates"],
@@ -202,7 +210,7 @@ const sidebarWorkflowGroups: Record<Role, SidebarSection[]> = {
     { label: "Business", items: ["Reports"] },
     {
       label: "System",
-      items: ["Integrations", "Audit Logs", "Settings"],
+      items: ["Connections", "Activity log", "Settings"],
       collapsible: true,
     },
   ],
@@ -212,13 +220,17 @@ const navLabelBySource: Record<string, string> = {
   "Audit Logs": "Activity log",
   Blueprint: "School setup",
   Integrations: "Connections",
+  "Audit Trail": "Activity",
+  "Audit trail": "Activity",
   "Moodle Source": "Moodle",
+  "Permission Matrix": "Access rules",
   Permissions: "Access rules",
   "Platform State": "System data",
   "Question Bank": "Questions",
   "Quran Progress": "Quran",
   "Quran Review": "Quran",
   Roles: "Roles & access",
+  "Server-only": "Protected",
   "System Health": "Health",
   "Placement Tests": "Placement",
 };
@@ -344,9 +356,7 @@ export default function PlatformShell({ role, children, title }: ShellProps) {
   const [locale, setLocale] = useState<Locale>(() => {
     if (typeof window === "undefined") return "en";
     const saved = window.localStorage.getItem("nilelearn.locale");
-    return localeOptions.some(option => option.value === saved)
-      ? (saved as Locale)
-      : "en";
+    return isSupportedLocale(saved) ? saved : "en";
   });
   const scopeConfig = useMemo(
     () => getScopeConfig(role, meta.branchLabel),
@@ -498,14 +508,22 @@ export default function PlatformShell({ role, children, title }: ShellProps) {
         </Link>
         <div className="platform-brand-copy">
           <span>Nile Learn</span>
-          <small>{meta.label}</small>
+          <small>{translateUiLabel(locale, meta.label)}</small>
         </div>
         <button
           type="button"
           className="platform-sidebar-toggle"
-          aria-label={sidebarExpanded ? "Collapse sidebar" : "Expand sidebar"}
+          aria-label={
+            sidebarExpanded
+              ? t(locale, "collapseSidebar")
+              : t(locale, "expandSidebar")
+          }
           aria-pressed={sidebarExpanded}
-          title={sidebarExpanded ? "Collapse sidebar" : "Expand sidebar"}
+          title={
+            sidebarExpanded
+              ? t(locale, "collapseSidebar")
+              : t(locale, "expandSidebar")
+          }
           onClick={() => setSidebarExpanded(expanded => !expanded)}
         >
           {sidebarExpanded ? (
@@ -516,7 +534,7 @@ export default function PlatformShell({ role, children, title }: ShellProps) {
         </button>
         <button
           className="platform-icon-button platform-mobile-close"
-          aria-label="Close menu"
+          aria-label={t(locale, "closeMenu")}
           onClick={() => setMobileOpen(false)}
         >
           <X size={16} />
@@ -526,11 +544,11 @@ export default function PlatformShell({ role, children, title }: ShellProps) {
       {showScopeSelector ? (
         <div className="platform-selector-row">
           <div>
-            <label>{scopeConfig.label}</label>
-            <small>{scopeConfig.description}</small>
+            <label>{translateUiLabel(locale, scopeConfig.label)}</label>
+            <small>{translateUiLabel(locale, scopeConfig.description)}</small>
           </div>
           <select
-            aria-label={scopeConfig.label}
+            aria-label={translateUiLabel(locale, scopeConfig.label)}
             value={branch}
             onChange={event => {
               const nextBranch = event.target.value;
@@ -539,7 +557,9 @@ export default function PlatformShell({ role, children, title }: ShellProps) {
                 `nilelearn.branch.${role}`,
                 nextBranch
               );
-              toast.success(`${scopeConfig.label} set to ${nextBranch}`);
+              toast.success(
+                `${translateUiLabel(locale, scopeConfig.label)}: ${nextBranch}`
+              );
             }}
           >
             {branchOptions.map(option => (
@@ -549,7 +569,10 @@ export default function PlatformShell({ role, children, title }: ShellProps) {
         </div>
       ) : null}
 
-      <nav className="platform-nav" aria-label={`${meta.label} navigation`}>
+      <nav
+        className="platform-nav"
+        aria-label={`${translateUiLabel(locale, meta.label)} ${translateUiLabel(locale, "navigation menu")}`}
+      >
         {sidebarSections.map(section => {
           const sectionIsActive = section.items.some(
             item =>
@@ -558,7 +581,10 @@ export default function PlatformShell({ role, children, title }: ShellProps) {
           const sectionItems = (
             <div className="platform-nav-group-items">
               {section.items.map(item => {
-                const displayLabel = getNavLabel(item);
+                const displayLabel = translateUiLabel(
+                  locale,
+                  getNavLabel(item)
+                );
                 const Icon =
                   iconMap[item.icon as keyof typeof iconMap] ?? LayoutDashboard;
                 const active =
@@ -595,7 +621,7 @@ export default function PlatformShell({ role, children, title }: ShellProps) {
               open={sectionIsActive || undefined}
             >
               <summary className="platform-nav-section-label">
-                {section.label}
+                {translateUiLabel(locale, section.label)}
               </summary>
               {sectionItems}
             </details>
@@ -608,7 +634,7 @@ export default function PlatformShell({ role, children, title }: ShellProps) {
             >
               {section.label ? (
                 <div className="platform-nav-section-label">
-                  {section.label}
+                  {translateUiLabel(locale, section.label)}
                 </div>
               ) : null}
               {sectionItems}
@@ -620,16 +646,17 @@ export default function PlatformShell({ role, children, title }: ShellProps) {
   );
 
   return (
-    <div
-      className="platform-shell"
-      dir={dir}
-      style={
-        {
-          "--role-color": meta.color,
-          "--role-tint": meta.tint,
-        } as CSSProperties
-      }
-    >
+    <UiLanguageProvider locale={locale}>
+      <div
+        className="platform-shell"
+        dir={dir}
+        style={
+          {
+            "--role-color": meta.color,
+            "--role-tint": meta.tint,
+          } as CSSProperties
+        }
+      >
       <motion.aside
         className={`platform-desktop-sidebar ${sidebarExpanded ? "expanded" : "collapsed"}`}
         initial={{ opacity: 0 }}
@@ -660,7 +687,7 @@ export default function PlatformShell({ role, children, title }: ShellProps) {
               className="platform-mobile-sidebar"
               role="dialog"
               aria-modal="true"
-              aria-label={`${meta.label} navigation menu`}
+              aria-label={`${translateUiLabel(locale, meta.label)} ${translateUiLabel(locale, "navigation menu")}`}
               initial={{ x: dir === "rtl" ? 280 : -280 }}
               animate={{ x: 0 }}
               exit={{ x: dir === "rtl" ? 280 : -280 }}
@@ -682,7 +709,7 @@ export default function PlatformShell({ role, children, title }: ShellProps) {
           <button
             ref={menuButtonRef}
             className="platform-icon-button platform-menu-button"
-            aria-label="Open menu"
+            aria-label={t(locale, "openMenu")}
             aria-expanded={mobileOpen}
             aria-controls="platform-mobile-sidebar"
             onClick={() => setMobileOpen(true)}
@@ -694,7 +721,7 @@ export default function PlatformShell({ role, children, title }: ShellProps) {
             <span style={{ background: meta.tint, color: meta.color }}>
               {meta.shortLabel}
             </span>
-            <strong>{title ?? meta.label}</strong>
+            <strong>{translateUiLabel(locale, title ?? meta.label)}</strong>
           </div>
 
           <div className="platform-search" ref={searchWrapRef}>
@@ -703,7 +730,7 @@ export default function PlatformShell({ role, children, title }: ShellProps) {
               value={query}
               onChange={event => setQuery(event.target.value)}
               placeholder={t(locale, "search")}
-              aria-label="Global search"
+              aria-label={t(locale, "globalSearch")}
               aria-expanded={hasSearchQuery}
               aria-controls="platform-search-results"
             />
@@ -712,7 +739,7 @@ export default function PlatformShell({ role, children, title }: ShellProps) {
                 className="platform-search-results"
                 id="platform-search-results"
                 role="listbox"
-                aria-label="Search results"
+                aria-label={t(locale, "searchResults")}
               >
                 {searchResults.length ? (
                   searchResults.map(item => (
@@ -728,7 +755,7 @@ export default function PlatformShell({ role, children, title }: ShellProps) {
                   ))
                 ) : (
                   <div className="platform-search-empty">
-                    No matching records
+                    {t(locale, "noMatchingRecords")}
                   </div>
                 )}
               </div>
@@ -746,7 +773,7 @@ export default function PlatformShell({ role, children, title }: ShellProps) {
                 window.localStorage.setItem("nilelearn.locale", nextLocale);
               }}
             >
-              {localeOptions.slice(0, 4).map(option => (
+              {localeOptions.map(option => (
                 <option key={option.value} value={option.value}>
                   {option.label}
                 </option>
@@ -786,7 +813,7 @@ export default function PlatformShell({ role, children, title }: ShellProps) {
                         platformStore.markNotificationRead(notification.id)
                       );
                       setNotificationVersion(version => version + 1);
-                      toast.success("Notifications marked read");
+                      toast.success(t(locale, "notificationsMarkedRead"));
                     }}
                   >
                     {t(locale, "markRead")}
@@ -810,7 +837,7 @@ export default function PlatformShell({ role, children, title }: ShellProps) {
                         color: roleMeta[role].color,
                       }}
                     >
-                      {item.read ? "Read" : "Unread"}
+                      {item.read ? t(locale, "read") : t(locale, "unread")}
                     </span>
                     <strong>{item.title}</strong>
                     <small>{item.body}</small>
@@ -818,7 +845,7 @@ export default function PlatformShell({ role, children, title }: ShellProps) {
                 ))}
                 {!notificationItems.length ? (
                   <div className="platform-notification-empty">
-                    No notifications for this role.
+                    {t(locale, "noNotifications")}
                   </div>
                 ) : null}
               </div>
@@ -829,7 +856,7 @@ export default function PlatformShell({ role, children, title }: ShellProps) {
                 ref={accountButtonRef}
                 type="button"
                 className="platform-user-pill"
-                aria-label={`${user.name} account menu`}
+                aria-label={`${user.name} ${t(locale, "accountMenu")}`}
                 aria-expanded={accountOpen}
                 aria-controls="platform-account-menu"
                 onClick={() => setAccountOpen(open => !open)}
@@ -850,7 +877,7 @@ export default function PlatformShell({ role, children, title }: ShellProps) {
                 </span>
                 <span className="platform-user-copy">
                   <strong>{user.name}</strong>
-                  <small>{meta.label}</small>
+                  <small>{translateUiLabel(locale, meta.label)}</small>
                 </span>
                 <ChevronDown size={14} />
               </button>
@@ -861,7 +888,7 @@ export default function PlatformShell({ role, children, title }: ShellProps) {
                   ref={accountMenuRef}
                   className="platform-account-menu"
                   role="menu"
-                  aria-label={`${user.name} account actions`}
+                  aria-label={`${user.name} ${t(locale, "accountActions")}`}
                 >
                   <div className="platform-account-menu-head">
                     <span
@@ -880,7 +907,7 @@ export default function PlatformShell({ role, children, title }: ShellProps) {
                     </span>
                     <div>
                       <strong>{user.name}</strong>
-                      <small>{meta.label}</small>
+                      <small>{translateUiLabel(locale, meta.label)}</small>
                     </div>
                   </div>
                   <Link
@@ -889,7 +916,7 @@ export default function PlatformShell({ role, children, title }: ShellProps) {
                     role="menuitem"
                   >
                     <UserCircle size={15} />
-                    Profile
+                    {t(locale, "profile")}
                   </Link>
                   <Link
                     href="/auth/logout"
@@ -897,7 +924,7 @@ export default function PlatformShell({ role, children, title }: ShellProps) {
                     role="menuitem"
                   >
                     <LogOut size={15} />
-                    Sign out
+                    {t(locale, "signOut")}
                   </Link>
                 </div>
               ) : null}
@@ -907,7 +934,7 @@ export default function PlatformShell({ role, children, title }: ShellProps) {
 
         <section
           className="platform-context-quote platform-context-quote-a11y"
-          aria-label={`${meta.label} inspiration`}
+          aria-label={`${translateUiLabel(locale, meta.label)} inspiration`}
         >
           <span className="platform-quote-mark" aria-hidden="true">
             ۞
@@ -932,6 +959,7 @@ export default function PlatformShell({ role, children, title }: ShellProps) {
           {children}
         </motion.main>
       </div>
-    </div>
+      </div>
+    </UiLanguageProvider>
   );
 }

@@ -12,7 +12,7 @@ function readPositiveIntegerEnv(name, fallback) {
 
 const baseUrl = process.env.QA_BASE_URL || "http://localhost:3001";
 const session = process.env.QA_SESSION || `nile-portals-qa-${process.pid}`;
-const password = process.env.NILE_DEMO_PASSWORD || "12345";
+const password = process.env.NILE_DEMO_PASSWORD || `qa-${session}`;
 const commandTimeoutMs = readPositiveIntegerEnv("QA_COMMAND_TIMEOUT_MS", 45000);
 const routeReadyTimeoutMs = readPositiveIntegerEnv(
   "QA_ROUTE_READY_TIMEOUT_MS",
@@ -29,6 +29,10 @@ const routeMatrixChunkSize = readPositiveIntegerEnv(
 const workflowReadyTimeoutMs = readPositiveIntegerEnv(
   "QA_WORKFLOW_READY_TIMEOUT_MS",
   4000
+);
+const workflowActionTimeoutMs = readPositiveIntegerEnv(
+  "QA_WORKFLOW_ACTION_TIMEOUT_MS",
+  5000
 );
 const maxRunMs = readPositiveIntegerEnv(
   "QA_SUITE_TIMEOUT_MS",
@@ -836,7 +840,7 @@ function workflowActionSource(body) {
       const style = getComputedStyle(element);
       return rect.width > 0 && rect.height > 0 && style.visibility !== "hidden" && style.display !== "none";
     };
-    const waitFor = async (predicate, timeout = 1800) => {
+    const waitFor = async (predicate, timeout = ${JSON.stringify(workflowActionTimeoutMs)}) => {
       const started = performance.now();
       let last = null;
       while (performance.now() - started < timeout) {
@@ -2181,7 +2185,7 @@ const deepWorkflowCases = [
       return {
         ok: text.includes("Report type") && text.includes("Export CSV") && text.includes("Saved views"),
         hasReportTypeSelector: Boolean(document.querySelector(".platform-report-controls select")),
-        hasAuditOption: options.includes("Audit"),
+        hasActivityOption: options.includes("Activity"),
         hasFinanceOption: options.includes("Finance"),
         hasSeededBranchPreset: text.includes("Cairo attendance exceptions"),
         hasTypedRows: Boolean(document.querySelector(".platform-report-table.typed .platform-report-row-main")) &&
@@ -2192,7 +2196,7 @@ const deepWorkflowCases = [
     predicate: value =>
       value?.ok &&
       value?.hasReportTypeSelector === true &&
-      value?.hasAuditOption === false &&
+      value?.hasActivityOption === false &&
       value?.hasFinanceOption === true &&
       value?.hasSeededBranchPreset === true &&
       value?.hasTypedRows === true &&
@@ -2608,7 +2612,7 @@ const deepWorkflowCases = [
       return {
         ok: Boolean(preset),
         hasFinanceOption: options.includes("Finance"),
-        hasAuditOption: options.includes("Audit"),
+        hasActivityOption: options.includes("Activity"),
         hasTypedRows: Boolean(document.querySelector(".platform-report-table.typed .platform-report-row-main")) &&
           normalize(document.body.innerText || document.body.textContent).includes("Attendance"),
         hasStatusSort: Boolean(document.querySelector(".platform-report-row.header button[aria-pressed='true']")) &&
@@ -2622,7 +2626,7 @@ const deepWorkflowCases = [
     predicate: value =>
       value?.ok &&
       value?.hasFinanceOption === false &&
-      value?.hasAuditOption === true &&
+      value?.hasActivityOption === true &&
       value?.hasTypedRows === true &&
       value?.hasStatusSort === true &&
       value?.presetRole === "headofdepartment" &&
@@ -2684,9 +2688,10 @@ const deepWorkflowCases = [
       setValue(inputs[1], "94");
       setValue(document.querySelector(".platform-workflow-card textarea"), "QA tajweed review accepted.");
       await delay(140);
-      const reviewCard = document.querySelectorAll(".platform-workflow-card")[1];
       const clickReviewCardButton = async (label) => {
         const expected = normalize(label).toLowerCase();
+        const reviewCard = Array.from(document.querySelectorAll(".platform-workflow-card"))
+          .find((card) => normalize(card.textContent).includes("Memorization and tajweed"));
         const button = Array.from(reviewCard?.querySelectorAll("button") || [])
           .find((item) => visible(item) && !item.disabled && normalize(item.textContent).toLowerCase().includes(expected));
         if (!button) throw new Error("Review card button not found: " + label);
@@ -2835,15 +2840,17 @@ const deepWorkflowCases = [
       const filteredRows = Array.from(document.querySelectorAll(".registrar-payment-row")).length;
       const before = readState();
       const beforePaid = before.payments?.filter((item) => item.status === "paid").length ?? 0;
+      const beforeInvoicePaid = before.payments?.filter((item) => item.invoiceId === "inv_demo_1" && item.status === "paid").length ?? 0;
       const row = Array.from(document.querySelectorAll(".registrar-payment-row"))
         .find((item) => normalize(item.textContent).includes("inv_demo_1"));
       const button = row ? Array.from(row.querySelectorAll("button")).find((item) => normalize(item.textContent).toLowerCase().includes("record payment")) : null;
-      if (!button || button.disabled) return { ok: false, hasPaymentDesk: true, hasLedger: true, beforeRows, filteredRows, beforePaid, reason: "record button unavailable" };
+      if (!button || button.disabled) return { ok: false, hasPaymentDesk: true, hasLedger: true, beforeRows, filteredRows, beforePaid, beforeInvoicePaid, reason: "record button unavailable" };
       button.click();
       const state = await waitFor(() => {
         const next = readState();
         const invoice = next.invoices?.find((item) => item.id === "inv_demo_1");
-        return invoice?.status === "paid" && (next.payments?.filter((item) => item.status === "paid").length ?? 0) > beforePaid ? next : null;
+        const invoicePaid = next.payments?.filter((item) => item.invoiceId === "inv_demo_1" && item.status === "paid").length ?? 0;
+        return invoice?.status === "paid" && invoicePaid > beforeInvoicePaid ? next : null;
       });
       const invoice = state?.invoices?.find((item) => item.id === "inv_demo_1");
       return {
@@ -2854,7 +2861,9 @@ const deepWorkflowCases = [
         filteredRows,
         invoiceStatus: invoice?.status,
         beforePaid,
+        beforeInvoicePaid,
         afterPaid: state?.payments?.filter((item) => item.status === "paid").length,
+        afterInvoicePaid: state?.payments?.filter((item) => item.invoiceId === "inv_demo_1" && item.status === "paid").length,
         lastAudit: state?.auditLogs?.[0]?.action
       };
     `),
@@ -2865,7 +2874,7 @@ const deepWorkflowCases = [
       value?.beforeRows >= 2 &&
       value?.filteredRows === 1 &&
       value?.invoiceStatus === "paid" &&
-      value?.afterPaid > value?.beforePaid,
+      value?.afterInvoicePaid > value?.beforeInvoicePaid,
   },
   {
     name: "registrar finance workflow records partial payment balance",
@@ -3207,7 +3216,7 @@ const deepWorkflowCases = [
       setFormLabel("Phone / WhatsApp", "+20 100 000 0303");
       await clickButton("Continue");
       setFormLabel("Branch", "br_cairo");
-      setFormLabel("Permission scope", "admissions");
+      setFormLabel("Access level", "admissions");
       await clickButton("Continue");
       await clickButton("Create connected account");
       const createdState = await waitFor(() => {
@@ -3571,7 +3580,7 @@ const deepWorkflowCases = [
       const term = "QA Term " + Date.now();
       setByLabel("Organization", "Nile Center QA");
       setByLabel("Academic term", term);
-      setByLabel("Audit retention days", "730");
+      setByLabel("Activity retention days", "730");
       await clickButton("Save settings");
       const state = await waitFor(() => {
         const next = readState();

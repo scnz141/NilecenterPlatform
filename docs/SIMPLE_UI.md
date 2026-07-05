@@ -26,10 +26,16 @@ One page = one main job.
 
 Every page must answer in five seconds:
 
-1. What is this page for?
-2. What should I do next?
-3. Where is the main work?
-4. What can wait for another page?
+1. Where am I?
+2. What is this page for?
+3. What should I do next?
+
+A page is not acceptable if a school manager needs more than five seconds to answer those three questions.
+
+The page should also make clear:
+
+- where the main work is;
+- what can wait for another page.
 
 If a non-technical school manager cannot understand the page in five seconds, simplify it before adding polish.
 
@@ -52,23 +58,23 @@ If a non-technical school manager cannot understand the page in five seconds, si
 
 Avoid technical words in normal school-facing UI:
 
-| Technical term         | Use instead      |
-| ---------------------- | ---------------- |
-| RBAC                   | Roles and access |
-| Permission Matrix      | Access rules     |
-| Audit Trail            | Activity         |
-| Integration Readiness  | Connections      |
-| Moodle Source          | Moodle           |
-| Platform State         | System data      |
-| Mock Mode              | Test mode        |
-| Server-only            | Protected        |
-| Local Records          | Records          |
-| System Health          | Health           |
-| Governance View        | Admin view       |
-| Branch Scope           | Branch access    |
-| Permission Scope       | Access level     |
-| Integrations           | Connections      |
-| Permissions            | Access rules     |
+| Technical term        | Use instead      |
+| --------------------- | ---------------- |
+| RBAC                  | Roles and access |
+| Permission Matrix     | Access rules     |
+| Audit Trail           | Activity         |
+| Integration Readiness | Connections      |
+| Moodle Source         | Moodle           |
+| Platform State        | System data      |
+| Mock Mode             | Test mode        |
+| Server-only           | Protected        |
+| Local Records         | Records          |
+| System Health         | Health           |
+| Governance View       | Admin view       |
+| Branch Scope          | Branch access    |
+| Permission Scope      | Access level     |
+| Integrations          | Connections      |
+| Permissions           | Access rules     |
 
 Technical terms may appear only on advanced admin, activity, connection, or system-health pages where they are necessary for the job.
 
@@ -255,7 +261,7 @@ Branch admin dashboard should focus on:
 Super admin dashboard should focus on:
 
 - users needing action;
-- system health summary;
+- health summary;
 - recent activity;
 - connections status.
 

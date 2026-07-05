@@ -36,7 +36,6 @@ type SeedSummary = {
   };
 };
 
-const DEMO_PASSWORD = process.env.NILE_DEMO_PASSWORD || "12345";
 const DEMO_ENTITIES_TABLE = sanitizeTableName(process.env.SUPABASE_PLATFORM_DEMO_ENTITIES_TABLE || "platform_demo_entities");
 const PLATFORM_RECORDS_TABLE = sanitizeTableName(process.env.SUPABASE_PLATFORM_RECORDS_TABLE || "platform_records");
 const PLATFORM_STATE_TABLE = sanitizeTableName(process.env.SUPABASE_PLATFORM_STATE_TABLE || "platform_state_snapshots");
@@ -68,6 +67,14 @@ function errorMessage(value: unknown) {
 function safeReason(input: unknown) {
   const raw = errorMessage(input).replace(/Bearer\s+[A-Za-z0-9._-]+/g, "Bearer [redacted]");
   return raw.length > 220 ? `${raw.slice(0, 217)}...` : raw;
+}
+
+function getDemoPassword() {
+  const password = process.env.SUPABASE_DEMO_PASSWORD?.trim() || "";
+  if (password.length < 6) {
+    throw new Error("Missing Supabase demo password. Required: SUPABASE_DEMO_PASSWORD with at least 6 characters.");
+  }
+  return password;
 }
 
 function authUsersFromSeed(): AuthUserPayload[] {
@@ -137,6 +144,34 @@ function platformRecordRows(createdAt: string) {
       created_at: createdAt,
     },
     {
+      id: "seed_lead_alex_parent",
+      type: "lead",
+      payload: {
+        source: "supabase-demo-seed",
+        fullName: "Mariam Parent Demo",
+        email: "mariam.parent@nilelearn.local",
+        branchId: "br_alex",
+        subject: "Arabic Level 1",
+        status: "enrolled",
+      },
+      actor_id: "usr_registrar_demo",
+      created_at: createdAt,
+    },
+    {
+      id: "seed_lead_quran_ready",
+      type: "lead",
+      payload: {
+        source: "supabase-demo-seed",
+        fullName: "Omar Quran Demo",
+        email: "omar.quran@nilelearn.local",
+        branchId: "br_online",
+        subject: "Quran and Tajweed",
+        status: "ready_to_enroll",
+      },
+      actor_id: "usr_registrar_online_demo",
+      created_at: createdAt,
+    },
+    {
       id: "seed_placement_demo_1",
       type: "placement",
       payload: {
@@ -151,6 +186,21 @@ function platformRecordRows(createdAt: string) {
       created_at: createdAt,
     },
     {
+      id: "seed_placement_quran_ready",
+      type: "placement",
+      payload: {
+        source: "supabase-demo-seed",
+        fullName: "Omar Quran Demo",
+        email: "omar.quran@nilelearn.local",
+        subject: "Quran and Tajweed",
+        preferredDate: "2026-06-22",
+        recommendedLevel: "Hifz Foundations",
+        status: "completed",
+      },
+      actor_id: "usr_registrar_online_demo",
+      created_at: createdAt,
+    },
+    {
       id: "seed_operational_demo_1",
       type: "operational",
       payload: {
@@ -160,6 +210,18 @@ function platformRecordRows(createdAt: string) {
         summary: "Full Nile Learn demo seed is available in platform_demo_entities.",
       },
       actor_id: "usr_admin_demo",
+      created_at: createdAt,
+    },
+    {
+      id: "seed_operational_audit_demo",
+      type: "operational",
+      payload: {
+        source: "supabase-demo-seed",
+        module: "system_admin",
+        action: "audit_log_seeded",
+        summary: "Demo audit entries are available for access, enrollment, attendance, and certificate workflows.",
+      },
+      actor_id: "usr_admin_ops_demo",
       created_at: createdAt,
     },
   ];
@@ -229,11 +291,11 @@ async function listAuthUsers(request: ReturnType<typeof supabaseRequestFactory>)
   return new Map((payload.users ?? []).filter((user) => user.email).map((user) => [user.email!.toLowerCase(), user]));
 }
 
-function authPayload(user: AuthUserPayload) {
+function authPayload(user: AuthUserPayload, demoPassword: string) {
   const primaryRole = user.activeRole;
   return {
     email: user.email,
-    password: DEMO_PASSWORD,
+    password: demoPassword,
     email_confirm: true,
     app_metadata: {
       role: primaryRole,
@@ -256,6 +318,7 @@ async function createOrUpdateAuthUsers(
   request: ReturnType<typeof supabaseRequestFactory>,
   users: AuthUserPayload[],
   summary: SeedSummary,
+  demoPassword: string,
 ) {
   let existing = new Map<string, SupabaseAuthUser>();
   try {
@@ -266,7 +329,7 @@ async function createOrUpdateAuthUsers(
 
   for (const user of users) {
     try {
-      const payload = authPayload(user);
+      const payload = authPayload(user, demoPassword);
       const existingUser = existing.get(user.email.toLowerCase());
       const response = existingUser
         ? await request(`/auth/v1/admin/users/${existingUser.id}`, {
@@ -286,7 +349,13 @@ async function createOrUpdateAuthUsers(
   }
 }
 
-async function verifyAuthUsers(url: string, publishableKey: string, users: AuthUserPayload[], summary: SeedSummary) {
+async function verifyAuthUsers(
+  url: string,
+  publishableKey: string,
+  users: AuthUserPayload[],
+  summary: SeedSummary,
+  demoPassword: string,
+) {
   for (const user of users) {
     try {
       const response = await fetch(`${url}/auth/v1/token?grant_type=password`, {
@@ -296,7 +365,7 @@ async function verifyAuthUsers(url: string, publishableKey: string, users: AuthU
           Authorization: `Bearer ${publishableKey}`,
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ email: user.email, password: DEMO_PASSWORD }),
+        body: JSON.stringify({ email: user.email, password: demoPassword }),
       });
       if (!response.ok) throw new Error(`Password sign-in failed (${response.status}): ${await readBody(response)}`);
       const payload = (await response.json()) as { user?: SupabaseAuthUser };
@@ -373,8 +442,11 @@ async function main() {
   loadServerEnv();
   const config = getSupabaseServerConfig();
   if (!config.url || !config.secretKey || !config.publishableKey) {
-    throw new Error("Missing SUPABASE_URL, SUPABASE_SECRET_KEY, or SUPABASE_PUBLISHABLE_KEY in .env.local.");
+    throw new Error(
+      "Missing Supabase env. Required: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY or SUPABASE_SECRET_KEY, and SUPABASE_PUBLISHABLE_KEY or SUPABASE_ANON_KEY or VITE_SUPABASE_PUBLISHABLE_KEY or VITE_SUPABASE_ANON_KEY.",
+    );
   }
+  const demoPassword = getDemoPassword();
 
   const request = supabaseRequestFactory(config.url, config.secretKey);
   const users = authUsersFromSeed();
@@ -389,8 +461,8 @@ async function main() {
     },
   };
 
-  await createOrUpdateAuthUsers(request, users, summary);
-  await verifyAuthUsers(config.url, config.publishableKey, users, summary);
+  await createOrUpdateAuthUsers(request, users, summary, demoPassword);
+  await verifyAuthUsers(config.url, config.publishableKey, users, summary, demoPassword);
   await seedDatabase(request, summary);
 
   console.log(JSON.stringify(summary, null, 2));

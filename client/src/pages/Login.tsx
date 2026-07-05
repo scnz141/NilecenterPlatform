@@ -5,6 +5,13 @@ import { Link, useLocation } from "wouter";
 import { ArrowLeft, ArrowRight, BookOpen, Eye, EyeOff, Globe, GraduationCap, ShieldCheck, Sparkles, Users } from "lucide-react";
 import { toast } from "sonner";
 import { signInWithPassword } from "@/lib/auth/session";
+import {
+  getDirection,
+  isSupportedLocale,
+  localeOptions,
+  translateUiLabel,
+  type Locale,
+} from "@/lib/i18n";
 import { roleInspirations, type Role, type RoleInspiration } from "@/lib/platformData";
 
 type LoginAudience = "gateway" | "student" | "administration";
@@ -57,18 +64,44 @@ export default function Login({ audience = "gateway" }: { audience?: LoginAudien
 }
 
 function LoginGateway() {
+  const [language, setLanguage] = useState<Locale>(() => {
+    if (typeof window === "undefined") return "en";
+    const saved = window.localStorage.getItem("nilelearn.locale");
+    return isSupportedLocale(saved) ? saved : "en";
+  });
+  const dir = getDirection(language);
+  const ui = (label: string) => translateUiLabel(language, label);
+
+  const handleLanguageChange = (nextLocale: Locale) => {
+    setLanguage(nextLocale);
+    window.localStorage.setItem("nilelearn.locale", nextLocale);
+  };
+
   return (
-    <main className="auth-modern-page">
-      <AuthBrandRail quote={gatewayInspiration} />
+    <main className="auth-modern-page" dir={dir} lang={language}>
+      <AuthBrandRail quote={gatewayInspiration} locale={language} />
       <motion.section className="auth-gateway" initial="hidden" animate="visible">
         <motion.div className="auth-gateway-copy" custom={0} variants={reveal}>
           <Link href="/" className="auth-modern-logo">
             <span>NC</span>
             Nile Center
           </Link>
-          <span className="auth-kicker"><Sparkles size={15} /> Choose your portal</span>
-          <h1>One platform, separate access for learners and operations.</h1>
-          <p>Student learning and administration workflows now enter through separate routes so each role starts in the right context.</p>
+          <div className="auth-gateway-toolbar">
+            <span className="auth-kicker"><Sparkles size={15} /> {ui("Choose your portal")}</span>
+            <select
+              value={language}
+              onChange={(event) => handleLanguageChange(event.target.value as Locale)}
+              aria-label={ui("Language")}
+            >
+              {localeOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </div>
+          <h1>{ui("One platform, separate access for learners and operations.")}</h1>
+          <p>{ui("Student learning and administration workflows now enter through separate routes so each role starts in the right context.")}</p>
         </motion.div>
 
         <div className="auth-portal-grid">
@@ -78,10 +111,10 @@ function LoginGateway() {
               <motion.div key={panel.href} custom={0.1 + index * 0.08} variants={reveal}>
                 <Link href={panel.href} className="auth-portal-card">
                   <span><Icon size={22} /></span>
-                  <small>{panel.label}</small>
-                  <strong>{panel.title}</strong>
-                  <p>{panel.copy}</p>
-                  <em>Continue <ArrowRight size={15} /></em>
+                  <small>{ui(panel.label)}</small>
+                  <strong>{ui(panel.title)}</strong>
+                  <p>{ui(panel.copy)}</p>
+                  <em>{ui("Continue")} <ArrowRight size={15} /></em>
                 </Link>
               </motion.div>
             );
@@ -101,8 +134,14 @@ function LoginForm({ audience }: { audience: Exclude<LoginAudience, "gateway"> }
   const [password, setPassword] = useState("");
   const [showPass, setShowPass] = useState(false);
   const [remember, setRemember] = useState(false);
-  const [language, setLanguage] = useState("English");
+  const [language, setLanguage] = useState<Locale>(() => {
+    if (typeof window === "undefined") return "en";
+    const saved = window.localStorage.getItem("nilelearn.locale");
+    return isSupportedLocale(saved) ? saved : "en";
+  });
   const [loading, setLoading] = useState(false);
+  const dir = getDirection(language);
+  const ui = (label: string) => translateUiLabel(language, label);
 
   const pageTitle = audience === "student" ? "Student sign in" : "Administration sign in";
   const pageCopy =
@@ -117,6 +156,11 @@ function LoginForm({ audience }: { audience: Exclude<LoginAudience, "gateway"> }
     if (!email || email === currentRole.email) setEmail(next.email);
   };
 
+  const handleLanguageChange = (nextLocale: Locale) => {
+    setLanguage(nextLocale);
+    window.localStorage.setItem("nilelearn.locale", nextLocale);
+  };
+
   const handleLogin = async (event: React.FormEvent) => {
     event.preventDefault();
     setLoading(true);
@@ -128,28 +172,28 @@ function LoginForm({ audience }: { audience: Exclude<LoginAudience, "gateway"> }
       return;
     }
 
-    toast.success(`Signed in as ${currentRole.label}`, { description: `Session provider: ${result.session.provider}` });
+    toast.success(`Signed in as ${ui(currentRole.label)}`, { description: `Session provider: ${result.session.provider}` });
     if (remember) localStorage.setItem("nile-demo-remember", "true");
     navigate(currentRole.route);
   };
 
   return (
-    <main className="auth-modern-page">
-      <AuthBrandRail quote={roleInspirations[role]} />
+    <main className="auth-modern-page" dir={dir} lang={language}>
+      <AuthBrandRail quote={roleInspirations[role]} locale={language} />
       <motion.section className="auth-login-panel" initial="hidden" animate="visible">
         <motion.div className="auth-login-card" custom={0} variants={reveal}>
           <div className="auth-login-heading">
             <Link href="/auth/login" className="auth-back-link">
               <ArrowLeft size={15} />
-              Portal selection
+              {ui("Portal selection")}
             </Link>
             <span className="auth-login-icon">{audience === "student" ? <GraduationCap size={22} /> : <ShieldCheck size={22} />}</span>
-            <h1>{pageTitle}</h1>
-            <p>{pageCopy}</p>
+            <h1>{ui(pageTitle)}</h1>
+            <p>{ui(pageCopy)}</p>
           </div>
 
           {audience === "administration" ? (
-            <div className="auth-role-switcher" aria-label="Administration role">
+            <div className="auth-role-switcher" aria-label={ui("Administration role")}>
               {availableRoles.map((item) => (
                 <button
                   type="button"
@@ -158,8 +202,8 @@ function LoginForm({ audience }: { audience: Exclude<LoginAudience, "gateway"> }
                   style={{ "--role-color": item.color } as CSSProperties}
                   onClick={() => handleRoleChange(item.id)}
                 >
-                  <strong>{item.label}</strong>
-                  <small>{item.desc}</small>
+                  <strong>{ui(item.label)}</strong>
+                  <small>{ui(item.desc)}</small>
                 </button>
               ))}
             </div>
@@ -167,13 +211,13 @@ function LoginForm({ audience }: { audience: Exclude<LoginAudience, "gateway"> }
 
           <form className="auth-login-form" onSubmit={handleLogin}>
             <label>
-              Email
+              {ui("Email")}
               <input type="email" autoComplete="username" value={email} onChange={(event) => setEmail(event.target.value)} placeholder={currentRole.email} required />
             </label>
             <label>
               <span>
-                Password
-                <Link href="/auth/forgot-password">Forgot?</Link>
+                {ui("Password")}
+                <Link href="/auth/forgot-password">{ui("Forgot")}</Link>
               </span>
               <div className="auth-password-field">
                 <input
@@ -181,10 +225,10 @@ function LoginForm({ audience }: { audience: Exclude<LoginAudience, "gateway"> }
                   autoComplete="current-password"
                   value={password}
                   onChange={(event) => setPassword(event.target.value)}
-                  placeholder="Enter password"
+                  placeholder={ui("Enter password")}
                   required
                 />
-                <button type="button" onClick={() => setShowPass((value) => !value)} aria-label={showPass ? "Hide password" : "Show password"}>
+                <button type="button" onClick={() => setShowPass((value) => !value)} aria-label={ui(showPass ? "Hide password" : "Show password")}>
                   {showPass ? <EyeOff size={15} /> : <Eye size={15} />}
                 </button>
               </div>
@@ -193,24 +237,27 @@ function LoginForm({ audience }: { audience: Exclude<LoginAudience, "gateway"> }
             <div className="auth-login-options">
               <label>
                 <input type="checkbox" checked={remember} onChange={(event) => setRemember(event.target.checked)} />
-                Remember me
+                {ui("Remember me")}
               </label>
-              <select value={language} onChange={(event) => setLanguage(event.target.value)} aria-label="Language">
-                <option>English</option>
-                <option>Arabic</option>
+              <select value={language} onChange={(event) => handleLanguageChange(event.target.value as Locale)} aria-label={ui("Language")}>
+                {localeOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
               </select>
             </div>
 
             <button type="submit" className="auth-login-submit" disabled={loading}>
-              {loading ? <span className="auth-submit-spinner" /> : <><span>Sign in</span><ArrowRight size={15} /></>}
+              {loading ? <span className="auth-submit-spinner" /> : <><span>{ui("Sign in")}</span><ArrowRight size={15} /></>}
             </button>
           </form>
 
           <div className="auth-route-note">
             {audience === "student" ? (
-              <Link href="/auth/administration-login"><Users size={15} /> Staff and administration sign in</Link>
+              <Link href="/auth/administration-login"><Users size={15} /> {ui("Staff and administration sign in")}</Link>
             ) : (
-              <Link href="/auth/student-login"><GraduationCap size={15} /> Student sign in</Link>
+              <Link href="/auth/student-login"><GraduationCap size={15} /> {ui("Student sign in")}</Link>
             )}
           </div>
         </motion.div>
@@ -219,7 +266,8 @@ function LoginForm({ audience }: { audience: Exclude<LoginAudience, "gateway"> }
   );
 }
 
-function AuthBrandRail({ quote }: { quote: RoleInspiration }) {
+function AuthBrandRail({ quote, locale }: { quote: RoleInspiration; locale: Locale }) {
+  const ui = (label: string) => translateUiLabel(locale, label);
   return (
     <motion.aside className="auth-brand-rail" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.55 }}>
       <div className="auth-orbit" />
@@ -227,21 +275,21 @@ function AuthBrandRail({ quote }: { quote: RoleInspiration }) {
         <span>NC</span>
         Nile Center
       </Link>
-      <div className="auth-calligraphy-panel" aria-label={`${quote.theme} inspiration`}>
+      <div className="auth-calligraphy-panel" aria-label={`${ui(quote.theme)} inspiration`}>
         <span aria-hidden="true">۞</span>
         <strong lang="ar" dir="rtl">{quote.arabic}</strong>
-        <p>{quote.meaning}</p>
+        <p>{ui(quote.meaning)}</p>
         <small>{quote.source}</small>
       </div>
       <div className="auth-brand-copy">
         <span><BookOpen size={16} /> Nile Learn</span>
-        <h2>Education operations with a calm, modern workspace.</h2>
-        <p>Arabic, Quran, language learning, admissions, scheduling, certificates, reports, and administration now share one platform foundation.</p>
+        <h2>{ui("Education operations with a calm, modern workspace.")}</h2>
+        <p>{ui("Arabic, Quran, language learning, admissions, scheduling, certificates, reports, and administration now share one platform foundation.")}</p>
       </div>
       <div className="auth-brand-stats">
-        <div><strong>5k+</strong><span>Students</span></div>
-        <div><strong>295+</strong><span>Courses</span></div>
-        <div><strong>6</strong><span>Roles</span></div>
+        <div><strong>5k+</strong><span>{ui("Students")}</span></div>
+        <div><strong>295+</strong><span>{ui("Courses")}</span></div>
+        <div><strong>6</strong><span>{ui("Roles")}</span></div>
       </div>
       <a href="https://nilecenter.online" target="_blank" rel="noopener noreferrer" className="auth-moodle-link">
         <Globe size={15} />

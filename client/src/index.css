@@ -13277,6 +13277,32 @@
     max-width: 720px;
   }
 
+  .auth-gateway-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    max-width: 560px;
+    flex-wrap: wrap;
+  }
+
+  .auth-gateway-toolbar select {
+    min-height: 36px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.78);
+    color: var(--foreground);
+    padding: 0 14px;
+    font-size: 12px;
+    font-weight: 800;
+    outline: none;
+  }
+
+  .auth-gateway-toolbar select:focus {
+    border-color: rgba(15, 76, 92, 0.55);
+    box-shadow: 0 0 0 3px rgba(15, 76, 92, 0.13);
+  }
+
   .auth-gateway-copy .auth-modern-logo {
     margin-bottom: 16px;
   }
@@ -16579,6 +16605,547 @@
     .platform-certificate-preview-actions,
     .public-verification-actions {
       display: none !important;
+    }
+  }
+
+  /*
+    Simple UI reset for internal portals.
+    These overrides keep existing workflows intact while removing the generic
+    card-wall/admin-template treatment from shared pages.
+  */
+  .platform-shell {
+    background: #f6f5f2;
+  }
+
+  .platform-desktop-sidebar .platform-sidebar-inner,
+  .platform-desktop-sidebar.expanded .platform-sidebar-inner,
+  .platform-mobile-sidebar {
+    background: #fffefa;
+  }
+
+  .platform-desktop-sidebar.expanded,
+  .platform-desktop-sidebar.expanded .platform-sidebar-inner {
+    width: 248px;
+    min-width: 248px;
+  }
+
+  .platform-brand {
+    min-height: 72px;
+    padding-inline: 16px;
+  }
+
+  .platform-logo {
+    width: 36px;
+    height: 36px;
+    font-size: 11px;
+  }
+
+  .platform-brand-copy span {
+    font-size: 14px;
+    letter-spacing: 0;
+  }
+
+  .platform-brand-copy small,
+  .platform-selector-row label,
+  .platform-selector-row small,
+  .platform-nav-section-label {
+    text-transform: none;
+    letter-spacing: 0;
+  }
+
+  .platform-selector-row {
+    margin: 0 10px 10px;
+    padding: 9px;
+    background: #f7f5f0;
+    border-color: #ece6dd;
+  }
+
+  .platform-nav {
+    padding: 0 10px 18px;
+    gap: 2px;
+  }
+
+  .platform-nav-section-label {
+    margin: 13px 8px 5px;
+    font-size: 11px;
+    font-weight: 760;
+  }
+
+  .platform-nav-item {
+    min-height: 34px;
+    border-radius: 7px;
+    padding: 7px 9px;
+    font-size: 12.5px;
+    font-weight: 720;
+    color: #5f5b55;
+  }
+
+  .platform-nav-item:hover,
+  .platform-nav-item.active {
+    background: color-mix(in srgb, var(--role-color) 6%, white);
+    color: #1a1a1a;
+  }
+
+  .platform-nav-item.active::before {
+    width: 2px;
+    height: 16px;
+    left: 2px;
+  }
+
+  [dir="rtl"] .platform-nav-item.active::before {
+    right: 2px;
+  }
+
+  .platform-nav-item em {
+    height: 17px;
+    min-width: 17px;
+    padding: 0 5px;
+    font-size: 9.5px;
+  }
+
+  .platform-topbar {
+    min-height: 50px;
+    grid-template-columns: minmax(150px, 1fr) minmax(150px, 240px) max-content;
+    margin: 12px clamp(14px, 2.1vw, 28px) 0;
+    padding: 5px 7px;
+    background: rgba(255, 254, 250, 0.94);
+    border-color: #ece6dd;
+  }
+
+  .platform-breadcrumb {
+    min-height: 36px;
+    padding-inline: 4px 10px;
+  }
+
+  .platform-breadcrumb span {
+    padding: 5px 9px;
+    font-size: 10px;
+  }
+
+  .platform-breadcrumb strong {
+    font-size: 12.5px;
+  }
+
+  .platform-search {
+    height: 32px;
+    background: #f7f5f0;
+    border-color: #ece6dd;
+  }
+
+  .platform-search input {
+    min-height: 32px;
+    font-size: 12px;
+  }
+
+  .platform-language,
+  .platform-icon-button,
+  .platform-user-pill {
+    border-color: #ece6dd;
+    background: #fffefa;
+  }
+
+  .platform-content {
+    width: min(100%, 1320px);
+    max-width: 1320px;
+    margin-top: 6px;
+    padding: 20px clamp(14px, 2.4vw, 30px) 34px;
+  }
+
+  .platform-page-header,
+  .platform-page-header.compact {
+    margin-bottom: 14px;
+    padding-bottom: 0;
+  }
+
+  .platform-page-header::after,
+  .platform-eyebrow::before,
+  .platform-workflow-card::after,
+  .platform-mini-metric::after,
+  .teacher-delivery-hero::after,
+  .admin-access-hero::after,
+  .admin-system-hero::after,
+  .academic-governance-hero::after,
+  .branch-ops-hero::after,
+  .registrar-hero::after {
+    content: none;
+  }
+
+  .platform-page-context span,
+  .platform-section-kicker,
+  .platform-status,
+  .platform-metric small {
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 760;
+    text-transform: none;
+    letter-spacing: 0;
+  }
+
+  .platform-page-header h1 {
+    max-width: 760px;
+    font-size: clamp(24px, 1.9vw, 30px);
+    letter-spacing: 0;
+  }
+
+  .platform-page-header p {
+    max-width: 620px;
+    font-size: 13px;
+    line-height: 1.45;
+  }
+
+  .platform-primary-button,
+  .platform-secondary-button,
+  .platform-v2-toolbar-group button,
+  .platform-v2-toolbar-group a,
+  .platform-row-actions a {
+    min-height: 38px;
+    border-radius: 8px;
+    font-size: 12.5px;
+    font-weight: 760;
+    box-shadow: none;
+  }
+
+  .platform-primary-button:hover,
+  .platform-secondary-button:hover,
+  .platform-v2-toolbar-group button:hover,
+  .platform-v2-toolbar-group a:hover,
+  .platform-row-actions a:hover {
+    transform: none;
+    box-shadow: none;
+  }
+
+  .platform-metric-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 10px;
+    margin-bottom: 16px;
+  }
+
+  .platform-metric,
+  .platform-panel,
+  .platform-form-card,
+  .platform-table-card,
+  .platform-special-card,
+  .platform-calendar-card,
+  .platform-report-card,
+  .platform-message-card,
+  .platform-spotlight,
+  .platform-workflow-card,
+  .platform-mini-metric,
+  .platform-v2-panel,
+  .teacher-delivery-hero,
+  .teacher-panel,
+  .admin-access-hero,
+  .admin-access-panel,
+  .admin-system-hero,
+  .admin-system-panel,
+  .academic-governance-hero,
+  .academic-panel,
+  .branch-ops-hero,
+  .branch-panel,
+  .registrar-hero,
+  .registrar-panel {
+    border: 1px solid #e8e2d8;
+    border-radius: 8px;
+    background: #fffefa;
+    box-shadow: none;
+  }
+
+  .platform-metric:hover,
+  .platform-panel:hover,
+  .platform-form-card:hover,
+  .platform-table-card:hover,
+  .platform-special-card:hover,
+  .platform-calendar-card:hover,
+  .platform-report-card:hover,
+  .platform-message-card:hover,
+  .platform-spotlight:hover,
+  .platform-inspector:hover,
+  .platform-workflow-card:hover,
+  .platform-mini-metric:hover,
+  .platform-v2-panel:hover {
+    transform: none;
+    border-color: #d8d0c6;
+    box-shadow: none;
+  }
+
+  .platform-metric:nth-child(2n),
+  .platform-metric:nth-child(3n),
+  .platform-workflow-card.lead {
+    background: #fffefa;
+  }
+
+  .platform-metric {
+    min-height: 82px;
+    padding: 13px 14px;
+    align-items: flex-start;
+  }
+
+  .platform-metric span,
+  .platform-card-title span {
+    color: #736d65;
+    font-size: 11px;
+    font-weight: 680;
+    text-transform: none;
+    letter-spacing: 0;
+  }
+
+  .platform-metric strong {
+    margin-top: 6px;
+    font-size: 22px;
+  }
+
+  .platform-workflow-layout {
+    grid-template-columns: minmax(0, 1fr) minmax(260px, 300px);
+    gap: 14px;
+  }
+
+  .platform-workflow-main,
+  .platform-workflow-side {
+    gap: 12px;
+  }
+
+  .platform-workflow-card {
+    padding: 18px;
+    gap: 12px;
+  }
+
+  .platform-workflow-side .platform-workflow-card {
+    padding: 14px;
+  }
+
+  .platform-workflow-title {
+    align-items: flex-start;
+    gap: 10px;
+  }
+
+  .platform-workflow-title > span {
+    color: #736d65;
+    font-size: 11.5px;
+    font-weight: 700;
+    text-transform: none;
+    letter-spacing: 0;
+  }
+
+  .platform-workflow-title strong {
+    color: #202020;
+    font-size: 15px;
+    line-height: 1.25;
+  }
+
+  .platform-workflow-card p {
+    max-width: 680px;
+    color: #68625b;
+    font-size: 12.5px;
+    line-height: 1.45;
+  }
+
+  .platform-workflow-side .platform-workflow-card strong {
+    font-size: 14px;
+  }
+
+  .platform-workflow-side .platform-workflow-card p,
+  .platform-workflow-side .platform-workflow-card small {
+    font-size: 12px;
+  }
+
+  .platform-table-card {
+    overflow: hidden;
+  }
+
+  .platform-dashboard-grid .platform-table-card.wide,
+  .platform-dashboard-grid
+    .platform-table-card.wide
+    .platform-card-title.compact {
+    background: #fffefa;
+  }
+
+  .platform-dashboard-grid
+    .platform-table-card.wide
+    .platform-card-title.compact,
+  .platform-card-title.compact {
+    padding: 14px 16px 12px;
+    border-bottom: 1px solid #ece6dd;
+  }
+
+  .platform-table-card th {
+    padding: 12px 14px;
+    background: #faf8f4;
+    color: #736d65;
+    font-size: 10.5px;
+    font-weight: 760;
+    text-transform: none;
+    letter-spacing: 0;
+  }
+
+  .platform-table-card td,
+  .platform-dashboard-grid .platform-table-card.wide td {
+    padding: 13px 14px;
+  }
+
+  .teacher-delivery-workspace,
+  .admin-access-workspace,
+  .academic-governance-workspace,
+  .branch-ops-workspace,
+  .registrar-workspace {
+    gap: 14px;
+  }
+
+  .teacher-delivery-hero,
+  .admin-access-hero,
+  .admin-system-hero,
+  .academic-governance-hero,
+  .branch-ops-hero,
+  .registrar-hero {
+    grid-template-columns: minmax(0, 1fr) auto;
+    min-height: 0;
+    padding: 16px;
+    align-items: center;
+  }
+
+  .teacher-delivery-hero h2,
+  .admin-access-hero h2,
+  .admin-system-hero h2,
+  .academic-governance-hero h2,
+  .branch-ops-hero h2,
+  .registrar-hero h2 {
+    margin: 0;
+    max-width: 680px;
+    font-size: clamp(21px, 2vw, 30px);
+    line-height: 1.14;
+  }
+
+  .teacher-delivery-hero p,
+  .admin-access-hero p,
+  .admin-system-hero p,
+  .academic-governance-hero p,
+  .branch-ops-hero p,
+  .registrar-hero p {
+    max-width: 620px;
+    margin-top: 6px;
+    font-size: 13px;
+    line-height: 1.45;
+  }
+
+  .teacher-delivery-actions {
+    grid-template-columns: repeat(2, minmax(120px, 1fr));
+    gap: 8px;
+  }
+
+  .teacher-delivery-actions a,
+  .teacher-session-actions button,
+  .teacher-session-form button,
+  .teacher-material-list button {
+    min-height: 36px;
+    border-radius: 8px;
+    font-size: 12px;
+    box-shadow: none;
+  }
+
+  .platform-v2-layout {
+    gap: 14px;
+  }
+
+  .platform-v2-layout-toolbar {
+    background: #fffefa;
+    border-color: #e8e2d8;
+    padding: 9px;
+  }
+
+  .platform-v2-layout-grid {
+    grid-template-columns: minmax(0, 1fr) minmax(260px, 310px);
+    gap: 14px;
+  }
+
+  .platform-v2-layout-side {
+    gap: 10px;
+  }
+
+  .platform-v2-dashboard-list {
+    padding: 10px 14px 14px;
+  }
+
+  .platform-v2-dashboard-list a,
+  .platform-v2-dashboard-list article {
+    min-height: 54px;
+    border-color: #ece6dd;
+    background: #fffefa;
+    padding: 9px 10px;
+  }
+
+  .platform-v2-dashboard-list a:hover {
+    transform: none;
+    background: #fffefa;
+  }
+
+  .platform-v2-dashboard-list strong {
+    font-size: 12.5px;
+  }
+
+  .platform-v2-dashboard-list small {
+    font-size: 11.5px;
+  }
+
+  @media (max-width: 1180px) {
+    .platform-workflow-layout,
+    .platform-v2-layout-grid,
+    .teacher-delivery-hero,
+    .admin-access-hero,
+    .admin-system-hero,
+    .academic-governance-hero,
+    .branch-ops-hero,
+    .registrar-hero {
+      grid-template-columns: 1fr;
+    }
+
+    .platform-workflow-side,
+    .platform-v2-layout-side {
+      position: static;
+    }
+  }
+
+  @media (max-width: 760px) {
+    .platform-topbar {
+      grid-template-columns: auto minmax(0, 1fr) max-content;
+      margin: 10px 10px 0;
+      gap: 7px;
+    }
+
+    .platform-search {
+      grid-column: 1 / -1;
+      grid-row: 2;
+    }
+
+    .platform-content {
+      padding: 16px 10px 28px;
+    }
+
+    .platform-page-header {
+      display: grid;
+      gap: 12px;
+    }
+
+    .platform-header-actions,
+    .platform-form-actions {
+      width: 100%;
+    }
+
+    .platform-primary-button,
+    .platform-secondary-button {
+      flex: 1 1 150px;
+    }
+
+    .platform-metric-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+
+  @media (max-width: 520px) {
+    .platform-metric-grid {
+      grid-template-columns: 1fr;
+    }
+
+    .teacher-delivery-actions {
+      grid-template-columns: 1fr;
     }
   }
 

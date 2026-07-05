@@ -26,9 +26,21 @@ import {
 } from "lucide-react";
 import { Link } from "wouter";
 import PlatformShell from "@/components/platform/PlatformShell";
-import { PlatformPageHeader, PlatformWorkspaceHeader, platformReveal, StatCard, StatusBadge, DataTableCard } from "@/components/platform/PlatformPrimitives";
+import {
+  PlatformPageHeader,
+  PlatformWorkspaceHeader,
+  platformReveal,
+  StatCard,
+  StatusBadge,
+  DataTableCard,
+} from "@/components/platform/PlatformPrimitives";
 import { platformStore } from "@/lib/domain/store";
-import { dashboardByRole, roleMeta, type Role, type Stat } from "@/lib/platformData";
+import {
+  dashboardByRole,
+  roleMeta,
+  type Role,
+  type Stat,
+} from "@/lib/platformData";
 
 const toneColor: Record<Stat["tone"], string> = {
   teal: "#1A4A3A",
@@ -48,7 +60,9 @@ function formatConnectionStatus(status: string) {
 export default function RoleDashboard({ role }: { role: Role }) {
   const dashboard = dashboardByRole[role];
   const meta = roleMeta[role];
-  const primaryActionsByRole: Partial<Record<Role, { label: string; href: string; Icon: LucideIcon }>> = {
+  const primaryActionsByRole: Partial<
+    Record<Role, { label: string; href: string; Icon: LucideIcon }>
+  > = {
     student: {
       label: "Continue lesson",
       href: "/app/student/courses/course_ar_l3/learn/lesson_ar_conditional",
@@ -82,7 +96,9 @@ export default function RoleDashboard({ role }: { role: Role }) {
     registrar: "/app/registrar/placement-tests",
     branchadmin: "/app/branch/rooms",
   };
-  const spotlightHref = spotlightRoutes[role] ?? meta.defaultRoute.replace("/dashboard", "/reports");
+  const spotlightHref =
+    spotlightRoutes[role] ??
+    meta.defaultRoute.replace("/dashboard", "/reports");
   const actionRoutesByRole: Partial<Record<Role, Record<string, string>>> = {
     student: {
       "Join class": "/app/student/courses/course_ar_l3/live",
@@ -143,22 +159,29 @@ export default function RoleDashboard({ role }: { role: Role }) {
         description={dashboard.subtitle}
         actions={
           <>
-          <Link href={meta.defaultRoute.replace("/dashboard", "/reports")} className="platform-secondary-button">
-            {reportActionLabel}
-          </Link>
-          <Link
-            href={primaryDashboardAction.href}
-            className="platform-primary-button"
-            style={{ background: meta.color }}
-          >
-            <primaryDashboardAction.Icon size={15} />
-            {primaryDashboardAction.label}
-          </Link>
+            <Link
+              href={meta.defaultRoute.replace("/dashboard", "/reports")}
+              className="platform-secondary-button"
+            >
+              {reportActionLabel}
+            </Link>
+            <Link
+              href={primaryDashboardAction.href}
+              className="platform-primary-button"
+              style={{ background: meta.color }}
+            >
+              <primaryDashboardAction.Icon size={15} />
+              {primaryDashboardAction.label}
+            </Link>
           </>
         }
       />
 
-      <motion.div className="platform-metric-grid" initial="hidden" animate="visible">
+      <motion.div
+        className="platform-metric-grid"
+        initial="hidden"
+        animate="visible"
+      >
         {dashboard.stats.map((stat, index) => (
           <StatCard
             key={stat.label}
@@ -171,7 +194,13 @@ export default function RoleDashboard({ role }: { role: Role }) {
         ))}
       </motion.div>
 
-      <motion.div className="platform-dashboard-grid" initial="hidden" animate="visible" custom={0.14} variants={dashboardReveal}>
+      <motion.div
+        className="platform-dashboard-grid"
+        initial="hidden"
+        animate="visible"
+        custom={0.14}
+        variants={dashboardReveal}
+      >
         <article className="platform-spotlight">
           <div className="platform-card-title">
             <div>
@@ -187,10 +216,19 @@ export default function RoleDashboard({ role }: { role: Role }) {
               <span>{dashboard.spotlight.progress}%</span>
             </div>
             <div>
-              <span style={{ width: `${dashboard.spotlight.progress}%`, background: meta.color }} />
+              <span
+                style={{
+                  width: `${dashboard.spotlight.progress}%`,
+                  background: meta.color,
+                }}
+              />
             </div>
           </div>
-          <Link href={spotlightHref} className="platform-primary-button" style={{ background: meta.color }}>
+          <Link
+            href={spotlightHref}
+            className="platform-primary-button"
+            style={{ background: meta.color }}
+          >
             {dashboard.spotlight.action}
             <ArrowRight size={15} />
           </Link>
@@ -204,8 +242,11 @@ export default function RoleDashboard({ role }: { role: Role }) {
             </div>
           </div>
           <div className="platform-action-list">
-            {dashboard.actions.map((action) => (
-              <Link key={action} href={quickActionRoutes[action] ?? meta.defaultRoute}>
+            {dashboard.actions.map(action => (
+              <Link
+                key={action}
+                href={quickActionRoutes[action] ?? meta.defaultRoute}
+              >
                 <CheckCircle2 size={15} style={{ color: meta.color }} />
                 {action}
               </Link>
@@ -225,14 +266,16 @@ export default function RoleDashboard({ role }: { role: Role }) {
               </tr>
             </thead>
             <tbody>
-              {dashboard.records.map((record) => (
+              {dashboard.records.map(record => (
                 <tr key={record.id}>
                   <td>
                     <strong>{record.title}</strong>
                     <small>{record.subtitle}</small>
                   </td>
                   <td>
-                    <StatusBadge tone={record.tone ?? "teal"}>{record.status}</StatusBadge>
+                    <StatusBadge tone={record.tone ?? "teal"}>
+                      {record.status}
+                    </StatusBadge>
                   </td>
                   <td>{record.owner}</td>
                   <td>{record.due}</td>
@@ -251,46 +294,97 @@ function StudentLearningDashboard() {
   const meta = roleMeta.student;
   const dashboard = dashboardByRole.student;
   const state = useMemo(() => platformStore.getState(), []);
-  const studentUser = state.users.find((user) => user.id === "usr_student_demo");
-  const student = state.students.find((profile) => profile.userId === studentUser?.id);
+  const studentUser = state.users.find(user => user.id === "usr_student_demo");
+  const student = state.students.find(
+    profile => profile.userId === studentUser?.id
+  );
   const studentId = student?.id ?? "stu_demo";
-  const enrollments = state.enrollments.filter((enrollment) => enrollment.studentId === studentId && enrollment.status === "active");
-  const primaryEnrollment = enrollments.find((enrollment) => enrollment.courseRunId === "run_ar_l3_2026") ?? enrollments[0];
-  const courseRun = state.courseRuns.find((run) => run.id === primaryEnrollment?.courseRunId);
-  const course = state.courses.find((item) => item.id === courseRun?.courseId);
-  const classGroup = state.classGroups.find((item) => item.id === primaryEnrollment?.classGroupId);
-  const branch = state.branches.find((item) => item.id === courseRun?.branchId);
-  const teacher = state.users.find((user) => user.id === primaryEnrollment?.teacherId);
-  const courseModuleIds = new Set(state.modules.filter((module) => module.courseId === course?.id).map((module) => module.id));
-  const courseLessons = state.lessons.filter((lesson) => courseModuleIds.has(lesson.moduleId));
+  const enrollments = state.enrollments.filter(
+    enrollment =>
+      enrollment.studentId === studentId && enrollment.status === "active"
+  );
+  const primaryEnrollment =
+    enrollments.find(
+      enrollment => enrollment.courseRunId === "run_ar_l3_2026"
+    ) ?? enrollments[0];
+  const courseRun = state.courseRuns.find(
+    run => run.id === primaryEnrollment?.courseRunId
+  );
+  const course = state.courses.find(item => item.id === courseRun?.courseId);
+  const classGroup = state.classGroups.find(
+    item => item.id === primaryEnrollment?.classGroupId
+  );
+  const branch = state.branches.find(item => item.id === courseRun?.branchId);
+  const teacher = state.users.find(
+    user => user.id === primaryEnrollment?.teacherId
+  );
+  const courseModuleIds = new Set(
+    state.modules
+      .filter(module => module.courseId === course?.id)
+      .map(module => module.id)
+  );
+  const courseLessons = state.lessons.filter(lesson =>
+    courseModuleIds.has(lesson.moduleId)
+  );
   const studentLessonProgress = state.lessonProgress.filter(
-    (progress) => progress.studentId === studentId && courseLessons.some((lesson) => lesson.id === progress.lessonId),
+    progress =>
+      progress.studentId === studentId &&
+      courseLessons.some(lesson => lesson.id === progress.lessonId)
   );
   const nextLessonProgress =
-    studentLessonProgress.find((progress) => progress.status === "in_progress") ??
-    studentLessonProgress.find((progress) => progress.status === "not_started");
-  const nextLesson = state.lessons.find((lesson) => lesson.id === nextLessonProgress?.lessonId) ?? courseLessons[0];
-  const activeRunIds = new Set(enrollments.map((enrollment) => enrollment.courseRunId));
-  const assignments = state.assignments.filter((assignment) => activeRunIds.has(assignment.courseRunId) && assignment.status === "active");
-  const pendingAssignments = assignments.filter(
-    (assignment) =>
-      !state.assignmentSubmissions.some(
-        (submission) => submission.assignmentId === assignment.id && submission.studentId === studentId && submission.status === "completed",
-      ),
+    studentLessonProgress.find(progress => progress.status === "in_progress") ??
+    studentLessonProgress.find(progress => progress.status === "not_started");
+  const nextLesson =
+    state.lessons.find(lesson => lesson.id === nextLessonProgress?.lessonId) ??
+    courseLessons[0];
+  const activeRunIds = new Set(
+    enrollments.map(enrollment => enrollment.courseRunId)
   );
-  const quizzes = state.quizzes.filter((quiz) => activeRunIds.has(quiz.courseRunId) && quiz.status === "active");
-  const quizAttempts = state.quizAttempts.filter((attempt) => attempt.studentId === studentId);
-  const activeCertificate = state.certificates.find((certificate) => certificate.studentId === studentId);
-  const quranProgress = state.quranProgress.find((record) => record.studentId === studentId);
-  const quranPlan = state.quranPlans.find((plan) => plan.studentId === studentId);
-  const unreadMessages = state.messages.filter((message) => message.toUserId === studentUser?.id && !message.read);
+  const assignments = state.assignments.filter(
+    assignment =>
+      activeRunIds.has(assignment.courseRunId) && assignment.status === "active"
+  );
+  const pendingAssignments = assignments.filter(
+    assignment =>
+      !state.assignmentSubmissions.some(
+        submission =>
+          submission.assignmentId === assignment.id &&
+          submission.studentId === studentId &&
+          submission.status === "completed"
+      )
+  );
+  const quizzes = state.quizzes.filter(
+    quiz => activeRunIds.has(quiz.courseRunId) && quiz.status === "active"
+  );
+  const quizAttempts = state.quizAttempts.filter(
+    attempt => attempt.studentId === studentId
+  );
+  const activeCertificate = state.certificates.find(
+    certificate => certificate.studentId === studentId
+  );
+  const quranProgress = state.quranProgress.find(
+    record => record.studentId === studentId
+  );
+  const quranPlan = state.quranPlans.find(plan => plan.studentId === studentId);
+  const unreadMessages = state.messages.filter(
+    message => message.toUserId === studentUser?.id && !message.read
+  );
   const studentEvents = state.events
-    .filter((event) => event.classGroupId && enrollments.some((enrollment) => enrollment.classGroupId === event.classGroupId))
+    .filter(
+      event =>
+        event.classGroupId &&
+        enrollments.some(
+          enrollment => enrollment.classGroupId === event.classGroupId
+        )
+    )
     .sort((a, b) => a.startsAt.localeCompare(b.startsAt));
   const nextEvent = studentEvents[0];
   const submittedAssignments = assignments.length - pendingAssignments.length;
-  const completedLessons = studentLessonProgress.filter((progress) => progress.status === "completed").length;
-  const progressPercent = primaryEnrollment?.progress ?? dashboard.spotlight.progress;
+  const completedLessons = studentLessonProgress.filter(
+    progress => progress.status === "completed"
+  ).length;
+  const progressPercent =
+    primaryEnrollment?.progress ?? dashboard.spotlight.progress;
   const learningTasks: Array<{
     id: string;
     title: string;
@@ -303,45 +397,67 @@ function StudentLearningDashboard() {
       id: "next-lesson",
       title: nextLesson?.title ?? dashboard.spotlight.title,
       subtitle: course?.title ?? "Arabic Level 3",
-      meta: nextLessonProgress?.status === "completed" ? "Complete" : nextLessonProgress?.status === "in_progress" ? "In progress" : "Ready",
+      meta:
+        nextLessonProgress?.status === "completed"
+          ? "Complete"
+          : nextLessonProgress?.status === "in_progress"
+            ? "In progress"
+            : "Ready",
       tone: nextLessonProgress?.status === "completed" ? "green" : "teal",
       href: "/app/student/courses/course_ar_l3/learn/lesson_ar_conditional",
     },
-    ...pendingAssignments.slice(0, 2).map((assignment) => ({
+    ...pendingAssignments.slice(0, 2).map(assignment => ({
       id: assignment.id,
       title: assignment.title,
-      subtitle: assignment.submissionType === "audio" ? "Audio submission" : "Course task",
-      meta: state.assignmentSubmissions.some((submission) => submission.assignmentId === assignment.id && submission.studentId === studentId)
+      subtitle:
+        assignment.submissionType === "audio"
+          ? "Audio submission"
+          : "Course task",
+      meta: state.assignmentSubmissions.some(
+        submission =>
+          submission.assignmentId === assignment.id &&
+          submission.studentId === studentId
+      )
         ? "Draft saved"
         : "Open",
       tone: "amber" as const,
       href: `/app/student/assignments/${assignment.id}`,
     })),
-    ...quizzes.slice(0, 1).map((quiz) => ({
+    ...quizzes.slice(0, 1).map(quiz => ({
       id: quiz.id,
       title: quiz.title,
       subtitle: `${quiz.durationMinutes} min check`,
-      meta: quizAttempts.some((attempt) => attempt.quizId === quiz.id && attempt.status === "completed") ? "Attempted" : "Ready",
-      tone: (quizAttempts.some((attempt) => attempt.quizId === quiz.id && attempt.status === "completed") ? "green" : "purple") as NonNullable<
-        Stat["tone"]
-      >,
+      meta: quizAttempts.some(
+        attempt => attempt.quizId === quiz.id && attempt.status === "completed"
+      )
+        ? "Attempted"
+        : "Ready",
+      tone: (quizAttempts.some(
+        attempt => attempt.quizId === quiz.id && attempt.status === "completed"
+      )
+        ? "green"
+        : "purple") as NonNullable<Stat["tone"]>,
       href: "/app/student/quizzes",
     })),
   ];
   const studentAttentionItems = [
     {
       label: "Assignments due",
-      detail: pendingAssignments.length ? `${pendingAssignments.length} task(s) waiting.` : "No open assignment blockers.",
+      detail: pendingAssignments.length
+        ? `${pendingAssignments.length} task(s) waiting.`
+        : "No open assignment blockers.",
       href: "/app/student/assignments",
       Icon: ClipboardList,
-      tone: pendingAssignments.length ? "amber" as const : "green" as const,
+      tone: pendingAssignments.length ? ("amber" as const) : ("green" as const),
     },
     {
       label: "Teacher feedback",
-      detail: unreadMessages.length ? `${unreadMessages.length} unread message(s).` : `Feedback from ${teacher?.name ?? "teacher"} is current.`,
+      detail: unreadMessages.length
+        ? `${unreadMessages.length} unread message(s).`
+        : `Feedback from ${teacher?.name ?? "teacher"} is current.`,
       href: "/app/student/messages",
       Icon: MessageSquare,
-      tone: unreadMessages.length ? "teal" as const : "green" as const,
+      tone: unreadMessages.length ? ("teal" as const) : ("green" as const),
     },
     {
       label: "Quran progress",
@@ -352,17 +468,34 @@ function StudentLearningDashboard() {
     },
     {
       label: "Certificate path",
-      detail: activeCertificate?.status.replaceAll("_", " ") ?? "Keep progress and attendance on track.",
+      detail:
+        activeCertificate?.status.replaceAll("_", " ") ??
+        "Keep progress and attendance on track.",
       href: "/app/student/certificates",
       Icon: Award,
-      tone: activeCertificate ? "green" as const : "amber" as const,
+      tone: activeCertificate ? ("green" as const) : ("amber" as const),
     },
   ];
 
   const studentStats: Stat[] = [
-    { label: "Active courses", value: String(enrollments.length), change: `${assignments.length} tasks`, tone: "teal" },
-    { label: "Course progress", value: `${progressPercent}%`, change: `${completedLessons}/${Math.max(courseLessons.length, 1)} lessons`, tone: "green" },
-    { label: "Attendance", value: `${primaryEnrollment?.attendanceRate ?? 0}%`, change: branch?.name ?? "Online", tone: "amber" },
+    {
+      label: "Active courses",
+      value: String(enrollments.length),
+      change: `${assignments.length} tasks`,
+      tone: "teal",
+    },
+    {
+      label: "Course progress",
+      value: `${progressPercent}%`,
+      change: `${completedLessons}/${Math.max(courseLessons.length, 1)} lessons`,
+      tone: "green",
+    },
+    {
+      label: "Attendance",
+      value: `${primaryEnrollment?.attendanceRate ?? 0}%`,
+      change: branch?.name ?? "Online",
+      tone: "amber",
+    },
     {
       label: "Certificate path",
       value: activeCertificate ? `${activeCertificate.grade}%` : "New",
@@ -386,10 +519,17 @@ function StudentLearningDashboard() {
         }
         actions={
           <>
-            <Link href="/app/student/reports" className="platform-secondary-button">
+            <Link
+              href="/app/student/reports"
+              className="platform-secondary-button"
+            >
               My report
             </Link>
-            <Link href="/app/student/courses/course_ar_l3/learn/lesson_ar_conditional" className="platform-primary-button" style={{ background: meta.color }}>
+            <Link
+              href="/app/student/courses/course_ar_l3/learn/lesson_ar_conditional"
+              className="platform-primary-button"
+              style={{ background: meta.color }}
+            >
               <BookOpen size={15} />
               Continue lesson
             </Link>
@@ -397,7 +537,11 @@ function StudentLearningDashboard() {
         }
       />
 
-      <motion.div className="platform-metric-grid" initial="hidden" animate="visible">
+      <motion.div
+        className="platform-metric-grid"
+        initial="hidden"
+        animate="visible"
+      >
         {studentStats.map((stat, index) => (
           <StatCard
             key={stat.label}
@@ -410,7 +554,13 @@ function StudentLearningDashboard() {
         ))}
       </motion.div>
 
-      <motion.div className="platform-v2-role-main" initial="hidden" animate="visible" custom={0.12} variants={dashboardReveal}>
+      <motion.div
+        className="platform-v2-role-main"
+        initial="hidden"
+        animate="visible"
+        custom={0.12}
+        variants={dashboardReveal}
+      >
         <div className="platform-v2-role-stack">
           <section className="platform-v2-panel platform-v2-work-summary">
             <PlatformWorkspaceHeader
@@ -421,22 +571,37 @@ function StudentLearningDashboard() {
               <div className="platform-v2-summary-copy">
                 <span>Next learning block</span>
                 <h2>{nextLesson?.title ?? "Continue Arabic Grammar"}</h2>
-                <p>{course?.title ?? "Arabic Level 3"} with {teacher?.name ?? "your teacher"}.</p>
+                <p>
+                  {course?.title ?? "Arabic Level 3"} with{" "}
+                  {teacher?.name ?? "your teacher"}.
+                </p>
                 <div className="platform-progress-row">
                   <div>
                     <strong>Course progress</strong>
                     <span>{progressPercent}%</span>
                   </div>
                   <div>
-                    <span style={{ width: `${progressPercent}%`, background: meta.color }} />
+                    <span
+                      style={{
+                        width: `${progressPercent}%`,
+                        background: meta.color,
+                      }}
+                    />
                   </div>
                 </div>
                 <div className="platform-v2-summary-actions">
-                  <Link href="/app/student/courses/course_ar_l3/learn/lesson_ar_conditional" className="platform-primary-button" style={{ background: meta.color }}>
+                  <Link
+                    href="/app/student/courses/course_ar_l3/learn/lesson_ar_conditional"
+                    className="platform-primary-button"
+                    style={{ background: meta.color }}
+                  >
                     Continue lesson
                     <ArrowRight size={15} />
                   </Link>
-                  <Link href="/app/student/courses/course_ar_l3/live" className="platform-secondary-button">
+                  <Link
+                    href="/app/student/courses/course_ar_l3/live"
+                    className="platform-secondary-button"
+                  >
                     Join class
                   </Link>
                 </div>
@@ -444,7 +609,11 @@ function StudentLearningDashboard() {
               <div className="platform-v2-summary-facts">
                 <article>
                   <span>Next class</span>
-                  <strong>{nextEvent ? formatStudentDate(nextEvent.startsAt) : "Scheduled"}</strong>
+                  <strong>
+                    {nextEvent
+                      ? formatStudentDate(nextEvent.startsAt)
+                      : "Scheduled"}
+                  </strong>
                   <small>{classGroup?.name ?? "Live class"}</small>
                 </article>
                 <article>
@@ -467,8 +636,14 @@ function StudentLearningDashboard() {
               description="Only the next lesson, due work, and quick checks."
             />
             <div className="platform-v2-dashboard-list">
-              {learningTasks.map((item) => (
-                <Link key={item.id} href={item.href} style={{ "--item-color": toneColor[item.tone] } as CSSProperties}>
+              {learningTasks.map(item => (
+                <Link
+                  key={item.id}
+                  href={item.href}
+                  style={
+                    { "--item-color": toneColor[item.tone] } as CSSProperties
+                  }
+                >
                   <div>
                     <strong>{item.title}</strong>
                     <small>{item.subtitle}</small>
@@ -476,10 +651,16 @@ function StudentLearningDashboard() {
                   <span>{item.meta}</span>
                 </Link>
               ))}
-              <Link href="/app/student/assignments" style={{ "--item-color": toneColor.amber } as CSSProperties}>
+              <Link
+                href="/app/student/assignments"
+                style={{ "--item-color": toneColor.amber } as CSSProperties}
+              >
                 <div>
                   <strong>{pendingAssignments.length} assignments open</strong>
-                  <small>{submittedAssignments} submitted or saved · {quizzes.length} quiz check(s)</small>
+                  <small>
+                    {submittedAssignments} submitted or saved · {quizzes.length}{" "}
+                    quiz check(s)
+                  </small>
                 </div>
                 <span>review</span>
               </Link>
@@ -493,8 +674,14 @@ function StudentLearningDashboard() {
             description="Short signals that need the student’s attention."
           />
           <div className="platform-v2-attention-list">
-            {studentAttentionItems.map((item) => (
-              <Link key={item.label} href={item.href} style={{ "--item-color": toneColor[item.tone] } as CSSProperties}>
+            {studentAttentionItems.map(item => (
+              <Link
+                key={item.label}
+                href={item.href}
+                style={
+                  { "--item-color": toneColor[item.tone] } as CSSProperties
+                }
+              >
                 <span>
                   <item.Icon size={16} />
                 </span>
@@ -528,28 +715,60 @@ function formatStudentDate(value?: string) {
 function RegistrarCommandDashboard() {
   const meta = roleMeta.registrar;
   const state = useMemo(() => platformStore.getState(), []);
-  const actor = state.users.find((user) => user.id === "usr_registrar_demo");
-  const branch = state.branches.find((item) => item.id === actor?.branchId);
+  const actor = state.users.find(user => user.id === "usr_registrar_demo");
+  const branch = state.branches.find(item => item.id === actor?.branchId);
   const applications = state.applications;
-  const pendingApplications = applications.filter((application) => application.status === "pending");
-  const pendingPlacements = state.placementTests.filter((booking) => booking.status !== "completed");
-  const readyWorkflows = state.enrollmentWorkflows.filter((workflow) => workflow.status === "ready_to_enroll");
-  const invoiceRows = state.invoices.map((invoice) => {
+  const pendingApplications = applications.filter(
+    application => application.status === "pending"
+  );
+  const pendingPlacements = state.placementTests.filter(
+    booking => booking.status !== "completed"
+  );
+  const readyWorkflows = state.enrollmentWorkflows.filter(
+    workflow => workflow.status === "ready_to_enroll"
+  );
+  const invoiceRows = state.invoices.map(invoice => {
     const paid = state.payments
-      .filter((payment) => payment.invoiceId === invoice.id && payment.status === "paid")
+      .filter(
+        payment => payment.invoiceId === invoice.id && payment.status === "paid"
+      )
       .reduce((sum, payment) => sum + payment.amount, 0);
     return { invoice, paid, balance: Math.max(0, invoice.amount - paid) };
   });
-  const openInvoices = invoiceRows.filter((row) => row.balance > 0);
+  const openInvoices = invoiceRows.filter(row => row.balance > 0);
   const collected = invoiceRows.reduce((sum, row) => sum + row.paid, 0);
   const nextPlacement = pendingPlacements[0];
-  const nextPlacementBranch = state.branches.find((item) => item.id === nextPlacement?.branchId);
-  const activeStudents = state.students.filter((student) => student.status === "active");
+  const nextPlacementBranch = state.branches.find(
+    item => item.id === nextPlacement?.branchId
+  );
+  const activeStudents = state.students.filter(
+    student => student.status === "active"
+  );
   const pipelineStats: Stat[] = [
-    { label: "Leads", value: String(state.leads.length), change: `${state.leads.filter((lead) => lead.status === "lead").length} new`, tone: "teal" },
-    { label: "Applications", value: String(applications.length), change: `${pendingApplications.length} pending`, tone: "amber" },
-    { label: "Placement queue", value: String(pendingPlacements.length), change: "awaiting result", tone: pendingPlacements.length ? "red" : "green" },
-    { label: "Open balance", value: `EGP ${openInvoices.reduce((sum, row) => sum + row.balance, 0)}`, change: `${openInvoices.length} invoice(s)`, tone: openInvoices.length ? "amber" : "green" },
+    {
+      label: "Leads",
+      value: String(state.leads.length),
+      change: `${state.leads.filter(lead => lead.status === "lead").length} new`,
+      tone: "teal",
+    },
+    {
+      label: "Applications",
+      value: String(applications.length),
+      change: `${pendingApplications.length} pending`,
+      tone: "amber",
+    },
+    {
+      label: "Placement queue",
+      value: String(pendingPlacements.length),
+      change: "awaiting result",
+      tone: pendingPlacements.length ? "red" : "green",
+    },
+    {
+      label: "Open balance",
+      value: `EGP ${openInvoices.reduce((sum, row) => sum + row.balance, 0)}`,
+      change: `${openInvoices.length} invoice(s)`,
+      tone: openInvoices.length ? "amber" : "green",
+    },
   ];
   const workflowTiles: Array<{
     label: string;
@@ -562,7 +781,7 @@ function RegistrarCommandDashboard() {
     {
       label: "Admissions pipeline",
       href: "/app/registrar/leads",
-      count: state.leads.filter((lead) => lead.status === "lead").length,
+      count: state.leads.filter(lead => lead.status === "lead").length,
       detail: "New leads and pending applications.",
       tone: "teal",
       Icon: Users,
@@ -593,7 +812,7 @@ function RegistrarCommandDashboard() {
     },
   ];
   const registrarTaskItems = [
-    ...pendingPlacements.slice(0, 2).map((booking) => ({
+    ...pendingPlacements.slice(0, 2).map(booking => ({
       id: booking.id,
       label: booking.fullName,
       detail: `${booking.subject} · ${booking.preferredDate} · ${booking.currentLevel}`,
@@ -601,9 +820,11 @@ function RegistrarCommandDashboard() {
       meta: "placement",
       tone: "amber" as const,
     })),
-    ...readyWorkflows.slice(0, 2).map((workflow) => {
-      const lead = state.leads.find((item) => item.id === workflow.leadId);
-      const course = state.courses.find((item) => item.id === workflow.targetCourseId);
+    ...readyWorkflows.slice(0, 2).map(workflow => {
+      const lead = state.leads.find(item => item.id === workflow.leadId);
+      const course = state.courses.find(
+        item => item.id === workflow.targetCourseId
+      );
       return {
         id: workflow.id,
         label: lead?.fullName ?? workflow.id,
@@ -613,8 +834,8 @@ function RegistrarCommandDashboard() {
         tone: "purple" as const,
       };
     }),
-    ...pendingApplications.slice(0, 2).map((application) => {
-      const lead = state.leads.find((item) => item.id === application.leadId);
+    ...pendingApplications.slice(0, 2).map(application => {
+      const lead = state.leads.find(item => item.id === application.leadId);
       return {
         id: application.id,
         label: lead?.fullName ?? application.id,
@@ -628,31 +849,41 @@ function RegistrarCommandDashboard() {
   const registrarAttentionItems = [
     {
       label: "Applications pending",
-      detail: pendingApplications.length ? `${pendingApplications.length} file(s) need review.` : "No pending application files.",
+      detail: pendingApplications.length
+        ? `${pendingApplications.length} file(s) need review.`
+        : "No pending application files.",
       href: "/app/registrar/applications",
       Icon: FileText,
-      tone: pendingApplications.length ? "amber" as const : "green" as const,
+      tone: pendingApplications.length
+        ? ("amber" as const)
+        : ("green" as const),
     },
     {
       label: "Placement queue",
-      detail: pendingPlacements.length ? `${pendingPlacements.length} test(s) need a result.` : "Placement queue is clear.",
+      detail: pendingPlacements.length
+        ? `${pendingPlacements.length} test(s) need a result.`
+        : "Placement queue is clear.",
       href: "/app/registrar/placement-tests",
       Icon: ClipboardList,
-      tone: pendingPlacements.length ? "red" as const : "green" as const,
+      tone: pendingPlacements.length ? ("red" as const) : ("green" as const),
     },
     {
       label: "Ready to enroll",
-      detail: readyWorkflows.length ? `${readyWorkflows.length} student(s) ready for class assignment.` : `${activeStudents.length} active students live.`,
+      detail: readyWorkflows.length
+        ? `${readyWorkflows.length} student(s) ready for class assignment.`
+        : `${activeStudents.length} active students live.`,
       href: "/app/registrar/enrollments",
       Icon: UserPlus,
-      tone: readyWorkflows.length ? "purple" as const : "green" as const,
+      tone: readyWorkflows.length ? ("purple" as const) : ("green" as const),
     },
     {
       label: "Payments pending",
-      detail: openInvoices.length ? `EGP ${openInvoices.reduce((sum, row) => sum + row.balance, 0)} balance open.` : `EGP ${collected} collected.`,
+      detail: openInvoices.length
+        ? `EGP ${openInvoices.reduce((sum, row) => sum + row.balance, 0)} balance open.`
+        : `EGP ${collected} collected.`,
       href: "/app/registrar/payments",
       Icon: CreditCard,
-      tone: openInvoices.length ? "amber" as const : "green" as const,
+      tone: openInvoices.length ? ("amber" as const) : ("green" as const),
     },
   ];
 
@@ -664,18 +895,29 @@ function RegistrarCommandDashboard() {
         description={`${branch?.name ?? "Admissions"} intake, placement, enrollment, and payments.`}
         actions={
           <>
-          <Link href="/app/registrar/reports" className="platform-secondary-button">
-            Reports
-          </Link>
-          <Link href="/app/registrar/leads" className="platform-primary-button" style={{ background: meta.color }}>
-            <Users size={15} />
-            Add lead
-          </Link>
+            <Link
+              href="/app/registrar/reports"
+              className="platform-secondary-button"
+            >
+              Reports
+            </Link>
+            <Link
+              href="/app/registrar/leads"
+              className="platform-primary-button"
+              style={{ background: meta.color }}
+            >
+              <Users size={15} />
+              Add lead
+            </Link>
           </>
         }
       />
 
-      <motion.div className="platform-metric-grid" initial="hidden" animate="visible">
+      <motion.div
+        className="platform-metric-grid"
+        initial="hidden"
+        animate="visible"
+      >
         {pipelineStats.map((stat, index) => (
           <StatCard
             key={stat.label}
@@ -688,7 +930,13 @@ function RegistrarCommandDashboard() {
         ))}
       </motion.div>
 
-      <motion.div className="platform-v2-role-main" initial="hidden" animate="visible" custom={0.14} variants={dashboardReveal}>
+      <motion.div
+        className="platform-v2-role-main"
+        initial="hidden"
+        animate="visible"
+        custom={0.14}
+        variants={dashboardReveal}
+      >
         <div className="platform-v2-role-stack">
           <section className="platform-v2-panel platform-v2-work-summary">
             <PlatformWorkspaceHeader
@@ -698,7 +946,11 @@ function RegistrarCommandDashboard() {
             <div className="platform-v2-summary-body">
               <div className="platform-v2-summary-copy">
                 <span>Next admissions action</span>
-                <h2>{nextPlacement?.fullName ?? pendingApplications[0]?.id ?? "Pipeline ready"}</h2>
+                <h2>
+                  {nextPlacement?.fullName ??
+                    pendingApplications[0]?.id ??
+                    "Pipeline ready"}
+                </h2>
                 <p>
                   {nextPlacement
                     ? `${nextPlacement.subject} placement at ${nextPlacementBranch?.name ?? nextPlacement.branchId}.`
@@ -707,16 +959,23 @@ function RegistrarCommandDashboard() {
                       : "Admissions queue is clear."}
                 </p>
                 <div className="platform-v2-summary-actions">
-                  <Link href="/app/registrar/placement-tests" className="platform-primary-button" style={{ background: meta.color }}>
+                  <Link
+                    href="/app/registrar/placement-tests"
+                    className="platform-primary-button"
+                    style={{ background: meta.color }}
+                  >
                     Placement queue
                   </Link>
-                  <Link href="/app/registrar/applications" className="platform-secondary-button">
+                  <Link
+                    href="/app/registrar/applications"
+                    className="platform-secondary-button"
+                  >
                     Applications
                   </Link>
                 </div>
               </div>
               <div className="platform-v2-summary-facts">
-                {workflowTiles.slice(0, 3).map((item) => (
+                {workflowTiles.slice(0, 3).map(item => (
                   <article key={item.label}>
                     <span>{item.label}</span>
                     <strong>{item.count}</strong>
@@ -733,8 +992,14 @@ function RegistrarCommandDashboard() {
               description="Short queue of files that can move today."
             />
             <div className="platform-v2-dashboard-list">
-              {registrarTaskItems.map((item) => (
-                <Link key={item.id} href={item.href} style={{ "--item-color": toneColor[item.tone] } as CSSProperties}>
+              {registrarTaskItems.map(item => (
+                <Link
+                  key={item.id}
+                  href={item.href}
+                  style={
+                    { "--item-color": toneColor[item.tone] } as CSSProperties
+                  }
+                >
                   <div>
                     <strong>{item.label}</strong>
                     <small>{item.detail}</small>
@@ -746,7 +1011,9 @@ function RegistrarCommandDashboard() {
                 <article>
                   <div>
                     <strong>No enrollment blocker</strong>
-                    <small>New placement and application rows will appear here.</small>
+                    <small>
+                      New placement and application rows will appear here.
+                    </small>
                   </div>
                   <span>clear</span>
                 </article>
@@ -761,8 +1028,14 @@ function RegistrarCommandDashboard() {
             description="Admissions, placement, enrollment, and payments."
           />
           <div className="platform-v2-attention-list">
-            {registrarAttentionItems.map((item) => (
-              <Link key={item.label} href={item.href} style={{ "--item-color": toneColor[item.tone] } as CSSProperties}>
+            {registrarAttentionItems.map(item => (
+              <Link
+                key={item.label}
+                href={item.href}
+                style={
+                  { "--item-color": toneColor[item.tone] } as CSSProperties
+                }
+              >
                 <span>
                   <item.Icon size={16} />
                 </span>
@@ -785,92 +1058,179 @@ function TeacherCommandDashboard() {
   const meta = roleMeta.teacher;
   const state = useMemo(() => platformStore.getState(), []);
   const actorId = "usr_teacher_demo";
-  const teacherUser = state.users.find((user) => user.id === actorId);
-  const teacherProfile = state.teachers.find((teacher) => teacher.userId === actorId);
-  const staffProfile = state.staffProfiles.find((profile) => profile.userId === actorId && profile.role === "teacher");
-  const teacherRuns = state.courseRuns.filter((run) => run.teacherId === actorId);
-  const runIds = new Set(teacherRuns.map((run) => run.id));
-  const teacherClasses = state.classGroups.filter((group) => runIds.has(group.courseRunId));
-  const classIds = new Set(teacherClasses.map((group) => group.id));
-  const studentIds = new Set(teacherClasses.flatMap((group) => group.studentIds));
-  const teacherStudents = state.students.filter((student) => studentIds.has(student.id));
+  const teacherUser = state.users.find(user => user.id === actorId);
+  const teacherProfile = state.teachers.find(
+    teacher => teacher.userId === actorId
+  );
+  const staffProfile = state.staffProfiles.find(
+    profile => profile.userId === actorId && profile.role === "teacher"
+  );
+  const teacherRuns = state.courseRuns.filter(run => run.teacherId === actorId);
+  const runIds = new Set(teacherRuns.map(run => run.id));
+  const teacherClasses = state.classGroups.filter(group =>
+    runIds.has(group.courseRunId)
+  );
+  const classIds = new Set(teacherClasses.map(group => group.id));
+  const studentIds = new Set(teacherClasses.flatMap(group => group.studentIds));
+  const teacherStudents = state.students.filter(student =>
+    studentIds.has(student.id)
+  );
   const sessions = state.classSessions
-    .filter((session) => classIds.has(session.classGroupId))
-    .sort((a, b) => new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime());
-  const pendingAttendance = sessions.filter((session) => !session.attendanceSaved);
-  const assignments = state.assignments.filter((assignment) => runIds.has(assignment.courseRunId));
-  const assignmentIds = new Set(assignments.map((assignment) => assignment.id));
+    .filter(session => classIds.has(session.classGroupId))
+    .sort(
+      (a, b) => new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime()
+    );
+  const pendingAttendance = sessions.filter(
+    session => !session.attendanceSaved
+  );
+  const assignments = state.assignments.filter(assignment =>
+    runIds.has(assignment.courseRunId)
+  );
+  const assignmentIds = new Set(assignments.map(assignment => assignment.id));
   const pendingSubmissions = state.assignmentSubmissions.filter(
-    (submission) =>
+    submission =>
       submission.status === "pending" &&
       studentIds.has(submission.studentId) &&
-      assignmentIds.has(submission.assignmentId),
+      assignmentIds.has(submission.assignmentId)
   );
-  const grades = state.grades.filter((grade) => studentIds.has(grade.studentId) && runIds.has(grade.courseRunId));
+  const grades = state.grades.filter(
+    grade => studentIds.has(grade.studentId) && runIds.has(grade.courseRunId)
+  );
   const averageProgress = teacherStudents.length
     ? Math.round(
         teacherStudents.reduce((sum, student) => {
           const studentEnrollments = state.enrollments.filter(
-            (enrollment) => enrollment.studentId === student.id && runIds.has(enrollment.courseRunId),
+            enrollment =>
+              enrollment.studentId === student.id &&
+              runIds.has(enrollment.courseRunId)
           );
           if (!studentEnrollments.length) return sum;
-          return sum + Math.round(studentEnrollments.reduce((inner, enrollment) => inner + enrollment.progress, 0) / studentEnrollments.length);
-        }, 0) / teacherStudents.length,
+          return (
+            sum +
+            Math.round(
+              studentEnrollments.reduce(
+                (inner, enrollment) => inner + enrollment.progress,
+                0
+              ) / studentEnrollments.length
+            )
+          );
+        }, 0) / teacherStudents.length
       )
     : 0;
   const studentsNeedingAttention = teacherStudents
-    .map((student) => {
-      const user = state.users.find((item) => item.id === student.userId);
-      const enrollments = state.enrollments.filter((enrollment) => enrollment.studentId === student.id && runIds.has(enrollment.courseRunId));
-      const lowestAttendance = enrollments.length ? Math.min(...enrollments.map((enrollment) => enrollment.attendanceRate)) : 0;
-      const lowestGrade = enrollments.length ? Math.min(...enrollments.map((enrollment) => enrollment.currentGrade)) : 0;
-      const progress = enrollments.length ? Math.round(enrollments.reduce((sum, enrollment) => sum + enrollment.progress, 0) / enrollments.length) : 0;
+    .map(student => {
+      const user = state.users.find(item => item.id === student.userId);
+      const enrollments = state.enrollments.filter(
+        enrollment =>
+          enrollment.studentId === student.id &&
+          runIds.has(enrollment.courseRunId)
+      );
+      const lowestAttendance = enrollments.length
+        ? Math.min(...enrollments.map(enrollment => enrollment.attendanceRate))
+        : 0;
+      const lowestGrade = enrollments.length
+        ? Math.min(...enrollments.map(enrollment => enrollment.currentGrade))
+        : 0;
+      const progress = enrollments.length
+        ? Math.round(
+            enrollments.reduce(
+              (sum, enrollment) => sum + enrollment.progress,
+              0
+            ) / enrollments.length
+          )
+        : 0;
       return { student, user, lowestAttendance, lowestGrade, progress };
     })
-    .filter((row) => row.lowestAttendance < 85 || row.lowestGrade < 75 || row.progress < 50)
+    .filter(
+      row =>
+        row.lowestAttendance < 85 || row.lowestGrade < 75 || row.progress < 50
+    )
     .slice(0, 4);
-  const nextClass = sessions.find((session) => !session.attendanceSaved) ?? sessions[0];
-  const nextClassGroup = teacherClasses.find((group) => group.id === nextClass?.classGroupId) ?? teacherClasses[0];
-  const nextRun = teacherRuns.find((run) => run.id === nextClassGroup?.courseRunId);
-  const nextCourse = state.courses.find((course) => course.id === nextRun?.courseId);
+  const nextClass =
+    sessions.find(session => !session.attendanceSaved) ?? sessions[0];
+  const nextClassGroup =
+    teacherClasses.find(group => group.id === nextClass?.classGroupId) ??
+    teacherClasses[0];
+  const nextRun = teacherRuns.find(
+    run => run.id === nextClassGroup?.courseRunId
+  );
+  const nextCourse = state.courses.find(
+    course => course.id === nextRun?.courseId
+  );
   const todayKey = new Date().toISOString().slice(0, 10);
-  const todaySessions = sessions.filter((session) => session.startsAt.slice(0, 10) === todayKey);
-  const visibleSessions = todaySessions.length ? todaySessions : sessions.slice(0, 4);
-  const unreadMessages = state.messages.filter((message) => message.toUserId === actorId && !message.read);
+  const todaySessions = sessions.filter(
+    session => session.startsAt.slice(0, 10) === todayKey
+  );
+  const visibleSessions = todaySessions.length
+    ? todaySessions
+    : sessions.slice(0, 4);
+  const unreadMessages = state.messages.filter(
+    message => message.toUserId === actorId && !message.read
+  );
   const dashboardStats: Stat[] = [
-    { label: "Today’s classes", value: String(todaySessions.length || visibleSessions.length), change: todaySessions.length ? "scheduled today" : "next scheduled", tone: "teal" },
-    { label: "Attendance due", value: String(pendingAttendance.length), change: `${sessions.length} session(s)`, tone: pendingAttendance.length ? "amber" : "green" },
-    { label: "Grading queue", value: String(pendingSubmissions.length), change: `${grades.length} grade item(s)`, tone: pendingSubmissions.length ? "red" : "green" },
-    { label: "Need support", value: String(studentsNeedingAttention.length), change: `${teacherStudents.length} learner(s)`, tone: studentsNeedingAttention.length ? "amber" : "green" },
+    {
+      label: "Today’s classes",
+      value: String(todaySessions.length || visibleSessions.length),
+      change: todaySessions.length ? "scheduled today" : "next scheduled",
+      tone: "teal",
+    },
+    {
+      label: "Attendance due",
+      value: String(pendingAttendance.length),
+      change: `${sessions.length} session(s)`,
+      tone: pendingAttendance.length ? "amber" : "green",
+    },
+    {
+      label: "Grading queue",
+      value: String(pendingSubmissions.length),
+      change: `${grades.length} grade item(s)`,
+      tone: pendingSubmissions.length ? "red" : "green",
+    },
+    {
+      label: "Need support",
+      value: String(studentsNeedingAttention.length),
+      change: `${teacherStudents.length} learner(s)`,
+      tone: studentsNeedingAttention.length ? "amber" : "green",
+    },
   ];
   const teacherAttentionItems = [
     {
       label: "Attendance to mark",
-      detail: pendingAttendance.length ? `${pendingAttendance.length} session(s) need attendance.` : "Attendance is saved for current sessions.",
+      detail: pendingAttendance.length
+        ? `${pendingAttendance.length} session(s) need attendance.`
+        : "Attendance is saved for current sessions.",
       href: `/app/teacher/classes/${nextClassGroup?.id ?? "class_ar_l3_a"}/attendance`,
       Icon: CheckCircle2,
-      tone: pendingAttendance.length ? "amber" as const : "green" as const,
+      tone: pendingAttendance.length ? ("amber" as const) : ("green" as const),
     },
     {
       label: "Grading queue",
-      detail: pendingSubmissions.length ? `${pendingSubmissions.length} submission(s) waiting.` : "No pending submissions.",
+      detail: pendingSubmissions.length
+        ? `${pendingSubmissions.length} submission(s) waiting.`
+        : "No pending submissions.",
       href: "/app/teacher/grading",
       Icon: ListChecks,
-      tone: pendingSubmissions.length ? "red" as const : "green" as const,
+      tone: pendingSubmissions.length ? ("red" as const) : ("green" as const),
     },
     {
       label: "Students needing attention",
-      detail: studentsNeedingAttention.length ? `${studentsNeedingAttention.length} learner(s) need review.` : "Progress and attendance are stable.",
+      detail: studentsNeedingAttention.length
+        ? `${studentsNeedingAttention.length} learner(s) need review.`
+        : "Progress and attendance are stable.",
       href: "/app/teacher/classes/class_ar_l3_a/students",
       Icon: Users,
-      tone: studentsNeedingAttention.length ? "amber" as const : "green" as const,
+      tone: studentsNeedingAttention.length
+        ? ("amber" as const)
+        : ("green" as const),
     },
     {
       label: "Messages",
-      detail: unreadMessages.length ? `${unreadMessages.length} unread class message(s).` : "No unread class messages.",
+      detail: unreadMessages.length
+        ? `${unreadMessages.length} unread class message(s).`
+        : "No unread class messages.",
       href: "/app/teacher/messages",
       Icon: MessageSquare,
-      tone: unreadMessages.length ? "teal" as const : "green" as const,
+      tone: unreadMessages.length ? ("teal" as const) : ("green" as const),
     },
   ];
 
@@ -882,18 +1242,29 @@ function TeacherCommandDashboard() {
         description="Today’s classes, attendance, grading, and student support."
         actions={
           <>
-          <Link href="/app/teacher/reports" className="platform-secondary-button">
-            Reports
-          </Link>
-          <Link href={`/app/teacher/classes/${nextClassGroup?.id ?? "class_ar_l3_a"}/attendance`} className="platform-primary-button" style={{ background: meta.color }}>
-            <CheckCircle2 size={15} />
-            Mark attendance
-          </Link>
+            <Link
+              href="/app/teacher/reports"
+              className="platform-secondary-button"
+            >
+              Reports
+            </Link>
+            <Link
+              href={`/app/teacher/classes/${nextClassGroup?.id ?? "class_ar_l3_a"}/attendance`}
+              className="platform-primary-button"
+              style={{ background: meta.color }}
+            >
+              <CheckCircle2 size={15} />
+              Mark attendance
+            </Link>
           </>
         }
       />
 
-      <motion.div className="platform-metric-grid" initial="hidden" animate="visible">
+      <motion.div
+        className="platform-metric-grid"
+        initial="hidden"
+        animate="visible"
+      >
         {dashboardStats.map((stat, index) => (
           <StatCard
             key={stat.label}
@@ -906,7 +1277,13 @@ function TeacherCommandDashboard() {
         ))}
       </motion.div>
 
-      <motion.div className="platform-v2-role-main" initial="hidden" animate="visible" custom={0.14} variants={dashboardReveal}>
+      <motion.div
+        className="platform-v2-role-main"
+        initial="hidden"
+        animate="visible"
+        custom={0.14}
+        variants={dashboardReveal}
+      >
         <div className="platform-v2-role-stack">
           <section className="platform-v2-panel platform-v2-work-summary">
             <PlatformWorkspaceHeader
@@ -916,13 +1293,24 @@ function TeacherCommandDashboard() {
             <div className="platform-v2-summary-body">
               <div className="platform-v2-summary-copy">
                 <span>Next class</span>
-                <h2>{nextClass?.title ?? nextClassGroup?.name ?? dashboard.spotlight.title}</h2>
+                <h2>
+                  {nextClass?.title ??
+                    nextClassGroup?.name ??
+                    dashboard.spotlight.title}
+                </h2>
                 <p>{nextCourse?.title ?? dashboard.spotlight.description}</p>
                 <div className="platform-v2-summary-actions">
-                  <Link href={`/app/teacher/classes/${nextClassGroup?.id ?? "class_ar_l3_a"}/attendance`} className="platform-primary-button" style={{ background: meta.color }}>
+                  <Link
+                    href={`/app/teacher/classes/${nextClassGroup?.id ?? "class_ar_l3_a"}/attendance`}
+                    className="platform-primary-button"
+                    style={{ background: meta.color }}
+                  >
                     Mark attendance
                   </Link>
-                  <Link href={`/app/teacher/classes/${nextClassGroup?.id ?? "class_ar_l3_a"}`} className="platform-secondary-button">
+                  <Link
+                    href={`/app/teacher/classes/${nextClassGroup?.id ?? "class_ar_l3_a"}`}
+                    className="platform-secondary-button"
+                  >
                     Class panel
                   </Link>
                 </div>
@@ -930,7 +1318,11 @@ function TeacherCommandDashboard() {
               <div className="platform-v2-summary-facts">
                 <article>
                   <span>Schedule</span>
-                  <strong>{nextClass ? formatStudentDate(nextClass.startsAt) : "No session"}</strong>
+                  <strong>
+                    {nextClass
+                      ? formatStudentDate(nextClass.startsAt)
+                      : "No session"}
+                  </strong>
                   <small>{nextClassGroup?.schedule ?? "Class schedule"}</small>
                 </article>
                 <article>
@@ -953,15 +1345,34 @@ function TeacherCommandDashboard() {
               description="The next sessions and the attendance state attached to them."
             />
             <div className="platform-v2-dashboard-list">
-              {visibleSessions.map((session) => {
-                const group = teacherClasses.find((item) => item.id === session.classGroupId);
-                const run = teacherRuns.find((item) => item.id === group?.courseRunId);
-                const course = state.courses.find((item) => item.id === run?.courseId);
+              {visibleSessions.map(session => {
+                const group = teacherClasses.find(
+                  item => item.id === session.classGroupId
+                );
+                const run = teacherRuns.find(
+                  item => item.id === group?.courseRunId
+                );
+                const course = state.courses.find(
+                  item => item.id === run?.courseId
+                );
                 return (
-                  <Link key={session.id} href={`/app/teacher/classes/${group?.id ?? "class_ar_l3_a"}/attendance`} style={{ "--item-color": session.attendanceSaved ? toneColor.green : toneColor.amber } as CSSProperties}>
+                  <Link
+                    key={session.id}
+                    href={`/app/teacher/classes/${group?.id ?? "class_ar_l3_a"}/attendance`}
+                    style={
+                      {
+                        "--item-color": session.attendanceSaved
+                          ? toneColor.green
+                          : toneColor.amber,
+                      } as CSSProperties
+                    }
+                  >
                     <div>
                       <strong>{session.title}</strong>
-                      <small>{group?.name ?? "Class group"} · {course?.title ?? "Course"}</small>
+                      <small>
+                        {group?.name ?? "Class group"} ·{" "}
+                        {course?.title ?? "Course"}
+                      </small>
                     </div>
                     <span>{session.attendanceSaved ? "saved" : "mark"}</span>
                   </Link>
@@ -986,8 +1397,14 @@ function TeacherCommandDashboard() {
             description="Attendance, grading, and learner support queues."
           />
           <div className="platform-v2-attention-list">
-            {teacherAttentionItems.map((item) => (
-              <Link key={item.label} href={item.href} style={{ "--item-color": toneColor[item.tone] } as CSSProperties}>
+            {teacherAttentionItems.map(item => (
+              <Link
+                key={item.label}
+                href={item.href}
+                style={
+                  { "--item-color": toneColor[item.tone] } as CSSProperties
+                }
+              >
                 <span>
                   <item.Icon size={16} />
                 </span>
@@ -998,14 +1415,21 @@ function TeacherCommandDashboard() {
                 <ArrowRight size={15} />
               </Link>
             ))}
-            {studentsNeedingAttention.slice(0, 2).map((row) => (
-              <Link key={row.student.id} href="/app/teacher/classes/class_ar_l3_a/students" style={{ "--item-color": toneColor.amber } as CSSProperties}>
+            {studentsNeedingAttention.slice(0, 2).map(row => (
+              <Link
+                key={row.student.id}
+                href="/app/teacher/classes/class_ar_l3_a/students"
+                style={{ "--item-color": toneColor.amber } as CSSProperties}
+              >
                 <span>
                   <Users size={16} />
                 </span>
                 <div>
                   <strong>{row.user?.name ?? row.student.id}</strong>
-                  <small>Attendance {row.lowestAttendance}% · Grade {row.lowestGrade}%</small>
+                  <small>
+                    Attendance {row.lowestAttendance}% · Grade {row.lowestGrade}
+                    %
+                  </small>
                 </div>
                 <ArrowRight size={15} />
               </Link>
@@ -1021,93 +1445,186 @@ function BranchAdminOperationsDashboard() {
   const meta = roleMeta.branchadmin;
   const state = useMemo(() => platformStore.getState(), []);
   const actor =
-    state.users.find((user) => user.id === "usr_branch_demo") ??
-    state.users.find((user) => user.activeRole === "branchadmin");
-  const branch = state.branches.find((item) => item.id === actor?.branchId) ?? state.branches.find((item) => item.id === "br_cairo") ?? state.branches[0];
+    state.users.find(user => user.id === "usr_branch_demo") ??
+    state.users.find(user => user.activeRole === "branchadmin");
+  const branch =
+    state.branches.find(item => item.id === actor?.branchId) ??
+    state.branches.find(item => item.id === "br_cairo") ??
+    state.branches[0];
   const branchId = branch?.id ?? actor?.branchId ?? "";
-  const branchRuns = state.courseRuns.filter((run) => run.branchId === branchId);
-  const branchRunIds = new Set(branchRuns.map((run) => run.id));
-  const branchClasses = state.classGroups.filter((group) => branchRunIds.has(group.courseRunId));
-  const branchClassIds = new Set(branchClasses.map((group) => group.id));
+  const branchRuns = state.courseRuns.filter(run => run.branchId === branchId);
+  const branchRunIds = new Set(branchRuns.map(run => run.id));
+  const branchClasses = state.classGroups.filter(group =>
+    branchRunIds.has(group.courseRunId)
+  );
+  const branchClassIds = new Set(branchClasses.map(group => group.id));
   const branchSessions = state.classSessions
-    .filter((session) => branchClassIds.has(session.classGroupId))
-    .sort((a, b) => new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime());
-  const branchEnrollmentStudentIds = new Set(state.enrollments.filter((enrollment) => branchRunIds.has(enrollment.courseRunId)).map((enrollment) => enrollment.studentId));
-  const branchStudents = state.students.filter((student) => {
-    const user = state.users.find((item) => item.id === student.userId);
-    return branchEnrollmentStudentIds.has(student.id) || user?.branchId === branchId;
+    .filter(session => branchClassIds.has(session.classGroupId))
+    .sort(
+      (a, b) => new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime()
+    );
+  const branchEnrollmentStudentIds = new Set(
+    state.enrollments
+      .filter(enrollment => branchRunIds.has(enrollment.courseRunId))
+      .map(enrollment => enrollment.studentId)
+  );
+  const branchStudents = state.students.filter(student => {
+    const user = state.users.find(item => item.id === student.userId);
+    return (
+      branchEnrollmentStudentIds.has(student.id) || user?.branchId === branchId
+    );
   });
-  const branchStudentIds = new Set(branchStudents.map((student) => student.id));
-  const branchTeachers = state.teachers.filter((teacher) => {
-    const user = state.users.find((item) => item.id === teacher.userId);
-    return user?.branchId === branchId || state.teacherAvailability.some((slot) => slot.teacherId === teacher.userId && slot.branchId === branchId);
+  const branchStudentIds = new Set(branchStudents.map(student => student.id));
+  const branchTeachers = state.teachers.filter(teacher => {
+    const user = state.users.find(item => item.id === teacher.userId);
+    return (
+      user?.branchId === branchId ||
+      state.teacherAvailability.some(
+        slot => slot.teacherId === teacher.userId && slot.branchId === branchId
+      )
+    );
   });
-  const branchRooms = state.rooms.filter((room) => room.branchId === branchId);
-  const activeRooms = branchRooms.filter((room) => room.status === "active").length;
-  const roomCapacity = branchRooms.reduce((total, room) => total + room.capacity, 0);
-  const assignedSeats = branchClasses.reduce((total, group) => total + group.studentIds.length, 0);
+  const branchRooms = state.rooms.filter(room => room.branchId === branchId);
+  const activeRooms = branchRooms.filter(
+    room => room.status === "active"
+  ).length;
+  const roomCapacity = branchRooms.reduce(
+    (total, room) => total + room.capacity,
+    0
+  );
+  const assignedSeats = branchClasses.reduce(
+    (total, group) => total + group.studentIds.length,
+    0
+  );
   const branchEvents = state.events
-    .filter((event) => event.branchId === branchId || (event.classGroupId ? branchClassIds.has(event.classGroupId) : false))
-    .sort((a, b) => new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime());
+    .filter(
+      event =>
+        event.branchId === branchId ||
+        (event.classGroupId ? branchClassIds.has(event.classGroupId) : false)
+    )
+    .sort(
+      (a, b) => new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime()
+    );
   const todayKey = new Date().toISOString().slice(0, 10);
-  const todaySessions = branchSessions.filter((session) => session.startsAt.slice(0, 10) === todayKey);
-  const visibleSessions = todaySessions.length ? todaySessions : branchSessions.slice(0, 4);
-  const pendingScheduleReviews = branchEvents.filter((event) => event.status === "pending");
-  const branchAttendance = state.attendance.filter((record) => branchClassIds.has(record.classGroupId) && branchStudentIds.has(record.studentId));
-  const attendanceExceptions = branchAttendance.filter((record) => record.status === "late" || record.status === "absent" || record.status === "excused");
-  const missingAttendance = branchSessions.filter((session) => !session.attendanceSaved);
-  const branchInvoices = state.invoices.filter((invoice) => branchStudentIds.has(invoice.studentId));
-  const paymentRows = branchInvoices.map((invoice) => {
+  const todaySessions = branchSessions.filter(
+    session => session.startsAt.slice(0, 10) === todayKey
+  );
+  const visibleSessions = todaySessions.length
+    ? todaySessions
+    : branchSessions.slice(0, 4);
+  const pendingScheduleReviews = branchEvents.filter(
+    event => event.status === "pending"
+  );
+  const branchAttendance = state.attendance.filter(
+    record =>
+      branchClassIds.has(record.classGroupId) &&
+      branchStudentIds.has(record.studentId)
+  );
+  const attendanceExceptions = branchAttendance.filter(
+    record =>
+      record.status === "late" ||
+      record.status === "absent" ||
+      record.status === "excused"
+  );
+  const missingAttendance = branchSessions.filter(
+    session => !session.attendanceSaved
+  );
+  const branchInvoices = state.invoices.filter(invoice =>
+    branchStudentIds.has(invoice.studentId)
+  );
+  const paymentRows = branchInvoices.map(invoice => {
     const paid = state.payments
-      .filter((payment) => payment.invoiceId === invoice.id && payment.status === "paid")
+      .filter(
+        payment => payment.invoiceId === invoice.id && payment.status === "paid"
+      )
       .reduce((sum, payment) => sum + payment.amount, 0);
     return { invoice, paid, balance: Math.max(0, invoice.amount - paid) };
   });
-  const openPayments = paymentRows.filter((row) => row.balance > 0 || row.invoice.status !== "paid");
+  const openPayments = paymentRows.filter(
+    row => row.balance > 0 || row.invoice.status !== "paid"
+  );
   const balanceDue = paymentRows.reduce((sum, row) => sum + row.balance, 0);
   const branchAudits = state.auditLogs
-    .filter((audit) =>
-      branchClassIds.has(audit.entityId) ||
-      branchRooms.some((room) => room.id === audit.entityId) ||
-      branchInvoices.some((invoice) => invoice.id === audit.entityId) ||
-      /branch|room|calendar|attendance|payment|message/i.test(`${audit.action} ${audit.summary}`),
+    .filter(
+      audit =>
+        branchClassIds.has(audit.entityId) ||
+        branchRooms.some(room => room.id === audit.entityId) ||
+        branchInvoices.some(invoice => invoice.id === audit.entityId) ||
+        /branch|room|calendar|attendance|payment|message/i.test(
+          `${audit.action} ${audit.summary}`
+        )
     )
     .slice(0, 4);
-  const seatUsage = roomCapacity ? Math.round((assignedSeats / roomCapacity) * 100) : 0;
+  const seatUsage = roomCapacity
+    ? Math.round((assignedSeats / roomCapacity) * 100)
+    : 0;
   const dashboardStats: Stat[] = [
-    { label: "Classes today", value: String(todaySessions.length), change: `${branchSessions.length} scheduled`, tone: todaySessions.length ? "teal" : "amber" },
-    { label: "Room usage", value: `${activeRooms}/${branchRooms.length}`, change: `${seatUsage}% seats`, tone: activeRooms === branchRooms.length ? "green" : "amber" },
-    { label: "Attendance exceptions", value: String(attendanceExceptions.length), change: `${missingAttendance.length} unsaved`, tone: attendanceExceptions.length || missingAttendance.length ? "red" : "green" },
-    { label: "Payment balance", value: `EGP ${balanceDue}`, change: `${openPayments.length} open`, tone: balanceDue ? "amber" : "green" },
+    {
+      label: "Classes today",
+      value: String(todaySessions.length),
+      change: `${branchSessions.length} scheduled`,
+      tone: todaySessions.length ? "teal" : "amber",
+    },
+    {
+      label: "Room usage",
+      value: `${activeRooms}/${branchRooms.length}`,
+      change: `${seatUsage}% seats`,
+      tone: activeRooms === branchRooms.length ? "green" : "amber",
+    },
+    {
+      label: "Attendance exceptions",
+      value: String(attendanceExceptions.length),
+      change: `${missingAttendance.length} unsaved`,
+      tone:
+        attendanceExceptions.length || missingAttendance.length
+          ? "red"
+          : "green",
+    },
+    {
+      label: "Payment balance",
+      value: `EGP ${balanceDue}`,
+      change: `${openPayments.length} open`,
+      tone: balanceDue ? "amber" : "green",
+    },
   ];
   const branchAttentionItems = [
     {
       label: "Attendance exceptions",
-      detail: attendanceExceptions.length ? `${attendanceExceptions.length} late, absent, or excused record(s).` : "No exception rows for this branch.",
+      detail: attendanceExceptions.length
+        ? `${attendanceExceptions.length} late, absent, or excused record(s).`
+        : "No exception rows for this branch.",
       href: "/app/branch/attendance",
       Icon: AlertTriangle,
-      tone: attendanceExceptions.length ? "red" as const : "green" as const,
+      tone: attendanceExceptions.length ? ("red" as const) : ("green" as const),
     },
     {
       label: "Branch payments",
-      detail: openPayments.length ? `Payment overview: EGP ${balanceDue} balance open.` : "Payment overview: queue is clear.",
+      detail: openPayments.length
+        ? `Payment overview: EGP ${balanceDue} balance open.`
+        : "Payment overview: queue is clear.",
       href: "/app/branch/payments",
       Icon: CreditCard,
-      tone: openPayments.length ? "amber" as const : "green" as const,
+      tone: openPayments.length ? ("amber" as const) : ("green" as const),
     },
     {
       label: "Branch evidence",
-      detail: branchAudits.length ? `${branchAudits.length} recent audit row(s).` : "Room, schedule, attendance, and payment actions will write evidence.",
+      detail: branchAudits.length
+        ? `${branchAudits.length} recent audit row(s).`
+        : "Room, schedule, attendance, and payment actions will write evidence.",
       href: "/app/branch/reports",
       Icon: ShieldCheck,
       tone: "teal" as const,
     },
     {
       label: "Schedule reviews",
-      detail: pendingScheduleReviews.length ? `${pendingScheduleReviews.length} pending event(s).` : "No schedule review blocker.",
+      detail: pendingScheduleReviews.length
+        ? `${pendingScheduleReviews.length} pending event(s).`
+        : "No schedule review blocker.",
       href: "/app/branch/schedule",
       Icon: CalendarDays,
-      tone: pendingScheduleReviews.length ? "amber" as const : "green" as const,
+      tone: pendingScheduleReviews.length
+        ? ("amber" as const)
+        : ("green" as const),
     },
   ];
 
@@ -1119,18 +1636,29 @@ function BranchAdminOperationsDashboard() {
         description={`${branch?.address ?? "Local branch"} · rooms, schedule, attendance, and payments.`}
         actions={
           <>
-          <Link href="/app/branch/reports" className="platform-secondary-button">
-            Reports
-          </Link>
-          <Link href="/app/branch/rooms" className="platform-primary-button" style={{ background: meta.color }}>
-            <Building2 size={15} />
-            Manage rooms
-          </Link>
+            <Link
+              href="/app/branch/reports"
+              className="platform-secondary-button"
+            >
+              Reports
+            </Link>
+            <Link
+              href="/app/branch/rooms"
+              className="platform-primary-button"
+              style={{ background: meta.color }}
+            >
+              <Building2 size={15} />
+              Manage rooms
+            </Link>
           </>
         }
       />
 
-      <motion.div className="platform-metric-grid" initial="hidden" animate="visible">
+      <motion.div
+        className="platform-metric-grid"
+        initial="hidden"
+        animate="visible"
+      >
         {dashboardStats.map((stat, index) => (
           <StatCard
             key={stat.label}
@@ -1143,7 +1671,13 @@ function BranchAdminOperationsDashboard() {
         ))}
       </motion.div>
 
-      <motion.div className="platform-v2-role-main" initial="hidden" animate="visible" custom={0.14} variants={dashboardReveal}>
+      <motion.div
+        className="platform-v2-role-main"
+        initial="hidden"
+        animate="visible"
+        custom={0.14}
+        variants={dashboardReveal}
+      >
         <div className="platform-v2-role-stack">
           <section className="platform-v2-panel platform-v2-work-summary">
             <PlatformWorkspaceHeader
@@ -1154,12 +1688,23 @@ function BranchAdminOperationsDashboard() {
               <div className="platform-v2-summary-copy">
                 <span>Today’s operations</span>
                 <h2>{branch?.name ?? "Branch"} operations</h2>
-                <p>{branchStudents.length} students · {branchTeachers.length} teachers · {branchClasses.length} classes across {branchRuns.length} course run(s).</p>
+                <p>
+                  {branchStudents.length} students · {branchTeachers.length}{" "}
+                  teachers · {branchClasses.length} classes across{" "}
+                  {branchRuns.length} course run(s).
+                </p>
                 <div className="platform-v2-summary-actions">
-                  <Link href="/app/branch/rooms" className="platform-primary-button" style={{ background: meta.color }}>
+                  <Link
+                    href="/app/branch/rooms"
+                    className="platform-primary-button"
+                    style={{ background: meta.color }}
+                  >
                     Manage rooms
                   </Link>
-                  <Link href="/app/branch/schedule" className="platform-secondary-button">
+                  <Link
+                    href="/app/branch/schedule"
+                    className="platform-secondary-button"
+                  >
                     Open schedule
                   </Link>
                 </div>
@@ -1167,7 +1712,9 @@ function BranchAdminOperationsDashboard() {
               <div className="platform-v2-summary-facts">
                 <article>
                   <span>Room usage</span>
-                  <strong>{assignedSeats}/{roomCapacity || 0}</strong>
+                  <strong>
+                    {assignedSeats}/{roomCapacity || 0}
+                  </strong>
                   <small>{activeRooms} active rooms</small>
                 </article>
                 <article>
@@ -1187,35 +1734,70 @@ function BranchAdminOperationsDashboard() {
           <section className="platform-v2-panel">
             <PlatformWorkspaceHeader
               title="Schedule control"
-              description={todaySessions.length ? "Today’s class sessions and attendance state." : "Next branch sessions and attendance state."}
+              description={
+                todaySessions.length
+                  ? "Today’s class sessions and attendance state."
+                  : "Next branch sessions and attendance state."
+              }
             />
             <div className="platform-v2-dashboard-list">
-              {visibleSessions.length ? visibleSessions.map((session) => {
-                const group = branchClasses.find((item) => item.id === session.classGroupId);
-                const run = branchRuns.find((item) => item.id === group?.courseRunId);
-                const teacher = state.users.find((item) => item.id === run?.teacherId);
-                return (
-                  <Link key={session.id} href="/app/branch/schedule" style={{ "--item-color": session.attendanceSaved ? toneColor.green : toneColor.amber } as CSSProperties}>
-                    <div>
-                      <strong>{session.title}</strong>
-                      <small>{group?.name ?? "Class group"} · {teacher?.name ?? "Teacher pending"}</small>
-                    </div>
-                    <span>{session.attendanceSaved ? "saved" : "attendance due"}</span>
-                  </Link>
-                );
-              }) : (
+              {visibleSessions.length ? (
+                visibleSessions.map(session => {
+                  const group = branchClasses.find(
+                    item => item.id === session.classGroupId
+                  );
+                  const run = branchRuns.find(
+                    item => item.id === group?.courseRunId
+                  );
+                  const teacher = state.users.find(
+                    item => item.id === run?.teacherId
+                  );
+                  return (
+                    <Link
+                      key={session.id}
+                      href="/app/branch/schedule"
+                      style={
+                        {
+                          "--item-color": session.attendanceSaved
+                            ? toneColor.green
+                            : toneColor.amber,
+                        } as CSSProperties
+                      }
+                    >
+                      <div>
+                        <strong>{session.title}</strong>
+                        <small>
+                          {group?.name ?? "Class group"} ·{" "}
+                          {teacher?.name ?? "Teacher pending"}
+                        </small>
+                      </div>
+                      <span>
+                        {session.attendanceSaved ? "saved" : "attendance due"}
+                      </span>
+                    </Link>
+                  );
+                })
+              ) : (
                 <article>
                   <div>
                     <strong>No scheduled class sessions</strong>
-                    <small>Create a branch event to populate the local schedule.</small>
+                    <small>
+                      Create a branch event to populate the local schedule.
+                    </small>
                   </div>
                   <span>empty</span>
                 </article>
               )}
-              <Link href="/app/branch/rooms" style={{ "--item-color": toneColor.green } as CSSProperties}>
+              <Link
+                href="/app/branch/rooms"
+                style={{ "--item-color": toneColor.green } as CSSProperties}
+              >
                 <div>
                   <strong>Room usage</strong>
-                  <small>{activeRooms}/{branchRooms.length} rooms active · {seatUsage}% seat usage</small>
+                  <small>
+                    {activeRooms}/{branchRooms.length} rooms active ·{" "}
+                    {seatUsage}% seat usage
+                  </small>
                 </div>
                 <span>rooms</span>
               </Link>
@@ -1229,8 +1811,14 @@ function BranchAdminOperationsDashboard() {
             description="Attendance exceptions, payments, and branch evidence."
           />
           <div className="platform-v2-attention-list">
-            {branchAttentionItems.map((item) => (
-              <Link key={item.label} href={item.href} style={{ "--item-color": toneColor[item.tone] } as CSSProperties}>
+            {branchAttentionItems.map(item => (
+              <Link
+                key={item.label}
+                href={item.href}
+                style={
+                  { "--item-color": toneColor[item.tone] } as CSSProperties
+                }
+              >
                 <span>
                   <item.Icon size={16} />
                 </span>
@@ -1243,10 +1831,16 @@ function BranchAdminOperationsDashboard() {
             ))}
           </div>
           <div className="platform-v2-side-actions">
-            <Link href="/app/branch/payments" className="platform-secondary-button compact">
+            <Link
+              href="/app/branch/payments"
+              className="platform-secondary-button compact"
+            >
               Payment overview
             </Link>
-            <Link href="/app/branch/reports" className="platform-secondary-button compact">
+            <Link
+              href="/app/branch/reports"
+              className="platform-secondary-button compact"
+            >
               Branch reports
             </Link>
           </div>
@@ -1260,65 +1854,144 @@ function HeadOfDepartmentDashboard() {
   const meta = roleMeta.headofdepartment;
   const state = platformStore.getState();
   const actorUser =
-    state.users.find((user) => user.id === "usr_hod_demo") ??
-    state.users.find((user) => user.activeRole === "headofdepartment");
+    state.users.find(user => user.id === "usr_hod_demo") ??
+    state.users.find(user => user.activeRole === "headofdepartment");
   const departmentIds = new Set(
     state.departments
-      .filter((department) => department.ownerUserId === actorUser?.id || department.id === actorUser?.departmentId)
-      .map((department) => department.id),
+      .filter(
+        department =>
+          department.ownerUserId === actorUser?.id ||
+          department.id === actorUser?.departmentId
+      )
+      .map(department => department.id)
   );
   const programIds = new Set(
     state.programs
-      .filter((program) => departmentIds.has(program.departmentId))
-      .map((program) => program.id),
+      .filter(program => departmentIds.has(program.departmentId))
+      .map(program => program.id)
   );
   const courseIds = new Set(
     state.courses
-      .filter((course) => programIds.has(course.programId))
-      .map((course) => course.id),
+      .filter(course => programIds.has(course.programId))
+      .map(course => course.id)
   );
-  const courseRuns = state.courseRuns.filter((run) => courseIds.has(run.courseId));
-  const courseRunIds = new Set(courseRuns.map((run) => run.id));
-  const classes = state.classGroups.filter((group) => courseRunIds.has(group.courseRunId));
-  const classCapacity = classes.reduce((total, classGroup) => total + classGroup.capacity, 0);
-  const enrolledSeats = classes.reduce((total, classGroup) => total + classGroup.studentIds.length, 0);
-  const enrollments = state.enrollments.filter((enrollment) => courseRunIds.has(enrollment.courseRunId));
-  const studentIds = new Set(enrollments.map((enrollment) => enrollment.studentId));
-  const teachers = state.teachers.filter((teacher) => departmentIds.has(teacher.departmentId));
-  const modules = state.modules.filter((module) => courseIds.has(module.courseId));
-  const moduleIds = new Set(modules.map((module) => module.id));
-  const lessons = state.lessons.filter((lesson) => moduleIds.has(lesson.moduleId));
-  const assignments = state.assignments.filter((assignment) => courseRunIds.has(assignment.courseRunId));
-  const assignmentIds = new Set(assignments.map((assignment) => assignment.id));
-  const quizzes = state.quizzes.filter((quiz) => courseRunIds.has(quiz.courseRunId));
-  const quizIds = new Set(quizzes.map((quiz) => quiz.id));
+  const courseRuns = state.courseRuns.filter(run =>
+    courseIds.has(run.courseId)
+  );
+  const courseRunIds = new Set(courseRuns.map(run => run.id));
+  const classes = state.classGroups.filter(group =>
+    courseRunIds.has(group.courseRunId)
+  );
+  const classCapacity = classes.reduce(
+    (total, classGroup) => total + classGroup.capacity,
+    0
+  );
+  const enrolledSeats = classes.reduce(
+    (total, classGroup) => total + classGroup.studentIds.length,
+    0
+  );
+  const enrollments = state.enrollments.filter(enrollment =>
+    courseRunIds.has(enrollment.courseRunId)
+  );
+  const studentIds = new Set(
+    enrollments.map(enrollment => enrollment.studentId)
+  );
+  const teachers = state.teachers.filter(teacher =>
+    departmentIds.has(teacher.departmentId)
+  );
+  const modules = state.modules.filter(module =>
+    courseIds.has(module.courseId)
+  );
+  const moduleIds = new Set(modules.map(module => module.id));
+  const lessons = state.lessons.filter(lesson =>
+    moduleIds.has(lesson.moduleId)
+  );
+  const assignments = state.assignments.filter(assignment =>
+    courseRunIds.has(assignment.courseRunId)
+  );
+  const assignmentIds = new Set(assignments.map(assignment => assignment.id));
+  const quizzes = state.quizzes.filter(quiz =>
+    courseRunIds.has(quiz.courseRunId)
+  );
+  const quizIds = new Set(quizzes.map(quiz => quiz.id));
   const completedAssessmentRows =
-    state.assignmentSubmissions.filter((submission) => assignmentIds.has(submission.assignmentId) && submission.status === "completed").length +
-    state.quizAttempts.filter((attempt) => quizIds.has(attempt.quizId) && attempt.status === "completed").length;
-  const expectedAssessmentRows = studentIds.size * (assignments.length + quizzes.length);
+    state.assignmentSubmissions.filter(
+      submission =>
+        assignmentIds.has(submission.assignmentId) &&
+        submission.status === "completed"
+    ).length +
+    state.quizAttempts.filter(
+      attempt => quizIds.has(attempt.quizId) && attempt.status === "completed"
+    ).length;
+  const expectedAssessmentRows =
+    studentIds.size * (assignments.length + quizzes.length);
   const assessmentCompletion = expectedAssessmentRows
     ? Math.round((completedAssessmentRows / expectedAssessmentRows) * 100)
     : 0;
-  const certificates = state.certificates.filter((certificate) => courseIds.has(certificate.courseId) && studentIds.has(certificate.studentId));
-  const pendingCertificates = certificates.filter((certificate) => certificate.status === "pending_approval").length;
-  const atRiskEnrollments = enrollments.filter((enrollment) => enrollment.attendanceRate < 85 || enrollment.currentGrade < 80 || enrollment.progress < 55);
-  const activeCourses = state.courses.filter((course) => courseIds.has(course.id) && course.status === "active").length;
-  const curriculumCoverage = modules.length ? Math.min(100, Math.round((lessons.length / (modules.length * 3)) * 100)) : 0;
-  const seatUsage = classCapacity ? Math.round((enrolledSeats / classCapacity) * 100) : 0;
+  const certificates = state.certificates.filter(
+    certificate =>
+      courseIds.has(certificate.courseId) &&
+      studentIds.has(certificate.studentId)
+  );
+  const pendingCertificates = certificates.filter(
+    certificate => certificate.status === "pending_approval"
+  ).length;
+  const atRiskEnrollments = enrollments.filter(
+    enrollment =>
+      enrollment.attendanceRate < 85 ||
+      enrollment.currentGrade < 80 ||
+      enrollment.progress < 55
+  );
+  const activeCourses = state.courses.filter(
+    course => courseIds.has(course.id) && course.status === "active"
+  ).length;
+  const curriculumCoverage = modules.length
+    ? Math.min(100, Math.round((lessons.length / (modules.length * 3)) * 100))
+    : 0;
+  const seatUsage = classCapacity
+    ? Math.round((enrolledSeats / classCapacity) * 100)
+    : 0;
   const hodStats = [
-    { label: "Department courses", value: String(courseIds.size), change: `${activeCourses} active`, tone: "teal" as const },
-    { label: "Curriculum coverage", value: `${curriculumCoverage}%`, change: `${lessons.length} lessons`, tone: "amber" as const },
-    { label: "Teacher load", value: String(teachers.length), change: `${classes.length} classes`, tone: "green" as const },
-    { label: "At-risk learners", value: String(atRiskEnrollments.length), change: `${pendingCertificates} certificates`, tone: atRiskEnrollments.length ? "red" as const : "teal" as const },
+    {
+      label: "Department courses",
+      value: String(courseIds.size),
+      change: `${activeCourses} active`,
+      tone: "teal" as const,
+    },
+    {
+      label: "Curriculum coverage",
+      value: `${curriculumCoverage}%`,
+      change: `${lessons.length} lessons`,
+      tone: "amber" as const,
+    },
+    {
+      label: "Teacher load",
+      value: String(teachers.length),
+      change: `${classes.length} classes`,
+      tone: "green" as const,
+    },
+    {
+      label: "At-risk learners",
+      value: String(atRiskEnrollments.length),
+      change: `${pendingCertificates} certificates`,
+      tone: atRiskEnrollments.length ? ("red" as const) : ("teal" as const),
+    },
   ];
   const courseHealth = state.courses
-    .filter((course) => courseIds.has(course.id))
-    .map((course) => {
-      const runs = courseRuns.filter((run) => run.courseId === course.id);
-      const runIds = new Set(runs.map((run) => run.id));
-      const courseEnrollments = enrollments.filter((enrollment) => runIds.has(enrollment.courseRunId));
+    .filter(course => courseIds.has(course.id))
+    .map(course => {
+      const runs = courseRuns.filter(run => run.courseId === course.id);
+      const runIds = new Set(runs.map(run => run.id));
+      const courseEnrollments = enrollments.filter(enrollment =>
+        runIds.has(enrollment.courseRunId)
+      );
       const averageProgress = courseEnrollments.length
-        ? Math.round(courseEnrollments.reduce((total, enrollment) => total + enrollment.progress, 0) / courseEnrollments.length)
+        ? Math.round(
+            courseEnrollments.reduce(
+              (total, enrollment) => total + enrollment.progress,
+              0
+            ) / courseEnrollments.length
+          )
         : 0;
       return { course, averageProgress, enrollments: courseEnrollments.length };
     })
@@ -1329,7 +2002,7 @@ function HeadOfDepartmentDashboard() {
       detail: `${modules.length} modules and ${lessons.length} lessons mapped.`,
       href: "/app/hod/curriculum",
       meta: `${curriculumCoverage}%`,
-      tone: curriculumCoverage >= 80 ? "green" as const : "amber" as const,
+      tone: curriculumCoverage >= 80 ? ("green" as const) : ("amber" as const),
     },
     {
       label: "Teacher performance",
@@ -1343,44 +2016,58 @@ function HeadOfDepartmentDashboard() {
       detail: `${completedAssessmentRows}/${expectedAssessmentRows || 0} assessment rows complete.`,
       href: "/app/hod/assessments",
       meta: `${assessmentCompletion}%`,
-      tone: assessmentCompletion >= 75 ? "green" as const : "amber" as const,
+      tone:
+        assessmentCompletion >= 75 ? ("green" as const) : ("amber" as const),
     },
     {
       label: courseHealth[0]?.course.title ?? "Course health",
-      detail: courseHealth[0] ? `${courseHealth[0].enrollments} enrollments in the lowest progress course.` : "No course risk rows.",
+      detail: courseHealth[0]
+        ? `${courseHealth[0].enrollments} enrollments in the lowest progress course.`
+        : "No course risk rows.",
       href: "/app/hod/courses",
       meta: `${courseHealth[0]?.averageProgress ?? 0}%`,
-      tone: courseHealth[0]?.averageProgress && courseHealth[0].averageProgress < 60 ? "red" as const : "green" as const,
+      tone:
+        courseHealth[0]?.averageProgress && courseHealth[0].averageProgress < 60
+          ? ("red" as const)
+          : ("green" as const),
     },
   ];
   const hodAttentionItems = [
     {
       label: "Certificate approvals",
-      detail: pendingCertificates ? `${pendingCertificates} certificate(s) need approval.` : `${certificates.length} certificates tracked.`,
+      detail: pendingCertificates
+        ? `${pendingCertificates} certificate(s) need approval.`
+        : `${certificates.length} certificates tracked.`,
       href: "/app/hod/certificates",
       Icon: Award,
-      tone: pendingCertificates ? "red" as const : "green" as const,
+      tone: pendingCertificates ? ("red" as const) : ("green" as const),
     },
     {
       label: "At-risk learners",
-      detail: atRiskEnrollments.length ? `${atRiskEnrollments.length} learner(s) need academic review.` : "No learner risk above threshold.",
+      detail: atRiskEnrollments.length
+        ? `${atRiskEnrollments.length} learner(s) need academic review.`
+        : "No learner risk above threshold.",
       href: "/app/hod/reports",
       Icon: AlertTriangle,
-      tone: atRiskEnrollments.length ? "amber" as const : "green" as const,
+      tone: atRiskEnrollments.length ? ("amber" as const) : ("green" as const),
     },
     {
       label: "Curriculum gaps",
-      detail: curriculumCoverage >= 80 ? "Coverage is on track." : "Map the next lessons and outcomes.",
+      detail:
+        curriculumCoverage >= 80
+          ? "Coverage is on track."
+          : "Map the next lessons and outcomes.",
       href: "/app/hod/curriculum",
       Icon: BookOpen,
-      tone: curriculumCoverage >= 80 ? "green" as const : "amber" as const,
+      tone: curriculumCoverage >= 80 ? ("green" as const) : ("amber" as const),
     },
     {
       label: "Assessment completion",
       detail: `${assessmentCompletion}% of expected submissions and quiz attempts completed.`,
       href: "/app/hod/assessments",
       Icon: ListChecks,
-      tone: assessmentCompletion >= 75 ? "green" as const : "amber" as const,
+      tone:
+        assessmentCompletion >= 75 ? ("green" as const) : ("amber" as const),
     },
   ];
 
@@ -1392,18 +2079,26 @@ function HeadOfDepartmentDashboard() {
         description="Academic health, curriculum coverage, teacher load, and approvals."
         actions={
           <>
-          <Link href="/app/hod/reports" className="platform-secondary-button">
-            Reports
-          </Link>
-          <Link href="/app/hod/courses" className="platform-primary-button" style={{ background: meta.color }}>
-            <Plus size={15} />
-            Course plan
-          </Link>
+            <Link href="/app/hod/reports" className="platform-secondary-button">
+              Reports
+            </Link>
+            <Link
+              href="/app/hod/courses"
+              className="platform-primary-button"
+              style={{ background: meta.color }}
+            >
+              <Plus size={15} />
+              Course plan
+            </Link>
           </>
         }
       />
 
-      <motion.div className="platform-metric-grid" initial="hidden" animate="visible">
+      <motion.div
+        className="platform-metric-grid"
+        initial="hidden"
+        animate="visible"
+      >
         {hodStats.map((stat, index) => (
           <StatCard
             key={stat.label}
@@ -1416,24 +2111,45 @@ function HeadOfDepartmentDashboard() {
         ))}
       </motion.div>
 
-      <motion.div className="platform-v2-role-main" initial="hidden" animate="visible" custom={0.16} variants={dashboardReveal}>
+      <motion.div
+        className="platform-v2-role-main"
+        initial="hidden"
+        animate="visible"
+        custom={0.16}
+        variants={dashboardReveal}
+      >
         <div className="platform-v2-role-stack">
           <section className="platform-v2-panel platform-v2-work-summary">
             <PlatformWorkspaceHeader
               title="Academic health"
-              description={state.departments.filter((department) => departmentIds.has(department.id)).map((department) => department.name).join(", ") || "Department scope"}
+              description={
+                state.departments
+                  .filter(department => departmentIds.has(department.id))
+                  .map(department => department.name)
+                  .join(", ") || "Department scope"
+              }
             />
             <div className="platform-v2-summary-body">
               <div className="platform-v2-summary-copy">
                 <span>Department overview</span>
                 <h2>{curriculumCoverage}% curriculum coverage</h2>
-                <p>{activeCourses}/{courseIds.size} courses active · {teachers.length} teachers · {classes.length} classes.</p>
+                <p>
+                  {activeCourses}/{courseIds.size} courses active ·{" "}
+                  {teachers.length} teachers · {classes.length} classes.
+                </p>
                 <div className="platform-v2-summary-actions">
-                  <Link href="/app/hod/curriculum" className="platform-primary-button" style={{ background: meta.color }}>
+                  <Link
+                    href="/app/hod/curriculum"
+                    className="platform-primary-button"
+                    style={{ background: meta.color }}
+                  >
                     Review curriculum
                   </Link>
-                  <Link href="/app/hod/moodle-source" className="platform-secondary-button">
-                    Moodle source
+                  <Link
+                    href="/app/hod/moodle-source"
+                    className="platform-secondary-button"
+                  >
+                    Moodle
                   </Link>
                 </div>
               </div>
@@ -1441,7 +2157,9 @@ function HeadOfDepartmentDashboard() {
                 <article>
                   <span>Seat usage</span>
                   <strong>{seatUsage}%</strong>
-                  <small>{enrolledSeats}/{classCapacity || 0} seats</small>
+                  <small>
+                    {enrolledSeats}/{classCapacity || 0} seats
+                  </small>
                 </article>
                 <article>
                   <span>Assessment quality</span>
@@ -1463,8 +2181,14 @@ function HeadOfDepartmentDashboard() {
               description="Academic work that can be reviewed without opening every module."
             />
             <div className="platform-v2-dashboard-list">
-              {academicTaskItems.map((item) => (
-                <Link key={item.label} href={item.href} style={{ "--item-color": toneColor[item.tone] } as CSSProperties}>
+              {academicTaskItems.map(item => (
+                <Link
+                  key={item.label}
+                  href={item.href}
+                  style={
+                    { "--item-color": toneColor[item.tone] } as CSSProperties
+                  }
+                >
                   <div>
                     <strong>{item.label}</strong>
                     <small>{item.detail}</small>
@@ -1482,8 +2206,14 @@ function HeadOfDepartmentDashboard() {
             description="Academic risks, approvals, and coverage gaps."
           />
           <div className="platform-v2-attention-list">
-            {hodAttentionItems.map((item) => (
-              <Link key={item.label} href={item.href} style={{ "--item-color": toneColor[item.tone] } as CSSProperties}>
+            {hodAttentionItems.map(item => (
+              <Link
+                key={item.label}
+                href={item.href}
+                style={
+                  { "--item-color": toneColor[item.tone] } as CSSProperties
+                }
+              >
                 <span>
                   <item.Icon size={16} />
                 </span>
@@ -1504,22 +2234,57 @@ function HeadOfDepartmentDashboard() {
 function SuperAdminDashboard() {
   const meta = roleMeta.superadmin;
   const state = useMemo(() => platformStore.getState(), []);
-  const activeUsers = state.users.filter((user) => user.status === "active").length;
-  const activeStudents = state.students.filter((student) => student.status === "active").length;
+  const activeUsers = state.users.filter(
+    user => user.status === "active"
+  ).length;
+  const activeStudents = state.students.filter(
+    student => student.status === "active"
+  ).length;
   const activeClasses = state.classGroups.length;
-  const connectedIntegrations = state.integrations.filter((integration) => integration.status === "connected").length;
-  const usableIntegrations = state.integrations.filter((integration) => integration.status === "connected" || integration.status === "mock_mode").length;
-  const pendingInvoices = state.invoices.filter((invoice) => invoice.status !== "paid" && invoice.status !== "cancelled").length;
-  const pausedUsers = state.users.filter((user) => user.status !== "active").length;
-  const pendingCertificates = state.certificates.filter((certificate) => certificate.status === "pending_approval").length;
+  const connectedIntegrations = state.integrations.filter(
+    integration => integration.status === "connected"
+  ).length;
+  const usableIntegrations = state.integrations.filter(
+    integration =>
+      integration.status === "connected" || integration.status === "mock_mode"
+  ).length;
+  const pendingInvoices = state.invoices.filter(
+    invoice => invoice.status !== "paid" && invoice.status !== "cancelled"
+  ).length;
+  const pausedUsers = state.users.filter(
+    user => user.status !== "active"
+  ).length;
+  const pendingCertificates = state.certificates.filter(
+    certificate => certificate.status === "pending_approval"
+  ).length;
   const integrationReadiness = state.integrations.length
     ? Math.round((usableIntegrations / state.integrations.length) * 100)
     : 0;
   const superAdminStats: Stat[] = [
-    { label: "Active users", value: String(activeUsers), change: `${state.users.length} accounts`, tone: "teal" },
-    { label: "Active learners", value: String(activeStudents), change: `${state.enrollments.length} enrollments`, tone: "green" },
-    { label: "Class groups", value: String(activeClasses), change: `${state.events.length} scheduled`, tone: "amber" },
-    { label: "Connections", value: `${integrationReadiness}%`, change: `${connectedIntegrations} connected`, tone: "purple" },
+    {
+      label: "Active users",
+      value: String(activeUsers),
+      change: `${state.users.length} accounts`,
+      tone: "teal",
+    },
+    {
+      label: "Active learners",
+      value: String(activeStudents),
+      change: `${state.enrollments.length} enrollments`,
+      tone: "green",
+    },
+    {
+      label: "Class groups",
+      value: String(activeClasses),
+      change: `${state.events.length} scheduled`,
+      tone: "amber",
+    },
+    {
+      label: "Connections",
+      value: `${integrationReadiness}%`,
+      change: `${connectedIntegrations} connected`,
+      tone: "purple",
+    },
   ];
   const administrationTiles = [
     {
@@ -1567,35 +2332,52 @@ function SuperAdminDashboard() {
   const attentionItems = [
     {
       label: pausedUsers ? "Review paused access" : "Access review current",
-      detail: pausedUsers ? `${pausedUsers} account(s) are not active.` : "No paused accounts in this workspace.",
+      detail: pausedUsers
+        ? `${pausedUsers} account(s) are not active.`
+        : "No paused accounts in this workspace.",
       href: "/app/admin/users",
       Icon: Users,
-      tone: pausedUsers ? "amber" as Stat["tone"] : "green" as Stat["tone"],
+      tone: pausedUsers ? ("amber" as Stat["tone"]) : ("green" as Stat["tone"]),
     },
     {
       label: pendingInvoices ? "Finance follow-up" : "Finance queue clear",
-      detail: pendingInvoices ? `${pendingInvoices} invoice(s) need a decision.` : "No open payment exception.",
+      detail: pendingInvoices
+        ? `${pendingInvoices} invoice(s) need a decision.`
+        : "No open payment exception.",
       href: "/app/admin/reports",
       Icon: CreditCard,
-      tone: pendingInvoices ? "amber" as Stat["tone"] : "green" as Stat["tone"],
+      tone: pendingInvoices
+        ? ("amber" as Stat["tone"])
+        : ("green" as Stat["tone"]),
     },
     {
-      label: integrationReadiness < 100 ? "Finish connections" : "Connections ready",
+      label:
+        integrationReadiness < 100 ? "Finish connections" : "Connections ready",
       detail: `${usableIntegrations}/${state.integrations.length} connectors are usable.`,
       href: "/app/admin/integrations",
       Icon: PlugZap,
-      tone: integrationReadiness < 100 ? "purple" as Stat["tone"] : "green" as Stat["tone"],
+      tone:
+        integrationReadiness < 100
+          ? ("purple" as Stat["tone"])
+          : ("green" as Stat["tone"]),
     },
     {
-      label: pendingCertificates ? "Certificate approvals" : "Certificate queue clear",
-      detail: pendingCertificates ? `${pendingCertificates} certificate(s) need approval.` : "No certificate approval blockers.",
+      label: pendingCertificates
+        ? "Certificate approvals"
+        : "Certificate queue clear",
+      detail: pendingCertificates
+        ? `${pendingCertificates} certificate(s) need approval.`
+        : "No certificate approval blockers.",
       href: "/app/admin/certificates",
       Icon: Award,
-      tone: pendingCertificates ? "red" as Stat["tone"] : "green" as Stat["tone"],
+      tone: pendingCertificates
+        ? ("red" as Stat["tone"])
+        : ("green" as Stat["tone"]),
     },
     {
       label: "Review latest activity",
-      detail: latestAudit?.summary ?? "Activity will appear after admin actions.",
+      detail:
+        latestAudit?.summary ?? "Activity will appear after admin actions.",
       href: "/app/admin/audit-logs",
       Icon: ScrollText,
       tone: "slate" as Stat["tone"],
@@ -1623,10 +2405,17 @@ function SuperAdminDashboard() {
         description="Review access, academic structure, branch operations, connections, and activity."
         actions={
           <>
-            <Link href="/app/admin/audit-logs" className="platform-secondary-button">
+            <Link
+              href="/app/admin/audit-logs"
+              className="platform-secondary-button"
+            >
               View activity
             </Link>
-            <Link href="/app/admin/users" className="platform-primary-button" style={{ background: meta.color }}>
+            <Link
+              href="/app/admin/users"
+              className="platform-primary-button"
+              style={{ background: meta.color }}
+            >
               <Plus size={15} />
               Create user
             </Link>
@@ -1634,7 +2423,11 @@ function SuperAdminDashboard() {
         }
       />
 
-      <motion.div className="platform-metric-grid platform-admin-metric-grid" initial="hidden" animate="visible">
+      <motion.div
+        className="platform-metric-grid platform-admin-metric-grid"
+        initial="hidden"
+        animate="visible"
+      >
         {superAdminStats.map((stat, index) => (
           <StatCard
             key={stat.label}
@@ -1647,24 +2440,35 @@ function SuperAdminDashboard() {
         ))}
       </motion.div>
 
-      <motion.div className="platform-v2-admin-main" initial="hidden" animate="visible" custom={0.14} variants={dashboardReveal}>
+      <motion.div
+        className="platform-v2-admin-main"
+        initial="hidden"
+        animate="visible"
+        custom={0.14}
+        variants={dashboardReveal}
+      >
         <section className="platform-v2-panel platform-v2-admin-map">
           <PlatformWorkspaceHeader
             title="Administration map"
             description="Open the workspaces used most by platform operations."
             actions={
-              <Link href="/app/admin/platform-blueprint" className="platform-secondary-button compact">
+              <Link
+                href="/app/admin/platform-blueprint"
+                className="platform-secondary-button compact"
+              >
                 Blueprint
               </Link>
             }
           />
           <div className="platform-v2-workflow-tiles">
-            {administrationTiles.map((item) => (
+            {administrationTiles.map(item => (
               <Link
                 key={item.label}
                 href={item.href}
                 className="platform-v2-workflow-tile"
-                style={{ "--item-color": toneColor[item.tone] } as CSSProperties}
+                style={
+                  { "--item-color": toneColor[item.tone] } as CSSProperties
+                }
               >
                 <span>
                   <item.Icon size={18} />
@@ -1686,8 +2490,14 @@ function SuperAdminDashboard() {
             description="Actionable items worth opening now."
           />
           <div className="platform-v2-attention-list">
-            {attentionItems.map((item) => (
-              <Link key={item.label} href={item.href} style={{ "--item-color": toneColor[item.tone] } as CSSProperties}>
+            {attentionItems.map(item => (
+              <Link
+                key={item.label}
+                href={item.href}
+                style={
+                  { "--item-color": toneColor[item.tone] } as CSSProperties
+                }
+              >
                 <span>
                   <item.Icon size={16} />
                 </span>
@@ -1702,30 +2512,41 @@ function SuperAdminDashboard() {
         </aside>
       </motion.div>
 
-      <motion.div className="platform-v2-admin-lower" initial="hidden" animate="visible" custom={0.2} variants={dashboardReveal}>
+      <motion.div
+        className="platform-v2-admin-lower"
+        initial="hidden"
+        animate="visible"
+        custom={0.2}
+        variants={dashboardReveal}
+      >
         <section className="platform-v2-panel">
           <PlatformWorkspaceHeader
             title="Recent activity"
             description="Latest administrative workflow updates."
             actions={
-              <Link href="/app/admin/audit-logs" className="platform-secondary-button compact">
-	                Open activity
+              <Link
+                href="/app/admin/audit-logs"
+                className="platform-secondary-button compact"
+              >
+                Open activity
               </Link>
             }
           />
           <div className="platform-v2-audit-list">
-            {recentAudits.length ? recentAudits.map((audit) => (
-              <article key={audit.id}>
-                <div>
-                  <strong>{audit.action}</strong>
-                  <small>{audit.summary}</small>
-                </div>
-                <span>{formatStudentDate(audit.createdAt)}</span>
-              </article>
-            )) : (
+            {recentAudits.length ? (
+              recentAudits.map(audit => (
+                <article key={audit.id}>
+                  <div>
+                    <strong>{audit.action}</strong>
+                    <small>{audit.summary}</small>
+                  </div>
+                  <span>{formatStudentDate(audit.createdAt)}</span>
+                </article>
+              ))
+            ) : (
               <article>
                 <div>
-	                  <strong>No activity</strong>
+                  <strong>No activity</strong>
                   <small>Administrative actions will appear here.</small>
                 </div>
                 <span>Ready</span>
@@ -1739,23 +2560,31 @@ function SuperAdminDashboard() {
             title="Connections"
             description={`${usableIntegrations}/${state.integrations.length} connectors are ready for demo operations.`}
             actions={
-              <Link href="/app/admin/integrations" className="platform-secondary-button compact">
+              <Link
+                href="/app/admin/integrations"
+                className="platform-secondary-button compact"
+              >
                 Manage
               </Link>
             }
           />
           <div className="platform-v2-integration-list">
-            {state.integrations.length ? state.integrations.slice(0, 5).map((integration) => (
-              <article key={integration.id}>
-                <div>
-                  <strong>{integration.label}</strong>
-                  <small>{integration.notes}</small>
-                </div>
-                <StatusBadge tone={integrationStatusTone[integration.status] ?? "slate"}>
-                  {integrationStatusLabel[integration.status] ?? formatConnectionStatus(integration.status)}
-                </StatusBadge>
-              </article>
-            )) : (
+            {state.integrations.length ? (
+              state.integrations.slice(0, 5).map(integration => (
+                <article key={integration.id}>
+                  <div>
+                    <strong>{integration.label}</strong>
+                    <small>{integration.notes}</small>
+                  </div>
+                  <StatusBadge
+                    tone={integrationStatusTone[integration.status] ?? "slate"}
+                  >
+                    {integrationStatusLabel[integration.status] ??
+                      formatConnectionStatus(integration.status)}
+                  </StatusBadge>
+                </article>
+              ))
+            ) : (
               <article>
                 <div>
                   <strong>No connections configured</strong>
