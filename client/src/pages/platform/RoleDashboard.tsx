@@ -6,22 +6,15 @@ import {
   AlertTriangle,
   Award,
   BookOpen,
-  BookCopy,
   Building2,
   CalendarDays,
   CheckCircle2,
   ClipboardList,
   Clock,
   CreditCard,
-  Database,
   FileText,
-  GraduationCap,
-  KeyRound,
-  Layers,
-  Library,
   ListChecks,
   MessageSquare,
-  Network,
   Plus,
   PlugZap,
   Presentation,
@@ -33,9 +26,9 @@ import {
 } from "lucide-react";
 import { Link } from "wouter";
 import PlatformShell from "@/components/platform/PlatformShell";
-import { PlatformPageHeader, platformReveal } from "@/components/platform/PlatformPrimitives";
+import { PlatformPageHeader, PlatformWorkspaceHeader, platformReveal, StatCard, StatusBadge, DataTableCard } from "@/components/platform/PlatformPrimitives";
 import { platformStore } from "@/lib/domain/store";
-import { dashboardByRole, roleMeta, rolePermissions, sidebarByRole, type Role, type Stat } from "@/lib/platformData";
+import { dashboardByRole, roleMeta, type Role, type Stat } from "@/lib/platformData";
 
 const toneColor: Record<Stat["tone"], string> = {
   teal: "#1A4A3A",
@@ -47,6 +40,10 @@ const toneColor: Record<Stat["tone"], string> = {
 };
 
 const dashboardReveal = platformReveal;
+
+function formatConnectionStatus(status: string) {
+  return status === "mock_mode" ? "Test mode" : status.replace("_", " ");
+}
 
 export default function RoleDashboard({ role }: { role: Role }) {
   const dashboard = dashboardByRole[role];
@@ -134,6 +131,10 @@ export default function RoleDashboard({ role }: { role: Role }) {
     return <BranchAdminOperationsDashboard />;
   }
 
+  if (role === "student") {
+    return <StudentLearningDashboard />;
+  }
+
   return (
     <PlatformShell role={role} title="Dashboard">
       <PlatformPageHeader
@@ -159,13 +160,14 @@ export default function RoleDashboard({ role }: { role: Role }) {
 
       <motion.div className="platform-metric-grid" initial="hidden" animate="visible">
         {dashboard.stats.map((stat, index) => (
-          <motion.article key={stat.label} className="platform-metric" custom={0.05 + index * 0.045} variants={dashboardReveal}>
-            <div>
-              <span>{stat.label}</span>
-              <strong>{stat.value}</strong>
-            </div>
-            <small style={{ color: toneColor[stat.tone], background: `${toneColor[stat.tone]}14` }}>{stat.change}</small>
-          </motion.article>
+          <StatCard
+            key={stat.label}
+            label={stat.label}
+            value={stat.value}
+            change={stat.change}
+            tone={stat.tone}
+            delay={0.05 + index * 0.045}
+          />
         ))}
       </motion.div>
 
@@ -211,13 +213,7 @@ export default function RoleDashboard({ role }: { role: Role }) {
           </div>
         </article>
 
-        <article className="platform-table-card wide">
-          <div className="platform-card-title compact">
-            <div>
-              <span>Live data</span>
-              <strong>Today</strong>
-            </div>
-          </div>
+        <DataTableCard title="Today" subtitle="Live data" className="wide">
           <table>
             <thead>
               <tr>
@@ -236,9 +232,7 @@ export default function RoleDashboard({ role }: { role: Role }) {
                     <small>{record.subtitle}</small>
                   </td>
                   <td>
-                    <span className="platform-status" style={{ color: toneColor[record.tone ?? "teal"], background: `${toneColor[record.tone ?? "teal"]}14` }}>
-                      {record.status}
-                    </span>
+                    <StatusBadge tone={record.tone ?? "teal"}>{record.status}</StatusBadge>
                   </td>
                   <td>{record.owner}</td>
                   <td>{record.due}</td>
@@ -247,10 +241,288 @@ export default function RoleDashboard({ role }: { role: Role }) {
               ))}
             </tbody>
           </table>
-        </article>
+        </DataTableCard>
       </motion.div>
     </PlatformShell>
   );
+}
+
+function StudentLearningDashboard() {
+  const meta = roleMeta.student;
+  const dashboard = dashboardByRole.student;
+  const state = useMemo(() => platformStore.getState(), []);
+  const studentUser = state.users.find((user) => user.id === "usr_student_demo");
+  const student = state.students.find((profile) => profile.userId === studentUser?.id);
+  const studentId = student?.id ?? "stu_demo";
+  const enrollments = state.enrollments.filter((enrollment) => enrollment.studentId === studentId && enrollment.status === "active");
+  const primaryEnrollment = enrollments.find((enrollment) => enrollment.courseRunId === "run_ar_l3_2026") ?? enrollments[0];
+  const courseRun = state.courseRuns.find((run) => run.id === primaryEnrollment?.courseRunId);
+  const course = state.courses.find((item) => item.id === courseRun?.courseId);
+  const classGroup = state.classGroups.find((item) => item.id === primaryEnrollment?.classGroupId);
+  const branch = state.branches.find((item) => item.id === courseRun?.branchId);
+  const teacher = state.users.find((user) => user.id === primaryEnrollment?.teacherId);
+  const courseModuleIds = new Set(state.modules.filter((module) => module.courseId === course?.id).map((module) => module.id));
+  const courseLessons = state.lessons.filter((lesson) => courseModuleIds.has(lesson.moduleId));
+  const studentLessonProgress = state.lessonProgress.filter(
+    (progress) => progress.studentId === studentId && courseLessons.some((lesson) => lesson.id === progress.lessonId),
+  );
+  const nextLessonProgress =
+    studentLessonProgress.find((progress) => progress.status === "in_progress") ??
+    studentLessonProgress.find((progress) => progress.status === "not_started");
+  const nextLesson = state.lessons.find((lesson) => lesson.id === nextLessonProgress?.lessonId) ?? courseLessons[0];
+  const activeRunIds = new Set(enrollments.map((enrollment) => enrollment.courseRunId));
+  const assignments = state.assignments.filter((assignment) => activeRunIds.has(assignment.courseRunId) && assignment.status === "active");
+  const pendingAssignments = assignments.filter(
+    (assignment) =>
+      !state.assignmentSubmissions.some(
+        (submission) => submission.assignmentId === assignment.id && submission.studentId === studentId && submission.status === "completed",
+      ),
+  );
+  const quizzes = state.quizzes.filter((quiz) => activeRunIds.has(quiz.courseRunId) && quiz.status === "active");
+  const quizAttempts = state.quizAttempts.filter((attempt) => attempt.studentId === studentId);
+  const activeCertificate = state.certificates.find((certificate) => certificate.studentId === studentId);
+  const quranProgress = state.quranProgress.find((record) => record.studentId === studentId);
+  const quranPlan = state.quranPlans.find((plan) => plan.studentId === studentId);
+  const unreadMessages = state.messages.filter((message) => message.toUserId === studentUser?.id && !message.read);
+  const studentEvents = state.events
+    .filter((event) => event.classGroupId && enrollments.some((enrollment) => enrollment.classGroupId === event.classGroupId))
+    .sort((a, b) => a.startsAt.localeCompare(b.startsAt));
+  const nextEvent = studentEvents[0];
+  const submittedAssignments = assignments.length - pendingAssignments.length;
+  const completedLessons = studentLessonProgress.filter((progress) => progress.status === "completed").length;
+  const progressPercent = primaryEnrollment?.progress ?? dashboard.spotlight.progress;
+  const learningTasks: Array<{
+    id: string;
+    title: string;
+    subtitle: string;
+    meta: string;
+    tone: NonNullable<Stat["tone"]>;
+    href: string;
+  }> = [
+    {
+      id: "next-lesson",
+      title: nextLesson?.title ?? dashboard.spotlight.title,
+      subtitle: course?.title ?? "Arabic Level 3",
+      meta: nextLessonProgress?.status === "completed" ? "Complete" : nextLessonProgress?.status === "in_progress" ? "In progress" : "Ready",
+      tone: nextLessonProgress?.status === "completed" ? "green" : "teal",
+      href: "/app/student/courses/course_ar_l3/learn/lesson_ar_conditional",
+    },
+    ...pendingAssignments.slice(0, 2).map((assignment) => ({
+      id: assignment.id,
+      title: assignment.title,
+      subtitle: assignment.submissionType === "audio" ? "Audio submission" : "Course task",
+      meta: state.assignmentSubmissions.some((submission) => submission.assignmentId === assignment.id && submission.studentId === studentId)
+        ? "Draft saved"
+        : "Open",
+      tone: "amber" as const,
+      href: `/app/student/assignments/${assignment.id}`,
+    })),
+    ...quizzes.slice(0, 1).map((quiz) => ({
+      id: quiz.id,
+      title: quiz.title,
+      subtitle: `${quiz.durationMinutes} min check`,
+      meta: quizAttempts.some((attempt) => attempt.quizId === quiz.id && attempt.status === "completed") ? "Attempted" : "Ready",
+      tone: (quizAttempts.some((attempt) => attempt.quizId === quiz.id && attempt.status === "completed") ? "green" : "purple") as NonNullable<
+        Stat["tone"]
+      >,
+      href: "/app/student/quizzes",
+    })),
+  ];
+  const studentAttentionItems = [
+    {
+      label: "Assignments due",
+      detail: pendingAssignments.length ? `${pendingAssignments.length} task(s) waiting.` : "No open assignment blockers.",
+      href: "/app/student/assignments",
+      Icon: ClipboardList,
+      tone: pendingAssignments.length ? "amber" as const : "green" as const,
+    },
+    {
+      label: "Teacher feedback",
+      detail: unreadMessages.length ? `${unreadMessages.length} unread message(s).` : `Feedback from ${teacher?.name ?? "teacher"} is current.`,
+      href: "/app/student/messages",
+      Icon: MessageSquare,
+      tone: unreadMessages.length ? "teal" as const : "green" as const,
+    },
+    {
+      label: "Quran progress",
+      detail: `${quranProgress?.memorizedPercent ?? 0}% memorized · ${quranPlan?.currentJuz ?? "revision cycle"}.`,
+      href: "/app/student/quran-progress",
+      Icon: BookOpen,
+      tone: "purple" as const,
+    },
+    {
+      label: "Certificate path",
+      detail: activeCertificate?.status.replaceAll("_", " ") ?? "Keep progress and attendance on track.",
+      href: "/app/student/certificates",
+      Icon: Award,
+      tone: activeCertificate ? "green" as const : "amber" as const,
+    },
+  ];
+
+  const studentStats: Stat[] = [
+    { label: "Active courses", value: String(enrollments.length), change: `${assignments.length} tasks`, tone: "teal" },
+    { label: "Course progress", value: `${progressPercent}%`, change: `${completedLessons}/${Math.max(courseLessons.length, 1)} lessons`, tone: "green" },
+    { label: "Attendance", value: `${primaryEnrollment?.attendanceRate ?? 0}%`, change: branch?.name ?? "Online", tone: "amber" },
+    {
+      label: "Certificate path",
+      value: activeCertificate ? `${activeCertificate.grade}%` : "New",
+      change: activeCertificate?.status.replaceAll("_", " ") ?? "in progress",
+      tone: "purple",
+    },
+  ];
+
+  return (
+    <PlatformShell role="student" title="Dashboard">
+      <PlatformPageHeader
+        compact
+        title="My Learning Dashboard"
+        description="Continue the next class, learning task, and feedback loop."
+        context={
+          <>
+            <span>{course?.title ?? "Arabic Level 3"}</span>
+            <span>{classGroup?.name ?? "Live class"}</span>
+            <span>{student?.timezone ?? "Africa/Cairo"}</span>
+          </>
+        }
+        actions={
+          <>
+            <Link href="/app/student/reports" className="platform-secondary-button">
+              My report
+            </Link>
+            <Link href="/app/student/courses/course_ar_l3/learn/lesson_ar_conditional" className="platform-primary-button" style={{ background: meta.color }}>
+              <BookOpen size={15} />
+              Continue lesson
+            </Link>
+          </>
+        }
+      />
+
+      <motion.div className="platform-metric-grid" initial="hidden" animate="visible">
+        {studentStats.map((stat, index) => (
+          <StatCard
+            key={stat.label}
+            label={stat.label}
+            value={stat.value}
+            change={stat.change}
+            tone={stat.tone}
+            delay={0.05 + index * 0.045}
+          />
+        ))}
+      </motion.div>
+
+      <motion.div className="platform-v2-role-main" initial="hidden" animate="visible" custom={0.12} variants={dashboardReveal}>
+        <div className="platform-v2-role-stack">
+          <section className="platform-v2-panel platform-v2-work-summary">
+            <PlatformWorkspaceHeader
+              title="Continue learning"
+              description="Your next class, lesson, and progress in one place."
+            />
+            <div className="platform-v2-summary-body">
+              <div className="platform-v2-summary-copy">
+                <span>Next learning block</span>
+                <h2>{nextLesson?.title ?? "Continue Arabic Grammar"}</h2>
+                <p>{course?.title ?? "Arabic Level 3"} with {teacher?.name ?? "your teacher"}.</p>
+                <div className="platform-progress-row">
+                  <div>
+                    <strong>Course progress</strong>
+                    <span>{progressPercent}%</span>
+                  </div>
+                  <div>
+                    <span style={{ width: `${progressPercent}%`, background: meta.color }} />
+                  </div>
+                </div>
+                <div className="platform-v2-summary-actions">
+                  <Link href="/app/student/courses/course_ar_l3/learn/lesson_ar_conditional" className="platform-primary-button" style={{ background: meta.color }}>
+                    Continue lesson
+                    <ArrowRight size={15} />
+                  </Link>
+                  <Link href="/app/student/courses/course_ar_l3/live" className="platform-secondary-button">
+                    Join class
+                  </Link>
+                </div>
+              </div>
+              <div className="platform-v2-summary-facts">
+                <article>
+                  <span>Next class</span>
+                  <strong>{nextEvent ? formatStudentDate(nextEvent.startsAt) : "Scheduled"}</strong>
+                  <small>{classGroup?.name ?? "Live class"}</small>
+                </article>
+                <article>
+                  <span>Teacher</span>
+                  <strong>{teacher?.name ?? "Teacher"}</strong>
+                  <small>{unreadMessages.length} unread message(s)</small>
+                </article>
+                <article>
+                  <span>Attendance</span>
+                  <strong>{primaryEnrollment?.attendanceRate ?? 0}%</strong>
+                  <small>{branch?.name ?? "Online"}</small>
+                </article>
+              </div>
+            </div>
+          </section>
+
+          <section className="platform-v2-panel">
+            <PlatformWorkspaceHeader
+              title="Learning focus"
+              description="Only the next lesson, due work, and quick checks."
+            />
+            <div className="platform-v2-dashboard-list">
+              {learningTasks.map((item) => (
+                <Link key={item.id} href={item.href} style={{ "--item-color": toneColor[item.tone] } as CSSProperties}>
+                  <div>
+                    <strong>{item.title}</strong>
+                    <small>{item.subtitle}</small>
+                  </div>
+                  <span>{item.meta}</span>
+                </Link>
+              ))}
+              <Link href="/app/student/assignments" style={{ "--item-color": toneColor.amber } as CSSProperties}>
+                <div>
+                  <strong>{pendingAssignments.length} assignments open</strong>
+                  <small>{submittedAssignments} submitted or saved · {quizzes.length} quiz check(s)</small>
+                </div>
+                <span>review</span>
+              </Link>
+            </div>
+          </section>
+        </div>
+
+        <aside className="platform-v2-panel">
+          <PlatformWorkspaceHeader
+            title="Upcoming & feedback"
+            description="Short signals that need the student’s attention."
+          />
+          <div className="platform-v2-attention-list">
+            {studentAttentionItems.map((item) => (
+              <Link key={item.label} href={item.href} style={{ "--item-color": toneColor[item.tone] } as CSSProperties}>
+                <span>
+                  <item.Icon size={16} />
+                </span>
+                <div>
+                  <strong>{item.label}</strong>
+                  <small>{item.detail}</small>
+                </div>
+                <ArrowRight size={15} />
+              </Link>
+            ))}
+          </div>
+        </aside>
+      </motion.div>
+    </PlatformShell>
+  );
+}
+
+function formatStudentDate(value?: string) {
+  if (!value) {
+    return "Scheduled";
+  }
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+
+  return date.toLocaleDateString("en", { month: "short", day: "numeric" });
 }
 
 function RegistrarCommandDashboard() {
@@ -279,68 +551,108 @@ function RegistrarCommandDashboard() {
     { label: "Placement queue", value: String(pendingPlacements.length), change: "awaiting result", tone: pendingPlacements.length ? "red" : "green" },
     { label: "Open balance", value: `EGP ${openInvoices.reduce((sum, row) => sum + row.balance, 0)}`, change: `${openInvoices.length} invoice(s)`, tone: openInvoices.length ? "amber" : "green" },
   ];
-  const pipelineSteps: Array<{
+  const workflowTiles: Array<{
     label: string;
     href: string;
     count: number;
-    status: string;
     detail: string;
     tone: Stat["tone"];
     Icon: LucideIcon;
   }> = [
     {
-      label: "Leads",
+      label: "Admissions pipeline",
       href: "/app/registrar/leads",
       count: state.leads.filter((lead) => lead.status === "lead").length,
-      status: "Intake",
-      detail: "Capture enquiry and create the application file.",
+      detail: "New leads and pending applications.",
       tone: "teal",
       Icon: Users,
     },
     {
-      label: "Applications",
-      href: "/app/registrar/applications",
-      count: pendingApplications.length,
-      status: "Review",
-      detail: "Confirm branch, course interest, schedule, and notes.",
-      tone: "amber",
-      Icon: FileText,
-    },
-    {
-      label: "Placement",
+      label: "Placement tests",
       href: "/app/registrar/placement-tests",
       count: pendingPlacements.length,
-      status: "Result",
-      detail: "Record level decision before enrollment handoff.",
+      detail: "Booked tests waiting for result.",
       tone: pendingPlacements.length ? "red" : "green",
       Icon: ClipboardList,
     },
     {
-      label: "Enrollment",
+      label: "Ready to enroll",
       href: "/app/registrar/enrollments",
       count: readyWorkflows.length,
-      status: "Assign",
-      detail: "Pick course run and class group to activate portal.",
+      detail: "Placement and file checks are ready.",
       tone: "purple",
       Icon: UserPlus,
     },
     {
-      label: "Payment",
+      label: "Payments pending",
       href: "/app/registrar/payments",
       count: openInvoices.length,
-      status: "Internal",
-      detail: "Record manual receipt against the generated invoice.",
+      detail: "Manual receipts or balances to review.",
       tone: openInvoices.length ? "amber" : "green",
       Icon: CreditCard,
     },
+  ];
+  const registrarTaskItems = [
+    ...pendingPlacements.slice(0, 2).map((booking) => ({
+      id: booking.id,
+      label: booking.fullName,
+      detail: `${booking.subject} · ${booking.preferredDate} · ${booking.currentLevel}`,
+      href: `/app/registrar/placement-tests/${booking.id}`,
+      meta: "placement",
+      tone: "amber" as const,
+    })),
+    ...readyWorkflows.slice(0, 2).map((workflow) => {
+      const lead = state.leads.find((item) => item.id === workflow.leadId);
+      const course = state.courses.find((item) => item.id === workflow.targetCourseId);
+      return {
+        id: workflow.id,
+        label: lead?.fullName ?? workflow.id,
+        detail: `${course?.title ?? workflow.targetCourseId} · ${workflow.nextStep}`,
+        href: "/app/registrar/enrollments",
+        meta: "enroll",
+        tone: "purple" as const,
+      };
+    }),
+    ...pendingApplications.slice(0, 2).map((application) => {
+      const lead = state.leads.find((item) => item.id === application.leadId);
+      return {
+        id: application.id,
+        label: lead?.fullName ?? application.id,
+        detail: `${application.courseInterest} · ${application.schedulePreference}`,
+        href: `/app/registrar/applications/${application.id}`,
+        meta: "review",
+        tone: "teal" as const,
+      };
+    }),
+  ].slice(0, 5);
+  const registrarAttentionItems = [
     {
-      label: "Active portal",
-      href: "/app/registrar/students",
-      count: activeStudents.length,
-      status: "Live",
-      detail: "Student sees assigned course, class, teacher, and tasks.",
-      tone: "green",
-      Icon: CheckCircle2,
+      label: "Applications pending",
+      detail: pendingApplications.length ? `${pendingApplications.length} file(s) need review.` : "No pending application files.",
+      href: "/app/registrar/applications",
+      Icon: FileText,
+      tone: pendingApplications.length ? "amber" as const : "green" as const,
+    },
+    {
+      label: "Placement queue",
+      detail: pendingPlacements.length ? `${pendingPlacements.length} test(s) need a result.` : "Placement queue is clear.",
+      href: "/app/registrar/placement-tests",
+      Icon: ClipboardList,
+      tone: pendingPlacements.length ? "red" as const : "green" as const,
+    },
+    {
+      label: "Ready to enroll",
+      detail: readyWorkflows.length ? `${readyWorkflows.length} student(s) ready for class assignment.` : `${activeStudents.length} active students live.`,
+      href: "/app/registrar/enrollments",
+      Icon: UserPlus,
+      tone: readyWorkflows.length ? "purple" as const : "green" as const,
+    },
+    {
+      label: "Payments pending",
+      detail: openInvoices.length ? `EGP ${openInvoices.reduce((sum, row) => sum + row.balance, 0)} balance open.` : `EGP ${collected} collected.`,
+      href: "/app/registrar/payments",
+      Icon: CreditCard,
+      tone: openInvoices.length ? "amber" as const : "green" as const,
     },
   ];
 
@@ -348,215 +660,121 @@ function RegistrarCommandDashboard() {
     <PlatformShell role="registrar" title="Dashboard">
       <PlatformPageHeader
         compact
-        title="Admissions command center"
-        description={`${branch?.name ?? "Admissions"} · leads, applications, placement, enrollment handoff, and internal payments.`}
+        title="Admissions Dashboard"
+        description={`${branch?.name ?? "Admissions"} intake, placement, enrollment, and payments.`}
         actions={
           <>
           <Link href="/app/registrar/reports" className="platform-secondary-button">
             Reports
           </Link>
-          <Link href="/app/registrar/applications" className="platform-primary-button" style={{ background: meta.color }}>
-            <FileText size={15} />
-            New application
+          <Link href="/app/registrar/leads" className="platform-primary-button" style={{ background: meta.color }}>
+            <Users size={15} />
+            Add lead
           </Link>
           </>
         }
       />
 
-      <motion.div className="platform-metric-grid registrar-command-metrics" initial="hidden" animate="visible">
+      <motion.div className="platform-metric-grid" initial="hidden" animate="visible">
         {pipelineStats.map((stat, index) => (
-          <motion.article key={stat.label} className="platform-metric" custom={0.05 + index * 0.045} variants={dashboardReveal}>
-            <div>
-              <span>{stat.label}</span>
-              <strong>{stat.value}</strong>
-            </div>
-            <small style={{ color: toneColor[stat.tone], background: `${toneColor[stat.tone]}14` }}>{stat.change}</small>
-          </motion.article>
+          <StatCard
+            key={stat.label}
+            label={stat.label}
+            value={stat.value}
+            change={stat.change}
+            tone={stat.tone}
+            delay={0.05 + index * 0.045}
+          />
         ))}
       </motion.div>
 
-      <motion.section className="registrar-command-pipeline" initial="hidden" animate="visible" custom={0.1} variants={dashboardReveal}>
-        <div className="platform-card-title compact">
-          <div>
-            <span>Admissions path</span>
-            <strong>Lead to active student</strong>
-          </div>
-          <ArrowRight size={18} style={{ color: meta.color }} />
-        </div>
-        <div className="registrar-command-pipeline-track" aria-label="Registrar admissions workflow stages">
-          {pipelineSteps.map(({ label, href, count, status, detail, tone, Icon }, index) => (
-            <Link key={label} href={href} className="registrar-command-pipeline-step">
-              <span style={{ color: toneColor[tone], background: `${toneColor[tone]}14` }}>
-                <Icon size={15} />
-              </span>
-              <div>
-                <strong>{label}</strong>
-                <small>{detail}</small>
+      <motion.div className="platform-v2-role-main" initial="hidden" animate="visible" custom={0.14} variants={dashboardReveal}>
+        <div className="platform-v2-role-stack">
+          <section className="platform-v2-panel platform-v2-work-summary">
+            <PlatformWorkspaceHeader
+              title="Admissions pipeline"
+              description="Move each applicant from enquiry to placement and enrollment."
+            />
+            <div className="platform-v2-summary-body">
+              <div className="platform-v2-summary-copy">
+                <span>Next admissions action</span>
+                <h2>{nextPlacement?.fullName ?? pendingApplications[0]?.id ?? "Pipeline ready"}</h2>
+                <p>
+                  {nextPlacement
+                    ? `${nextPlacement.subject} placement at ${nextPlacementBranch?.name ?? nextPlacement.branchId}.`
+                    : pendingApplications.length
+                      ? "Review the next pending application file."
+                      : "Admissions queue is clear."}
+                </p>
+                <div className="platform-v2-summary-actions">
+                  <Link href="/app/registrar/placement-tests" className="platform-primary-button" style={{ background: meta.color }}>
+                    Placement queue
+                  </Link>
+                  <Link href="/app/registrar/applications" className="platform-secondary-button">
+                    Applications
+                  </Link>
+                </div>
               </div>
-              <em>{count} · {status}</em>
-              {index < pipelineSteps.length - 1 ? <ArrowRight className="registrar-command-pipeline-arrow" size={14} aria-hidden="true" /> : null}
-            </Link>
-          ))}
+              <div className="platform-v2-summary-facts">
+                {workflowTiles.slice(0, 3).map((item) => (
+                  <article key={item.label}>
+                    <span>{item.label}</span>
+                    <strong>{item.count}</strong>
+                    <small>{item.detail}</small>
+                  </article>
+                ))}
+              </div>
+            </div>
+          </section>
+
+          <section className="platform-v2-panel">
+            <PlatformWorkspaceHeader
+              title="Placement & enrollment"
+              description="Short queue of files that can move today."
+            />
+            <div className="platform-v2-dashboard-list">
+              {registrarTaskItems.map((item) => (
+                <Link key={item.id} href={item.href} style={{ "--item-color": toneColor[item.tone] } as CSSProperties}>
+                  <div>
+                    <strong>{item.label}</strong>
+                    <small>{item.detail}</small>
+                  </div>
+                  <span>{item.meta}</span>
+                </Link>
+              ))}
+              {!registrarTaskItems.length ? (
+                <article>
+                  <div>
+                    <strong>No enrollment blocker</strong>
+                    <small>New placement and application rows will appear here.</small>
+                  </div>
+                  <span>clear</span>
+                </article>
+              ) : null}
+            </div>
+          </section>
         </div>
-      </motion.section>
 
-      <motion.div className="registrar-command-layout" initial="hidden" animate="visible" custom={0.14} variants={dashboardReveal}>
-        <section className="registrar-command-now">
-          <div className="platform-card-title compact">
-            <div>
-              <span>Next admissions action</span>
-              <strong>{nextPlacement?.fullName ?? pendingApplications[0]?.id ?? "Pipeline ready"}</strong>
-            </div>
-            <ClipboardList size={18} style={{ color: meta.color }} />
-          </div>
-          <p>
-            {nextPlacement
-              ? `${nextPlacement.subject} placement is booked for ${nextPlacement.preferredDate} at ${nextPlacementBranch?.name ?? nextPlacement.branchId}.`
-              : pendingApplications.length
-                ? "Prepare the next pending application for enrollment handoff."
-                : "Lead intake, application files, placement queue, and payment records are synchronized."}
-          </p>
-          <div className="registrar-command-actions">
-            <Link href="/app/registrar/leads" className="platform-secondary-button">
-              <Users size={15} />
-              Leads
-            </Link>
-            <Link href="/app/registrar/placement-tests" className="platform-primary-button" style={{ background: meta.color }}>
-              <CalendarDays size={15} />
-              Placement queue
-            </Link>
-          </div>
-        </section>
-
-        <aside className="registrar-command-finance">
-          <div className="platform-card-title compact">
-            <div>
-              <span>Internal payments</span>
-              <strong>EGP {collected} collected</strong>
-            </div>
-            <CreditCard size={18} style={{ color: meta.color }} />
-          </div>
-          <dl>
-            <div>
-              <dt>Open invoices</dt>
-              <dd>{openInvoices.length}</dd>
-            </div>
-            <div>
-              <dt>Balance</dt>
-              <dd>EGP {openInvoices.reduce((sum, row) => sum + row.balance, 0)}</dd>
-            </div>
-          </dl>
-          <Link href="/app/registrar/payments" className="platform-secondary-button">
-            Open ledger
-          </Link>
-        </aside>
-      </motion.div>
-
-      <motion.div className="registrar-command-grid" initial="hidden" animate="visible" custom={0.2} variants={dashboardReveal}>
-        <section className="registrar-command-panel">
-          <div className="platform-card-title compact">
-            <div>
-              <span>Application files</span>
-              <strong>{pendingApplications.length} pending</strong>
-            </div>
-          </div>
-          <div className="registrar-command-list">
-            {applications.slice(0, 5).map((application) => {
-              const lead = state.leads.find((item) => item.id === application.leadId);
-              const branchRow = state.branches.find((item) => item.id === application.branchId);
-              const workflow = state.enrollmentWorkflows.find((item) => item.applicationId === application.id);
-              return (
-                <Link key={application.id} href={`/app/registrar/applications/${application.id}`}>
-                  <span>{application.status}</span>
-                  <div>
-                    <strong>{lead?.fullName ?? application.id}</strong>
-                    <small>{application.courseInterest} · {branchRow?.name ?? application.branchId} · {application.schedulePreference}</small>
-                  </div>
-                  <em>{workflow ? "prepared" : "open"}</em>
-                </Link>
-              );
-            })}
-          </div>
-        </section>
-
-        <section className="registrar-command-panel">
-          <div className="platform-card-title compact">
-            <div>
-              <span>Enrollment handoff</span>
-              <strong>{readyWorkflows.length} ready</strong>
-            </div>
-          </div>
-          <div className="registrar-command-list">
-            {readyWorkflows.slice(0, 5).map((workflow) => {
-              const lead = state.leads.find((item) => item.id === workflow.leadId);
-              const course = state.courses.find((item) => item.id === workflow.targetCourseId);
-              return (
-                <Link key={workflow.id} href="/app/registrar/enrollments">
-                  <span>{workflow.source ?? "intake"}</span>
-                  <div>
-                    <strong>{lead?.fullName ?? workflow.id}</strong>
-                    <small>{course?.title ?? workflow.targetCourseId} · {workflow.nextStep}</small>
-                  </div>
-                  <em>{workflow.status}</em>
-                </Link>
-              );
-            })}
-            {!readyWorkflows.length ? (
-              <article>
+        <aside className="platform-v2-panel">
+          <PlatformWorkspaceHeader
+            title="Needs attention"
+            description="Admissions, placement, enrollment, and payments."
+          />
+          <div className="platform-v2-attention-list">
+            {registrarAttentionItems.map((item) => (
+              <Link key={item.label} href={item.href} style={{ "--item-color": toneColor[item.tone] } as CSSProperties}>
+                <span>
+                  <item.Icon size={16} />
+                </span>
                 <div>
-                  <strong>No handoff waiting</strong>
-                  <small>Converted applications and placement results will appear here.</small>
+                  <strong>{item.label}</strong>
+                  <small>{item.detail}</small>
                 </div>
-              </article>
-            ) : null}
-          </div>
-        </section>
-
-        <section className="registrar-command-panel">
-          <div className="platform-card-title compact">
-            <div>
-              <span>Placement queue</span>
-              <strong>{pendingPlacements.length} pending test(s)</strong>
-            </div>
-          </div>
-          <div className="registrar-command-list">
-            {pendingPlacements.slice(0, 5).map((booking) => (
-              <Link key={booking.id} href={`/app/registrar/placement-tests/${booking.id}`}>
-                <span>{booking.status}</span>
-                <div>
-                  <strong>{booking.fullName}</strong>
-                  <small>{booking.subject} · {booking.preferredDate} · {booking.currentLevel}</small>
-                </div>
-                <em>result</em>
+                <ArrowRight size={15} />
               </Link>
             ))}
           </div>
-        </section>
-
-        <section className="registrar-command-panel">
-          <div className="platform-card-title compact">
-            <div>
-              <span>Payment pending</span>
-              <strong>{openInvoices.length} open invoice(s)</strong>
-            </div>
-          </div>
-          <div className="registrar-command-list">
-            {openInvoices.slice(0, 5).map((row) => {
-              const student = state.students.find((item) => item.id === row.invoice.studentId);
-              const user = state.users.find((item) => item.id === student?.userId);
-              return (
-                <Link key={row.invoice.id} href="/app/registrar/payments">
-                  <span>{row.invoice.currency} {row.balance}</span>
-                  <div>
-                    <strong>{user?.name ?? row.invoice.studentId}</strong>
-                    <small>{row.invoice.id} · due {row.invoice.dueAt} · {row.invoice.status}</small>
-                  </div>
-                  <em>collect</em>
-                </Link>
-              );
-            })}
-          </div>
-        </section>
+        </aside>
       </motion.div>
     </PlatformShell>
   );
@@ -615,19 +833,53 @@ function TeacherCommandDashboard() {
   const nextClassGroup = teacherClasses.find((group) => group.id === nextClass?.classGroupId) ?? teacherClasses[0];
   const nextRun = teacherRuns.find((run) => run.id === nextClassGroup?.courseRunId);
   const nextCourse = state.courses.find((course) => course.id === nextRun?.courseId);
+  const todayKey = new Date().toISOString().slice(0, 10);
+  const todaySessions = sessions.filter((session) => session.startsAt.slice(0, 10) === todayKey);
+  const visibleSessions = todaySessions.length ? todaySessions : sessions.slice(0, 4);
+  const unreadMessages = state.messages.filter((message) => message.toUserId === actorId && !message.read);
   const dashboardStats: Stat[] = [
-    { label: "Assigned classes", value: String(teacherClasses.length), change: `${teacherRuns.length} course run(s)`, tone: "teal" },
-    { label: "Learners", value: String(teacherStudents.length), change: "class roster scope", tone: "green" },
-    { label: "Attendance pending", value: String(pendingAttendance.length), change: `${sessions.length} session(s)`, tone: pendingAttendance.length ? "amber" : "green" },
+    { label: "Today’s classes", value: String(todaySessions.length || visibleSessions.length), change: todaySessions.length ? "scheduled today" : "next scheduled", tone: "teal" },
+    { label: "Attendance due", value: String(pendingAttendance.length), change: `${sessions.length} session(s)`, tone: pendingAttendance.length ? "amber" : "green" },
     { label: "Grading queue", value: String(pendingSubmissions.length), change: `${grades.length} grade item(s)`, tone: pendingSubmissions.length ? "red" : "green" },
+    { label: "Need support", value: String(studentsNeedingAttention.length), change: `${teacherStudents.length} learner(s)`, tone: studentsNeedingAttention.length ? "amber" : "green" },
+  ];
+  const teacherAttentionItems = [
+    {
+      label: "Attendance to mark",
+      detail: pendingAttendance.length ? `${pendingAttendance.length} session(s) need attendance.` : "Attendance is saved for current sessions.",
+      href: `/app/teacher/classes/${nextClassGroup?.id ?? "class_ar_l3_a"}/attendance`,
+      Icon: CheckCircle2,
+      tone: pendingAttendance.length ? "amber" as const : "green" as const,
+    },
+    {
+      label: "Grading queue",
+      detail: pendingSubmissions.length ? `${pendingSubmissions.length} submission(s) waiting.` : "No pending submissions.",
+      href: "/app/teacher/grading",
+      Icon: ListChecks,
+      tone: pendingSubmissions.length ? "red" as const : "green" as const,
+    },
+    {
+      label: "Students needing attention",
+      detail: studentsNeedingAttention.length ? `${studentsNeedingAttention.length} learner(s) need review.` : "Progress and attendance are stable.",
+      href: "/app/teacher/classes/class_ar_l3_a/students",
+      Icon: Users,
+      tone: studentsNeedingAttention.length ? "amber" as const : "green" as const,
+    },
+    {
+      label: "Messages",
+      detail: unreadMessages.length ? `${unreadMessages.length} unread class message(s).` : "No unread class messages.",
+      href: "/app/teacher/messages",
+      Icon: MessageSquare,
+      tone: unreadMessages.length ? "teal" as const : "green" as const,
+    },
   ];
 
   return (
     <PlatformShell role="teacher" title="Dashboard">
       <PlatformPageHeader
         compact
-        title="Teaching command center"
-        description={`${teacherUser?.name ?? "Teacher"} · ${staffProfile?.subjects.join(", ") || teacherProfile?.subjects.join(", ") || "Assigned teaching scope"}`}
+        title="Teaching Dashboard"
+        description="Today’s classes, attendance, grading, and student support."
         actions={
           <>
           <Link href="/app/teacher/reports" className="platform-secondary-button">
@@ -641,188 +893,125 @@ function TeacherCommandDashboard() {
         }
       />
 
-      <motion.div className="platform-metric-grid teacher-command-metrics" initial="hidden" animate="visible">
+      <motion.div className="platform-metric-grid" initial="hidden" animate="visible">
         {dashboardStats.map((stat, index) => (
-          <motion.article key={stat.label} className="platform-metric" custom={0.05 + index * 0.045} variants={dashboardReveal}>
-            <div>
-              <span>{stat.label}</span>
-              <strong>{stat.value}</strong>
-            </div>
-            <small style={{ color: toneColor[stat.tone], background: `${toneColor[stat.tone]}14` }}>{stat.change}</small>
-          </motion.article>
+          <StatCard
+            key={stat.label}
+            label={stat.label}
+            value={stat.value}
+            change={stat.change}
+            tone={stat.tone}
+            delay={0.05 + index * 0.045}
+          />
         ))}
       </motion.div>
 
-      <motion.div className="teacher-command-layout" initial="hidden" animate="visible" custom={0.14} variants={dashboardReveal}>
-        <section className="teacher-command-now">
-          <div className="platform-card-title compact">
-            <div>
-              <span>Next teaching action</span>
-              <strong>{nextClass?.title ?? nextClassGroup?.name ?? dashboard.spotlight.title}</strong>
+      <motion.div className="platform-v2-role-main" initial="hidden" animate="visible" custom={0.14} variants={dashboardReveal}>
+        <div className="platform-v2-role-stack">
+          <section className="platform-v2-panel platform-v2-work-summary">
+            <PlatformWorkspaceHeader
+              title="Today’s teaching plan"
+              description={`${teacherUser?.name ?? "Teacher"} · ${staffProfile?.subjects.join(", ") || teacherProfile?.subjects.join(", ") || "assigned classes"}`}
+            />
+            <div className="platform-v2-summary-body">
+              <div className="platform-v2-summary-copy">
+                <span>Next class</span>
+                <h2>{nextClass?.title ?? nextClassGroup?.name ?? dashboard.spotlight.title}</h2>
+                <p>{nextCourse?.title ?? dashboard.spotlight.description}</p>
+                <div className="platform-v2-summary-actions">
+                  <Link href={`/app/teacher/classes/${nextClassGroup?.id ?? "class_ar_l3_a"}/attendance`} className="platform-primary-button" style={{ background: meta.color }}>
+                    Mark attendance
+                  </Link>
+                  <Link href={`/app/teacher/classes/${nextClassGroup?.id ?? "class_ar_l3_a"}`} className="platform-secondary-button">
+                    Class panel
+                  </Link>
+                </div>
+              </div>
+              <div className="platform-v2-summary-facts">
+                <article>
+                  <span>Schedule</span>
+                  <strong>{nextClass ? formatStudentDate(nextClass.startsAt) : "No session"}</strong>
+                  <small>{nextClassGroup?.schedule ?? "Class schedule"}</small>
+                </article>
+                <article>
+                  <span>Roster</span>
+                  <strong>{nextClassGroup?.studentIds.length ?? 0}</strong>
+                  <small>learner(s)</small>
+                </article>
+                <article>
+                  <span>Progress</span>
+                  <strong>{averageProgress}%</strong>
+                  <small>class average</small>
+                </article>
+              </div>
             </div>
-            <Clock size={18} style={{ color: meta.color }} />
-          </div>
-          <p>{nextCourse?.title ?? dashboard.spotlight.description}</p>
-          <dl>
-            <div>
-              <dt>Class</dt>
-              <dd>{nextClassGroup?.name ?? "No class assigned"}</dd>
-            </div>
-            <div>
-              <dt>Schedule</dt>
-              <dd>{nextClass ? new Date(nextClass.startsAt).toLocaleString() : nextClassGroup?.schedule ?? "No session"}</dd>
-            </div>
-            <div>
-              <dt>Roster</dt>
-              <dd>{nextClassGroup?.studentIds.length ?? 0} learner(s)</dd>
-            </div>
-          </dl>
-          <div className="teacher-command-actions">
-            <Link href={`/app/teacher/classes/${nextClassGroup?.id ?? "class_ar_l3_a"}`} className="platform-secondary-button">
-              <Presentation size={15} />
-              Class panel
-            </Link>
-            <Link href="/app/teacher/grading" className="platform-primary-button" style={{ background: meta.color }}>
-              <ListChecks size={15} />
-              Grading queue
-            </Link>
-          </div>
-        </section>
+          </section>
 
-        <aside className="teacher-command-profile">
-          <div className="platform-card-title compact">
-            <div>
-              <span>Teacher profile</span>
-              <strong>{teacherUser?.name ?? "Teacher"}</strong>
+          <section className="platform-v2-panel">
+            <PlatformWorkspaceHeader
+              title="Class delivery"
+              description="The next sessions and the attendance state attached to them."
+            />
+            <div className="platform-v2-dashboard-list">
+              {visibleSessions.map((session) => {
+                const group = teacherClasses.find((item) => item.id === session.classGroupId);
+                const run = teacherRuns.find((item) => item.id === group?.courseRunId);
+                const course = state.courses.find((item) => item.id === run?.courseId);
+                return (
+                  <Link key={session.id} href={`/app/teacher/classes/${group?.id ?? "class_ar_l3_a"}/attendance`} style={{ "--item-color": session.attendanceSaved ? toneColor.green : toneColor.amber } as CSSProperties}>
+                    <div>
+                      <strong>{session.title}</strong>
+                      <small>{group?.name ?? "Class group"} · {course?.title ?? "Course"}</small>
+                    </div>
+                    <span>{session.attendanceSaved ? "saved" : "mark"}</span>
+                  </Link>
+                );
+              })}
+              {!visibleSessions.length ? (
+                <article>
+                  <div>
+                    <strong>No classes scheduled</strong>
+                    <small>Assigned sessions will appear here.</small>
+                  </div>
+                  <span>clear</span>
+                </article>
+              ) : null}
             </div>
-            <GraduationCap size={18} style={{ color: meta.color }} />
-          </div>
-          <div className="teacher-command-profile-grid">
-            <span>{teacherProfile?.status ?? teacherUser?.status ?? "active"}</span>
-            <span>{teacherProfile?.availabilityStatus ?? staffProfile?.availabilityStatus ?? "available"}</span>
-            <span>{teacherProfile?.subjects.join(", ") || staffProfile?.subjects.join(", ") || "subjects pending"}</span>
-            <span>{teacherProfile?.teachingLevels.join(", ") || staffProfile?.teachingLevels.join(", ") || "levels pending"}</span>
+          </section>
+        </div>
+
+        <aside className="platform-v2-panel">
+          <PlatformWorkspaceHeader
+            title="Needs attention"
+            description="Attendance, grading, and learner support queues."
+          />
+          <div className="platform-v2-attention-list">
+            {teacherAttentionItems.map((item) => (
+              <Link key={item.label} href={item.href} style={{ "--item-color": toneColor[item.tone] } as CSSProperties}>
+                <span>
+                  <item.Icon size={16} />
+                </span>
+                <div>
+                  <strong>{item.label}</strong>
+                  <small>{item.detail}</small>
+                </div>
+                <ArrowRight size={15} />
+              </Link>
+            ))}
+            {studentsNeedingAttention.slice(0, 2).map((row) => (
+              <Link key={row.student.id} href="/app/teacher/classes/class_ar_l3_a/students" style={{ "--item-color": toneColor.amber } as CSSProperties}>
+                <span>
+                  <Users size={16} />
+                </span>
+                <div>
+                  <strong>{row.user?.name ?? row.student.id}</strong>
+                  <small>Attendance {row.lowestAttendance}% · Grade {row.lowestGrade}%</small>
+                </div>
+                <ArrowRight size={15} />
+              </Link>
+            ))}
           </div>
         </aside>
-      </motion.div>
-
-      <motion.div className="teacher-command-grid" initial="hidden" animate="visible" custom={0.2} variants={dashboardReveal}>
-        <section className="teacher-command-panel">
-          <div className="platform-card-title compact">
-            <div>
-              <span>Assigned classes</span>
-              <strong>{teacherClasses.length} active group(s)</strong>
-            </div>
-          </div>
-          <div className="teacher-command-list">
-            {teacherClasses.map((group) => {
-              const run = teacherRuns.find((item) => item.id === group.courseRunId);
-              const course = state.courses.find((item) => item.id === run?.courseId);
-              const pending = pendingAttendance.filter((session) => session.classGroupId === group.id).length;
-              return (
-                <Link key={group.id} href={`/app/teacher/classes/${group.id}`}>
-                  <span>{group.studentIds.length}/{group.capacity}</span>
-                  <div>
-                    <strong>{group.name}</strong>
-                    <small>{course?.title ?? run?.term ?? "Course"} · {group.schedule}</small>
-                  </div>
-                  <em>{pending ? `${pending} pending` : "ready"}</em>
-                </Link>
-              );
-            })}
-          </div>
-        </section>
-
-        <section className="teacher-command-panel">
-          <div className="platform-card-title compact">
-            <div>
-              <span>Students needing attention</span>
-              <strong>{studentsNeedingAttention.length || "Clear"}</strong>
-            </div>
-          </div>
-          <div className="teacher-command-list">
-            {studentsNeedingAttention.length ? (
-              studentsNeedingAttention.map((row) => (
-                <Link key={row.student.id} href="/app/teacher/classes/class_ar_l3_a/students">
-                  <span>{row.progress}%</span>
-                  <div>
-                    <strong>{row.user?.name ?? row.student.id}</strong>
-                    <small>Attendance {row.lowestAttendance}% · Grade {row.lowestGrade}%</small>
-                  </div>
-                  <em>review</em>
-                </Link>
-              ))
-            ) : (
-              <article>
-                <div>
-                  <strong>No intervention queue</strong>
-                  <small>Class progress, attendance, and grades are within current thresholds.</small>
-                </div>
-              </article>
-            )}
-          </div>
-        </section>
-
-        <section className="teacher-command-panel">
-          <div className="platform-card-title compact">
-            <div>
-              <span>Pending grading</span>
-              <strong>{pendingSubmissions.length} submission(s)</strong>
-            </div>
-          </div>
-          <div className="teacher-command-list">
-            {pendingSubmissions.slice(0, 5).map((submission) => {
-              const assignment = state.assignments.find((item) => item.id === submission.assignmentId);
-              const student = state.students.find((item) => item.id === submission.studentId);
-              const user = state.users.find((item) => item.id === student?.userId);
-              return (
-                <Link key={submission.id} href="/app/teacher/grading">
-                  <span>{assignment?.submissionType ?? "work"}</span>
-                  <div>
-                    <strong>{assignment?.title ?? submission.assignmentId}</strong>
-                    <small>{user?.name ?? submission.studentId} · submitted {new Date(submission.submittedAt).toLocaleDateString()}</small>
-                  </div>
-                  <em>grade</em>
-                </Link>
-              );
-            })}
-            {!pendingSubmissions.length ? (
-              <article>
-                <div>
-                  <strong>Grading queue is clear</strong>
-                  <small>New class submissions will appear here.</small>
-                </div>
-              </article>
-            ) : null}
-          </div>
-        </section>
-
-        <section className="teacher-command-panel">
-          <div className="platform-card-title compact">
-            <div>
-              <span>Progress snapshot</span>
-              <strong>{averageProgress}% average</strong>
-            </div>
-          </div>
-          <div className="platform-progress-row">
-            <div>
-              <strong>Class learning progress</strong>
-              <span>{averageProgress}%</span>
-            </div>
-            <div>
-              <span style={{ width: `${averageProgress}%`, background: meta.color }} />
-            </div>
-          </div>
-          <div className="teacher-command-actions">
-            <Link href="/app/teacher/reports" className="platform-secondary-button">
-              Reports
-            </Link>
-            <Link href="/app/teacher/messages" className="platform-secondary-button">
-              <MessageSquare size={15} />
-              Message learners
-            </Link>
-          </div>
-        </section>
       </motion.div>
     </PlatformShell>
   );
@@ -836,7 +1025,6 @@ function BranchAdminOperationsDashboard() {
     state.users.find((user) => user.activeRole === "branchadmin");
   const branch = state.branches.find((item) => item.id === actor?.branchId) ?? state.branches.find((item) => item.id === "br_cairo") ?? state.branches[0];
   const branchId = branch?.id ?? actor?.branchId ?? "";
-  const branchUsers = state.users.filter((user) => user.branchId === branchId || user.id === actor?.id);
   const branchRuns = state.courseRuns.filter((run) => run.branchId === branchId);
   const branchRunIds = new Set(branchRuns.map((run) => run.id));
   const branchClasses = state.classGroups.filter((group) => branchRunIds.has(group.courseRunId));
@@ -892,13 +1080,43 @@ function BranchAdminOperationsDashboard() {
     { label: "Attendance exceptions", value: String(attendanceExceptions.length), change: `${missingAttendance.length} unsaved`, tone: attendanceExceptions.length || missingAttendance.length ? "red" : "green" },
     { label: "Payment balance", value: `EGP ${balanceDue}`, change: `${openPayments.length} open`, tone: balanceDue ? "amber" : "green" },
   ];
+  const branchAttentionItems = [
+    {
+      label: "Attendance exceptions",
+      detail: attendanceExceptions.length ? `${attendanceExceptions.length} late, absent, or excused record(s).` : "No exception rows for this branch.",
+      href: "/app/branch/attendance",
+      Icon: AlertTriangle,
+      tone: attendanceExceptions.length ? "red" as const : "green" as const,
+    },
+    {
+      label: "Branch payments",
+      detail: openPayments.length ? `Payment overview: EGP ${balanceDue} balance open.` : "Payment overview: queue is clear.",
+      href: "/app/branch/payments",
+      Icon: CreditCard,
+      tone: openPayments.length ? "amber" as const : "green" as const,
+    },
+    {
+      label: "Branch evidence",
+      detail: branchAudits.length ? `${branchAudits.length} recent audit row(s).` : "Room, schedule, attendance, and payment actions will write evidence.",
+      href: "/app/branch/reports",
+      Icon: ShieldCheck,
+      tone: "teal" as const,
+    },
+    {
+      label: "Schedule reviews",
+      detail: pendingScheduleReviews.length ? `${pendingScheduleReviews.length} pending event(s).` : "No schedule review blocker.",
+      href: "/app/branch/schedule",
+      Icon: CalendarDays,
+      tone: pendingScheduleReviews.length ? "amber" as const : "green" as const,
+    },
+  ];
 
   return (
     <PlatformShell role="branchadmin" title="Dashboard">
       <PlatformPageHeader
         compact
         title={`${branch?.name ?? "Branch"} operations`}
-        description="Local rooms, schedule, students, teachers, attendance exceptions, and internal payment readiness."
+        description={`${branch?.address ?? "Local branch"} · rooms, schedule, attendance, and payments.`}
         actions={
           <>
           <Link href="/app/branch/reports" className="platform-secondary-button">
@@ -912,334 +1130,134 @@ function BranchAdminOperationsDashboard() {
         }
       />
 
-      <motion.div className="platform-admin-status-strip platform-branch-status-strip" initial="hidden" animate="visible">
-        {[
-          ["Branch scope", branch?.name ?? "Unassigned"],
-          ["Local users", `${branchUsers.length} active records`],
-          ["Schedule reviews", `${pendingScheduleReviews.length} pending`],
-          ["Audit evidence", `${branchAudits.length} recent rows`],
-        ].map(([label, value], index) => (
-          <motion.article key={label} custom={0.03 + index * 0.035} variants={dashboardReveal}>
-            <span>{label}</span>
-            <strong>{value}</strong>
-          </motion.article>
-        ))}
-      </motion.div>
-
-      <motion.div className="platform-metric-grid platform-admin-metric-grid" initial="hidden" animate="visible">
+      <motion.div className="platform-metric-grid" initial="hidden" animate="visible">
         {dashboardStats.map((stat, index) => (
-          <motion.article key={stat.label} className="platform-metric" custom={0.07 + index * 0.045} variants={dashboardReveal}>
-            <div>
-              <span>{stat.label}</span>
-              <strong>{stat.value}</strong>
-            </div>
-            <small style={{ color: toneColor[stat.tone], background: `${toneColor[stat.tone]}14` }}>{stat.change}</small>
-          </motion.article>
+          <StatCard
+            key={stat.label}
+            label={stat.label}
+            value={stat.value}
+            change={stat.change}
+            tone={stat.tone}
+            delay={0.05 + index * 0.045}
+          />
         ))}
       </motion.div>
 
-      <motion.div className="branch-ops-layout" initial="hidden" animate="visible" custom={0.14} variants={dashboardReveal}>
-        <section className="branch-panel branch-scope-panel">
-          <div className="branch-panel-head">
-            <div>
-              <span>Assigned branch</span>
-              <strong>{branch?.name ?? "No branch assigned"}</strong>
-            </div>
-            <Building2 size={18} />
-          </div>
-          <div className="branch-scope-card">
-            <span>{branch?.code ?? "BR"}</span>
-            <div>
-              <strong>{branch?.address ?? "Branch address pending"}</strong>
-              <small>{branch?.timezone ?? "Africa/Cairo"} · {branch?.status ?? "pending"}</small>
-            </div>
-          </div>
-          <div className="branch-readiness-list">
-            <article>
-              <strong>Students</strong>
-              <small>{branchStudents.length} learner profiles in this branch</small>
-            </article>
-            <article>
-              <strong>Teachers</strong>
-              <small>{branchTeachers.length} teacher profiles or availability blocks</small>
-            </article>
-            <article>
-              <strong>Classes</strong>
-              <small>{branchClasses.length} groups across {branchRuns.length} course runs</small>
-            </article>
-            <article>
-              <strong>Rooms</strong>
-              <small>{activeRooms} active of {branchRooms.length} configured</small>
-            </article>
-          </div>
-        </section>
-
-        <section className="branch-panel branch-schedule-panel">
-          <div className="branch-panel-head">
-            <div>
-              <span>Schedule control</span>
-              <strong>{todaySessions.length ? "Today" : "Next sessions"}</strong>
-            </div>
-            <Clock size={18} />
-          </div>
-          <div className="branch-class-list">
-            {visibleSessions.length ? visibleSessions.map((session) => {
-              const group = branchClasses.find((item) => item.id === session.classGroupId);
-              const run = branchRuns.find((item) => item.id === group?.courseRunId);
-              const teacher = state.users.find((item) => item.id === run?.teacherId);
-              return (
-                <article key={session.id}>
-                  <div>
-                    <strong>{session.title}</strong>
-                    <small>{group?.name ?? "Class group"} · {teacher?.name ?? "Teacher pending"}</small>
-                  </div>
-                  <span>{session.attendanceSaved ? "saved" : "attendance due"}</span>
-                  <em>{new Date(session.startsAt).toLocaleString()}</em>
+      <motion.div className="platform-v2-role-main" initial="hidden" animate="visible" custom={0.14} variants={dashboardReveal}>
+        <div className="platform-v2-role-stack">
+          <section className="platform-v2-panel platform-v2-work-summary">
+            <PlatformWorkspaceHeader
+              title="Assigned branch"
+              description={`${branch?.name ?? "Branch"} · ${branch?.address ?? "Cairo branch"} · ${branch?.timezone ?? "Africa/Cairo"}`}
+            />
+            <div className="platform-v2-summary-body">
+              <div className="platform-v2-summary-copy">
+                <span>Today’s operations</span>
+                <h2>{branch?.name ?? "Branch"} operations</h2>
+                <p>{branchStudents.length} students · {branchTeachers.length} teachers · {branchClasses.length} classes across {branchRuns.length} course run(s).</p>
+                <div className="platform-v2-summary-actions">
+                  <Link href="/app/branch/rooms" className="platform-primary-button" style={{ background: meta.color }}>
+                    Manage rooms
+                  </Link>
+                  <Link href="/app/branch/schedule" className="platform-secondary-button">
+                    Open schedule
+                  </Link>
+                </div>
+              </div>
+              <div className="platform-v2-summary-facts">
+                <article>
+                  <span>Room usage</span>
+                  <strong>{assignedSeats}/{roomCapacity || 0}</strong>
+                  <small>{activeRooms} active rooms</small>
                 </article>
-              );
-            }) : (
-              <article>
-                <div>
-                  <strong>No scheduled class sessions</strong>
-                  <small>Create a branch event to populate the local schedule.</small>
-                </div>
-                <span>empty</span>
-              </article>
-            )}
-          </div>
-          <Link href="/app/branch/schedule" className="platform-secondary-button">
-            <CalendarDays size={15} />
-            Open schedule
-          </Link>
-        </section>
-
-        <section className="branch-panel branch-room-panel">
-          <div className="branch-panel-head">
-            <div>
-              <span>Room usage</span>
-              <strong>{assignedSeats}/{roomCapacity || 0} seats planned</strong>
+                <article>
+                  <span>Schedule reviews</span>
+                  <strong>{pendingScheduleReviews.length}</strong>
+                  <small>pending event(s)</small>
+                </article>
+                <article>
+                  <span>Branch activity</span>
+                  <strong>{branchAudits.length}</strong>
+                  <small>recent audit row(s)</small>
+                </article>
+              </div>
             </div>
-            <ShieldCheck size={18} />
-          </div>
-          <div className="branch-room-list">
-            {branchRooms.slice(0, 5).map((room) => (
-              <article key={room.id}>
+          </section>
+
+          <section className="platform-v2-panel">
+            <PlatformWorkspaceHeader
+              title="Schedule control"
+              description={todaySessions.length ? "Today’s class sessions and attendance state." : "Next branch sessions and attendance state."}
+            />
+            <div className="platform-v2-dashboard-list">
+              {visibleSessions.length ? visibleSessions.map((session) => {
+                const group = branchClasses.find((item) => item.id === session.classGroupId);
+                const run = branchRuns.find((item) => item.id === group?.courseRunId);
+                const teacher = state.users.find((item) => item.id === run?.teacherId);
+                return (
+                  <Link key={session.id} href="/app/branch/schedule" style={{ "--item-color": session.attendanceSaved ? toneColor.green : toneColor.amber } as CSSProperties}>
+                    <div>
+                      <strong>{session.title}</strong>
+                      <small>{group?.name ?? "Class group"} · {teacher?.name ?? "Teacher pending"}</small>
+                    </div>
+                    <span>{session.attendanceSaved ? "saved" : "attendance due"}</span>
+                  </Link>
+                );
+              }) : (
+                <article>
+                  <div>
+                    <strong>No scheduled class sessions</strong>
+                    <small>Create a branch event to populate the local schedule.</small>
+                  </div>
+                  <span>empty</span>
+                </article>
+              )}
+              <Link href="/app/branch/rooms" style={{ "--item-color": toneColor.green } as CSSProperties}>
                 <div>
-                  <strong>{room.name}</strong>
-                  <small>{room.capacity} seats · {room.equipment.join(", ") || "No equipment listed"}</small>
+                  <strong>Room usage</strong>
+                  <small>{activeRooms}/{branchRooms.length} rooms active · {seatUsage}% seat usage</small>
                 </div>
-                <span className="platform-status" style={{ color: room.status === "active" ? toneColor.green : toneColor.amber, background: room.status === "active" ? `${toneColor.green}14` : `${toneColor.amber}18` }}>
-                  {room.status}
+                <span>rooms</span>
+              </Link>
+            </div>
+          </section>
+        </div>
+
+        <aside className="platform-v2-panel">
+          <PlatformWorkspaceHeader
+            title="Needs attention"
+            description="Attendance exceptions, payments, and branch evidence."
+          />
+          <div className="platform-v2-attention-list">
+            {branchAttentionItems.map((item) => (
+              <Link key={item.label} href={item.href} style={{ "--item-color": toneColor[item.tone] } as CSSProperties}>
+                <span>
+                  <item.Icon size={16} />
                 </span>
-              </article>
+                <div>
+                  <strong>{item.label}</strong>
+                  <small>{item.detail}</small>
+                </div>
+                <ArrowRight size={15} />
+              </Link>
             ))}
-            {!branchRooms.length ? (
-              <article>
-                <div>
-                  <strong>No rooms configured</strong>
-                  <small>Add rooms before publishing local class schedules.</small>
-                </div>
-                <span className="platform-status">setup</span>
-              </article>
-            ) : null}
           </div>
-          <Link href="/app/branch/rooms" className="platform-secondary-button">
-            <Plus size={15} />
-            Room operations
-          </Link>
-        </section>
-      </motion.div>
-
-      <motion.div className="branch-ops-lower-grid branch-ops-command-grid" initial="hidden" animate="visible" custom={0.2} variants={dashboardReveal}>
-        <section className="branch-panel branch-attendance-panel">
-          <div className="branch-panel-head">
-            <div>
-              <span>Attendance exceptions</span>
-              <strong>{attendanceExceptions.length} records</strong>
-            </div>
-            <AlertTriangle size={18} />
+          <div className="platform-v2-side-actions">
+            <Link href="/app/branch/payments" className="platform-secondary-button compact">
+              Payment overview
+            </Link>
+            <Link href="/app/branch/reports" className="platform-secondary-button compact">
+              Branch reports
+            </Link>
           </div>
-          <div className="branch-class-list compact">
-            {attendanceExceptions.slice(0, 5).map((record) => {
-              const student = state.students.find((item) => item.id === record.studentId);
-              const user = state.users.find((item) => item.id === student?.userId);
-              const group = branchClasses.find((item) => item.id === record.classGroupId);
-              return (
-                <article key={record.id}>
-                  <div>
-                    <strong>{user?.name ?? record.studentId}</strong>
-                    <small>{group?.name ?? "Branch class"} · {record.notes ?? "No note"}</small>
-                  </div>
-                  <span>{record.status}</span>
-                </article>
-              );
-            })}
-            {!attendanceExceptions.length ? (
-              <article>
-                <div>
-                  <strong>No attendance exceptions</strong>
-                  <small>Late, absent, and excused rows will appear here after attendance is saved.</small>
-                </div>
-                <span>clear</span>
-              </article>
-            ) : null}
-          </div>
-          <Link href="/app/branch/attendance" className="platform-secondary-button">
-            <ClipboardList size={15} />
-            Attendance desk
-          </Link>
-        </section>
-
-        <section className="branch-panel branch-payment-panel">
-          <div className="branch-panel-head">
-            <div>
-              <span>Branch payments</span>
-              <strong>EGP {balanceDue} balance</strong>
-            </div>
-            <CreditCard size={18} />
-          </div>
-          <div className="branch-class-list compact">
-            {openPayments.slice(0, 5).map((row) => {
-              const student = state.students.find((item) => item.id === row.invoice.studentId);
-              const user = state.users.find((item) => item.id === student?.userId);
-              return (
-                <article key={row.invoice.id}>
-                  <div>
-                    <strong>{user?.name ?? row.invoice.studentId}</strong>
-                    <small>{row.invoice.id} · due {new Date(row.invoice.dueAt).toLocaleDateString()}</small>
-                  </div>
-                  <span>{row.invoice.currency} {row.balance}</span>
-                </article>
-              );
-            })}
-            {!openPayments.length ? (
-              <article>
-                <div>
-                  <strong>Payment queue is clear</strong>
-                  <small>Open internal invoices for this branch will appear here.</small>
-                </div>
-                <span>paid</span>
-              </article>
-            ) : null}
-          </div>
-          <Link href="/app/branch/payments" className="platform-secondary-button">
-            <CreditCard size={15} />
-            Payment overview
-          </Link>
-        </section>
-
-        <section className="branch-panel branch-audit-panel">
-          <div className="branch-panel-head">
-            <div>
-              <span>Branch evidence</span>
-              <strong>{branchAudits.length} recent audits</strong>
-            </div>
-            <ShieldCheck size={18} />
-          </div>
-          <div className="admin-audit-list">
-            {branchAudits.length ? branchAudits.map((audit) => (
-              <article key={audit.id}>
-                <strong>{audit.action}</strong>
-                <small>{audit.summary}</small>
-                <span>{new Date(audit.createdAt).toLocaleString()}</span>
-              </article>
-            )) : (
-              <article>
-                <strong>branch.ready</strong>
-                <small>Room, schedule, attendance, and payment actions will write audit evidence.</small>
-                <span>Ready</span>
-              </article>
-            )}
-          </div>
-          <Link href="/app/branch/reports" className="platform-secondary-button">
-            <Database size={15} />
-            Branch reports
-          </Link>
-        </section>
+        </aside>
       </motion.div>
     </PlatformShell>
   );
 }
 
-type AdminCapability = {
-  label: string;
-  description: string;
-  metric: string;
-  href: string;
-  Icon: LucideIcon;
-  tone: Stat["tone"];
-};
-
-const adminQuickActions = [
-  { label: "Create user", description: "Open the user management workspace", href: "/app/admin/users", Icon: Users },
-  { label: "Manage roles", description: "Review RBAC rules and assignments", href: "/app/admin/roles", Icon: KeyRound },
-  { label: "Review audit logs", description: "Trace platform activity", href: "/app/admin/audit-logs", Icon: ScrollText },
-  { label: "Open integrations", description: "Check Moodle, email, meetings, payments", href: "/app/admin/integrations", Icon: PlugZap },
-];
-
-const hodCapabilities: AdminCapability[] = [
-  {
-    label: "Departments",
-    description: "Review academic ownership, program responsibility, and department KPIs.",
-    metric: "Arabic and Quran",
-    href: "/app/hod/departments",
-    Icon: Building2,
-    tone: "purple",
-  },
-  {
-    label: "Programs and levels",
-    description: "Coordinate pathways, levels, placement outcomes, and progression gates.",
-    metric: "7 pathways",
-    href: "/app/hod/programs",
-    Icon: Library,
-    tone: "teal",
-  },
-  {
-    label: "Course map",
-    description: "Open courses and imported Moodle sections for academic review.",
-    metric: "42 courses",
-    href: "/app/hod/courses",
-    Icon: BookOpen,
-    tone: "green",
-  },
-  {
-    label: "Curriculum coverage",
-    description: "Track outcomes, lesson sequencing, activities, and hidden teacher-only material.",
-    metric: "82% mapped",
-    href: "/app/hod/curriculum",
-    Icon: BookCopy,
-    tone: "amber",
-  },
-  {
-    label: "Teacher quality",
-    description: "Review observations, class health, teacher load, and intervention notes.",
-    metric: "12 notes",
-    href: "/app/hod/teachers",
-    Icon: GraduationCap,
-    tone: "slate",
-  },
-  {
-    label: "Assessment approvals",
-    description: "Review quizzes, certificate eligibility, and academic approval queues.",
-    metric: "5 pending",
-    href: "/app/hod/certificates",
-    Icon: Award,
-    tone: "red",
-  },
-];
-
-const hodQuickActions = [
-  { label: "Edit curriculum", description: "Update outcomes and lesson sequence", href: "/app/hod/curriculum", Icon: BookCopy },
-  { label: "Assign teacher", description: "Balance teacher load and ownership", href: "/app/hod/teachers", Icon: GraduationCap },
-  { label: "Review assessments", description: "Open quizzes and grading quality", href: "/app/hod/assessments", Icon: ListChecks },
-  { label: "Approve certificates", description: "Check grade and attendance eligibility", href: "/app/hod/certificates", Icon: Award },
-];
-
 function HeadOfDepartmentDashboard() {
-  const dashboard = dashboardByRole.headofdepartment;
   const meta = roleMeta.headofdepartment;
-  const permissionCount = rolePermissions.headofdepartment.length;
-  const navCount = sidebarByRole.headofdepartment.length;
   const state = platformStore.getState();
   const actorUser =
     state.users.find((user) => user.id === "usr_hod_demo") ??
@@ -1283,7 +1301,6 @@ function HeadOfDepartmentDashboard() {
     : 0;
   const certificates = state.certificates.filter((certificate) => courseIds.has(certificate.courseId) && studentIds.has(certificate.studentId));
   const pendingCertificates = certificates.filter((certificate) => certificate.status === "pending_approval").length;
-  const rejectedCertificates = certificates.filter((certificate) => certificate.status === "rejected").length;
   const atRiskEnrollments = enrollments.filter((enrollment) => enrollment.attendanceRate < 85 || enrollment.currentGrade < 80 || enrollment.progress < 55);
   const activeCourses = state.courses.filter((course) => courseIds.has(course.id) && course.status === "active").length;
   const curriculumCoverage = modules.length ? Math.min(100, Math.round((lessons.length / (modules.length * 3)) * 100)) : 0;
@@ -1306,63 +1323,73 @@ function HeadOfDepartmentDashboard() {
       return { course, averageProgress, enrollments: courseEnrollments.length };
     })
     .sort((a, b) => a.averageProgress - b.averageProgress);
-  const dashboardRecords = [
+  const academicTaskItems = [
     {
-      id: "certificate_queue",
-      title: "Certificate approval queue",
-      subtitle: `${pendingCertificates} pending · ${rejectedCertificates} rejected`,
-      status: pendingCertificates ? "Review" : "Clear",
-      owner: actorUser?.name ?? "HOD",
-      due: "Today",
-      metric: `${certificates.length} total`,
-      tone: pendingCertificates ? "red" as const : "teal" as const,
-    },
-    {
-      id: "curriculum_coverage",
-      title: "Curriculum coverage",
-      subtitle: `${modules.length} modules and ${lessons.length} lessons mapped`,
-      status: curriculumCoverage >= 80 ? "Healthy" : "Gap",
-      owner: state.departments.find((department) => departmentIds.has(department.id))?.name ?? "Department",
-      due: "Weekly",
-      metric: `${curriculumCoverage}%`,
+      label: "Curriculum coverage",
+      detail: `${modules.length} modules and ${lessons.length} lessons mapped.`,
+      href: "/app/hod/curriculum",
+      meta: `${curriculumCoverage}%`,
       tone: curriculumCoverage >= 80 ? "green" as const : "amber" as const,
     },
     {
-      id: "assessment_completion",
-      title: "Assessment completion",
-      subtitle: `${completedAssessmentRows}/${expectedAssessmentRows} submissions and attempts completed`,
-      status: assessmentCompletion >= 75 ? "On track" : "Review",
-      owner: "Academic team",
-      due: "This week",
-      metric: `${assessmentCompletion}%`,
+      label: "Teacher performance",
+      detail: `${teachers.length} teachers across ${classes.length} class group(s).`,
+      href: "/app/hod/teachers",
+      meta: "review",
+      tone: "teal" as const,
+    },
+    {
+      label: "Assessment quality",
+      detail: `${completedAssessmentRows}/${expectedAssessmentRows || 0} assessment rows complete.`,
+      href: "/app/hod/assessments",
+      meta: `${assessmentCompletion}%`,
       tone: assessmentCompletion >= 75 ? "green" as const : "amber" as const,
     },
     {
-      id: "course_risk",
-      title: courseHealth[0]?.course.title ?? "Course health",
-      subtitle: courseHealth[0] ? `${courseHealth[0].enrollments} enrollments in the lowest progress course` : "No course risk rows",
-      status: courseHealth[0]?.averageProgress && courseHealth[0].averageProgress < 60 ? "At risk" : "Stable",
-      owner: "HOD",
-      due: "Live",
-      metric: `${courseHealth[0]?.averageProgress ?? 0}%`,
-      tone: courseHealth[0]?.averageProgress && courseHealth[0].averageProgress < 60 ? "red" as const : "teal" as const,
+      label: courseHealth[0]?.course.title ?? "Course health",
+      detail: courseHealth[0] ? `${courseHealth[0].enrollments} enrollments in the lowest progress course.` : "No course risk rows.",
+      href: "/app/hod/courses",
+      meta: `${courseHealth[0]?.averageProgress ?? 0}%`,
+      tone: courseHealth[0]?.averageProgress && courseHealth[0].averageProgress < 60 ? "red" as const : "green" as const,
     },
   ];
-  const capabilityMetrics: Record<string, string> = {
-    Departments: `${departmentIds.size} owned`,
-    Programs: `${programIds.size} active`,
-    Courses: `${activeCourses}/${courseIds.size} active`,
-    Curriculum: `${curriculumCoverage}% mapped`,
-    "Teacher quality": `${teachers.length} teachers`,
-    "Assessment approvals": `${pendingCertificates} pending`,
-  };
+  const hodAttentionItems = [
+    {
+      label: "Certificate approvals",
+      detail: pendingCertificates ? `${pendingCertificates} certificate(s) need approval.` : `${certificates.length} certificates tracked.`,
+      href: "/app/hod/certificates",
+      Icon: Award,
+      tone: pendingCertificates ? "red" as const : "green" as const,
+    },
+    {
+      label: "At-risk learners",
+      detail: atRiskEnrollments.length ? `${atRiskEnrollments.length} learner(s) need academic review.` : "No learner risk above threshold.",
+      href: "/app/hod/reports",
+      Icon: AlertTriangle,
+      tone: atRiskEnrollments.length ? "amber" as const : "green" as const,
+    },
+    {
+      label: "Curriculum gaps",
+      detail: curriculumCoverage >= 80 ? "Coverage is on track." : "Map the next lessons and outcomes.",
+      href: "/app/hod/curriculum",
+      Icon: BookOpen,
+      tone: curriculumCoverage >= 80 ? "green" as const : "amber" as const,
+    },
+    {
+      label: "Assessment completion",
+      detail: `${assessmentCompletion}% of expected submissions and quiz attempts completed.`,
+      href: "/app/hod/assessments",
+      Icon: ListChecks,
+      tone: assessmentCompletion >= 75 ? "green" as const : "amber" as const,
+    },
+  ];
 
   return (
     <PlatformShell role="headofdepartment" title="Dashboard">
       <PlatformPageHeader
         compact
-        title={dashboard.title}
-        description={dashboard.subtitle}
+        title="Academic Dashboard"
+        description="Academic health, curriculum coverage, teacher load, and approvals."
         actions={
           <>
           <Link href="/app/hod/reports" className="platform-secondary-button">
@@ -1376,476 +1403,298 @@ function HeadOfDepartmentDashboard() {
         }
       />
 
-      <motion.div className="platform-admin-status-strip platform-academic-status-strip" initial="hidden" animate="visible">
-        {[
-          ["Academic scope", state.departments.filter((department) => departmentIds.has(department.id)).map((department) => department.name).join(", ") || "Department"],
-          ["HOD modules", `${navCount} workspaces`],
-          ["Approval rights", `${permissionCount} permissions`],
-          ["Review queue", `${pendingCertificates} certificates`],
-        ].map(([label, value], index) => (
-          <motion.article key={label} custom={0.03 + index * 0.035} variants={dashboardReveal}>
-            <span>{label}</span>
-            <strong>{value}</strong>
-          </motion.article>
-        ))}
-      </motion.div>
-
-      <motion.div className="platform-metric-grid platform-admin-metric-grid" initial="hidden" animate="visible">
+      <motion.div className="platform-metric-grid" initial="hidden" animate="visible">
         {hodStats.map((stat, index) => (
-          <motion.article key={stat.label} className="platform-metric" custom={0.07 + index * 0.045} variants={dashboardReveal}>
-            <div>
-              <span>{stat.label}</span>
-              <strong>{stat.value}</strong>
-            </div>
-            <small style={{ color: toneColor[stat.tone], background: `${toneColor[stat.tone]}14` }}>{stat.change}</small>
-          </motion.article>
+          <StatCard
+            key={stat.label}
+            label={stat.label}
+            value={stat.value}
+            change={stat.change}
+            tone={stat.tone}
+            delay={0.05 + index * 0.045}
+          />
         ))}
       </motion.div>
 
-      <motion.div className="platform-admin-layout" initial="hidden" animate="visible" custom={0.16} variants={dashboardReveal}>
-        <section className="platform-admin-command platform-academic-command">
-          <div className="platform-admin-command-copy">
-            <span>Academic command center</span>
-            <h2>Keep curriculum, teacher quality, assessments, and certificates aligned across the department.</h2>
-            <p>HOD work starts from academic evidence: coverage, observation notes, eligibility, and course structure.</p>
-          </div>
-
-          <div className="platform-admin-command-grid">
-            {[
-              { label: "Curriculum", value: `${curriculumCoverage}%`, color: toneColor.teal },
-              { label: "Seat usage", value: `${seatUsage}%`, color: toneColor.green },
-              { label: "Certificates", value: String(pendingCertificates), color: toneColor.purple },
-            ].map((item) => (
-              <article key={item.label} style={{ "--item-color": item.color } as CSSProperties}>
-                <span>{item.label}</span>
-                <strong>{item.value}</strong>
-              </article>
-            ))}
-          </div>
-
-          <div className="platform-admin-command-actions">
-            <Link href="/app/hod/moodle-source" className="platform-secondary-button">
-              <PlugZap size={15} />
-              Moodle source
-            </Link>
-            <Link href="/app/hod/certificates" className="platform-primary-button" style={{ background: meta.color }}>
-              {dashboard.spotlight.action}
-              <ArrowRight size={15} />
-            </Link>
-          </div>
-        </section>
-
-        <aside className="platform-admin-action-panel platform-academic-action-panel">
-          <div className="platform-card-title compact">
-            <div>
-              <span>Academic tools</span>
-              <strong>Review actions</strong>
+      <motion.div className="platform-v2-role-main" initial="hidden" animate="visible" custom={0.16} variants={dashboardReveal}>
+        <div className="platform-v2-role-stack">
+          <section className="platform-v2-panel platform-v2-work-summary">
+            <PlatformWorkspaceHeader
+              title="Academic health"
+              description={state.departments.filter((department) => departmentIds.has(department.id)).map((department) => department.name).join(", ") || "Department scope"}
+            />
+            <div className="platform-v2-summary-body">
+              <div className="platform-v2-summary-copy">
+                <span>Department overview</span>
+                <h2>{curriculumCoverage}% curriculum coverage</h2>
+                <p>{activeCourses}/{courseIds.size} courses active · {teachers.length} teachers · {classes.length} classes.</p>
+                <div className="platform-v2-summary-actions">
+                  <Link href="/app/hod/curriculum" className="platform-primary-button" style={{ background: meta.color }}>
+                    Review curriculum
+                  </Link>
+                  <Link href="/app/hod/moodle-source" className="platform-secondary-button">
+                    Moodle source
+                  </Link>
+                </div>
+              </div>
+              <div className="platform-v2-summary-facts">
+                <article>
+                  <span>Seat usage</span>
+                  <strong>{seatUsage}%</strong>
+                  <small>{enrolledSeats}/{classCapacity || 0} seats</small>
+                </article>
+                <article>
+                  <span>Assessment quality</span>
+                  <strong>{assessmentCompletion}%</strong>
+                  <small>completion</small>
+                </article>
+                <article>
+                  <span>Approvals</span>
+                  <strong>{pendingCertificates}</strong>
+                  <small>certificate queue</small>
+                </article>
+              </div>
             </div>
-          </div>
-          <div className="platform-admin-action-list">
-            {hodQuickActions.map((action) => (
-              <Link key={action.label} href={action.href}>
+          </section>
+
+          <section className="platform-v2-panel">
+            <PlatformWorkspaceHeader
+              title="Curriculum & performance"
+              description="Academic work that can be reviewed without opening every module."
+            />
+            <div className="platform-v2-dashboard-list">
+              {academicTaskItems.map((item) => (
+                <Link key={item.label} href={item.href} style={{ "--item-color": toneColor[item.tone] } as CSSProperties}>
+                  <div>
+                    <strong>{item.label}</strong>
+                    <small>{item.detail}</small>
+                  </div>
+                  <span>{item.meta}</span>
+                </Link>
+              ))}
+            </div>
+          </section>
+        </div>
+
+        <aside className="platform-v2-panel">
+          <PlatformWorkspaceHeader
+            title="Needs approval"
+            description="Academic risks, approvals, and coverage gaps."
+          />
+          <div className="platform-v2-attention-list">
+            {hodAttentionItems.map((item) => (
+              <Link key={item.label} href={item.href} style={{ "--item-color": toneColor[item.tone] } as CSSProperties}>
                 <span>
-                  <action.Icon size={16} />
+                  <item.Icon size={16} />
                 </span>
-                <span>
-                  <strong>{action.label}</strong>
-                  <small>{action.description}</small>
-                </span>
+                <div>
+                  <strong>{item.label}</strong>
+                  <small>{item.detail}</small>
+                </div>
                 <ArrowRight size={15} />
               </Link>
             ))}
           </div>
         </aside>
       </motion.div>
-
-      <motion.section className="platform-admin-capability-grid platform-academic-capability-grid" initial="hidden" animate="visible" custom={0.2} variants={dashboardReveal}>
-        {hodCapabilities.map((item) => (
-          <Link key={item.label} href={item.href} className="platform-admin-capability-card" style={{ "--item-color": toneColor[item.tone] } as CSSProperties}>
-            <span>
-              <item.Icon size={18} />
-            </span>
-            <div>
-              <small>{capabilityMetrics[item.label] ?? item.metric}</small>
-              <strong>{item.label}</strong>
-              <p>{item.description}</p>
-            </div>
-            <ArrowRight size={15} />
-          </Link>
-        ))}
-      </motion.section>
-
-      <motion.section className="platform-admin-event-board platform-academic-event-board" initial="hidden" animate="visible" custom={0.24} variants={dashboardReveal}>
-        <div className="platform-card-title compact">
-          <div>
-            <span>Academic review stream</span>
-            <strong>Today</strong>
-          </div>
-          <Link href="/app/hod/reports" className="platform-secondary-button compact">
-            Reports
-          </Link>
-        </div>
-        <div className="platform-admin-event-head" aria-hidden="true">
-          <span>Item</span>
-          <span>Status</span>
-          <span>Owner</span>
-          <span>Due</span>
-          <span>Metric</span>
-        </div>
-        <div className="platform-admin-event-list">
-          {dashboardRecords.map((record) => (
-            <article key={record.id} className="platform-admin-event-row">
-              <div>
-                <strong>{record.title}</strong>
-                <small>{record.subtitle}</small>
-              </div>
-              <span className="platform-status" style={{ color: toneColor[record.tone ?? "teal"], background: `${toneColor[record.tone ?? "teal"]}14` }}>
-                {record.status}
-              </span>
-              <span className="platform-admin-event-meta" data-label="Owner">{record.owner}</span>
-              <span className="platform-admin-event-meta" data-label="Due">{record.due}</span>
-              <span className="platform-admin-event-meta" data-label="Metric">{record.metric}</span>
-            </article>
-          ))}
-        </div>
-      </motion.section>
     </PlatformShell>
   );
 }
 
 function SuperAdminDashboard() {
-  const dashboard = dashboardByRole.superadmin;
   const meta = roleMeta.superadmin;
   const state = useMemo(() => platformStore.getState(), []);
-  const permissionCount = rolePermissions.superadmin.length;
-  const navCount = sidebarByRole.superadmin.length;
   const activeUsers = state.users.filter((user) => user.status === "active").length;
   const activeStudents = state.students.filter((student) => student.status === "active").length;
   const activeClasses = state.classGroups.length;
   const connectedIntegrations = state.integrations.filter((integration) => integration.status === "connected").length;
   const usableIntegrations = state.integrations.filter((integration) => integration.status === "connected" || integration.status === "mock_mode").length;
   const pendingInvoices = state.invoices.filter((invoice) => invoice.status !== "paid" && invoice.status !== "cancelled").length;
-  const platformEntityTotal =
-    state.users.length +
-    state.branches.length +
-    state.departments.length +
-    state.programs.length +
-    state.courses.length +
-    state.courseRuns.length +
-    state.classGroups.length +
-    state.enrollments.length +
-    state.events.length +
-    state.auditLogs.length;
+  const pausedUsers = state.users.filter((user) => user.status !== "active").length;
+  const pendingCertificates = state.certificates.filter((certificate) => certificate.status === "pending_approval").length;
   const integrationReadiness = state.integrations.length
     ? Math.round((usableIntegrations / state.integrations.length) * 100)
     : 0;
   const superAdminStats: Stat[] = [
-    { label: "Users in state", value: `${activeUsers}/${state.users.length}`, change: "active accounts", tone: "teal" },
+    { label: "Active users", value: String(activeUsers), change: `${state.users.length} accounts`, tone: "teal" },
     { label: "Active learners", value: String(activeStudents), change: `${state.enrollments.length} enrollments`, tone: "green" },
-    { label: "Class groups", value: String(activeClasses), change: `${state.events.length} scheduled events`, tone: "amber" },
-    { label: "Integration readiness", value: `${integrationReadiness}%`, change: `${connectedIntegrations} connected`, tone: "purple" },
+    { label: "Class groups", value: String(activeClasses), change: `${state.events.length} scheduled`, tone: "amber" },
+    { label: "Connections", value: `${integrationReadiness}%`, change: `${connectedIntegrations} connected`, tone: "purple" },
   ];
-  const capabilities: AdminCapability[] = [
+  const administrationTiles = [
     {
-      label: "Identity and users",
-      description: "Create staff, assign roles, pause accounts, and inspect branch/department scope.",
-      metric: `${state.users.length} accounts`,
+      label: "Users & roles",
+      description: "Accounts, roles, and access level.",
+      metric: `${activeUsers} active users`,
       href: "/app/admin/users",
       Icon: Users,
-      tone: "teal",
+      tone: "teal" as Stat["tone"],
     },
     {
-      label: "Roles and permissions",
-      description: "Control who can read, edit, approve, report, message, and audit each module.",
-      metric: `${permissionCount} permissions`,
-      href: "/app/admin/roles",
-      Icon: ShieldCheck,
-      tone: "amber",
-    },
-    {
-      label: "Branch network",
-      description: "Review global branches, departments, rooms, and operational ownership.",
-      metric: `${state.branches.length} branches`,
-      href: "/app/admin/branches",
-      Icon: Building2,
-      tone: "green",
-    },
-    {
-      label: "Programs and courses",
-      description: "Govern Arabic, Quran, language, kids, and teacher-training course catalogs.",
+      label: "Academic structure",
+      description: "Departments, programs, courses, certificates.",
       metric: `${state.courses.length} courses`,
       href: "/app/admin/courses",
       Icon: BookOpen,
-      tone: "purple",
-    },
-    {
-      label: "Moodle source",
-      description: "Track observed Moodle course sections, activities, and future sync coverage.",
-      metric: `${state.modules.length} modules`,
-      href: "/app/admin/moodle-source",
-      Icon: Database,
-      tone: "slate",
-    },
-    {
-      label: "Audit and health",
-      description: "Open audit evidence, connector readiness, settings, and system health checks.",
-      metric: `${state.auditLogs.length} audit rows`,
-      href: "/app/admin/system-health",
-      Icon: Activity,
-      tone: "red",
-    },
-  ];
-  const hierarchy = [
-    {
-      label: "Global governance",
-      detail: "Super Admin owns platform settings, RBAC, audit evidence, and connector boundaries.",
-      metric: `${navCount} admin workspaces`,
-      href: "/app/admin/platform-blueprint",
-      Icon: Network,
-      tone: "slate" as Stat["tone"],
-    },
-    {
-      label: "Academic ownership",
-      detail: "Departments, programs, levels, courses, curriculum, certificates, and Moodle source.",
-      metric: `${state.departments.length} departments · ${state.programs.length} programs`,
-      href: "/app/admin/departments",
-      Icon: Library,
       tone: "purple" as Stat["tone"],
     },
     {
       label: "Branch operations",
-      detail: "Branches, rooms, branch classes, attendance exceptions, payments, and local schedules.",
-      metric: `${state.branches.length} branches · ${state.rooms.length} rooms`,
+      description: "Branches, rooms, schedules, local delivery.",
+      metric: `${state.branches.length} branches`,
       href: "/app/admin/branches",
       Icon: Building2,
       tone: "green" as Stat["tone"],
     },
     {
-      label: "Admissions and finance",
-      detail: "Leads, placement tests, enrollment workflows, invoices, payment records, and reports.",
-      metric: `${state.leads.length} lead · ${pendingInvoices} pending invoices`,
+      label: "Admissions & finance",
+      description: "Enrollment, placement, invoices, reports.",
+      metric: `${pendingInvoices} pending payments`,
       href: "/app/admin/reports",
-      Icon: ScrollText,
+      Icon: CreditCard,
       tone: "amber" as Stat["tone"],
     },
     {
-      label: "Teaching delivery",
-      detail: "Teachers, course runs, class groups, resources, assessments, Quran review, and messages.",
-      metric: `${state.teachers.length} teacher · ${state.classGroups.length} classes`,
-      href: "/app/admin/moodle-source",
-      Icon: GraduationCap,
-      tone: "teal" as Stat["tone"],
+      label: "Activity & health",
+      description: "Activity, settings, connections, checks.",
+      metric: `${state.auditLogs.length} activity events`,
+      href: "/app/admin/system-health",
+      Icon: Activity,
+      tone: "slate" as Stat["tone"],
     },
   ];
-  const latestIdentityAudit = state.auditLogs.find((audit) =>
-    ["staff.user.created", "user.created", "user.updated"].includes(audit.action),
-  );
-  const latestPermissionAudit = state.auditLogs.find((audit) => audit.action === "permission.updated");
-  const latestBranchAudit = state.auditLogs.find((audit) => audit.action === "branch.updated");
-  const latestCourseAudit = state.auditLogs.find((audit) => audit.action === "course.status_updated" || audit.action === "curriculum.module_created");
-  const latestIntegrationAudit = state.auditLogs.find((audit) => audit.action.startsWith("integration."));
-  const latestSystemAudit = state.auditLogs.find((audit) => audit.action === "system.health_checked" || audit.action === "settings.saved");
-  const totalPermissionGrants = Object.values(state.permissions).reduce((total, permissions) => total + permissions.length, 0);
-  const governanceRecords: Array<{
-    id: string;
-    title: string;
-    subtitle: string;
-    status: string;
-    owner: string;
-    due: string;
-    metric: string;
-    tone: Stat["tone"];
-  }> = [
+  const latestAudit = state.auditLogs[0];
+  const attentionItems = [
     {
-      id: "identity",
-      title: "Identity directory",
-      subtitle: latestIdentityAudit?.summary ?? `${state.users.length} user accounts scoped across roles and branches.`,
-      status: latestIdentityAudit ? "Audited" : "Ready",
-      owner: "Super Admin",
-      due: "Live",
-      metric: `${activeUsers}/${state.users.length} active`,
-      tone: "teal",
+      label: pausedUsers ? "Review paused access" : "Access review current",
+      detail: pausedUsers ? `${pausedUsers} account(s) are not active.` : "No paused accounts in this workspace.",
+      href: "/app/admin/users",
+      Icon: Users,
+      tone: pausedUsers ? "amber" as Stat["tone"] : "green" as Stat["tone"],
     },
     {
-      id: "rbac",
-      title: "Role and permission matrix",
-      subtitle: latestPermissionAudit?.summary ?? `${totalPermissionGrants} permission grants are available in the matrix.`,
-      status: latestPermissionAudit ? "Audited" : "Ready",
-      owner: "Super Admin",
-      due: "Live",
-      metric: `${permissionCount} admin grants`,
-      tone: "amber",
+      label: pendingInvoices ? "Finance follow-up" : "Finance queue clear",
+      detail: pendingInvoices ? `${pendingInvoices} invoice(s) need a decision.` : "No open payment exception.",
+      href: "/app/admin/reports",
+      Icon: CreditCard,
+      tone: pendingInvoices ? "amber" as Stat["tone"] : "green" as Stat["tone"],
     },
     {
-      id: "branches",
-      title: "Branch network",
-      subtitle: latestBranchAudit?.summary ?? `${state.branches.length} branches and ${state.rooms.length} rooms are tracked locally.`,
-      status: latestBranchAudit ? "Audited" : "Ready",
-      owner: "Operations",
-      due: "Live",
-      metric: `${state.branches.length} branches`,
-      tone: "green",
+      label: integrationReadiness < 100 ? "Finish connections" : "Connections ready",
+      detail: `${usableIntegrations}/${state.integrations.length} connectors are usable.`,
+      href: "/app/admin/integrations",
+      Icon: PlugZap,
+      tone: integrationReadiness < 100 ? "purple" as Stat["tone"] : "green" as Stat["tone"],
     },
     {
-      id: "academics",
-      title: "Academic catalog",
-      subtitle: latestCourseAudit?.summary ?? `${state.departments.length} departments, ${state.programs.length} programs, and ${state.courses.length} courses.`,
-      status: latestCourseAudit ? "Audited" : "Mapped",
-      owner: "Academic",
-      due: "Live",
-      metric: `${state.courses.length} courses`,
-      tone: "purple",
+      label: pendingCertificates ? "Certificate approvals" : "Certificate queue clear",
+      detail: pendingCertificates ? `${pendingCertificates} certificate(s) need approval.` : "No certificate approval blockers.",
+      href: "/app/admin/certificates",
+      Icon: Award,
+      tone: pendingCertificates ? "red" as Stat["tone"] : "green" as Stat["tone"],
     },
     {
-      id: "integrations",
-      title: "Integration boundaries",
-      subtitle: latestIntegrationAudit?.summary ?? "External connectors remain status/config placeholders until server credentials are added.",
-      status: latestIntegrationAudit ? "Audited" : "Placeholder",
-      owner: "Platform",
-      due: "No secrets",
-      metric: `${usableIntegrations}/${state.integrations.length} usable`,
-      tone: "slate",
-    },
-    {
-      id: "audit",
-      title: "Audit and health",
-      subtitle: latestSystemAudit?.summary ?? `${state.auditLogs.length} audit events protect administration decisions.`,
-      status: latestSystemAudit ? "Audited" : "Open",
-      owner: "Platform",
-      due: "Live",
-      metric: `${state.auditLogs.length} rows`,
-      tone: "red",
+      label: "Review latest activity",
+      detail: latestAudit?.summary ?? "Activity will appear after admin actions.",
+      href: "/app/admin/audit-logs",
+      Icon: ScrollText,
+      tone: "slate" as Stat["tone"],
     },
   ];
+  const recentAudits = state.auditLogs.slice(0, 4);
+  const integrationStatusTone: Record<string, Stat["tone"]> = {
+    connected: "green",
+    mock_mode: "amber",
+    not_configured: "slate",
+    error: "red",
+  };
+  const integrationStatusLabel: Record<string, string> = {
+    connected: "Connected",
+    mock_mode: "Test mode",
+    not_configured: "Setup needed",
+    error: "Error",
+  };
 
   return (
-    <PlatformShell role="superadmin" title="Dashboard">
+    <PlatformShell role="superadmin" title="Command center">
       <PlatformPageHeader
         compact
-        title={dashboard.title}
-        description={dashboard.subtitle}
+        title="Platform Command Center"
+        description="Review access, academic structure, branch operations, connections, and activity."
         actions={
           <>
-          <Link href="/app/admin/reports" className="platform-secondary-button">
-            Reports
-          </Link>
-          <Link href="/app/admin/users" className="platform-primary-button" style={{ background: meta.color }}>
-            <Plus size={15} />
-            Quick create
-          </Link>
+            <Link href="/app/admin/audit-logs" className="platform-secondary-button">
+              View activity
+            </Link>
+            <Link href="/app/admin/users" className="platform-primary-button" style={{ background: meta.color }}>
+              <Plus size={15} />
+              Create user
+            </Link>
           </>
         }
       />
 
-      <motion.div className="platform-admin-status-strip" initial="hidden" animate="visible">
-        {[
-          ["Scope", "Global platform"],
-          ["Admin modules", `${navCount} workspaces`],
-          ["RBAC coverage", `${permissionCount} permissions`],
-          ["Data state", `${platformEntityTotal} local records`],
-        ].map(([label, value], index) => (
-          <motion.article key={label} custom={0.03 + index * 0.035} variants={dashboardReveal}>
-            <span>{label}</span>
-            <strong>{value}</strong>
-          </motion.article>
-        ))}
-      </motion.div>
-
       <motion.div className="platform-metric-grid platform-admin-metric-grid" initial="hidden" animate="visible">
         {superAdminStats.map((stat, index) => (
-          <motion.article key={stat.label} className="platform-metric" custom={0.07 + index * 0.045} variants={dashboardReveal}>
-            <div>
-              <span>{stat.label}</span>
-              <strong>{stat.value}</strong>
-            </div>
-            <small style={{ color: toneColor[stat.tone], background: `${toneColor[stat.tone]}14` }}>{stat.change}</small>
-          </motion.article>
+          <StatCard
+            key={stat.label}
+            label={stat.label}
+            value={stat.value}
+            change={stat.change}
+            tone={stat.tone}
+            delay={0.05 + index * 0.045}
+          />
         ))}
       </motion.div>
 
-      <motion.section className="platform-admin-hierarchy" initial="hidden" animate="visible" custom={0.12} variants={dashboardReveal}>
-        <div className="platform-card-title compact">
-          <div>
-            <span>Platform hierarchy</span>
-            <strong>Administration operating map</strong>
-          </div>
-          <Link href="/app/admin/platform-blueprint" className="platform-secondary-button compact">
-            Blueprint
-          </Link>
-        </div>
-        <div className="platform-admin-hierarchy-grid">
-          {hierarchy.map((item, index) => (
-            <Link
-              key={item.label}
-              href={item.href}
-              className="platform-admin-hierarchy-card"
-              style={{ "--item-color": toneColor[item.tone] } as CSSProperties}
-            >
-              <span className="platform-admin-hierarchy-index">{String(index + 1).padStart(2, "0")}</span>
-              <span className="platform-admin-hierarchy-icon">
-                <item.Icon size={17} />
-              </span>
-              <div>
-                <small>{item.metric}</small>
-                <strong>{item.label}</strong>
-                <p>{item.detail}</p>
-              </div>
-              <ArrowRight size={15} />
-            </Link>
-          ))}
-        </div>
-      </motion.section>
-
-      <motion.div className="platform-admin-layout" initial="hidden" animate="visible" custom={0.16} variants={dashboardReveal}>
-        <section className="platform-admin-command">
-          <div className="platform-admin-command-copy">
-            <span>Governance command center</span>
-            <h2>Govern people, academic structure, branch operations, integrations, and audit evidence from one controlled surface.</h2>
-            <p>Every tile opens the module that owns the decision, so administration stays fast without hiding accountability.</p>
-          </div>
-
-          <div className="platform-admin-command-grid">
-            {[
-              { label: "Identity", value: `${activeUsers}/${state.users.length}`, color: toneColor.teal },
-              { label: "RBAC", value: `${permissionCount}`, color: toneColor.amber },
-              { label: "Integrations", value: `${usableIntegrations}/${state.integrations.length}`, color: toneColor.purple },
-            ].map((item) => (
-              <article key={item.label} style={{ "--item-color": item.color } as CSSProperties}>
-                <span>{item.label}</span>
-                <strong>{item.value}</strong>
-              </article>
+      <motion.div className="platform-v2-admin-main" initial="hidden" animate="visible" custom={0.14} variants={dashboardReveal}>
+        <section className="platform-v2-panel platform-v2-admin-map">
+          <PlatformWorkspaceHeader
+            title="Administration map"
+            description="Open the workspaces used most by platform operations."
+            actions={
+              <Link href="/app/admin/platform-blueprint" className="platform-secondary-button compact">
+                Blueprint
+              </Link>
+            }
+          />
+          <div className="platform-v2-workflow-tiles">
+            {administrationTiles.map((item) => (
+              <Link
+                key={item.label}
+                href={item.href}
+                className="platform-v2-workflow-tile"
+                style={{ "--item-color": toneColor[item.tone] } as CSSProperties}
+              >
+                <span>
+                  <item.Icon size={18} />
+                </span>
+                <div>
+                  <strong>{item.label}</strong>
+                  <p>{item.description}</p>
+                  <small>{item.metric}</small>
+                </div>
+                <ArrowRight size={15} />
+              </Link>
             ))}
-          </div>
-
-          <div className="platform-admin-command-actions">
-            <Link href="/app/admin/platform-blueprint" className="platform-secondary-button">
-              <Network size={15} />
-              Blueprint
-            </Link>
-            <Link href="/app/admin/integrations" className="platform-primary-button" style={{ background: meta.color }}>
-              {dashboard.spotlight.action}
-              <ArrowRight size={15} />
-            </Link>
           </div>
         </section>
 
-        <aside className="platform-admin-action-panel">
-          <div className="platform-card-title compact">
-            <div>
-              <span>Role tools</span>
-              <strong>Quick actions</strong>
-            </div>
-          </div>
-          <div className="platform-admin-action-list">
-            {adminQuickActions.map((action) => (
-              <Link key={action.label} href={action.href}>
+        <aside className="platform-v2-panel platform-v2-attention-panel">
+          <PlatformWorkspaceHeader
+            title="Needs attention"
+            description="Actionable items worth opening now."
+          />
+          <div className="platform-v2-attention-list">
+            {attentionItems.map((item) => (
+              <Link key={item.label} href={item.href} style={{ "--item-color": toneColor[item.tone] } as CSSProperties}>
                 <span>
-                  <action.Icon size={16} />
+                  <item.Icon size={16} />
                 </span>
-                <span>
-                  <strong>{action.label}</strong>
-                  <small>{action.description}</small>
-                </span>
+                <div>
+                  <strong>{item.label}</strong>
+                  <small>{item.detail}</small>
+                </div>
                 <ArrowRight size={15} />
               </Link>
             ))}
@@ -1853,56 +1702,71 @@ function SuperAdminDashboard() {
         </aside>
       </motion.div>
 
-      <motion.section className="platform-admin-capability-grid" initial="hidden" animate="visible" custom={0.2} variants={dashboardReveal}>
-        {capabilities.map((item) => (
-          <Link key={item.label} href={item.href} className="platform-admin-capability-card" style={{ "--item-color": toneColor[item.tone] } as CSSProperties}>
-            <span>
-              <item.Icon size={18} />
-            </span>
-            <div>
-              <small>{item.metric}</small>
-              <strong>{item.label}</strong>
-              <p>{item.description}</p>
-            </div>
-            <ArrowRight size={15} />
-          </Link>
-        ))}
-      </motion.section>
-
-      <motion.section className="platform-admin-event-board" initial="hidden" animate="visible" custom={0.24} variants={dashboardReveal}>
-        <div className="platform-card-title compact">
-          <div>
-            <span>Live governance stream</span>
-            <strong>Today</strong>
+      <motion.div className="platform-v2-admin-lower" initial="hidden" animate="visible" custom={0.2} variants={dashboardReveal}>
+        <section className="platform-v2-panel">
+          <PlatformWorkspaceHeader
+            title="Recent activity"
+            description="Latest administrative workflow updates."
+            actions={
+              <Link href="/app/admin/audit-logs" className="platform-secondary-button compact">
+	                Open activity
+              </Link>
+            }
+          />
+          <div className="platform-v2-audit-list">
+            {recentAudits.length ? recentAudits.map((audit) => (
+              <article key={audit.id}>
+                <div>
+                  <strong>{audit.action}</strong>
+                  <small>{audit.summary}</small>
+                </div>
+                <span>{formatStudentDate(audit.createdAt)}</span>
+              </article>
+            )) : (
+              <article>
+                <div>
+	                  <strong>No activity</strong>
+                  <small>Administrative actions will appear here.</small>
+                </div>
+                <span>Ready</span>
+              </article>
+            )}
           </div>
-          <Link href="/app/admin/audit-logs" className="platform-secondary-button compact">
-            Audit logs
-          </Link>
-        </div>
-        <div className="platform-admin-event-head" aria-hidden="true">
-          <span>Item</span>
-          <span>Status</span>
-          <span>Owner</span>
-          <span>Due</span>
-          <span>Metric</span>
-        </div>
-        <div className="platform-admin-event-list">
-          {governanceRecords.map((record) => (
-            <article key={record.id} className="platform-admin-event-row">
-              <div>
-                <strong>{record.title}</strong>
-                <small>{record.subtitle}</small>
-              </div>
-              <span className="platform-status" style={{ color: toneColor[record.tone ?? "teal"], background: `${toneColor[record.tone ?? "teal"]}14` }}>
-                {record.status}
-              </span>
-              <span className="platform-admin-event-meta" data-label="Owner">{record.owner}</span>
-              <span className="platform-admin-event-meta" data-label="Due">{record.due}</span>
-              <span className="platform-admin-event-meta" data-label="Metric">{record.metric}</span>
-            </article>
-          ))}
-        </div>
-      </motion.section>
+        </section>
+
+        <section className="platform-v2-panel">
+          <PlatformWorkspaceHeader
+            title="Connections"
+            description={`${usableIntegrations}/${state.integrations.length} connectors are ready for demo operations.`}
+            actions={
+              <Link href="/app/admin/integrations" className="platform-secondary-button compact">
+                Manage
+              </Link>
+            }
+          />
+          <div className="platform-v2-integration-list">
+            {state.integrations.length ? state.integrations.slice(0, 5).map((integration) => (
+              <article key={integration.id}>
+                <div>
+                  <strong>{integration.label}</strong>
+                  <small>{integration.notes}</small>
+                </div>
+                <StatusBadge tone={integrationStatusTone[integration.status] ?? "slate"}>
+                  {integrationStatusLabel[integration.status] ?? formatConnectionStatus(integration.status)}
+                </StatusBadge>
+              </article>
+            )) : (
+              <article>
+                <div>
+                  <strong>No connections configured</strong>
+                  <small>Connector status will appear after setup.</small>
+                </div>
+                <StatusBadge tone="slate">Ready</StatusBadge>
+              </article>
+            )}
+          </div>
+        </section>
+      </motion.div>
     </PlatformShell>
   );
 }

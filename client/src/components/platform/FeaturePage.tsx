@@ -79,7 +79,7 @@ import type {
 } from "@/lib/domain/types";
 import type { MoodleActivity, MoodleActivityType, MoodleSection } from "@/lib/moodle/types";
 import PlatformShell from "./PlatformShell";
-import { PlatformPageHeader, PlatformWorkspaceHeader, platformReveal } from "./PlatformPrimitives";
+import { PlatformPageHeader, PlatformWorkspaceHeader, platformReveal, StatCard, StatusBadge, DataTableCard } from "./PlatformPrimitives";
 import StatefulWorkflowExperience, { isStatefulWorkflowPage } from "./WorkflowExperiences";
 
 const toneColor: Record<Stat["tone"], string> = {
@@ -90,6 +90,10 @@ const toneColor: Record<Stat["tone"], string> = {
   purple: "#3D1A5C",
   slate: "#1A1A1A",
 };
+
+function formatConnectionStatus(status: string) {
+  return status === "mock_mode" ? "Test mode" : status.replace("_", " ");
+}
 
 const pageReveal = platformReveal;
 
@@ -279,13 +283,14 @@ function MetricGrid({ stats }: { stats: Stat[] }) {
   return (
     <motion.div className="platform-metric-grid" initial="hidden" animate="visible">
       {stats.map((stat, index) => (
-        <motion.article key={stat.label} className="platform-metric" custom={0.05 + index * 0.045} variants={pageReveal}>
-          <div>
-            <span>{stat.label}</span>
-            <strong>{stat.value}</strong>
-          </div>
-          <small style={{ color: toneColor[stat.tone], background: `${toneColor[stat.tone]}14` }}>{stat.change}</small>
-        </motion.article>
+        <StatCard
+          key={stat.label}
+          label={stat.label}
+          value={stat.value}
+          change={stat.change}
+          tone={stat.tone}
+          delay={0.05 + index * 0.045}
+        />
       ))}
     </motion.div>
   );
@@ -820,9 +825,9 @@ function AdminAccessExperience({ pageId, params }: { pageId: string; params?: Re
     .slice(0, 5);
   const focusLabel =
     pageId === "branches"
-      ? "Branch scope"
+      ? "Branch access"
       : pageId === "permissions"
-        ? "Permission matrix"
+        ? "Access rules"
         : pageId === "roles"
           ? "Role assignment"
       : "Identity directory";
@@ -1023,19 +1028,19 @@ function AdminAccessExperience({ pageId, params }: { pageId: string; params?: Re
       return;
     }
     if (newUser.role === "registrar" && newUser.permissionScope !== "admissions") {
-      const message = "Registrar accounts require admissions permission scope";
+      const message = "Registrar accounts require admissions access level";
       setCreateAccountError(message);
       toast.error(message);
       return;
     }
     if (newUser.role === "headofdepartment" && newUser.permissionScope !== "department") {
-      const message = "HOD accounts require department permission scope";
+      const message = "HOD accounts require department access level";
       setCreateAccountError(message);
       toast.error(message);
       return;
     }
     if (newUser.role === "superadmin" && newUser.permissionScope !== "global") {
-      const message = "Super admin accounts require global permission scope";
+      const message = "Super admin accounts require global access level";
       setCreateAccountError(message);
       toast.error(message);
       return;
@@ -1156,7 +1161,7 @@ function AdminAccessExperience({ pageId, params }: { pageId: string; params?: Re
       <PlatformWorkspaceHeader
         className="admin-access-hero"
         title="Access control"
-        description="Manage users, roles, permissions, and branch scope with auditable RBAC changes."
+        description="Manage users, roles, access rules, and branch access with activity history."
         context={<span>{focusLabel}</span>}
         actionsClassName="admin-access-hero-actions"
         actions={
@@ -1167,11 +1172,11 @@ function AdminAccessExperience({ pageId, params }: { pageId: string; params?: Re
           </button>
           <button className={pageId === "roles" ? "active" : ""} onClick={() => setSelectedRole("teacher")}>
             <ShieldCheck size={15} />
-            Roles
+            Roles & access
           </button>
           <button className={pageId === "permissions" ? "active" : ""} onClick={() => setSelectedRole("superadmin")}>
             <KeyRound size={15} />
-            Permissions
+            Access rules
           </button>
           <button className={pageId === "branches" ? "active" : ""}>
             <Building2 size={15} />
@@ -1185,7 +1190,7 @@ function AdminAccessExperience({ pageId, params }: { pageId: string; params?: Re
         <AdminAccessMetric label="Active users" value={`${activeUsers}/${state.users.length}`} />
         <AdminAccessMetric label="Selected role" value={selectedRoleMeta.label} />
         <AdminAccessMetric label="Role users" value={String(selectedRoleUsers)} />
-        <AdminAccessMetric label="RBAC coverage" value={`${permissionCoverage}%`} />
+        <AdminAccessMetric label="Role coverage" value={`${permissionCoverage}%`} />
         <AdminAccessMetric label="Multi-role" value={String(multiRoleUsers)} />
       </div>
 
@@ -1279,7 +1284,7 @@ function AdminAccessExperience({ pageId, params }: { pageId: string; params?: Re
                 <strong>{selectedStaffProfile?.title ?? "Related profile"}</strong>
                 <small>
                   {selectedStaffProfile
-                    ? `${selectedStaffProfile.permissionScope} scope · ${selectedStaffBranches || "No branch"} · ${selectedStaffDepartments || "No department"}`
+                    ? `${selectedStaffProfile.permissionScope} access · ${selectedStaffBranches || "No branch"} · ${selectedStaffDepartments || "No department"}`
                     : "No staff profile is linked to this account yet."}
                 </small>
                 <span>
@@ -1500,7 +1505,7 @@ function AdminAccessExperience({ pageId, params }: { pageId: string; params?: Re
                 </select>
               </label>
               <label>
-                Permission scope
+                Access level
                 <select value={newUser.permissionScope} onChange={(event) => setNewUser((value) => ({ ...value, permissionScope: event.target.value as StaffPermissionScope }))}>
                   <option value="department">Department</option>
                   <option value="branch">Branch</option>
@@ -1568,7 +1573,7 @@ function AdminAccessExperience({ pageId, params }: { pageId: string; params?: Re
                 </span>
               ) : (
                 <span>
-                  Creates a {newUser.permissionScope} staff profile with {splitListInput(newUser.operationalScope).length} operational scope item(s) and existing RBAC permissions for {draftRoleMeta.label}.
+                  Creates a {newUser.permissionScope} staff profile with {splitListInput(newUser.operationalScope).length} operational scope item(s) and existing access rules for {draftRoleMeta.label}.
                 </span>
               )}
             </div>
@@ -1592,7 +1597,7 @@ function AdminAccessExperience({ pageId, params }: { pageId: string; params?: Re
         <section className="admin-access-panel permission-matrix" aria-busy={savingGovernance}>
           <div className="admin-access-panel-head">
             <div>
-              <span>Permission matrix</span>
+              <span>Access rules</span>
               <strong>{selectedRoleMeta.label}</strong>
             </div>
             <select value={safeRole(selectedRole)} disabled={savingGovernance} onChange={(event) => setSelectedRole(safeRole(event.target.value))} aria-label="Permission role">
@@ -1621,7 +1626,7 @@ function AdminAccessExperience({ pageId, params }: { pageId: string; params?: Re
         <section className="admin-access-panel branch-scope" aria-busy={savingGovernance}>
           <div className="admin-access-panel-head">
             <div>
-              <span>Branch scope</span>
+              <span>Branch access</span>
               <strong>{state.branches.length} branches</strong>
             </div>
             <Building2 size={18} />
@@ -1650,7 +1655,7 @@ function AdminAccessExperience({ pageId, params }: { pageId: string; params?: Re
         <section className="admin-access-panel audit-feed">
           <div className="admin-access-panel-head">
             <div>
-              <span>Audit trail</span>
+              <span>Activity</span>
               <strong>Recent access changes</strong>
             </div>
             <ShieldCheck size={18} />
@@ -1736,8 +1741,8 @@ function AdminSystemExperience({ pageId }: { pageId: string }) {
     },
     {
       id: "data",
-      label: "Platform state",
-      detail: `${platformEntityTotal} local entities across users, courses, classes, enrollments, events, and audit logs.`,
+      label: "System data",
+      detail: `${platformEntityTotal} records across users, courses, classes, enrollments, events, and activity logs.`,
       status: "connected" as IntegrationStatus,
       metric: `${platformEntityTotal} records`,
     },
@@ -1750,8 +1755,8 @@ function AdminSystemExperience({ pageId }: { pageId: string }) {
     },
     {
       id: "moodle",
-      label: "Moodle source",
-      detail: "Course mapping and activity inspection are available in mock/import mode.",
+      label: "Moodle",
+      detail: "Course mapping and activity inspection are available in test/import mode.",
       status: integrations.find((integration) => integration.id === "moodle")?.status ?? "not_configured",
       metric: `${state.courses.length} courses`,
     },
@@ -1766,9 +1771,9 @@ function AdminSystemExperience({ pageId }: { pageId: string }) {
   const healthScore = Math.round((healthChecks.filter((check) => check.status === "connected" || check.status === "mock_mode").length / healthChecks.length) * 100);
   const focusCopy =
     pageId === "audit-logs"
-      ? "Audit evidence"
+      ? "Activity"
       : pageId === "system-health"
-        ? "System health"
+        ? "Health"
         : pageId === "settings"
           ? "Platform settings"
           : "Integration control";
@@ -1876,14 +1881,14 @@ function AdminSystemExperience({ pageId }: { pageId: string }) {
       <PlatformWorkspaceHeader
         className="admin-system-hero"
         title="Platform operations"
-        description="Manage integrations, health, audit logs, and settings with server-side credential boundaries."
+        description="Manage connections, health, activity, and settings with protected credential boundaries."
         context={<span>{focusCopy}</span>}
         actionsClassName="admin-system-nav"
         actions={
           <>
           {[
-            { label: "Integrations", routeId: "integrations", Icon: Puzzle },
-            { label: "Audit logs", routeId: "audit-logs", Icon: FileText },
+            { label: "Connections", routeId: "integrations", Icon: Puzzle },
+            { label: "Activity", routeId: "audit-logs", Icon: FileText },
             { label: "Health", routeId: "system-health", Icon: Server },
             { label: "Settings", routeId: "settings", Icon: SlidersHorizontal },
           ].map(({ label, routeId, Icon }) => (
@@ -1898,8 +1903,8 @@ function AdminSystemExperience({ pageId }: { pageId: string }) {
 
       <div className="admin-system-kpis">
         <AdminAccessMetric label="Connectors" value={`${connectedCount}/${integrations.length}`} />
-        <AdminAccessMetric label="Mock mode" value={String(mockCount)} />
-        <AdminAccessMetric label="Server-only" value={String(serverOnlyCount)} />
+        <AdminAccessMetric label="Test mode" value={String(mockCount)} />
+        <AdminAccessMetric label="Protected" value={String(serverOnlyCount)} />
         <AdminAccessMetric label="Health score" value={`${healthScore}%`} />
         <AdminAccessMetric label="Audit rows" value={String(state.auditLogs.length)} />
       </div>
@@ -1911,7 +1916,7 @@ function AdminSystemExperience({ pageId }: { pageId: string }) {
               <div className="admin-system-panel-head">
                 <div>
                   <span>Connector registry</span>
-                  <strong>{integrations.length} integration boundaries</strong>
+                  <strong>{integrations.length} connection records</strong>
                 </div>
                 <button onClick={() => setIntegrationStatus(selectedIntegration.id, "mock_mode")} disabled={savingSystemAction}>
                   <RefreshCcw size={15} />
@@ -1921,7 +1926,7 @@ function AdminSystemExperience({ pageId }: { pageId: string }) {
               <div className="admin-system-integration-grid">
                 {integrations.map((integration) => (
                   <button key={integration.id} className={integration.id === selectedIntegration.id ? "active" : ""} onClick={() => setSelectedIntegrationId(integration.id)}>
-                    <span className={`platform-integration-status ${integrationTone(integration.status)}`}>{integration.status.replace("_", " ")}</span>
+                    <span className={`platform-integration-status ${integrationTone(integration.status)}`}>{formatConnectionStatus(integration.status)}</span>
                     <strong>{integration.label}</strong>
                     <small>{integration.serverOnly ? "Server-side connector" : "Browser-safe boundary"} · {integration.envVars.length || "No"} env vars</small>
                   </button>
@@ -1937,7 +1942,7 @@ function AdminSystemExperience({ pageId }: { pageId: string }) {
                   Status
                   <select value={selectedIntegration.status} disabled={savingSystemAction} onChange={(event) => setIntegrationStatus(selectedIntegration.id, event.target.value as IntegrationStatus)}>
                     <option value="not_configured">Not configured</option>
-                    <option value="mock_mode">Mock mode</option>
+                    <option value="mock_mode">Test mode</option>
                     <option value="connected">Connected</option>
                     <option value="error">Error</option>
                   </select>
@@ -1965,7 +1970,7 @@ function AdminSystemExperience({ pageId }: { pageId: string }) {
             <>
               <div className="admin-system-panel-head">
                 <div>
-                  <span>Audit explorer</span>
+	                  <span>Activity</span>
                   <strong>{filteredAuditLogs.length} matching events</strong>
                 </div>
                 <button onClick={exportAuditCsv}>
@@ -1975,7 +1980,7 @@ function AdminSystemExperience({ pageId }: { pageId: string }) {
               </div>
               <div className="admin-system-filters">
                 <label>
-                  Search audit log
+	                  Search activity
                   <input value={auditQuery} onInput={updateAuditQuery} onChange={updateAuditQuery} placeholder="Actor, action, entity, summary" />
                 </label>
                 <label>
@@ -2000,7 +2005,7 @@ function AdminSystemExperience({ pageId }: { pageId: string }) {
                 {!filteredAuditLogs.length ? (
                   <div className="platform-empty-state">
                     <Search size={18} />
-                    <strong>No audit events match</strong>
+	                    <strong>No activity matches</strong>
                     <small>Clear the query or action group.</small>
                   </div>
                 ) : null}
@@ -2067,15 +2072,15 @@ function AdminSystemExperience({ pageId }: { pageId: string }) {
                   <input value={settingsDraft.academicTerm} onChange={(event) => setSettingsDraft((value) => ({ ...value, academicTerm: event.target.value }))} />
                 </label>
                 <label>
-                  Audit retention days
+	                  Activity retention days
                   <input type="number" min="30" value={settingsDraft.retentionDays} onChange={(event) => setSettingsDraft((value) => ({ ...value, retentionDays: event.target.value }))} />
                 </label>
                 <div className="admin-system-policy-list">
                   {[
-                    "Use server-only credentials for Moodle, EMS, payment, email, and WhatsApp.",
+	                    "Use protected credentials for Moodle, EMS, payment, email, and WhatsApp.",
                     "Keep browser keys publishable and protected by policies.",
                     "Log operational changes before provider delivery is connected.",
-                    "Review audit evidence before changing role or branch scope.",
+	                    "Review activity before changing role or branch access.",
                   ].map((policy) => (
                     <span key={policy}><CheckCircle2 size={15} /> {policy}</span>
                   ))}
@@ -2099,7 +2104,7 @@ function AdminSystemExperience({ pageId }: { pageId: string }) {
           <section className="admin-system-panel">
             <div className="admin-system-panel-head">
               <div>
-                <span>Integration readiness</span>
+	                <span>Connections</span>
                 <strong>{connectedCount + mockCount}/{integrations.length} usable</strong>
               </div>
               <Server size={18} />
@@ -2108,9 +2113,9 @@ function AdminSystemExperience({ pageId }: { pageId: string }) {
               {integrations.map((integration) => (
                 <button key={integration.id} onClick={() => {
                   setSelectedIntegrationId(integration.id);
-                  if (pageId !== "integrations") toast.info(`${integration.label}: ${integration.status.replace("_", " ")}`);
+	                  if (pageId !== "integrations") toast.info(`${integration.label}: ${formatConnectionStatus(integration.status)}`);
                 }}>
-                  <span className={`platform-integration-status ${integrationTone(integration.status)}`}>{integration.status.replace("_", " ")}</span>
+	                  <span className={`platform-integration-status ${integrationTone(integration.status)}`}>{formatConnectionStatus(integration.status)}</span>
                   <strong>{integration.label}</strong>
                 </button>
               ))}
@@ -2565,14 +2570,14 @@ function AcademicGovernanceExperience({
         ["Departments", "departments", Building2],
         ["Programs", "programs", BookOpen],
         ["Courses", "courses", Layers],
-        ["Moodle Source", "moodle-source", Database],
+        ["Moodle", "moodle-source", Database],
       ]
     : [
         ["Departments", "departments", Building2],
         ["Programs", "programs", BookOpen],
         ["Courses", "courses", Layers],
         ["Levels", "levels", SlidersHorizontal],
-        ["Moodle Source", "moodle-source", Database],
+        ["Moodle", "moodle-source", Database],
         ["Curriculum", "curriculum", FileText],
         ["Teachers", "teachers", Users],
         ["Classes", "classes", CalendarDays],
@@ -3533,7 +3538,7 @@ function BranchOperationsExperience({ pageId }: { pageId: string }) {
         <section className="branch-panel branch-scope-panel">
           <div className="branch-panel-head">
             <div>
-              <span>Branch scope</span>
+              <span>Branch access</span>
               <strong>{branch?.name ?? "Branch"}</strong>
             </div>
             <select value={branch?.id ?? ""} disabled aria-label="Branch operations scope">
@@ -4844,7 +4849,7 @@ function RegistrarAdmissionsExperience({ pageId, params }: { pageId: string; par
                   <small>{selectedApplicationLead?.phone ?? "No phone"} · {selectedApplicationLead?.email ?? "No email"}</small>
                 </article>
                 <article>
-                  <span>Branch scope</span>
+                  <span>Branch access</span>
                   <strong>{selectedApplicationBranch?.name ?? selectedApplication?.branchId ?? "No branch"}</strong>
                   <small>{selectedApplicationLead?.notes ?? "Internal admissions follow-up only"}</small>
                 </article>
@@ -5510,7 +5515,7 @@ function RegistrarAdmissionsExperience({ pageId, params }: { pageId: string; par
                       ? "Admissions configuration"
                       : activePage === "classes"
                         ? "Class capacity and assignment view"
-                        : "Registrar reports and audit trail"}
+                        : "Registrar reports and activity"}
               </strong>
             </div>
             <SlidersHorizontal size={18} />
@@ -7087,9 +7092,7 @@ function RecordsTable({
                 <small>{record.subtitle}</small>
               </td>
               <td>
-                <span className="platform-status" style={{ color: toneColor[record.tone ?? "teal"], background: `${toneColor[record.tone ?? "teal"]}14` }}>
-                  {record.status}
-                </span>
+                <StatusBadge tone={record.tone ?? "teal"}>{record.status}</StatusBadge>
               </td>
               <td>{record.owner}</td>
               <td>{record.due}</td>
@@ -7252,7 +7255,7 @@ function RecordInspector({ record, role, onClose }: { record: RecordItem | null;
       <dl>
         <div>
           <dt>Status</dt>
-          <dd><span className="platform-status" style={{ color: toneColor[record.tone ?? "teal"], background: `${toneColor[record.tone ?? "teal"]}14` }}>{record.status}</span></dd>
+          <dd><StatusBadge tone={record.tone ?? "teal"}>{record.status}</StatusBadge></dd>
         </div>
         <div>
           <dt>Owner</dt>
@@ -7473,9 +7476,7 @@ function CertificateExperience({ config, role }: { config: PageConfig; role: Rol
         {config.records.map((record) => (
           <article key={record.id}>
             <AwardIcon color={roleMeta[role].color} />
-            <span className="platform-status" style={{ color: toneColor[record.tone ?? "teal"], background: `${toneColor[record.tone ?? "teal"]}14` }}>
-              {record.status}
-            </span>
+            <StatusBadge tone={record.tone ?? "teal"}>{record.status}</StatusBadge>
             <h3>{record.title}</h3>
             <p>{record.subtitle}</p>
             <strong>{record.metric}</strong>

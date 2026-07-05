@@ -11,6 +11,8 @@ Before any implementation work, read:
 - `CLAUDE.md` for engineering discipline, verification, simplicity, and anti-pattern rules.
 - `AGENTS.md` for Nile Learn product, role, security, and portal-specific rules.
 - `DESIGN.md` before creating or editing any UI.
+- `docs/DESIGN_V2.md` before creating or editing any internal portal UI. It is the stricter UI V2 reset contract for app shell, dashboards, density, and rollout order.
+- `docs/SIMPLE_UI.md` before creating or editing any UI. It is the strict simplicity contract: one page, one main job.
 - The matching `.codex/prompts/*.md` file for the feature or portal being changed.
 
 If these files conflict, follow the stricter rule and preserve auth, backend behavior, and RBAC.
@@ -71,10 +73,12 @@ Every task must:
 
 When changing UI:
 
-- follow DESIGN.md
+- follow `DESIGN.md`, `docs/DESIGN_V2.md`, and `docs/SIMPLE_UI.md`
 - do not create generic admin screens
 - keep the UI simple, clean, and easy
+- enforce one page = one main job
 - improve one route or one component family at a time
+- apply UI V2 in this controlled order: app shell, sidebar, top header, one reference dashboard, visual review, then route-by-route rollout
 
 When changing workflows:
 
@@ -85,7 +89,7 @@ When changing workflows:
 
 ## Design Source Of Truth
 
-Before creating or editing any UI, read `DESIGN.md`. All pages must follow the Nile Learn design language. Do not create plain default shadcn/dashboard UI. Do not create random colors, random spacing, or generic ugly admin screens. Reuse the design tokens and page components from `DESIGN.md`.
+Before creating or editing any UI, read `DESIGN.md`, `docs/DESIGN_V2.md`, and `docs/SIMPLE_UI.md`. All pages must follow the Nile Learn design language. `DESIGN.md` preserves the landing-page visual language and tokens. `docs/DESIGN_V2.md` is the stricter internal portal reset contract for the app shell, sidebar, top header, dashboards, card density, copy limits, and rollout order. `docs/SIMPLE_UI.md` is the strict simplicity contract for school-management screens: one page, one main job, no everything-everywhere layouts. Do not create plain default shadcn/dashboard UI. Do not create random colors, random spacing, card walls, noisy grid backgrounds, or generic ugly admin screens. Reuse the design tokens and page components from `DESIGN.md`, the UI V2 layout rules from `docs/DESIGN_V2.md`, and the page-type rules from `docs/SIMPLE_UI.md`.
 
 Match the existing Nile Learn visual direction:
 
@@ -103,7 +107,7 @@ The landing page at https://nile-center-platform.vercel.app/ is the visual sourc
 
 Before editing UI:
 
-1. Read DESIGN.md.
+1. Read DESIGN.md, docs/DESIGN_V2.md, and docs/SIMPLE_UI.md.
 2. Inspect existing landing page components/styles.
 3. Reuse the Nile Learn design language.
 4. Do not create generic admin dashboard UI.
@@ -115,6 +119,10 @@ Before editing UI:
 10. Every form must use FormSection/card layout.
 11. Every page must include responsive design.
 12. Every page must include empty/loading/error states when relevant.
+13. Follow UI V2 strict limits: max 4 top KPI cards, max 3 major dashboard sections above the fold, no card walls, no noisy grid backgrounds, and no debug/system metrics except admin, audit, integration, or system-health contexts.
+14. Follow the Simple UI rule: one page = one main job.
+15. Do not mix list, detail, create form, audit log, permissions, and settings on the same screen.
+16. Apply UI V2 in controlled order: app shell, sidebar, top header, one reference dashboard, visual review, then other pages.
 
 The UI should feel like a premium modern learning platform inspired by Apple clarity, Airbnb warmth, and Cursor-style SaaS polish, without copying any brand.
 

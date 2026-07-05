@@ -40,23 +40,63 @@ export default function ProtectedRoute({ role, pageId = "dashboard", children }:
   if (permissionAllowed) return <>{children}</>;
   const deniedByPermission = access.ok && !permissionAllowed;
 
+  if (access.reason === "not_authenticated") {
+    return (
+      <main className="auth-flow-page">
+        <section className="platform-access-denied" aria-live="polite">
+          <span>
+            <LockKeyhole size={26} />
+          </span>
+          <h1>Sign in required</h1>
+          <p>
+            Sign in from the Nile Learn login page before opening protected
+            workspaces.
+          </p>
+          <div>
+            <Link
+              href="/auth/login"
+              className="platform-primary-button"
+              style={{ background: roleMeta[role].color }}
+            >
+              Sign in
+            </Link>
+            <Link href="/" className="platform-secondary-button">
+              Back to public site
+            </Link>
+          </div>
+        </section>
+      </main>
+    );
+  }
+
   return (
     <PlatformShell role={activeRole ?? role} title="Access">
       <section className="platform-access-denied">
-        <span>{access.reason === "not_authenticated" ? <LockKeyhole size={26} /> : <ShieldAlert size={26} />}</span>
-        <h1>{access.reason === "not_authenticated" ? "Sign in required" : "Access denied"}</h1>
+        <span>
+          <ShieldAlert size={26} />
+        </span>
+        <h1>Access denied</h1>
         <p>
-          {access.reason === "not_authenticated"
-            ? "Choose a demo role from the login page before opening protected workspaces."
-            : deniedByPermission
-              ? `${roleMeta[role].label} is signed in, but this page requires ${requiredPermission}.`
-              : `Current role is ${roleMeta[activeRole ?? role].label}. This page requires ${roleMeta[role].label}.`}
+          {deniedByPermission
+            ? `${roleMeta[role].label} is signed in, but this page requires ${requiredPermission}.`
+            : `Current role is ${roleMeta[activeRole ?? role].label}. This page requires ${roleMeta[role].label}.`}
         </p>
         <div>
-          <Link href="/auth/login" className="platform-primary-button" style={{ background: roleMeta[role].color }}>
+          <Link
+            href="/auth/login"
+            className="platform-primary-button"
+            style={{ background: roleMeta[role].color }}
+          >
             Sign in
           </Link>
-          <Link href={activeRole ? roleMeta[activeRole].defaultRoute : "/auth/select-role"} className="platform-secondary-button">
+          <Link
+            href={
+              activeRole
+                ? roleMeta[activeRole].defaultRoute
+                : "/auth/select-role"
+            }
+            className="platform-secondary-button"
+          >
             {activeRole ? "Go to my workspace" : "Select role"}
           </Link>
         </div>

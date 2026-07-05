@@ -63,7 +63,7 @@ import {
   type PageConfig,
   type Role,
 } from "@/lib/platformData";
-import { PlatformPageHeader, PlatformWorkspaceHeader } from "./PlatformPrimitives";
+import { PlatformPageHeader, PlatformWorkspaceHeader, StatCard, StatusBadge, DataTableCard } from "./PlatformPrimitives";
 
 const assessmentPages = new Set([
   "assignments",

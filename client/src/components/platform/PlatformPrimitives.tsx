@@ -75,3 +75,99 @@ export function PlatformWorkspaceHeader({
     </section>
   );
 }
+
+export function StatCard({
+  label,
+  value,
+  change,
+  tone = "slate",
+  delay = 0,
+}: {
+  label: ReactNode;
+  value: ReactNode;
+  change?: ReactNode;
+  tone?: "teal" | "amber" | "green" | "red" | "purple" | "slate";
+  delay?: number;
+}) {
+  const toneColor: Record<string, string> = {
+    teal: "#1A4A3A",
+    amber: "#C4A35A",
+    green: "#2D5016",
+    red: "#C75B39",
+    purple: "#3D1A5C",
+    slate: "#1A1A1A",
+  };
+  return (
+    <motion.article
+      className="platform-metric"
+      custom={delay}
+      variants={platformReveal}
+      whileHover={{ y: -1, boxShadow: "0 12px 28px -12px rgba(0,0,0,0.14)" }}
+      transition={{ duration: 0.2 }}
+    >
+      <div>
+        <span>{label}</span>
+        <strong>{value}</strong>
+      </div>
+      {change ? (
+        <small style={{ color: toneColor[tone], background: `${toneColor[tone]}14` }}>
+          {change}
+        </small>
+      ) : null}
+    </motion.article>
+  );
+}
+
+export function StatusBadge({
+  children,
+  tone = "slate"
+}: {
+  children: ReactNode;
+  tone?: "teal" | "amber" | "green" | "red" | "purple" | "slate"
+}) {
+  const toneColor: Record<string, string> = {
+    teal: "#1A4A3A",
+    amber: "#C4A35A",
+    green: "#2D5016",
+    red: "#C75B39",
+    purple: "#3D1A5C",
+    slate: "#1A1A1A",
+  };
+  return (
+    <span className="platform-status" style={{ color: toneColor[tone], background: `${toneColor[tone]}14` }}>
+      {children}
+    </span>
+  );
+}
+
+export function DataTableCard({
+  title,
+  subtitle,
+  className = "",
+  delay = 0,
+  children,
+}: {
+  title: ReactNode;
+  subtitle?: ReactNode;
+  className?: string;
+  delay?: number;
+  children: ReactNode;
+}) {
+  return (
+    <motion.article
+      className={`platform-table-card ${className}`.trim()}
+      custom={delay}
+      variants={platformReveal}
+      whileHover={{ y: -2, boxShadow: "0 16px 40px -8px rgba(0,0,0,0.08)" }}
+      transition={{ duration: 0.2 }}
+    >
+      <div className="platform-card-title compact">
+        <div>
+          {subtitle ? <span>{subtitle}</span> : null}
+          <strong>{title}</strong>
+        </div>
+      </div>
+      {children}
+    </motion.article>
+  );
+}

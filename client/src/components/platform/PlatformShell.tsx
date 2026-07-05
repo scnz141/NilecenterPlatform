@@ -1,4 +1,11 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type ReactNode,
+} from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { Link, useLocation } from "wouter";
 import {
@@ -46,7 +53,12 @@ import {
   X,
 } from "lucide-react";
 import { toast } from "sonner";
-import { getDemoUser, roleInspirations, roleMeta, type Role } from "@/lib/platformData";
+import {
+  getDemoUser,
+  roleInspirations,
+  roleMeta,
+  type Role,
+} from "@/lib/platformData";
 import { getSidebarForRole } from "@/lib/rbac";
 import { getDirection, localeOptions, t, type Locale } from "@/lib/i18n";
 import { platformStore } from "@/lib/domain/store";
@@ -101,43 +113,186 @@ type ScopeConfig = {
   options: string[];
 };
 
+type SidebarItem = ReturnType<typeof getSidebarForRole>[number];
+type SidebarSection = {
+  label?: string;
+  items: string[];
+  collapsible?: boolean;
+};
+type GroupedSidebarSection = {
+  label?: string;
+  items: SidebarItem[];
+  collapsible?: boolean;
+};
+
+const sidebarWorkflowGroups: Record<Role, SidebarSection[]> = {
+  student: [
+    { label: "Today", items: ["Dashboard", "Calendar"] },
+    {
+      label: "Learning",
+      items: [
+        "Courses",
+        "Course Map",
+        "Assignments",
+        "Quizzes",
+        "Quran Progress",
+      ],
+    },
+    { label: "Progress", items: ["Grades", "Attendance", "Certificates"] },
+    { label: "Help", items: ["Messages", "Reports", "Support", "Profile"] },
+  ],
+  teacher: [
+    { label: "Today", items: ["Dashboard", "Classes", "Calendar"] },
+    {
+      label: "Teaching",
+      items: [
+        "Attendance",
+        "Assignments",
+        "Grading",
+        "Quizzes",
+        "Quran Review",
+      ],
+    },
+    { label: "Students", items: ["Question Bank"] },
+    { label: "Help", items: ["Messages", "Reports", "Profile"] },
+    { label: "Advanced", items: ["Moodle Source"], collapsible: true },
+  ],
+  registrar: [
+    { label: "Today", items: ["Dashboard"] },
+    {
+      label: "Admissions",
+      items: ["Leads", "Applications", "Placement Tests"],
+    },
+    {
+      label: "Students",
+      items: ["Students", "Enrollments", "Classes", "Schedule"],
+    },
+    { label: "Office", items: ["Payments", "Messages", "Reports", "Settings"] },
+  ],
+  headofdepartment: [
+    { label: "Today", items: ["Dashboard"] },
+    {
+      label: "Courses",
+      items: ["Departments", "Programs", "Courses", "Levels", "Curriculum"],
+    },
+    { label: "Teachers", items: ["Teachers", "Classes", "Schedule"] },
+    {
+      label: "Review",
+      items: ["Assessments", "Certificates", "Reports", "Messages"],
+    },
+    { label: "Advanced", items: ["Moodle Source"], collapsible: true },
+  ],
+  branchadmin: [
+    { label: "Today", items: ["Dashboard", "Classes", "Rooms", "Schedule"] },
+    { label: "People", items: ["Students", "Teachers"] },
+    { label: "Operations", items: ["Attendance", "Payments"] },
+    { label: "Office", items: ["Reports", "Messages", "Settings"] },
+  ],
+  superadmin: [
+    { items: ["Dashboard"] },
+    { label: "People", items: ["Users", "Roles"] },
+    {
+      label: "Learning",
+      items: ["Courses", "Certificates"],
+    },
+    {
+      label: "Operations",
+      items: ["Branches", "Departments", "Schedule"],
+    },
+    { label: "Business", items: ["Reports"] },
+    {
+      label: "System",
+      items: ["Integrations", "Audit Logs", "Settings"],
+      collapsible: true,
+    },
+  ],
+};
+
+const navLabelBySource: Record<string, string> = {
+  "Audit Logs": "Activity log",
+  Blueprint: "School setup",
+  Integrations: "Connections",
+  "Moodle Source": "Moodle",
+  Permissions: "Access rules",
+  "Platform State": "System data",
+  "Question Bank": "Questions",
+  "Quran Progress": "Quran",
+  "Quran Review": "Quran",
+  Roles: "Roles & access",
+  "System Health": "Health",
+  "Placement Tests": "Placement",
+};
+
+function getNavLabel(item: SidebarItem) {
+  return navLabelBySource[item.label] ?? item.label;
+}
+
+function groupSidebarItems(
+  role: Role,
+  sidebar: SidebarItem[]
+): GroupedSidebarSection[] {
+  const used = new Set<string>();
+  const sections: GroupedSidebarSection[] = sidebarWorkflowGroups[role]
+    .map(group => {
+      const items = group.items
+        .map(label => sidebar.find(item => item.label === label))
+        .filter((item): item is SidebarItem => Boolean(item));
+      items.forEach(item => used.add(item.href));
+      return { label: group.label, items, collapsible: group.collapsible };
+    })
+    .filter(group => group.items.length > 0);
+
+  const remaining = sidebar.filter(item => !used.has(item.href));
+  if (remaining.length && role !== "superadmin") {
+    sections.push({ label: "More", items: remaining });
+  }
+
+  return sections;
+}
+
 const getScopeConfig = (role: Role, defaultScope: string): ScopeConfig => {
   switch (role) {
     case "student":
       return {
-        label: "Learning branch",
-        description: "Course access",
+        label: "Branch",
+        description: "Learning",
         options: [defaultScope],
       };
     case "teacher":
       return {
-        label: "Teaching scope",
-        description: "Classes and attendance",
+        label: "Teaching",
+        description: "Classes",
         options: [defaultScope, "Online", "Cairo B1"],
       };
     case "registrar":
       return {
-        label: "Admissions branch",
-        description: "Enrollment pipeline",
+        label: "Branch",
+        description: "Admissions",
         options: [defaultScope, "Cairo B1", "Alexandria B2", "Online"],
       };
     case "headofdepartment":
       return {
-        label: "Academic scope",
-        description: "Department oversight",
+        label: "Academic area",
+        description: "Courses",
         options: [defaultScope, "All departments", "Cairo B1", "Online"],
       };
     case "branchadmin":
       return {
-        label: "Branch scope",
-        description: "Local operations",
+        label: "Branch",
+        description: "Operations",
         options: [defaultScope],
       };
     case "superadmin":
       return {
-        label: "Platform scope",
-        description: "Governance view",
-        options: [defaultScope, "All branches", "Cairo B1", "Alexandria B2", "Online"],
+        label: "School scope",
+        description: "All work",
+        options: [
+          defaultScope,
+          "All branches",
+          "Cairo B1",
+          "Alexandria B2",
+          "Online",
+        ],
       };
   }
 
@@ -150,7 +305,8 @@ const getScopeConfig = (role: Role, defaultScope: string): ScopeConfig => {
 
 function canShowSearchResult(role: Role, href: string) {
   if (href.startsWith("/courses")) return true;
-  if (role === "superadmin") return href.startsWith("/app/admin") || href.startsWith("/courses");
+  if (role === "superadmin")
+    return href.startsWith("/app/admin") || href.startsWith("/courses");
   const rolePrefix: Record<Role, string> = {
     student: "/app/student",
     teacher: "/app/teacher",
@@ -165,8 +321,12 @@ function canShowSearchResult(role: Role, href: string) {
 export default function PlatformShell({ role, children, title }: ShellProps) {
   const [location, navigate] = useLocation();
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [sidebarExpanded, setSidebarExpanded] = useState(false);
-  const [sidebarHovered, setSidebarHovered] = useState(false);
+  const [sidebarExpanded, setSidebarExpanded] = useState(() => {
+    if (typeof window === "undefined") return true;
+    return (
+      window.localStorage.getItem("nilelearn.sidebar.expanded") !== "false"
+    );
+  });
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
   const [notificationVersion, setNotificationVersion] = useState(0);
@@ -184,10 +344,18 @@ export default function PlatformShell({ role, children, title }: ShellProps) {
   const [locale, setLocale] = useState<Locale>(() => {
     if (typeof window === "undefined") return "en";
     const saved = window.localStorage.getItem("nilelearn.locale");
-    return localeOptions.some((option) => option.value === saved) ? (saved as Locale) : "en";
+    return localeOptions.some(option => option.value === saved)
+      ? (saved as Locale)
+      : "en";
   });
-  const scopeConfig = useMemo(() => getScopeConfig(role, meta.branchLabel), [meta.branchLabel, role]);
-  const branchOptions = useMemo(() => Array.from(new Set(scopeConfig.options)), [scopeConfig.options]);
+  const scopeConfig = useMemo(
+    () => getScopeConfig(role, meta.branchLabel),
+    [meta.branchLabel, role]
+  );
+  const branchOptions = useMemo(
+    () => Array.from(new Set(scopeConfig.options)),
+    [scopeConfig.options]
+  );
   const showScopeSelector = branchOptions.length > 1;
   const [branch, setBranch] = useState(() => {
     if (typeof window === "undefined") return branchOptions[0];
@@ -195,27 +363,45 @@ export default function PlatformShell({ role, children, title }: ShellProps) {
     return saved && branchOptions.includes(saved) ? saved : branchOptions[0];
   });
   const sidebar = getSidebarForRole(role);
+  const sidebarSections = useMemo(
+    () => groupSidebarItems(role, sidebar),
+    [role, sidebar]
+  );
   const dir = getDirection(locale);
-  const profileHref = sidebar.find((item) => item.label === "Profile")?.href ?? meta.defaultRoute;
+  const profileHref =
+    sidebar.find(item => item.label === "Profile")?.href ?? meta.defaultRoute;
   const hasSearchQuery = Boolean(query.trim());
-  const isDashboardRoute = location.endsWith("/dashboard");
 
   useEffect(() => {
     if (typeof window === "undefined") return;
     const saved = window.localStorage.getItem(`nilelearn.branch.${role}`);
-    setBranch(saved && branchOptions.includes(saved) ? saved : branchOptions[0]);
+    setBranch(
+      saved && branchOptions.includes(saved) ? saved : branchOptions[0]
+    );
   }, [branchOptions, role]);
 
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem(
+      "nilelearn.sidebar.expanded",
+      String(sidebarExpanded)
+    );
+  }, [sidebarExpanded]);
+
   const searchResults = useMemo(() => {
-    return platformStore.search(query).filter((item) => canShowSearchResult(role, item.href));
+    return platformStore
+      .search(query)
+      .filter(item => canShowSearchResult(role, item.href));
   }, [query, role]);
   const notificationItems = useMemo(() => {
     const state = platformStore.getState();
     return state.notifications
-      .filter((notification) => notification.userId === user.id || role === "superadmin")
+      .filter(
+        notification => notification.userId === user.id || role === "superadmin"
+      )
       .slice(0, 6);
   }, [notificationVersion, role, user.id]);
-  const unreadCount = notificationItems.filter((item) => !item.read).length;
+  const unreadCount = notificationItems.filter(item => !item.read).length;
 
   useEffect(() => {
     setMobileOpen(false);
@@ -237,7 +423,9 @@ export default function PlatformShell({ role, children, title }: ShellProps) {
       "[tabindex]:not([tabindex='-1'])",
     ].join(",");
     const drawer = mobileDrawerRef.current;
-    const focusable = Array.from(drawer?.querySelectorAll<HTMLElement>(focusableSelector) ?? []);
+    const focusable = Array.from(
+      drawer?.querySelectorAll<HTMLElement>(focusableSelector) ?? []
+    );
     focusable[0]?.focus();
 
     const onKeyDown = (event: KeyboardEvent) => {
@@ -306,25 +494,32 @@ export default function PlatformShell({ role, children, title }: ShellProps) {
     <div className="platform-sidebar-inner">
       <div className="platform-brand">
         <Link href="/">
-          <span className="platform-logo" style={{ background: meta.color }}>
-            NC
-          </span>
+          <span className="platform-logo">NL</span>
         </Link>
         <div className="platform-brand-copy">
           <span>Nile Learn</span>
-          <small>{meta.shortLabel} portal</small>
+          <small>{meta.label}</small>
         </div>
-        <button className="platform-icon-button platform-mobile-close" aria-label="Close menu" onClick={() => setMobileOpen(false)}>
-          <X size={16} />
-        </button>
         <button
           type="button"
           className="platform-sidebar-toggle"
           aria-label={sidebarExpanded ? "Collapse sidebar" : "Expand sidebar"}
           aria-pressed={sidebarExpanded}
-          onClick={() => setSidebarExpanded((expanded) => !expanded)}
+          title={sidebarExpanded ? "Collapse sidebar" : "Expand sidebar"}
+          onClick={() => setSidebarExpanded(expanded => !expanded)}
         >
-          {sidebarExpanded ? <PanelLeftClose size={15} /> : <PanelLeftOpen size={15} />}
+          {sidebarExpanded ? (
+            <PanelLeftClose size={15} />
+          ) : (
+            <PanelLeftOpen size={15} />
+          )}
+        </button>
+        <button
+          className="platform-icon-button platform-mobile-close"
+          aria-label="Close menu"
+          onClick={() => setMobileOpen(false)}
+        >
+          <X size={16} />
         </button>
       </div>
 
@@ -337,38 +532,87 @@ export default function PlatformShell({ role, children, title }: ShellProps) {
           <select
             aria-label={scopeConfig.label}
             value={branch}
-            onChange={(event) => {
+            onChange={event => {
               const nextBranch = event.target.value;
               setBranch(nextBranch);
-              window.localStorage.setItem(`nilelearn.branch.${role}`, nextBranch);
+              window.localStorage.setItem(
+                `nilelearn.branch.${role}`,
+                nextBranch
+              );
               toast.success(`${scopeConfig.label} set to ${nextBranch}`);
             }}
           >
-            {branchOptions.map((option) => (
+            {branchOptions.map(option => (
               <option key={option}>{option}</option>
             ))}
           </select>
         </div>
       ) : null}
 
-      <div className="platform-nav-section-label">{role === "superadmin" ? "Administration" : "Workspace"}</div>
       <nav className="platform-nav" aria-label={`${meta.label} navigation`}>
-        {sidebar.map((item) => {
-          const Icon = iconMap[item.icon as keyof typeof iconMap] ?? LayoutDashboard;
-          const active = location === item.href || location.startsWith(`${item.href}/`);
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              className={`platform-nav-item ${active ? "active" : ""}`}
-              aria-label={item.label}
-              title={item.label}
-              onClick={() => setMobileOpen(false)}
+        {sidebarSections.map(section => {
+          const sectionIsActive = section.items.some(
+            item =>
+              location === item.href || location.startsWith(`${item.href}/`)
+          );
+          const sectionItems = (
+            <div className="platform-nav-group-items">
+              {section.items.map(item => {
+                const displayLabel = getNavLabel(item);
+                const Icon =
+                  iconMap[item.icon as keyof typeof iconMap] ?? LayoutDashboard;
+                const active =
+                  location === item.href ||
+                  location.startsWith(`${item.href}/`);
+                return (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    className={`platform-nav-item ${active ? "active" : ""}`}
+                    aria-label={displayLabel}
+                    title={displayLabel}
+                    onClick={() => setMobileOpen(false)}
+                  >
+                    <Icon size={16} />
+                    <span>{displayLabel}</span>
+                    {item.badge ? (
+                      <em style={{ background: meta.tint, color: meta.color }}>
+                        {item.badge}
+                      </em>
+                    ) : null}
+                  </Link>
+                );
+              })}
+            </div>
+          );
+
+          return section.collapsible ? (
+            <details
+              key={
+                section.label ?? section.items.map(item => item.href).join(":")
+              }
+              className="platform-nav-group platform-nav-details"
+              open={sectionIsActive || undefined}
             >
-              <Icon size={16} />
-              <span>{item.label}</span>
-              {item.badge ? <em style={{ background: meta.color }}>{item.badge}</em> : null}
-            </Link>
+              <summary className="platform-nav-section-label">
+                {section.label}
+              </summary>
+              {sectionItems}
+            </details>
+          ) : (
+            <div
+              key={
+                section.label ?? section.items.map(item => item.href).join(":")
+              }
+              className="platform-nav-group"
+            >
+              {section.label ? (
+                <div className="platform-nav-section-label">
+                  {section.label}
+                </div>
+              ) : null}
+              {sectionItems}
+            </div>
           );
         })}
       </nav>
@@ -376,17 +620,18 @@ export default function PlatformShell({ role, children, title }: ShellProps) {
   );
 
   return (
-    <div className="platform-shell" dir={dir} style={{ "--role-color": meta.color, "--role-tint": meta.tint } as CSSProperties}>
+    <div
+      className="platform-shell"
+      dir={dir}
+      style={
+        {
+          "--role-color": meta.color,
+          "--role-tint": meta.tint,
+        } as CSSProperties
+      }
+    >
       <motion.aside
-        className={`platform-desktop-sidebar ${sidebarExpanded ? "expanded" : ""} ${!sidebarExpanded && sidebarHovered ? "hovered" : ""}`}
-        onMouseEnter={() => setSidebarHovered(true)}
-        onMouseLeave={() => setSidebarHovered(false)}
-        onFocus={() => setSidebarHovered(true)}
-        onBlur={(event) => {
-          if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
-            setSidebarHovered(false);
-          }
-        }}
+        className={`platform-desktop-sidebar ${sidebarExpanded ? "expanded" : "collapsed"}`}
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ duration: 0.38, ease: [0.23, 1, 0.32, 1] }}
@@ -404,7 +649,11 @@ export default function PlatformShell({ role, children, title }: ShellProps) {
             exit={{ opacity: 0 }}
             transition={{ duration: 0.18 }}
           >
-            <button className="platform-mobile-backdrop" aria-label="Close menu" onClick={() => setMobileOpen(false)} />
+            <button
+              className="platform-mobile-backdrop"
+              aria-label="Close menu"
+              onClick={() => setMobileOpen(false)}
+            />
             <motion.aside
               id="platform-mobile-sidebar"
               ref={mobileDrawerRef}
@@ -442,7 +691,9 @@ export default function PlatformShell({ role, children, title }: ShellProps) {
           </button>
 
           <div className="platform-breadcrumb">
-            <span style={{ background: meta.tint, color: meta.color }}>{meta.shortLabel}</span>
+            <span style={{ background: meta.tint, color: meta.color }}>
+              {meta.shortLabel}
+            </span>
             <strong>{title ?? meta.label}</strong>
           </div>
 
@@ -450,16 +701,21 @@ export default function PlatformShell({ role, children, title }: ShellProps) {
             <Search size={15} />
             <input
               value={query}
-              onChange={(event) => setQuery(event.target.value)}
+              onChange={event => setQuery(event.target.value)}
               placeholder={t(locale, "search")}
               aria-label="Global search"
               aria-expanded={hasSearchQuery}
               aria-controls="platform-search-results"
             />
             {hasSearchQuery ? (
-              <div className="platform-search-results" id="platform-search-results" role="listbox" aria-label="Search results">
+              <div
+                className="platform-search-results"
+                id="platform-search-results"
+                role="listbox"
+                aria-label="Search results"
+              >
                 {searchResults.length ? (
-                  searchResults.map((item) => (
+                  searchResults.map(item => (
                     <button
                       key={`${item.type}-${item.label}`}
                       onClick={() => {
@@ -471,7 +727,9 @@ export default function PlatformShell({ role, children, title }: ShellProps) {
                     </button>
                   ))
                 ) : (
-                  <div className="platform-search-empty">No matching records</div>
+                  <div className="platform-search-empty">
+                    No matching records
+                  </div>
                 )}
               </div>
             ) : null}
@@ -482,13 +740,13 @@ export default function PlatformShell({ role, children, title }: ShellProps) {
               className="platform-language"
               value={locale}
               aria-label={t(locale, "language")}
-              onChange={(event) => {
+              onChange={event => {
                 const nextLocale = event.target.value as Locale;
                 setLocale(nextLocale);
                 window.localStorage.setItem("nilelearn.locale", nextLocale);
               }}
             >
-              {localeOptions.slice(0, 4).map((option) => (
+              {localeOptions.slice(0, 4).map(option => (
                 <option key={option.value} value={option.value}>
                   {option.label}
                 </option>
@@ -501,10 +759,15 @@ export default function PlatformShell({ role, children, title }: ShellProps) {
               aria-label={t(locale, "notifications")}
               aria-expanded={notificationsOpen}
               aria-controls="platform-notifications-popover"
-              onClick={() => setNotificationsOpen((open) => !open)}
+              onClick={() => setNotificationsOpen(open => !open)}
             >
               <Bell size={17} />
-              {unreadCount ? <span className="platform-notification-dot" style={{ background: meta.accent }} /> : null}
+              {unreadCount ? (
+                <span
+                  className="platform-notification-dot"
+                  style={{ background: meta.accent }}
+                />
+              ) : null}
             </button>
 
             {notificationsOpen ? (
@@ -519,33 +782,44 @@ export default function PlatformShell({ role, children, title }: ShellProps) {
                   <strong>{t(locale, "notifications")}</strong>
                   <button
                     onClick={() => {
-                      notificationItems.forEach((notification) => platformStore.markNotificationRead(notification.id));
-                      setNotificationVersion((version) => version + 1);
+                      notificationItems.forEach(notification =>
+                        platformStore.markNotificationRead(notification.id)
+                      );
+                      setNotificationVersion(version => version + 1);
                       toast.success("Notifications marked read");
                     }}
                   >
                     {t(locale, "markRead")}
                   </button>
                 </div>
-                {notificationItems.map((item) => (
+                {notificationItems.map(item => (
                   <button
                     key={item.id}
                     className="platform-notification-item"
                     role="menuitem"
                     onClick={() => {
                       platformStore.markNotificationRead(item.id);
-                      setNotificationVersion((version) => version + 1);
+                      setNotificationVersion(version => version + 1);
                       setNotificationsOpen(false);
                       navigate(item.href);
                     }}
                   >
-                    <span style={{ background: roleMeta[role].tint, color: roleMeta[role].color }}>{item.read ? "Read" : "Unread"}</span>
+                    <span
+                      style={{
+                        background: roleMeta[role].tint,
+                        color: roleMeta[role].color,
+                      }}
+                    >
+                      {item.read ? "Read" : "Unread"}
+                    </span>
                     <strong>{item.title}</strong>
                     <small>{item.body}</small>
                   </button>
                 ))}
                 {!notificationItems.length ? (
-                  <div className="platform-notification-empty">No notifications for this role.</div>
+                  <div className="platform-notification-empty">
+                    No notifications for this role.
+                  </div>
                 ) : null}
               </div>
             ) : null}
@@ -558,13 +832,21 @@ export default function PlatformShell({ role, children, title }: ShellProps) {
                 aria-label={`${user.name} account menu`}
                 aria-expanded={accountOpen}
                 aria-controls="platform-account-menu"
-                onClick={() => setAccountOpen((open) => !open)}
+                onClick={() => setAccountOpen(open => !open)}
               >
                 <span
                   className="platform-user-avatar"
-                  style={role === "superadmin" ? { background: meta.tint, color: meta.color } : { background: meta.color }}
+                  style={
+                    role === "superadmin"
+                      ? { background: meta.tint, color: meta.color }
+                      : { background: meta.color }
+                  }
                 >
-                  {role === "superadmin" ? <ShieldCheck size={16} /> : user.avatar}
+                  {role === "superadmin" ? (
+                    <ShieldCheck size={16} />
+                  ) : (
+                    user.avatar
+                  )}
                 </span>
                 <span className="platform-user-copy">
                   <strong>{user.name}</strong>
@@ -584,20 +866,36 @@ export default function PlatformShell({ role, children, title }: ShellProps) {
                   <div className="platform-account-menu-head">
                     <span
                       className="platform-user-avatar"
-                      style={role === "superadmin" ? { background: meta.tint, color: meta.color } : { background: meta.color }}
+                      style={
+                        role === "superadmin"
+                          ? { background: meta.tint, color: meta.color }
+                          : { background: meta.color }
+                      }
                     >
-                      {role === "superadmin" ? <ShieldCheck size={16} /> : user.avatar}
+                      {role === "superadmin" ? (
+                        <ShieldCheck size={16} />
+                      ) : (
+                        user.avatar
+                      )}
                     </span>
                     <div>
                       <strong>{user.name}</strong>
                       <small>{meta.label}</small>
                     </div>
                   </div>
-                  <Link href={profileHref} className="platform-account-menu-item" role="menuitem">
+                  <Link
+                    href={profileHref}
+                    className="platform-account-menu-item"
+                    role="menuitem"
+                  >
                     <UserCircle size={15} />
                     Profile
                   </Link>
-                  <Link href="/auth/logout" className="platform-account-menu-item danger" role="menuitem">
+                  <Link
+                    href="/auth/logout"
+                    className="platform-account-menu-item danger"
+                    role="menuitem"
+                  >
                     <LogOut size={15} />
                     Sign out
                   </Link>
@@ -607,24 +905,22 @@ export default function PlatformShell({ role, children, title }: ShellProps) {
           </div>
         </motion.header>
 
-        {isDashboardRoute ? (
-          <motion.section
-            className="platform-context-quote"
-            style={{ "--role-color": meta.color, "--role-tint": meta.tint } as CSSProperties}
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.38, ease: [0.23, 1, 0.32, 1], delay: 0.08 }}
-            aria-label={`${meta.label} inspiration`}
-          >
-            <span className="platform-quote-mark" aria-hidden="true">۞</span>
-            <div>
-              <small>{inspiration.theme}</small>
-              <strong lang="ar" dir="rtl">{inspiration.arabic}</strong>
-              <p>{inspiration.meaning}</p>
-            </div>
-            <em>{inspiration.source}</em>
-          </motion.section>
-        ) : null}
+        <section
+          className="platform-context-quote platform-context-quote-a11y"
+          aria-label={`${meta.label} inspiration`}
+        >
+          <span className="platform-quote-mark" aria-hidden="true">
+            ۞
+          </span>
+          <div>
+            <small>{inspiration.theme}</small>
+            <strong lang="ar" dir="rtl">
+              {inspiration.arabic}
+            </strong>
+            <p>{inspiration.meaning}</p>
+          </div>
+          <em>{inspiration.source}</em>
+        </section>
 
         <motion.main
           key={location}

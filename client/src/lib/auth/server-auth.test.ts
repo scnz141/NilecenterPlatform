@@ -3,6 +3,7 @@ import { attachSession, endRequestSession, getRequestSession, signIn, type Serve
 import { resetDefaultSessionStore, setSessionStore, type SessionStore } from "../../../../server/sessionStore";
 
 const originalEnv = {
+  NODE_ENV: process.env.NODE_ENV,
   DEMO_AUTH_ENABLED: process.env.DEMO_AUTH_ENABLED,
   VITE_DEMO_AUTH_ENABLED: process.env.VITE_DEMO_AUTH_ENABLED,
   NILE_DEMO_PASSWORD: process.env.NILE_DEMO_PASSWORD,
@@ -14,6 +15,11 @@ const originalEnv = {
 };
 
 afterEach(() => {
+  if (originalEnv.NODE_ENV === undefined) {
+    delete process.env.NODE_ENV;
+  } else {
+    process.env.NODE_ENV = originalEnv.NODE_ENV;
+  }
   process.env.DEMO_AUTH_ENABLED = originalEnv.DEMO_AUTH_ENABLED;
   process.env.VITE_DEMO_AUTH_ENABLED = originalEnv.VITE_DEMO_AUTH_ENABLED;
   process.env.NILE_DEMO_PASSWORD = originalEnv.NILE_DEMO_PASSWORD;
@@ -55,6 +61,22 @@ describe("server demo auth", () => {
     const session = await signIn("teacher.demo@nilelearn.local", "demo1234", "teacher");
     expect(session.provider).toBe("demo");
     expect(session.activeRole).toBe("teacher");
+  });
+
+  it("keeps demo auth disabled by default in production unless explicitly enabled", async () => {
+    useDemoOnlyAuth();
+    process.env.NODE_ENV = "production";
+    delete process.env.DEMO_AUTH_ENABLED;
+    delete process.env.VITE_DEMO_AUTH_ENABLED;
+    process.env.NILE_DEMO_PASSWORD = "12345";
+
+    await expect(signIn("s@nl.test", "12345", "student")).rejects.toThrow("Invalid email, password, or role.");
+
+    process.env.DEMO_AUTH_ENABLED = "true";
+    const session = await signIn("s@nl.test", "12345", "student");
+
+    expect(session.provider).toBe("demo");
+    expect(session.activeRole).toBe("student");
   });
 });
 
@@ -140,6 +162,37 @@ describe("server session store", () => {
     expect(headers.get("Set-Cookie")).toContain("Max-Age=0");
 
     restoreStore();
+  });
+
+  it("sets production cookies with secure HttpOnly session attributes", () => {
+    process.env.NODE_ENV = "production";
+    const { headers, response } = responseRecorder();
+
+    attachSession(response, testSession());
+    const cookie = headers.get("Set-Cookie") ?? "";
+
+    expect(cookie).toContain("nilelearn_session=sess_test_1");
+    expect(cookie).toContain("Path=/");
+    expect(cookie).toContain("Max-Age=43200");
+    expect(cookie).toContain("HttpOnly");
+    expect(cookie).toContain("SameSite=Lax");
+    expect(cookie).toContain("Secure");
+
+    endRequestSession(requestWithCookie("nilelearn_session=sess_test_1"), response);
+
+    expect(headers.get("Set-Cookie")).toContain("Max-Age=0");
+    expect(headers.get("Set-Cookie")).toContain("Secure");
+  });
+
+  it("keeps local development cookies non-secure for localhost testing", () => {
+    process.env.NODE_ENV = "test";
+    const { headers, response } = responseRecorder();
+
+    attachSession(response, testSession());
+
+    expect(headers.get("Set-Cookie")).toContain("HttpOnly");
+    expect(headers.get("Set-Cookie")).toContain("SameSite=Lax");
+    expect(headers.get("Set-Cookie")).not.toContain("Secure");
   });
 
   it("deletes expired sessions from the configured server store", () => {

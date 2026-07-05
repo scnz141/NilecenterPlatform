@@ -615,23 +615,23 @@ export const dashboardByRole: Record<Role, {
   },
   superadmin: {
     title: "Platform administration",
-    subtitle: "Global users, roles, branches, integrations, and system activity.",
+    subtitle: "Global users, roles, branches, connections, and system activity.",
     stats: [
       { label: "Total users", value: "6,412", change: "+3.2%", tone: "teal" },
       { label: "Active students", value: "5,284", change: "+12%", tone: "green" },
       { label: "Active classes", value: "318", change: "26 live today", tone: "amber" },
-      { label: "System health", value: "99.9%", change: "All checks passing", tone: "purple" },
+      { label: "Health", value: "99.9%", change: "All checks passing", tone: "purple" },
     ],
     spotlight: {
-      title: "Integration readiness",
+      title: "Connections",
       description: "Moodle, EMS, email, WhatsApp, meeting, and payment providers are configured as placeholders.",
       progress: 66,
-      action: "Open integrations",
+      action: "Open connections",
     },
-    actions: ["Create user", "Manage roles", "Review audit logs", "System health"],
+    actions: ["Create user", "Manage roles", "Review activity", "Health"],
     records: [
-      record("audit_1", "Role changed", "Teacher Demo assigned to Arabic Dept.", "Audited", "Admin Demo", "Today", "RBAC", "teal"),
-      record("integration_moodle", "Moodle connector", "Mock mode until token is configured", "Placeholder", "System", "Now", "Ready", "amber"),
+      record("audit_1", "Role changed", "Teacher Demo assigned to Arabic Dept.", "Audited", "Admin Demo", "Today", "Roles & access", "teal"),
+      record("integration_moodle", "Moodle connector", "Test mode until token is configured", "Placeholder", "System", "Now", "Ready", "amber"),
       record("branch_report", "Branch comparison", "Cairo B1 outpacing Alexandria", "Report", "Analytics", "Jun 26", "+9%", "green"),
     ],
   },
@@ -950,7 +950,7 @@ const pageCopy: Record<string, { title: string; description: string; kind: PageC
   },
   "application-detail": {
     title: "Application detail",
-    description: "Application file, branch scope, course interest, communication log, enrollment handoff, and audit trail.",
+    description: "Application file, branch access, course interest, communication log, enrollment handoff, and activity.",
     kind: "detail",
     action: "Prepare enrollment",
   },
@@ -1046,21 +1046,21 @@ const pageCopy: Record<string, { title: string; description: string; kind: PageC
   },
   "user-detail": {
     title: "User detail",
-    description: "Account profile, role assignment, activity history, security placeholders, and audit trail.",
+    description: "Account profile, role assignment, activity history, and security placeholders.",
     kind: "detail",
     action: "Update user",
   },
   roles: {
-    title: "Roles",
-    description: "Role descriptions, permission matrix, assignments, and future finance/support/content/guardian roles.",
+    title: "Roles & access",
+    description: "Role descriptions, access rules, assignments, and future finance/support/content/guardian roles.",
     kind: "settings",
     action: "Save roles",
   },
   permissions: {
-    title: "Permissions",
-    description: "Permission registry grouped by module with read, create, update, delete, and export capabilities.",
+    title: "Access rules",
+    description: "Access rule registry grouped by module with read, create, update, delete, and export capabilities.",
     kind: "settings",
-    action: "Update permissions",
+    action: "Update access rules",
   },
   branches: {
     title: "Branches",
@@ -1069,19 +1069,19 @@ const pageCopy: Record<string, { title: string; description: string; kind: PageC
     action: "Add branch",
   },
   integrations: {
-    title: "Integrations",
+    title: "Connections",
     description: "Moodle, EMS, email, WhatsApp, meeting, payment, Jotform, and import connector placeholders.",
     kind: "settings",
-    action: "Save integration",
+    action: "Save connection",
   },
   "audit-logs": {
-    title: "Audit logs",
+    title: "Activity log",
     description: "Actor, action, entity, timestamp, before and after summaries, filters, and export placeholder.",
     kind: "report",
     action: "Export logs",
   },
   "system-health": {
-    title: "System health",
+    title: "Health",
     description: "Application, database, queue, integration, and job status placeholders with operational signals.",
     kind: "report",
     action: "Run checks",
@@ -1179,7 +1179,7 @@ function buildStats(role: Role, pageId: string, kind: PageConfig["kind"]): Stat[
       { label: "App status", value: "Healthy", change: "Build ready", tone: "green" },
       { label: "Database", value: "Mock", change: "Postgres schema planned", tone: "amber" },
       { label: "Queue", value: "Idle", change: "Placeholder", tone: "teal" },
-      { label: "Integrations", value: "6", change: "Mock mode", tone: "purple" },
+      { label: "Connections", value: "6", change: "Test mode", tone: "purple" },
     ];
   }
   if (kind === "attendance") {
@@ -1284,8 +1284,8 @@ function buildRecords(role: Role, pageId: string): RecordItem[] {
       record("room_online", "Online room A", "Meeting provider placeholder", "Active", "System", "Now", "38 live", "teal"),
     ],
     integrations: [
-      record("moodle", "Moodle LMS", "MOODLE_BASE_URL, MOODLE_SERVICE, MOODLE_TOKEN", "Mock mode", "Platform", "Now", "Configured later", "amber"),
-      record("ems", "EMS portal", "EMS_BASE_URL placeholder", "Mock mode", "Platform", "Now", "Mapper ready", "teal"),
+      record("moodle", "Moodle LMS", "MOODLE_BASE_URL, MOODLE_SERVICE, MOODLE_TOKEN", "Test mode", "Platform", "Now", "Configured later", "amber"),
+      record("ems", "EMS portal", "EMS_BASE_URL placeholder", "Test mode", "Platform", "Now", "Mapper ready", "teal"),
       record("whatsapp", "WhatsApp provider", "Template logs only", "Placeholder", "Platform", "Future", "No sending", "purple"),
     ],
     "moodle-source": [

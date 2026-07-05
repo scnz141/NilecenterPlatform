@@ -14,7 +14,10 @@ const baseUrl = process.env.QA_BASE_URL || "http://localhost:3001";
 const session = process.env.QA_SESSION || `nile-portals-qa-${process.pid}`;
 const password = process.env.NILE_DEMO_PASSWORD || "12345";
 const commandTimeoutMs = readPositiveIntegerEnv("QA_COMMAND_TIMEOUT_MS", 45000);
-const routeReadyTimeoutMs = readPositiveIntegerEnv("QA_ROUTE_READY_TIMEOUT_MS", 5000);
+const routeReadyTimeoutMs = readPositiveIntegerEnv(
+  "QA_ROUTE_READY_TIMEOUT_MS",
+  5000
+);
 const routeMatrixRouteTimeoutMs = readPositiveIntegerEnv(
   "QA_ROUTE_MATRIX_ROUTE_TIMEOUT_MS",
   3000
@@ -29,9 +32,10 @@ const workflowReadyTimeoutMs = readPositiveIntegerEnv(
 );
 const maxRunMs = readPositiveIntegerEnv(
   "QA_SUITE_TIMEOUT_MS",
-  readPositiveIntegerEnv("QA_MAX_RUN_MS", 15 * 60 * 1000)
+  readPositiveIntegerEnv("QA_MAX_RUN_MS", 20 * 60 * 1000)
 );
-const workflowNameFilter = process.env.QA_ONLY_WORKFLOWS?.trim().toLowerCase() || "";
+const workflowNameFilter =
+  process.env.QA_ONLY_WORKFLOWS?.trim().toLowerCase() || "";
 const pwcli =
   process.env.PWCLI ||
   path.join(
@@ -249,8 +253,12 @@ function recordProgress(stage, details = {}) {
   const event = { stage, elapsedMs: elapsedMs(), ...details };
   progressEvents.push(event);
   const seconds = Math.round(event.elapsedMs / 1000);
-  const suffix = lastBrowserCommand?.label ? ` last="${lastBrowserCommand.label}"` : "";
-  console.error(`[portal-qa ${seconds}s] ${stage} checks=${checks.length} failures=${failures.length}${suffix}`);
+  const suffix = lastBrowserCommand?.label
+    ? ` last="${lastBrowserCommand.label}"`
+    : "";
+  console.error(
+    `[portal-qa ${seconds}s] ${stage} checks=${checks.length} failures=${failures.length}${suffix}`
+  );
   writeSummary({ inProgress: true });
 }
 
@@ -309,7 +317,8 @@ function truncateOutput(value, limit = 1000) {
 function commandLabel(command, args, options) {
   if (options.label) return options.label;
   const firstArg = args[0] ? String(args[0]) : "";
-  const preview = firstArg.length > 120 ? `${firstArg.slice(0, 120)}...` : firstArg;
+  const preview =
+    firstArg.length > 120 ? `${firstArg.slice(0, 120)}...` : firstArg;
   return preview ? `${command} ${preview}` : command;
 }
 
@@ -338,14 +347,16 @@ async function runPw(command, args = [], options = {}) {
   child.stderr?.setEncoding("utf8");
   child.stdout?.on("data", chunk => {
     stdout += chunk;
-    if (stdout.length > 1024 * 1024 * 4) stdout = stdout.slice(-1024 * 1024 * 4);
+    if (stdout.length > 1024 * 1024 * 4)
+      stdout = stdout.slice(-1024 * 1024 * 4);
   });
   child.stderr?.on("data", chunk => {
     stderr += chunk;
-    if (stderr.length > 1024 * 1024 * 4) stderr = stderr.slice(-1024 * 1024 * 4);
+    if (stderr.length > 1024 * 1024 * 4)
+      stderr = stderr.slice(-1024 * 1024 * 4);
   });
 
-  const killTree = (signal) => {
+  const killTree = signal => {
     try {
       if (child.pid) process.kill(-child.pid, signal);
     } catch {
@@ -363,7 +374,7 @@ async function runPw(command, args = [], options = {}) {
   const status = await new Promise((resolve, reject) => {
     let settled = false;
     let killTimer = null;
-    const finish = (code) => {
+    const finish = code => {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
@@ -402,7 +413,15 @@ async function runPw(command, args = [], options = {}) {
 
   const durationMs = Date.now() - startedAt;
   const output = `${stdout}${stderr}`;
-  lastBrowserCommand = { command, label, timeoutMs, durationMs, timedOut, killEscalated, pid: child.pid };
+  lastBrowserCommand = {
+    command,
+    label,
+    timeoutMs,
+    durationMs,
+    timedOut,
+    killEscalated,
+    pid: child.pid,
+  };
   if (timedOut) {
     throw new Error(
       `playwright ${label} timed out after ${timeoutMs}ms: ${truncateOutput(output, 1200)}`
@@ -1140,8 +1159,7 @@ const deepWorkflowCases = [
       };
     `),
     predicate: value =>
-      value?.ok &&
-      value?.afterProgress > value?.beforeProgress,
+      value?.ok && value?.afterProgress > value?.beforeProgress,
   },
   {
     name: "student assignment workflow submits edited response",
@@ -1170,9 +1188,7 @@ const deepWorkflowCases = [
         lastAudit: state?.auditLogs?.[0]?.action
       };
     `),
-    predicate: value =>
-      value?.ok &&
-      value?.response?.startsWith("QA response"),
+    predicate: value => value?.ok && value?.response?.startsWith("QA response"),
   },
   {
     name: "student manual quiz workflow creates pending review attempt",
@@ -1519,7 +1535,8 @@ const deepWorkflowCases = [
     predicate: value =>
       value?.ok &&
       value?.published === value?.expectedPublished &&
-      (value?.lastAudit === "material.published" || value?.lastAudit === "material.unpublished") &&
+      (value?.lastAudit === "material.published" ||
+        value?.lastAudit === "material.unpublished") &&
       value?.actorId === "usr_teacher_demo",
   },
   {
@@ -2066,10 +2083,10 @@ const deepWorkflowCases = [
       value?.sessionAttendanceSaved === false &&
       value?.runTeacherId === "usr_teacher_demo" &&
       value?.runBranchId === value?.actorBranchId &&
-      (
-        (value?.eventStatus === "active" && value?.lastAudit === "calendar.created") ||
-        (value?.eventStatus === "pending" && value?.lastAudit === "calendar.created_with_conflict")
-      ),
+      ((value?.eventStatus === "active" &&
+        value?.lastAudit === "calendar.created") ||
+        (value?.eventStatus === "pending" &&
+          value?.lastAudit === "calendar.created_with_conflict")),
   },
   {
     name: "registrar scheduling workflow creates placement calendar event",
@@ -2399,11 +2416,10 @@ const deepWorkflowCases = [
     predicate: value =>
       value?.ok &&
       value?.beforeStatus === "pending_approval" &&
-      (
-        value?.supportsIssueControl === false ||
+      (value?.supportsIssueControl === false ||
         value?.issueDisabled === true ||
-        (value?.afterStatus !== "issued" && value?.issuedAuditForCertificate === false)
-      ),
+        (value?.afterStatus !== "issued" &&
+          value?.issuedAuditForCertificate === false)),
   },
   {
     name: "HOD certificate workflow approves and issues certificate",
@@ -2459,9 +2475,7 @@ const deepWorkflowCases = [
         lastAudit: state?.auditLogs?.[0]?.action
       };
     `),
-    predicate: value =>
-      value?.ok &&
-      value?.status === "issued",
+    predicate: value => value?.ok && value?.status === "issued",
   },
   {
     name: "HOD certificate workflow rejects with audit reason",
@@ -2723,8 +2737,7 @@ const deepWorkflowCases = [
       };
     `),
     predicate: value =>
-      value?.ok &&
-      value?.messageSubject === value?.logSubject,
+      value?.ok && value?.messageSubject === value?.logSubject,
   },
   {
     name: "registrar lead intake creates server-backed lead",
@@ -3173,7 +3186,7 @@ const deepWorkflowCases = [
   {
     name: "admin user workflow creates staff account",
     role: "superadmin",
-    route: "/app/admin/users",
+    route: "/app/admin/users/new",
     source: workflowActionSource(`
       const form = await waitFor(() => document.querySelector(".admin-access-guided-form"));
       const setFormLabel = (label, value) => {
@@ -3187,15 +3200,15 @@ const deepWorkflowCases = [
       const stamp = Date.now();
       const fullName = "QA Registrar Staff " + stamp;
       const email = "qa.registrar.staff." + stamp + "@nilelearn.local";
+      await clickButtonWithin(".admin-users-role-grid", "Registrar");
+      await clickButton("Continue");
       setFormLabel("Full name", fullName);
       setFormLabel("Email", email);
       setFormLabel("Phone / WhatsApp", "+20 100 000 0303");
-      setFormLabel("Role", "registrar");
-      await waitFor(() => normalize(document.body.textContent).includes("Operational profile"));
+      await clickButton("Continue");
       setFormLabel("Branch", "br_cairo");
-      setFormLabel("Department", "dep_admissions");
       setFormLabel("Permission scope", "admissions");
-      setFormLabel("Operational scope", "leads, placement, enrollments");
+      await clickButton("Continue");
       await clickButton("Create connected account");
       const createdState = await waitFor(() => {
         const next = readState();
@@ -3204,6 +3217,7 @@ const deepWorkflowCases = [
         return user && profile ? next : null;
       }, 4000);
       if (!createdState) throw new Error("Staff account was not created");
+      await waitFor(() => document.querySelector(".admin-access-panel.selected-user"));
       await clickButtonWithin(".admin-access-panel.selected-user", "Pause");
       const state = await waitFor(() => {
         const next = readState();
@@ -3264,7 +3278,7 @@ const deepWorkflowCases = [
   {
     name: "admin teacher assignment workflow reassigns isolated course run",
     role: "superadmin",
-    route: "/app/admin/users",
+    route: "/app/admin/users/usr_teacher_spare",
     setupSource: workflowSetupSource(`
       const state = readState();
       return {
@@ -3277,13 +3291,7 @@ const deepWorkflowCases = [
       };
     `),
     source: workflowActionSource(`
-      const userButton = await waitFor(() =>
-        Array.from(document.querySelectorAll(".admin-access-user-list button"))
-          .find((button) => normalize(button.textContent).includes("Teacher Spare")),
-        4000
-      );
-      if (!userButton) throw new Error("QA teacher row was not rendered");
-      userButton.click();
+      await clickButtonWithin(".admin-user-detail-tabs", "Related records");
       await waitFor(() => normalize(document.body.textContent).includes("Course run assignment"));
       const form = document.querySelector(".admin-access-teacher-assignment-form");
       if (!form) throw new Error("Teacher assignment form was not rendered");
@@ -3330,7 +3338,8 @@ const deepWorkflowCases = [
       value?.teacherSpecialties?.includes("QA reassignment") &&
       value?.availabilityCount === 2 &&
       value?.auditAction === "teacher.assigned" &&
-      (value?.auditSummary?.includes("reassigned from Teacher Demo") || value?.auditSummary?.includes("Teacher Spare assigned")) &&
+      (value?.auditSummary?.includes("reassigned from Teacher Demo") ||
+        value?.auditSummary?.includes("Teacher Spare assigned")) &&
       value?.auditActorId === "usr_admin_demo",
   },
   {
@@ -3603,12 +3612,15 @@ try {
   await runPw("open", [`${baseUrl}/auth/login`]);
 
   if (workflowNameFilter) {
-    const selectedWorkflows = deepWorkflowCases.filter((workflow) =>
+    const selectedWorkflows = deepWorkflowCases.filter(workflow =>
       workflow.name.toLowerCase().includes(workflowNameFilter)
     );
     await assertCheck(
       `workflow filter "${workflowNameFilter}" matched cases`,
-      { count: selectedWorkflows.length, names: selectedWorkflows.map((workflow) => workflow.name) },
+      {
+        count: selectedWorkflows.length,
+        names: selectedWorkflows.map(workflow => workflow.name),
+      },
       value => value?.count > 0
     );
     for (const workflow of selectedWorkflows) {
@@ -3692,7 +3704,10 @@ try {
   for (const role of roles) {
     recordProgress(`desktop role: ${role.role}`);
     assertRunBudget(`checking desktop role ${role.role}`);
-    const loginOk = await authenticateRole(role, `${role.role} login API succeeds`);
+    const loginOk = await authenticateRole(
+      role,
+      `${role.role} login API succeeds`
+    );
     if (!loginOk) continue;
 
     await goto(role.dashboard);
@@ -3791,7 +3806,10 @@ try {
     recordProgress(`mobile role: ${role.role}`);
     assertRunBudget(`checking mobile role ${role.role}`);
     await runPw("resize", ["390", "844"]);
-    const mobileLoginOk = await authenticateRole(role, `${role.role} mobile login API succeeds`);
+    const mobileLoginOk = await authenticateRole(
+      role,
+      `${role.role} mobile login API succeeds`
+    );
     if (!mobileLoginOk) continue;
     await goto(role.dashboard);
     const mobile = await pageEval(inspectSource(role.dashboard));
@@ -3860,7 +3878,7 @@ try {
   if (error instanceof Error && error.message === "__QA_FILTER_COMPLETE__") {
     // Focused workflow mode completed successfully.
   } else {
-  pushFatal("portal QA runner fatal error", error);
+    pushFatal("portal QA runner fatal error", error);
   }
 } finally {
   writeSummary({ beforeBrowserClose: true });

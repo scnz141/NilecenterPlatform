@@ -79,15 +79,18 @@ function parseCookies(req: SessionCookieRequest) {
 }
 
 function writeSessionCookie(res: SessionCookieResponse, sessionId: string) {
-  const secure = process.env.NODE_ENV === "production" ? "; Secure" : "";
   res.setHeader(
     "Set-Cookie",
-    `${COOKIE_NAME}=${encodeURIComponent(sessionId)}; Path=/; Max-Age=${Math.floor(SESSION_TTL_MS / 1000)}; HttpOnly; SameSite=Lax${secure}`,
+    `${COOKIE_NAME}=${encodeURIComponent(sessionId)}; Path=/; Max-Age=${Math.floor(SESSION_TTL_MS / 1000)}; HttpOnly; SameSite=Lax${secureCookieAttribute()}`,
   );
 }
 
+function secureCookieAttribute() {
+  return process.env.NODE_ENV === "production" ? "; Secure" : "";
+}
+
 export function clearSessionCookie(res: SessionCookieResponse) {
-  res.setHeader("Set-Cookie", `${COOKIE_NAME}=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax`);
+  res.setHeader("Set-Cookie", `${COOKIE_NAME}=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax${secureCookieAttribute()}`);
 }
 
 function createSession(input: Omit<ServerSession, "id" | "createdAt" | "expiresAt">) {
