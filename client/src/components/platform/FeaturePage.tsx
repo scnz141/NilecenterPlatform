@@ -218,6 +218,19 @@ export default function FeaturePage({
     );
   }
 
+  if (role === "teacher" && config.kind === "quran") {
+    return (
+      <PlatformShell role={role} title={config.title}>
+        <StatefulWorkflowExperience
+          config={config}
+          role={role}
+          pageId={pageId}
+          params={params}
+        />
+      </PlatformShell>
+    );
+  }
+
   if (
     role === "headofdepartment" &&
     (pageId === "reports" || pageId === "assessments")

@@ -3,11 +3,20 @@ import { ArrowRight, Building2, CheckCircle2, Search } from "lucide-react";
 import { Link } from "wouter";
 import PlatformShell from "@/components/platform/PlatformShell";
 import { WorkspaceLayout } from "@/components/platform/PlatformLayouts";
-import { DataTableCard, StatusBadge } from "@/components/platform/PlatformPrimitives";
+import {
+  DataTableCard,
+  StatusBadge,
+} from "@/components/platform/PlatformPrimitives";
 import { runPlatformWorkflowActionRequest } from "@/lib/backend/api";
 import { platformStore } from "@/lib/domain/store";
 import type { EntityStatus } from "@/lib/domain/types";
-import { getPageConfig, roleMeta, roleOrder, rolePermissions, type Role } from "@/lib/platformData";
+import {
+  getPageConfig,
+  roleMeta,
+  roleOrder,
+  rolePermissions,
+  type Role,
+} from "@/lib/platformData";
 
 type SimplePortalPageProps = {
   role: Role;
@@ -44,9 +53,33 @@ function formatDate(value?: string) {
 
 function statusTone(status: string): "green" | "amber" | "red" | "slate" {
   const normalized = status.toLowerCase();
-  if (["active", "paid", "approved", "issued", "completed", "present"].includes(normalized)) return "green";
-  if (["pending", "draft", "ready_to_enroll", "placement_booked", "issued"].includes(normalized)) return "amber";
-  if (["overdue", "rejected", "paused", "cancelled", "revoked", "absent"].includes(normalized)) return "red";
+  if (
+    ["active", "paid", "approved", "issued", "completed", "present"].includes(
+      normalized
+    )
+  )
+    return "green";
+  if (
+    [
+      "pending",
+      "draft",
+      "ready_to_enroll",
+      "placement_booked",
+      "issued",
+    ].includes(normalized)
+  )
+    return "amber";
+  if (
+    [
+      "overdue",
+      "rejected",
+      "paused",
+      "cancelled",
+      "revoked",
+      "absent",
+    ].includes(normalized)
+  )
+    return "red";
   return "slate";
 }
 
@@ -72,19 +105,26 @@ function primaryActionFor(role: Role, pageId: string) {
   if (pageId === "classes") return "Create class";
   if (pageId === "rooms") return "Create room";
   if (pageId === "payments") return "Record payment";
-  if (["departments", "programs", "courses", "levels"].includes(pageId)) return "Add item";
+  if (["departments", "programs", "courses", "levels"].includes(pageId))
+    return "Add item";
   return "Create";
 }
 
 function subtitleFor(role: Role, pageId: string, fallback: string) {
-  if (role === "student" && pageId === "courses") return "Find your courses and continue the next lesson.";
-  if (role === "student" && pageId === "assignments") return "Find assigned work and open what needs attention.";
-  if (role === "student" && pageId === "quizzes") return "Find quizzes and review your attempts.";
-  if (role === "student" && pageId === "calendar") return "See upcoming classes, due dates, and events.";
-  if (pageId === "branches") return "Find branches and review their local operations.";
+  if (role === "student" && pageId === "courses")
+    return "Find your courses and continue the next lesson.";
+  if (role === "student" && pageId === "assignments")
+    return "Find assigned work and open what needs attention.";
+  if (role === "student" && pageId === "quizzes")
+    return "Find quizzes and review your attempts.";
+  if (role === "student" && pageId === "calendar")
+    return "See upcoming classes, due dates, and events.";
+  if (pageId === "branches")
+    return "Find branches and review their local operations.";
   if (pageId === "certificates") return "Find issued and pending certificates.";
   if (pageId === "permissions") return "Review access rules by role.";
-  if (pageId === "departments") return "Find departments and their academic owners.";
+  if (pageId === "departments")
+    return "Find departments and their academic owners.";
   if (pageId === "programs") return "Find programs and their course groups.";
   if (pageId === "teachers") return "Find teachers and their assigned work.";
   if (pageId === "classes") return "Find classes and open the right workspace.";
@@ -98,13 +138,15 @@ function buildRows(role: Role, pageId: string): SimpleRow[] {
   const branchName = (branchId?: string) =>
     state.branches.find(branch => branch.id === branchId)?.name ?? "No branch";
   const departmentName = (departmentId?: string) =>
-    state.departments.find(department => department.id === departmentId)?.name ?? "No department";
+    state.departments.find(department => department.id === departmentId)
+      ?.name ?? "No department";
   const userName = (userId?: string) =>
     state.users.find(user => user.id === userId)?.name ?? "Unassigned";
   const courseTitle = (courseId?: string) =>
     state.courses.find(course => course.id === courseId)?.title ?? "Course";
   const className = (classGroupId?: string) =>
-    state.classGroups.find(group => group.id === classGroupId)?.name ?? "No class";
+    state.classGroups.find(group => group.id === classGroupId)?.name ??
+    "No class";
 
   if (pageId === "courses") {
     return state.courses.map(course => {
@@ -117,15 +159,20 @@ function buildRows(role: Role, pageId: string): SimpleRow[] {
         meta: level?.title ?? "Level not set",
         status: course.status,
         metric: `${state.modules.filter(module => module.courseId === course.id).length} modules`,
-        href: role === "student" ? `${basePath}/courses/${course.id}` : undefined,
+        href:
+          role === "student" ? `${basePath}/courses/${course.id}` : undefined,
       };
     });
   }
 
   if (pageId === "assignments") {
     return state.assignments.map(assignment => {
-      const run = state.courseRuns.find(item => item.id === assignment.courseRunId);
-      const submissions = state.assignmentSubmissions.filter(item => item.assignmentId === assignment.id);
+      const run = state.courseRuns.find(
+        item => item.id === assignment.courseRunId
+      );
+      const submissions = state.assignmentSubmissions.filter(
+        item => item.assignmentId === assignment.id
+      );
       return {
         id: assignment.id,
         title: assignment.title,
@@ -133,7 +180,10 @@ function buildRows(role: Role, pageId: string): SimpleRow[] {
         meta: `Due ${formatDate(assignment.dueAt)}`,
         status: assignment.status,
         metric: `${submissions.length} submissions`,
-        href: role === "student" ? `${basePath}/assignments/${assignment.id}` : undefined,
+        href:
+          role === "student"
+            ? `${basePath}/assignments/${assignment.id}`
+            : undefined,
       };
     });
   }
@@ -141,7 +191,9 @@ function buildRows(role: Role, pageId: string): SimpleRow[] {
   if (pageId === "quizzes") {
     return state.quizzes.map(quiz => {
       const run = state.courseRuns.find(item => item.id === quiz.courseRunId);
-      const attempts = state.quizAttempts.filter(item => item.quizId === quiz.id);
+      const attempts = state.quizAttempts.filter(
+        item => item.quizId === quiz.id
+      );
       return {
         id: quiz.id,
         title: quiz.title,
@@ -158,8 +210,12 @@ function buildRows(role: Role, pageId: string): SimpleRow[] {
     return state.grades.map(grade => ({
       id: grade.id,
       title: grade.itemTitle,
-      subtitle: userName(state.students.find(student => student.id === grade.studentId)?.userId),
-      meta: courseTitle(state.courseRuns.find(run => run.id === grade.courseRunId)?.courseId),
+      subtitle: userName(
+        state.students.find(student => student.id === grade.studentId)?.userId
+      ),
+      meta: courseTitle(
+        state.courseRuns.find(run => run.id === grade.courseRunId)?.courseId
+      ),
       status: grade.score >= grade.maxScore * 0.8 ? "strong" : "review",
       metric: `${grade.score}/${grade.maxScore}`,
     }));
@@ -168,9 +224,13 @@ function buildRows(role: Role, pageId: string): SimpleRow[] {
   if (pageId === "attendance") {
     return state.attendance.map(record => ({
       id: record.id,
-      title: userName(state.students.find(student => student.id === record.studentId)?.userId),
+      title: userName(
+        state.students.find(student => student.id === record.studentId)?.userId
+      ),
       subtitle: className(record.classGroupId),
-      meta: state.classSessions.find(session => session.id === record.sessionId)?.title ?? "Session",
+      meta:
+        state.classSessions.find(session => session.id === record.sessionId)
+          ?.title ?? "Session",
       status: record.status,
       metric: record.notes ?? "Recorded",
     }));
@@ -190,15 +250,24 @@ function buildRows(role: Role, pageId: string): SimpleRow[] {
   if (pageId === "students") {
     return state.students.map(student => {
       const user = state.users.find(item => item.id === student.userId);
-      const enrollment = state.enrollments.find(item => item.studentId === student.id);
+      const enrollment = state.enrollments.find(
+        item => item.studentId === student.id
+      );
       return {
         id: student.id,
         title: user?.name ?? "Student",
         subtitle: user?.email ?? student.country,
-        meta: enrollment ? className(enrollment.classGroupId) : student.currentLevel ?? "No class",
+        meta: enrollment
+          ? className(enrollment.classGroupId)
+          : (student.currentLevel ?? "No class"),
         status: student.status,
-        metric: enrollment ? `${enrollment.progress}% progress` : humanize(student.source),
-        href: role === "registrar" ? `${basePath}/students/${student.id}` : undefined,
+        metric: enrollment
+          ? `${enrollment.progress}% progress`
+          : humanize(student.source),
+        href:
+          role === "registrar"
+            ? `${basePath}/students/${student.id}`
+            : undefined,
       };
     });
   }
@@ -270,8 +339,14 @@ function buildRows(role: Role, pageId: string): SimpleRow[] {
   if (pageId === "enrollments") {
     return state.enrollments.map(enrollment => ({
       id: enrollment.id,
-      title: userName(state.students.find(student => student.id === enrollment.studentId)?.userId),
-      subtitle: courseTitle(state.courseRuns.find(run => run.id === enrollment.courseRunId)?.courseId),
+      title: userName(
+        state.students.find(student => student.id === enrollment.studentId)
+          ?.userId
+      ),
+      subtitle: courseTitle(
+        state.courseRuns.find(run => run.id === enrollment.courseRunId)
+          ?.courseId
+      ),
       meta: className(enrollment.classGroupId),
       status: enrollment.status,
       metric: `${enrollment.progress}% progress`,
@@ -280,10 +355,15 @@ function buildRows(role: Role, pageId: string): SimpleRow[] {
 
   if (pageId === "payments") {
     return state.invoices.map(invoice => {
-      const payment = state.payments.find(item => item.invoiceId === invoice.id);
+      const payment = state.payments.find(
+        item => item.invoiceId === invoice.id
+      );
       return {
         id: invoice.id,
-        title: userName(state.students.find(student => student.id === invoice.studentId)?.userId),
+        title: userName(
+          state.students.find(student => student.id === invoice.studentId)
+            ?.userId
+        ),
         subtitle: `${invoice.currency} ${invoice.amount.toLocaleString()}`,
         meta: `Due ${formatDate(invoice.dueAt)}`,
         status: payment?.status ?? invoice.status,
@@ -330,7 +410,8 @@ function buildRows(role: Role, pageId: string): SimpleRow[] {
       id: role,
       title: roleMeta[role].label,
       subtitle: "Access rules",
-      meta: role === "superadmin" ? "All workspaces" : roleMeta[role].branchLabel,
+      meta:
+        role === "superadmin" ? "All workspaces" : roleMeta[role].branchLabel,
       status: "active",
       metric: `${rolePermissions[role].length} rules`,
     }));
@@ -351,7 +432,9 @@ function buildRows(role: Role, pageId: string): SimpleRow[] {
     return state.levels.map(level => ({
       id: level.id,
       title: level.title,
-      subtitle: state.programs.find(program => program.id === level.programId)?.title ?? "Program",
+      subtitle:
+        state.programs.find(program => program.id === level.programId)?.title ??
+        "Program",
       meta: `Level ${level.order}`,
       status: "active",
       metric: `${level.completionRules.length} rules`,
@@ -396,7 +479,10 @@ function buildRows(role: Role, pageId: string): SimpleRow[] {
   if (pageId === "certificates") {
     return state.certificates.map(certificate => ({
       id: certificate.id,
-      title: userName(state.students.find(student => student.id === certificate.studentId)?.userId),
+      title: userName(
+        state.students.find(student => student.id === certificate.studentId)
+          ?.userId
+      ),
       subtitle: courseTitle(certificate.courseId),
       meta: certificate.verificationCode,
       status: certificate.status,
@@ -429,8 +515,12 @@ function AdminBranchesPage() {
   } | null>(null);
   const state = useMemo(() => platformStore.getState(), [version]);
   const rows = state.branches.map(branch => {
-    const userCount = state.users.filter(user => user.branchId === branch.id).length;
-    const roomCount = state.rooms.filter(room => room.branchId === branch.id).length;
+    const userCount = state.users.filter(
+      user => user.branchId === branch.id
+    ).length;
+    const roomCount = state.rooms.filter(
+      room => room.branchId === branch.id
+    ).length;
     const classCount = state.classGroups.filter(group => {
       const run = state.courseRuns.find(item => item.id === group.courseRunId);
       return run?.branchId === branch.id;
@@ -440,21 +530,32 @@ function AdminBranchesPage() {
       userCount,
       roomCount,
       classCount,
-      searchText: `${branch.name} ${branch.code} ${branch.address} ${branch.timezone} ${branch.status} ${userCount} ${classCount}`.toLowerCase(),
+      searchText:
+        `${branch.name} ${branch.code} ${branch.address} ${branch.timezone} ${branch.status} ${userCount} ${classCount}`.toLowerCase(),
     };
   });
-  const statuses = Array.from(new Set(rows.map(row => row.branch.status))).filter(Boolean);
+  const statuses = Array.from(
+    new Set(rows.map(row => row.branch.status))
+  ).filter(Boolean);
   const filteredRows = rows.filter(row => {
-    const matchesQuery = !query.trim() || row.searchText.includes(query.trim().toLowerCase());
+    const matchesQuery =
+      !query.trim() || row.searchText.includes(query.trim().toLowerCase());
     const matchesStatus = status === "all" || row.branch.status === status;
     return matchesQuery && matchesStatus;
   });
-  const activeCount = state.branches.filter(branch => branch.status === "active").length;
+  const activeCount = state.branches.filter(
+    branch => branch.status === "active"
+  ).length;
   const classCount = state.classGroups.filter(group =>
-    state.courseRuns.some(run => run.id === group.courseRunId && run.branchId !== "br_global")
+    state.courseRuns.some(
+      run => run.id === group.courseRunId && run.branchId !== "br_global"
+    )
   ).length;
 
-  const updateBranchStatus = async (branchId: string, nextStatus: EntityStatus) => {
+  const updateBranchStatus = async (
+    branchId: string,
+    nextStatus: EntityStatus
+  ) => {
     const branch = state.branches.find(item => item.id === branchId);
     if (!branch || branch.status === nextStatus || savingBranchId) return;
     setSavingBranchId(branchId);
@@ -521,7 +622,10 @@ function AdminBranchesPage() {
           </div>
         }
         main={
-          <section className="admin-branches-main" data-testid="admin-branches-page">
+          <section
+            className="admin-branches-main"
+            data-testid="admin-branches-page"
+          >
             {result ? (
               <div
                 className={`admin-branches-result ${result.tone}`}
@@ -532,7 +636,10 @@ function AdminBranchesPage() {
                 <span>{result.detail}</span>
               </div>
             ) : null}
-            <DataTableCard title="Branch access" subtitle={`${filteredRows.length} branches`}>
+            <DataTableCard
+              title="Branch access"
+              subtitle={`${filteredRows.length} branches`}
+            >
               <table className="admin-branches-table">
                 <thead>
                   <tr>
@@ -545,11 +652,15 @@ function AdminBranchesPage() {
                 <tbody>
                   {filteredRows.length ? (
                     filteredRows.map(row => (
-                      <tr key={row.branch.id} data-testid={`branch-row-${row.branch.id}`}>
+                      <tr
+                        key={row.branch.id}
+                        data-testid={`branch-row-${row.branch.id}`}
+                      >
                         <td>
                           <strong>{row.branch.name}</strong>
                           <small>
-                            {row.branch.code} · {row.branch.address || row.branch.timezone}
+                            {row.branch.code} ·{" "}
+                            {row.branch.address || row.branch.timezone}
                           </small>
                         </td>
                         <td>
@@ -608,7 +719,10 @@ function AdminBranchesPage() {
               </span>
               <div>
                 <strong>Branch management</strong>
-                <p>Keep each branch status current. Changes are saved to Activity.</p>
+                <p>
+                  Keep each branch status current. Changes are saved to
+                  Activity.
+                </p>
               </div>
             </div>
             <div className="admin-branches-side-stats">
@@ -624,7 +738,12 @@ function AdminBranchesPage() {
               </div>
               <div>
                 <span>Local users</span>
-                <strong>{state.users.filter(user => user.branchId !== "br_global").length}</strong>
+                <strong>
+                  {
+                    state.users.filter(user => user.branchId !== "br_global")
+                      .length
+                  }
+                </strong>
               </div>
             </div>
             {result?.tone === "success" ? (
@@ -647,10 +766,11 @@ function GenericSimplePortalPage({ role, pageId }: SimplePortalPageProps) {
   const rows = useMemo(() => buildRows(role, pageId), [role, pageId]);
   const statuses = useMemo(
     () => Array.from(new Set(rows.map(row => row.status))).filter(Boolean),
-    [rows],
+    [rows]
   );
   const filteredRows = rows.filter(row => {
-    const text = `${row.title} ${row.subtitle} ${row.meta} ${row.status} ${row.metric}`.toLowerCase();
+    const text =
+      `${row.title} ${row.subtitle} ${row.meta} ${row.status} ${row.metric}`.toLowerCase();
     return (
       (!query.trim() || text.includes(query.trim().toLowerCase())) &&
       (status === "all" || row.status === status)
@@ -659,6 +779,7 @@ function GenericSimplePortalPage({ role, pageId }: SimplePortalPageProps) {
   const primaryRow = filteredRows[0] ?? rows[0];
   const roleLabel = roleMeta[role].shortLabel;
   const actionHref = primaryRow?.href;
+  const hasOpenableRows = filteredRows.some(row => Boolean(row.href));
 
   return (
     <PlatformShell role={role} title={config.title}>
@@ -690,7 +811,10 @@ function GenericSimplePortalPage({ role, pageId }: SimplePortalPageProps) {
             </label>
             <label>
               Status
-              <select value={status} onChange={event => setStatus(event.target.value)}>
+              <select
+                value={status}
+                onChange={event => setStatus(event.target.value)}
+              >
                 <option value="all">All statuses</option>
                 {statuses.slice(0, 8).map(item => (
                   <option key={item} value={item}>
@@ -702,15 +826,17 @@ function GenericSimplePortalPage({ role, pageId }: SimplePortalPageProps) {
           </div>
         }
         main={
-          <DataTableCard title={config.title} subtitle={`${filteredRows.length} records`}>
+          <DataTableCard
+            title={config.title}
+            subtitle={`${filteredRows.length} records`}
+          >
             <table className="simple-portal-table">
               <thead>
                 <tr>
                   <th>Name</th>
                   <th>Scope</th>
                   <th>Status</th>
-                  <th>Detail</th>
-                  <th>Action</th>
+                  {hasOpenableRows ? <th>Action</th> : null}
                 </tr>
               </thead>
               <tbody>
@@ -726,26 +852,32 @@ function GenericSimplePortalPage({ role, pageId }: SimplePortalPageProps) {
                         <small>{row.metric}</small>
                       </td>
                       <td>
-                        <StatusBadge tone={statusTone(row.status)}>{humanize(row.status)}</StatusBadge>
+                        <StatusBadge tone={statusTone(row.status)}>
+                          {humanize(row.status)}
+                        </StatusBadge>
                       </td>
-                      <td>
-                        <small>{row.id}</small>
-                      </td>
-                      <td>
-                        {row.href ? (
-                          <Link className="simple-portal-row-action" href={row.href}>
-                            Open
-                            <ArrowRight size={14} />
-                          </Link>
-                        ) : (
-                          <span className="simple-portal-muted-action">View</span>
-                        )}
-                      </td>
+                      {hasOpenableRows ? (
+                        <td>
+                          {row.href ? (
+                            <Link
+                              className="simple-portal-row-action"
+                              href={row.href}
+                            >
+                              Open
+                              <ArrowRight size={14} />
+                            </Link>
+                          ) : (
+                            <span className="simple-portal-muted-action">
+                              View
+                            </span>
+                          )}
+                        </td>
+                      ) : null}
                     </tr>
                   ))
                 ) : (
                   <tr>
-                    <td colSpan={5}>
+                    <td colSpan={hasOpenableRows ? 4 : 3}>
                       <strong>No records found</strong>
                       <small>Try a different search or status filter.</small>
                     </td>
@@ -754,19 +886,6 @@ function GenericSimplePortalPage({ role, pageId }: SimplePortalPageProps) {
               </tbody>
             </table>
           </DataTableCard>
-        }
-        side={
-          <aside className="simple-portal-side">
-            <span>{roleLabel}</span>
-            <strong>{primaryRow?.title ?? "No records yet"}</strong>
-            <p>{primaryRow ? `${primaryRow.subtitle}. ${primaryRow.metric}.` : "When records exist, the next useful item appears here."}</p>
-            {primaryRow?.href ? (
-              <Link href={primaryRow.href}>
-                Open selected
-                <ArrowRight size={14} />
-              </Link>
-            ) : null}
-          </aside>
         }
       />
     </PlatformShell>

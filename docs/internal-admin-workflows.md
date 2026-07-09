@@ -37,7 +37,7 @@ The platform is in internal alpha stabilization. The current implementation has 
 Protected app routes pass through role-aware routing and use these major surfaces:
 
 - `RoleDashboard` for role dashboards.
-- `FeaturePage` for many portal pages.
+- Dedicated route-owner pages for Simple UI list, detail, report, settings, profile, assessment, schedule, admissions, and operations routes.
 - `WorkflowExperiences` for stateful workflow experiences.
 - `PlatformBlueprintPage` for the super admin platform blueprint.
 
@@ -940,4 +940,3 @@ Required production authority:
 8. Polish UI route by route after workflow behavior is stable.
 9. Add CI enforcement for `npm run check`, tests, build, and portal QA.
 10. Integrate external systems only after internal data authority and workflow QA are stable.
-

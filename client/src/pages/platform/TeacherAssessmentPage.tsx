@@ -63,6 +63,11 @@ function splitList(value: string) {
     .filter(Boolean);
 }
 
+function truncateText(value: string, maxLength = 72) {
+  if (value.length <= maxLength) return value;
+  return `${value.slice(0, maxLength - 3).trimEnd()}...`;
+}
+
 function statusTone(status: EntityStatus): "green" | "amber" | "red" | "slate" {
   if (status === "active") return "green";
   if (status === "pending" || status === "paused") return "amber";
@@ -136,6 +141,17 @@ export default function TeacherAssessmentPage({
   const selectedRunQuestions = activeRunId
     ? questionBank.filter(question => question.courseRunId === activeRunId)
     : questionBank;
+  const filteredQuestions = selectedRunQuestions.filter(question => {
+    const text = [
+      question.prompt,
+      question.type,
+      question.difficulty,
+      question.tags.join(" "),
+    ]
+      .join(" ")
+      .toLowerCase();
+    return text.includes(search.toLowerCase());
+  });
   const runQuizzes = activeRunId
     ? teacherQuizzes.filter(quiz => quiz.courseRunId === activeRunId)
     : teacherQuizzes;
@@ -157,7 +173,9 @@ export default function TeacherAssessmentPage({
         new Date(a.submittedAt ?? a.startedAt).getTime()
       );
     });
-  const reviewAttempts = attempts.filter(attempt => isReviewNeeded(attempt.status));
+  const reviewAttempts = attempts.filter(attempt =>
+    isReviewNeeded(attempt.status)
+  );
   const selectedAttempt =
     reviewAttempts.find(attempt => attempt.id === selectedAttemptId) ??
     reviewAttempts[0];
@@ -263,7 +281,11 @@ export default function TeacherAssessmentPage({
   const sharedToolbar = (
     <nav className="portal-ia-subnav" aria-label="Assessment sections">
       {tabs.map(tab => (
-        <Link key={tab.href} href={tab.href} className={tab.active ? "active" : ""}>
+        <Link
+          key={tab.href}
+          href={tab.href}
+          className={tab.active ? "active" : ""}
+        >
           {tab.label}
         </Link>
       ))}
@@ -298,14 +320,19 @@ export default function TeacherAssessmentPage({
           description="Create one quiz for an assigned class."
           context={<span>Teacher</span>}
           actions={
-            <Link className="platform-secondary-button" href="/app/teacher/quizzes">
+            <Link
+              className="platform-secondary-button"
+              href="/app/teacher/quizzes"
+            >
               Back to quizzes
             </Link>
           }
           toolbar={sharedToolbar}
           main={
             <section className="portal-ia-form-card">
-              {actionError ? <p className="platform-form-error">{actionError}</p> : null}
+              {actionError ? (
+                <p className="platform-form-error">{actionError}</p>
+              ) : null}
               <div className="portal-ia-form-grid">
                 {runPicker}
                 <label>
@@ -415,7 +442,9 @@ export default function TeacherAssessmentPage({
           toolbar={sharedToolbar}
           main={
             <section className="portal-ia-form-card">
-              {actionError ? <p className="platform-form-error">{actionError}</p> : null}
+              {actionError ? (
+                <p className="platform-form-error">{actionError}</p>
+              ) : null}
               <div className="portal-ia-form-grid">
                 {runPicker}
                 <label className="wide">
@@ -437,7 +466,8 @@ export default function TeacherAssessmentPage({
                     onChange={event =>
                       setQuestionDraft(current => ({
                         ...current,
-                        questionType: event.target.value as QuestionBankItem["type"],
+                        questionType: event.target
+                          .value as QuestionBankItem["type"],
                       }))
                     }
                   >
@@ -456,7 +486,8 @@ export default function TeacherAssessmentPage({
                     onChange={event =>
                       setQuestionDraft(current => ({
                         ...current,
-                        difficulty: event.target.value as QuestionBankItem["difficulty"],
+                        difficulty: event.target
+                          .value as QuestionBankItem["difficulty"],
                       }))
                     }
                   >
@@ -527,7 +558,9 @@ export default function TeacherAssessmentPage({
                   onClick={createQuestion}
                 >
                   <Plus size={15} />
-                  {savingAction === "Question saved" ? "Saving" : "Save question"}
+                  {savingAction === "Question saved"
+                    ? "Saving"
+                    : "Save question"}
                 </button>
               </div>
             </section>
@@ -537,24 +570,31 @@ export default function TeacherAssessmentPage({
     );
   }
 
-  const toolbar =
+  const viewFilters =
     view === "quizzes" ? (
-      <div className="portal-ia-toolbar">
+      <label className="portal-ia-search">
+        <Search size={16} />
+        <input
+          value={search}
+          onChange={event => setSearch(event.target.value)}
+          placeholder="Search quizzes"
+          aria-label="Search quizzes"
+        />
+      </label>
+    ) : view === "question-bank" ? (
+      <>
         <label className="portal-ia-search">
           <Search size={16} />
           <input
             value={search}
             onChange={event => setSearch(event.target.value)}
-            placeholder="Search quizzes"
-            aria-label="Search quizzes"
+            placeholder="Search questions"
+            aria-label="Search questions"
           />
         </label>
-      </div>
-    ) : view === "question-bank" ? (
-      <div className="portal-ia-toolbar">
         {runPicker}
         <label>
-          Target quiz
+          Quiz
           <select
             value={targetQuiz?.id ?? ""}
             onChange={event => setSelectedQuizId(event.target.value)}
@@ -566,7 +606,7 @@ export default function TeacherAssessmentPage({
             ))}
           </select>
         </label>
-      </div>
+      </>
     ) : null;
 
   const quizzesTable = (
@@ -627,7 +667,7 @@ export default function TeacherAssessmentPage({
   const questionTable = (
     <DataTableCard
       title="Question bank"
-      subtitle={`${selectedRunQuestions.length} question(s)`}
+      subtitle={`${filteredQuestions.length} question(s)`}
       className="portal-ia-table-card"
     >
       <div className="portal-ia-table-wrap">
@@ -636,24 +676,28 @@ export default function TeacherAssessmentPage({
             <tr>
               <th>Question</th>
               <th>Type</th>
-              <th>Difficulty</th>
-              <th>Tags</th>
+              <th>Level</th>
               <th>Quiz</th>
               <th>Action</th>
             </tr>
           </thead>
           <tbody>
-            {selectedRunQuestions.map(question => {
+            {filteredQuestions.map(question => {
               const attached = attachedQuestionIds.has(question.id);
               return (
                 <tr key={question.id}>
                   <td>
-                    <strong>{question.prompt}</strong>
-                    <small>{formatDate(question.updatedAt)}</small>
+                    <strong title={question.prompt}>
+                      {truncateText(question.prompt, 52)}
+                    </strong>
+                    <small>
+                      {[formatDate(question.updatedAt), question.tags[0]]
+                        .filter(Boolean)
+                        .join(" · ")}
+                    </small>
                   </td>
                   <td>{question.type.replace(/_/g, " ")}</td>
                   <td>{question.difficulty}</td>
-                  <td>{question.tags.join(", ") || "No tags"}</td>
                   <td>{targetQuiz?.title ?? "No quiz selected"}</td>
                   <td>
                     {attached ? (
@@ -662,7 +706,10 @@ export default function TeacherAssessmentPage({
                       <button
                         type="button"
                         className="platform-row-link"
-                        disabled={!targetQuiz || savingAction === "Quiz questions updated"}
+                        disabled={
+                          !targetQuiz ||
+                          savingAction === "Quiz questions updated"
+                        }
                         onClick={() => attachQuestion(question.id)}
                       >
                         Attach
@@ -672,12 +719,12 @@ export default function TeacherAssessmentPage({
                 </tr>
               );
             })}
-            {!selectedRunQuestions.length ? (
+            {!filteredQuestions.length ? (
               <tr>
-                <td colSpan={6}>
+                <td colSpan={5}>
                   <div className="platform-empty-state">
                     <strong>No questions yet</strong>
-                    <span>Create the first question for this class.</span>
+                    <span>Try another class or create a question.</span>
                   </div>
                 </td>
               </tr>
@@ -716,7 +763,9 @@ export default function TeacherAssessmentPage({
                     <small>{context.course?.title ?? "Course"}</small>
                   </td>
                   <td>{context.quiz?.title ?? attempt.quizId}</td>
-                  <td>{formatDate(attempt.submittedAt ?? attempt.startedAt)}</td>
+                  <td>
+                    {formatDate(attempt.submittedAt ?? attempt.startedAt)}
+                  </td>
                   <td>
                     {attempt.score}/{attempt.maxScore}
                   </td>
@@ -756,7 +805,10 @@ export default function TeacherAssessmentPage({
     <section className="portal-ia-side-panel">
       <span>Selected attempt</span>
       <strong>{selectedContext.quiz?.title ?? selectedAttempt.quizId}</strong>
-      <p>{selectedContext.user?.name ?? "Student"} · {selectedContext.course?.title ?? "Course"}</p>
+      <p>
+        {selectedContext.user?.name ?? "Student"} ·{" "}
+        {selectedContext.course?.title ?? "Course"}
+      </p>
       <label>
         Score
         <input
@@ -825,26 +877,34 @@ export default function TeacherAssessmentPage({
               New question
             </Link>
           ) : view === "review" ? (
-            <Link className="platform-secondary-button" href="/app/teacher/quizzes">
+            <Link
+              className="platform-secondary-button"
+              href="/app/teacher/quizzes"
+            >
               <ListChecks size={15} />
               Back to quizzes
             </Link>
           ) : (
-            <Link className="platform-primary-button" href="/app/teacher/quizzes/new">
+            <Link
+              className="platform-primary-button"
+              href="/app/teacher/quizzes/new"
+            >
               <ClipboardCheck size={15} />
               Create quiz
             </Link>
           )
         }
         toolbar={
-          <>
+          <div className="portal-ia-toolbar teacher-assessment-toolbar">
             {sharedToolbar}
-            {toolbar}
-          </>
+            {viewFilters}
+          </div>
         }
         main={
           <>
-            {actionError ? <p className="platform-form-error">{actionError}</p> : null}
+            {actionError ? (
+              <p className="platform-form-error">{actionError}</p>
+            ) : null}
             {view === "review"
               ? reviewTable
               : view === "question-bank"

@@ -1,4 +1,4 @@
-import { useMemo, useState, type FormEvent } from "react";
+import { useMemo, useState, type FormEvent, type ReactElement } from "react";
 import {
   ArrowLeft,
   Edit3,
@@ -28,9 +28,15 @@ import {
 
 type AdminUserDetailPageProps = {
   userId?: string;
+  view?: UserDetailView;
 };
 
-type DetailTab = "overview" | "access" | "activity" | "related";
+type UserDetailView =
+  | "overview"
+  | "access"
+  | "activity"
+  | "related"
+  | "assignment";
 
 function isRole(value: unknown): value is Role {
   return typeof value === "string" && value in roleMeta;
@@ -66,10 +72,10 @@ function formatDate(value?: string) {
 
 export default function AdminUserDetailPage({
   userId,
+  view = "overview",
 }: AdminUserDetailPageProps) {
   const [version, setVersion] = useState(0);
-  const [activeTab, setActiveTab] = useState<DetailTab>("overview");
-  const [editMode, setEditMode] = useState(false);
+  const [editMode, setEditMode] = useState(view === "access");
   const [savingAccess, setSavingAccess] = useState(false);
   const [savingTeacher, setSavingTeacher] = useState(false);
   const [accessError, setAccessError] = useState("");
@@ -301,33 +307,82 @@ export default function AdminUserDetailPage({
     );
   }
 
-  const tabs: Array<{ id: DetailTab; label: string }> = [
-    { id: "overview", label: "Overview" },
-    { id: "access", label: "Access" },
-    { id: "activity", label: "Activity" },
-    { id: "related", label: "Related records" },
+  const baseUserPath = `/app/admin/users/${user.id}`;
+  const sections: Array<{ id: UserDetailView; label: string; href: string }> = [
+    { id: "overview", label: "Overview", href: baseUserPath },
+    { id: "access", label: "Access", href: `${baseUserPath}/access` },
+    { id: "activity", label: "Activity", href: `${baseUserPath}/activity` },
+    { id: "related", label: "Related records", href: `${baseUserPath}/related` },
   ];
-  const tabMeta: Record<
-    DetailTab,
-    { title: string; description: string }
-  > = {
-    overview: {
-      title: "Account overview",
-      description: "Read identity, contact, role, and school scope.",
-    },
-    access: {
-      title: "Access settings",
-      description: "Update this user's role, branch, department, or status.",
-    },
-    activity: {
-      title: "Account activity",
-      description: "Review recent changes for this account.",
-    },
-    related: {
-      title: "Related work",
-      description: "Review assigned classes and teacher assignment.",
-    },
-  };
+
+  if (isTeacherAccount) {
+    sections.push({
+      id: "assignment",
+      label: "Teacher assignment",
+      href: `${baseUserPath}/assignment`,
+    });
+  }
+
+  const activeView =
+    view === "assignment" && !isTeacherAccount ? "related" : view;
+  const tabMeta: Record<UserDetailView, { title: string; description: string }> =
+    {
+      overview: {
+        title: "Account overview",
+        description: "Read identity, contact, role, and school scope.",
+      },
+      access: {
+        title: "Access settings",
+        description: "Update this user's role, branch, department, or status.",
+      },
+      activity: {
+        title: "Account activity",
+        description: "Review recent changes for this account.",
+      },
+      related: {
+        title: "Related records",
+        description: "Review assigned classes and connected work.",
+      },
+      assignment: {
+        title: "Teacher assignment",
+        description: "Assign this teacher to one course run.",
+      },
+    };
+
+  const headerActions =
+    activeView === "access" ? (
+      <>
+        <Link className="platform-secondary-button" href={baseUserPath}>
+          Overview
+        </Link>
+        <button
+          type="button"
+          className="platform-secondary-button"
+          onClick={toggleStatus}
+          disabled={savingAccess}
+        >
+          {user.status === "active" ? (
+            <PauseCircle size={15} />
+          ) : (
+            <PlayCircle size={15} />
+          )}
+          {user.status === "active" ? "Pause" : "Activate"}
+        </button>
+      </>
+    ) : (
+      <>
+        <Link className="platform-primary-button" href={`${baseUserPath}/access`}>
+          <Edit3 size={15} />
+          Edit access
+        </Link>
+        <Link
+          className="platform-secondary-button"
+          href={`${baseUserPath}/activity`}
+        >
+          Activity
+        </Link>
+      </>
+    );
 
   const header = (
     <section
@@ -354,39 +409,22 @@ export default function AdminUserDetailPage({
         <StatusBadge tone={statusTone(user.status)}>{user.status}</StatusBadge>
         <span>{user.email}</span>
       </div>
-      <div className="admin-user-detail-actions">
-        <button
-          type="button"
-          className="platform-primary-button"
-          onClick={() => {
-            setActiveTab("access");
-            setEditMode(true);
-            setAccessDraft({
-              activeRole: user.activeRole,
-              branchId: user.branchId ?? "",
-              departmentId: user.departmentId ?? "",
-              status: user.status,
-            });
-          }}
-        >
-          <Edit3 size={15} />
-          Edit user
-        </button>
-        <button
-          type="button"
-          className="platform-secondary-button"
-          onClick={toggleStatus}
-          disabled={savingAccess}
-        >
-          {user.status === "active" ? (
-            <PauseCircle size={15} />
-          ) : (
-            <PlayCircle size={15} />
-          )}
-          {user.status === "active" ? "Pause" : "Activate"}
-        </button>
-      </div>
+      <div className="admin-user-detail-actions">{headerActions}</div>
     </section>
+  );
+
+  const nav = (
+    <nav className="admin-user-detail-tabs" aria-label="User detail sections">
+      {sections.map(section => (
+        <Link
+          key={section.id}
+          href={section.href}
+          className={activeView === section.id ? "active" : ""}
+        >
+          {section.label}
+        </Link>
+      ))}
+    </nav>
   );
 
   const overview = (
@@ -480,7 +518,7 @@ export default function AdminUserDetailPage({
       </section>
       <section className="admin-user-detail-section">
         <h2>Edit access</h2>
-        {editMode ? (
+        {editMode || activeView === "access" ? (
           <form className="admin-user-detail-form" onSubmit={saveAccess}>
             <label>
               Role
@@ -557,9 +595,7 @@ export default function AdminUserDetailPage({
               <p className="platform-form-error">{accessError}</p>
             ) : null}
             <div className="admin-user-detail-form-actions">
-              <button type="button" onClick={() => setEditMode(false)}>
-                Cancel
-              </button>
+              <Link href={baseUserPath}>Cancel</Link>
               <button
                 type="submit"
                 className="platform-primary-button"
@@ -574,7 +610,7 @@ export default function AdminUserDetailPage({
           <div className="admin-user-detail-edit-placeholder">
             <ShieldCheck size={18} />
             <span>
-              Use Edit user to update role, branch, department, or status.
+              Use Edit access to update role, branch, department, or status.
             </span>
           </div>
         )}
@@ -656,9 +692,14 @@ export default function AdminUserDetailPage({
           </p>
         )}
       </section>
-      {isTeacherAccount ? (
-        <section className="admin-user-detail-section">
-          <h2>Course run assignment</h2>
+    </div>
+  );
+
+  const assignment = (
+    <div className="admin-user-detail-grid">
+      <section className="admin-user-detail-section">
+        <h2>Course run assignment</h2>
+        {isTeacherAccount ? (
           <form
             className="admin-access-teacher-assignment-form admin-user-detail-form"
             onSubmit={assignTeacher}
@@ -755,6 +796,7 @@ export default function AdminUserDetailPage({
               <p className="platform-form-error">{teacherError}</p>
             ) : null}
             <div className="admin-user-detail-form-actions">
+              <Link href={`${baseUserPath}/related`}>Cancel</Link>
               <button
                 type="submit"
                 className="platform-primary-button"
@@ -764,52 +806,46 @@ export default function AdminUserDetailPage({
               </button>
             </div>
           </form>
-        </section>
-      ) : null}
+        ) : (
+          <div className="platform-empty-state">
+            <strong>Not a teacher account</strong>
+            <span>Teacher assignment is available only for teacher users.</span>
+          </div>
+        )}
+      </section>
     </div>
   );
+
+  const contentByView: Record<UserDetailView, ReactElement> = {
+    overview,
+    access,
+    activity,
+    related,
+    assignment,
+  };
 
   return (
     <PlatformShell role="superadmin" title={user.name}>
       <DetailLayout
         className="admin-user-detail-page"
-        title={tabMeta[activeTab].title}
-        description={tabMeta[activeTab].description}
-        context={
-          <span>
-            {user.name} · {role.label}
-          </span>
+        title={tabMeta[activeView].title}
+        description={tabMeta[activeView].description}
+        actions={
+          <Link className="platform-secondary-button" href="/app/admin/users">
+            <ArrowLeft size={15} />
+            Back to users
+          </Link>
         }
         main={
           <>
             {header}
-            <div
-              className="admin-user-detail-tabs"
-              role="tablist"
-              aria-label="User detail sections"
-            >
-              {tabs.map(tab => (
-                <button
-                  key={tab.id}
-                  type="button"
-                  role="tab"
-                  aria-selected={activeTab === tab.id}
-                  className={activeTab === tab.id ? "active" : ""}
-                  onClick={() => setActiveTab(tab.id)}
-                >
-                  {tab.label}
-                </button>
-              ))}
-            </div>
+            {nav}
             <section className="admin-user-detail-tab-heading">
-              <strong>{tabMeta[activeTab].title}</strong>
-              <span>{tabMeta[activeTab].description}</span>
+              <strong>{tabMeta[activeView].title}</strong>
+              <span>{tabMeta[activeView].description}</span>
             </section>
             <div className="admin-user-detail-tab-panel">
-              {activeTab === "overview" ? overview : null}
-              {activeTab === "access" ? access : null}
-              {activeTab === "activity" ? activity : null}
-              {activeTab === "related" ? related : null}
+              {contentByView[activeView]}
             </div>
           </>
         }

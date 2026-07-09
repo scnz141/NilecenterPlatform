@@ -1,8 +1,14 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ServerSession } from "../../../../server/auth";
 import type { PlatformRepository } from "../../../../server/platformRepository";
-import { setPlatformStateRepository } from "../../../../server/platformRepository";
-import { applyPlatformWorkflowAction, getPlatformStateSnapshot } from "../../../../server/platformState";
+import {
+  normalizePlatformState,
+  setPlatformStateRepository,
+} from "../../../../server/platformRepository";
+import {
+  applyPlatformWorkflowAction,
+  getPlatformStateSnapshot,
+} from "../../../../server/platformState";
 import { seedPlatformState } from "../domain/seed";
 import type { PlatformState } from "../domain/types";
 
@@ -32,9 +38,60 @@ afterEach(() => {
 });
 
 describe("platform repository boundary", () => {
+  it("normalizes invalid snapshots back to a complete seed state", () => {
+    const state = normalizePlatformState(null);
+
+    expect(state.users.length).toBeGreaterThan(0);
+    expect(state.branches.length).toBeGreaterThan(0);
+    expect(state.courseRuns.length).toBeGreaterThan(0);
+    expect(state.auditLogs.length).toBe(seedPlatformState.auditLogs.length);
+  });
+
+  it("normalizes partial snapshots without dropping seeded compatibility records", () => {
+    const state = normalizePlatformState({
+      users: [
+        {
+          ...seedPlatformState.users[0],
+          id: "usr_repository_test",
+          email: "repository.test@nilelearn.local",
+          name: "Repository Test",
+        },
+      ],
+      staffProfiles: [],
+      courseRuns: [],
+      classGroups: [],
+      events: [],
+      portalSettings: [],
+      reportPresets: [],
+    });
+
+    expect(state.users.some(user => user.id === "usr_repository_test")).toBe(
+      true
+    );
+    expect(state.users.some(user => user.id === "usr_admin_demo")).toBe(true);
+    expect(state.staffProfiles.length).toBeGreaterThanOrEqual(
+      seedPlatformState.staffProfiles.length
+    );
+    expect(state.courseRuns.length).toBeGreaterThanOrEqual(
+      seedPlatformState.courseRuns.length
+    );
+    expect(state.classGroups.length).toBeGreaterThanOrEqual(
+      seedPlatformState.classGroups.length
+    );
+    expect(state.events.length).toBeGreaterThanOrEqual(
+      seedPlatformState.events.length
+    );
+    expect(state.portalSettings.length).toBeGreaterThanOrEqual(
+      seedPlatformState.portalSettings.length
+    );
+    expect(state.reportPresets.length).toBeGreaterThanOrEqual(
+      seedPlatformState.reportPresets.length
+    );
+  });
+
   it("reads platform snapshots through the configured repository", async () => {
     const state = cloneSeed();
-    state.users = state.users.filter((user) => user.id === "usr_admin_demo");
+    state.users = state.users.filter(user => user.id === "usr_admin_demo");
     const repository: PlatformRepository = {
       readSnapshot: vi.fn(async () => ({
         state,
@@ -63,7 +120,7 @@ describe("platform repository boundary", () => {
         persistence: "local",
         syncedAt: "2026-07-04T00:00:00.000Z",
       })),
-      writeSnapshot: vi.fn(async (state) => {
+      writeSnapshot: vi.fn(async state => {
         savedState = JSON.parse(JSON.stringify(state)) as PlatformState;
         return "local";
       }),
@@ -79,7 +136,7 @@ describe("platform repository boundary", () => {
         statuses: { stu_demo: "late" },
         notes: { stu_demo: "Repository boundary save" },
       },
-      sessionForTeacher(),
+      sessionForTeacher()
     );
 
     expect(repository.readSnapshot).toHaveBeenCalledTimes(1);
@@ -90,7 +147,7 @@ describe("platform repository boundary", () => {
         actorId: "usr_teacher_demo",
         entityType: "AttendanceRecord",
         entityId: "class_ar_l3_a",
-      }),
+      })
     );
     expect(result.persistence).toBe("local");
     expect(savedState?.attendance).toEqual(
@@ -102,9 +159,13 @@ describe("platform repository boundary", () => {
           status: "late",
           notes: "Repository boundary save",
         }),
-      ]),
+      ])
     );
-    expect(savedState?.classSessions.find((session) => session.id === "session_ar_live")).toMatchObject({
+    expect(
+      savedState?.classSessions.find(
+        session => session.id === "session_ar_live"
+      )
+    ).toMatchObject({
       attendanceSaved: true,
     });
   });
@@ -117,7 +178,7 @@ describe("platform repository boundary", () => {
         persistence: "local",
         syncedAt: "2026-07-04T00:00:00.000Z",
       })),
-      writeSnapshot: vi.fn(async (state) => {
+      writeSnapshot: vi.fn(async state => {
         savedState = JSON.parse(JSON.stringify(state)) as PlatformState;
         return "local";
       }),
@@ -133,9 +194,11 @@ describe("platform repository boundary", () => {
         classGroupId: "class_ar_l3_a",
         sessionId: "session_ar_live",
         statuses: { stu_demo: "excused" },
-        notes: { stu_demo: "Event sink failure should not block snapshot save" },
+        notes: {
+          stu_demo: "Event sink failure should not block snapshot save",
+        },
       },
-      sessionForTeacher(),
+      sessionForTeacher()
     );
 
     expect(repository.writeSnapshot).toHaveBeenCalledTimes(1);
@@ -154,7 +217,7 @@ describe("platform repository boundary", () => {
           studentId: "stu_demo",
           status: "excused",
         }),
-      ]),
+      ])
     );
   });
 
@@ -178,7 +241,7 @@ describe("platform repository boundary", () => {
         statuses: { stu_demo: "present" },
         notes: { stu_demo: "Payload evidence" },
       },
-      sessionForTeacher(),
+      sessionForTeacher()
     );
 
     expect(repository.recordEvent).toHaveBeenCalledWith(
@@ -196,7 +259,7 @@ describe("platform repository boundary", () => {
             sessionId: "session_ar_live",
           }),
         }),
-      }),
+      })
     );
   });
 });

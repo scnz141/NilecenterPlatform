@@ -79,6 +79,9 @@ import {
   StatusBadge,
   DataTableCard,
 } from "./PlatformPrimitives";
+import PendingMediaField, {
+  PendingMediaSummary,
+} from "./PendingMediaField";
 
 const assessmentPages = new Set([
   "assignments",
@@ -120,131 +123,6 @@ const reportTypesByRole: Record<Role, ReportType[]> = {
 };
 type ReportRow = ReturnType<typeof platformStore.exportReportRows>[number];
 
-const pendingMediaAcceptByKind: Record<PendingMediaAttachment["kind"], string> = {
-  document: ".pdf,.doc,.docx,.txt,.rtf,application/pdf,text/plain",
-  image: "image/*",
-  audio: "audio/*",
-  video: "video/*",
-};
-
-function formatBytes(size: number) {
-  if (size >= 1024 * 1024) return `${(size / (1024 * 1024)).toFixed(1)} MB`;
-  if (size >= 1024) return `${Math.round(size / 1024)} KB`;
-  return `${size} B`;
-}
-
-function pendingMediaKindFromFile(file: File, fallback: PendingMediaAttachment["kind"]) {
-  if (file.type.startsWith("audio/")) return "audio";
-  if (file.type.startsWith("video/")) return "video";
-  if (file.type.startsWith("image/")) return "image";
-  return fallback;
-}
-
-function PendingMediaSummary({ items }: { items?: PendingMediaAttachment[] }) {
-  if (!items?.length) return null;
-  return (
-    <div className="platform-pending-media-list" aria-label="Pending media attachments">
-      {items.map(item => (
-        <span key={item.id}>
-          <Paperclip size={13} />
-          {item.previewLabel}
-          <small>Storage pending</small>
-        </span>
-      ))}
-    </div>
-  );
-}
-
-function PendingMediaField({
-  value,
-  onChange,
-  kind,
-  label,
-  description,
-}: {
-  value: PendingMediaAttachment[];
-  onChange: (items: PendingMediaAttachment[]) => void;
-  kind: PendingMediaAttachment["kind"];
-  label: string;
-  description: string;
-}) {
-  const inputId = useId();
-  const [error, setError] = useState("");
-  const accept = pendingMediaAcceptByKind[kind];
-
-  const addFiles = (files: FileList | null) => {
-    setError("");
-    if (!files?.length) return;
-    const next: PendingMediaAttachment[] = [];
-    Array.from(files)
-      .slice(0, 3 - value.length)
-      .forEach((file, index) => {
-        if (file.size <= 0 || file.size > 25 * 1024 * 1024) {
-          setError("Each attachment must be 25 MB or smaller.");
-          return;
-        }
-        const mediaKind = pendingMediaKindFromFile(file, kind);
-        if (kind === "audio" && mediaKind !== "audio") {
-          setError("Choose an audio file.");
-          return;
-        }
-        if (kind === "video" && mediaKind !== "video") {
-          setError("Choose a video file.");
-          return;
-        }
-        next.push({
-          id: `pending_${Date.now().toString(36)}_${index}_${file.name.replace(/[^a-z0-9]+/gi, "_").slice(0, 24)}`,
-          name: file.name,
-          type: file.type || "application/octet-stream",
-          size: file.size,
-          kind: mediaKind,
-          previewLabel: `${file.name} · ${formatBytes(file.size)}`,
-          storageStatus: "pending_storage",
-          createdAt: new Date().toISOString(),
-        });
-      });
-    if (next.length) onChange([...value, ...next].slice(0, 3));
-  };
-
-  return (
-    <div className="platform-pending-media-field">
-      <div>
-        <strong>{label}</strong>
-        <span>{description}</span>
-      </div>
-      <label htmlFor={inputId}>
-        <Paperclip size={15} />
-        Choose file
-      </label>
-      <input
-        id={inputId}
-        type="file"
-        accept={accept}
-        multiple
-        onChange={event => {
-          addFiles(event.target.files);
-          event.currentTarget.value = "";
-        }}
-      />
-      {error ? <p>{error}</p> : null}
-      <div className="platform-pending-media-list">
-        {value.map(item => (
-          <span key={item.id}>
-            <Paperclip size={13} />
-            {item.previewLabel}
-            <button
-              type="button"
-              aria-label={`Remove ${item.name}`}
-              onClick={() => onChange(value.filter(entry => entry.id !== item.id))}
-            >
-              Remove
-            </button>
-          </span>
-        ))}
-      </div>
-    </div>
-  );
-}
 type DisplayReportRow = {
   eyebrow: string;
   title: string;
@@ -918,6 +796,15 @@ type PlatformStateSnapshot = ReturnType<typeof platformStore.getState>;
 const STUDENT_PROFILE_ID = "stu_demo";
 const STUDENT_USER_ID = "usr_student_demo";
 
+function formatSyncStatusLabel(
+  status: "loading" | "supabase" | "local" | "offline"
+) {
+  if (status === "loading") return "Syncing";
+  if (status === "supabase") return "Saved";
+  if (status === "local") return "Demo data";
+  return "Offline";
+}
+
 function AttendancePageFrame({
   config,
   role,
@@ -961,9 +848,7 @@ function AttendancePageFrame({
           </span>
           <span>{summary.pendingSessions} pending</span>
           <span>
-            {backendSyncStatus === "loading"
-              ? "Syncing"
-              : `${backendSyncStatus} state`}
+            {formatSyncStatusLabel(backendSyncStatus)}
           </span>
         </div>
       </section>
@@ -2697,18 +2582,18 @@ function AssessmentWorkflow({ role, state, refresh, params }: WorkflowProps) {
         <section className="platform-workflow-card">
           <div className="platform-workflow-title">
             <span>
-              <ClipboardCheck size={16} /> Assignment workflow
+              <ClipboardCheck size={16} /> Assignments
             </span>
             <strong>
-              {role === "student" ? assignment?.title : "Assignment queue"}
+              {role === "student" ? assignment?.title : "To grade"}
             </strong>
           </div>
           {assignment ? (
             <>
               <p>
-                {selectedAssignmentCourse?.title ?? "Course"} · Submission type:{" "}
-                {assignment.submissionType}. Rubric:{" "}
-                {assignment.rubric.join(", ")}.
+                {role === "student"
+                  ? `${selectedAssignmentCourse?.title ?? "Course"} · ${assignment.submissionType}`
+                  : (selectedAssignmentCourse?.title ?? "Assigned class")}
               </p>
               <div className="platform-row-list compact">
                 {assignmentOptions.slice(0, 4).map(item => (
@@ -2826,7 +2711,7 @@ function AssessmentWorkflow({ role, state, refresh, params }: WorkflowProps) {
                   </strong>
                   <span>
                     {selectedPendingSubmission
-                      ? `${selectedPendingUser?.name ?? "Learner"} submitted ${selectedPendingAssignment?.title ?? selectedPendingSubmission.assignmentId}.`
+                      ? `${selectedPendingUser?.name ?? "Learner"} · ${selectedPendingAssignment?.title ?? selectedPendingSubmission.assignmentId}`
                       : "Submitted work will appear here for teacher review."}
                   </span>
                 </div>
@@ -3663,24 +3548,15 @@ function AssessmentWorkflow({ role, state, refresh, params }: WorkflowProps) {
           value={latestSubmission?.status ?? "none"}
         />
         <MiniMetric
-          label="Latest quiz score"
-          value={
-            latestAttempt
-              ? `${latestAttempt.score}/${latestAttempt.maxScore}`
-              : "none"
-          }
-        />
-        <MiniMetric
           label="Pending review"
           value={String(
             pendingSubmissions.length + reviewableQuizAttempts.length
           )}
         />
         <MiniMetric
-          label="Bank questions"
+          label="Questions"
           value={String(questionBankItems.length)}
         />
-        <MiniMetric label="Grade items" value={String(state.grades.length)} />
         <div className="platform-row-list compact">
           {recentAssessmentAudits.length ? (
             recentAssessmentAudits.map(audit => (
@@ -5624,9 +5500,7 @@ function ScheduleGovernanceWorkflow({
               </span>
             </div>
             <span>
-              {backendSyncStatus === "loading"
-                ? "Syncing"
-                : `${backendSyncStatus} state`}
+              {formatSyncStatusLabel(backendSyncStatus)}
             </span>
           </div>
           <div className="platform-calendar-scope compact">
@@ -6022,7 +5896,7 @@ function SchedulingWorkflow({
         <section className="platform-workflow-card">
           <div className="platform-workflow-title">
             <span>
-              <CalendarDays size={16} /> Scheduling engine
+              <CalendarDays size={16} /> Calendar
             </span>
             <strong>{roleMeta[role].label} calendar</strong>
           </div>
@@ -6035,9 +5909,7 @@ function SchedulingWorkflow({
               </span>
             </div>
             <span>
-              {backendSyncStatus === "loading"
-                ? "Syncing"
-                : `${backendSyncStatus} state`}
+              {formatSyncStatusLabel(backendSyncStatus)}
             </span>
           </div>
           <div className="platform-calendar-scope compact">
@@ -6295,7 +6167,7 @@ function SchedulingWorkflow({
                 ? "This will save as pending so operations can resolve the conflict."
                 : hasAvailabilityGap
                   ? "This will save as pending because teacher availability needs review."
-                  : "This event is ready to save through the server action endpoint.")}
+                  : "This event is ready to save.")}
           </p>
         </section>
         <ScheduleBoard
@@ -6374,14 +6246,13 @@ function SchedulingWorkflow({
         <section className="platform-workflow-card">
           <div className="platform-workflow-title">
             <span>
-              <CalendarDays size={16} /> Scheduler boundaries
+              <CalendarDays size={16} /> Calendar limits
             </span>
-            <strong>Server guarded</strong>
+            <strong>Protected</strong>
           </div>
           <p>
-            Calendar saves use the platform action endpoint. Recurring rules and
-            external calendar sync stay disabled until a server scheduler is
-            connected.
+            Calendar saves are protected. Recurring rules stay off until they
+            are connected.
           </p>
           <button disabled>Enable recurrence</button>
         </section>

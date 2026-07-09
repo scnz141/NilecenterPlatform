@@ -1,11 +1,9 @@
 import { useMemo, useState } from "react";
 import {
   BookOpen,
-  FileText,
-  Layers,
+  ArrowRight,
   Library,
   Search,
-  Users,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Link } from "wouter";
@@ -25,10 +23,12 @@ type AdminCoursesView =
   | "levels"
   | "curriculum"
   | "teachers"
-  | "resources";
+  | "resources"
+  | "detail";
 
 type AdminCoursesPageProps = {
   view?: AdminCoursesView;
+  courseId?: string;
 };
 
 type CourseStatus = Extract<
@@ -63,6 +63,7 @@ function formatDate(value: string) {
 
 export default function AdminCoursesPage({
   view = "catalog",
+  courseId,
 }: AdminCoursesPageProps) {
   const [version, setVersion] = useState(0);
   const [search, setSearch] = useState("");
@@ -109,6 +110,34 @@ export default function AdminCoursesPage({
     state.departments.find(department => department.id === departmentId);
   const getLevel = (levelId?: string) =>
     state.levels.find(level => level.id === levelId);
+  const selectedCourse = courseId
+    ? state.courses.find(course => course.id === courseId)
+    : undefined;
+  const selectedProgram = getProgram(selectedCourse?.programId);
+  const selectedDepartment = getDepartment(selectedProgram?.departmentId);
+  const selectedLevel = getLevel(selectedCourse?.levelId);
+  const selectedModules = selectedCourse
+    ? state.modules
+        .filter(module => module.courseId === selectedCourse.id)
+        .sort((a, b) => a.order - b.order)
+    : [];
+  const selectedLessonIds = new Set(
+    state.lessons
+      .filter(lesson =>
+        selectedModules.some(module => module.id === lesson.moduleId)
+      )
+      .map(lesson => lesson.id)
+  );
+  const selectedRuns = selectedCourse
+    ? state.courseRuns.filter(run => run.courseId === selectedCourse.id)
+    : [];
+  const selectedRunIds = new Set(selectedRuns.map(run => run.id));
+  const selectedClasses = state.classGroups.filter(group =>
+    selectedRunIds.has(group.courseRunId)
+  );
+  const selectedResources = state.resources.filter(resource =>
+    selectedLessonIds.has(resource.lessonId)
+  );
 
   const courseRows = state.courses
     .map(course => {
@@ -176,6 +205,7 @@ export default function AdminCoursesPage({
               <th>Level</th>
               <th>Runs</th>
               <th>Course status</th>
+              <th>Open</th>
             </tr>
           </thead>
           <tbody>
@@ -210,11 +240,20 @@ export default function AdminCoursesPage({
                     </select>
                   </label>
                 </td>
+                <td>
+                  <Link
+                    className="platform-row-link"
+                    href={`/app/admin/courses/${course.id}`}
+                  >
+                    Details
+                    <ArrowRight size={13} />
+                  </Link>
+                </td>
               </tr>
             ))}
             {!courseRows.length ? (
               <tr>
-                <td colSpan={6}>
+                <td colSpan={7}>
                   <div className="platform-empty-state">
                     <strong>No courses found</strong>
                     <span>Try a different search or status filter.</span>
@@ -224,6 +263,128 @@ export default function AdminCoursesPage({
             ) : null}
           </tbody>
         </table>
+      </div>
+    </DataTableCard>
+  );
+
+  const detail = selectedCourse ? (
+    <div className="admin-courses-detail-stack">
+      <section className="admin-courses-detail-card">
+        <div>
+          <span className="admin-courses-detail-kicker">Course record</span>
+          <h2>{selectedCourse.title}</h2>
+          <p>{selectedCourse.description}</p>
+        </div>
+        <StatusBadge tone={statusTone(selectedCourse.status)}>
+          {selectedCourse.status}
+        </StatusBadge>
+      </section>
+
+      <div className="admin-courses-detail-grid">
+        <section className="admin-courses-detail-card">
+          <span className="admin-courses-detail-kicker">Academic structure</span>
+          <dl className="admin-courses-detail-list">
+            <div>
+              <dt>Program</dt>
+              <dd>{selectedProgram?.title ?? "No program"}</dd>
+            </div>
+            <div>
+              <dt>Department</dt>
+              <dd>{selectedDepartment?.name ?? "No department"}</dd>
+            </div>
+            <div>
+              <dt>Level</dt>
+              <dd>{selectedLevel?.title ?? "No level"}</dd>
+            </div>
+            <div>
+              <dt>Outcomes</dt>
+              <dd>{selectedCourse.outcomes.join(", ") || "No outcomes"}</dd>
+            </div>
+          </dl>
+        </section>
+
+        <section className="admin-courses-detail-card">
+          <span className="admin-courses-detail-kicker">Delivery summary</span>
+          <dl className="admin-courses-detail-list">
+            <div>
+              <dt>Course runs</dt>
+              <dd>{selectedRuns.length}</dd>
+            </div>
+            <div>
+              <dt>Class groups</dt>
+              <dd>{selectedClasses.length}</dd>
+            </div>
+            <div>
+              <dt>Modules</dt>
+              <dd>{selectedModules.length}</dd>
+            </div>
+            <div>
+              <dt>Resources</dt>
+              <dd>{selectedResources.length}</dd>
+            </div>
+          </dl>
+        </section>
+      </div>
+
+      <DataTableCard
+        title="Course modules"
+        subtitle={`${selectedModules.length} module(s)`}
+        className="admin-ia-table-card admin-courses-detail-modules-table"
+      >
+        <div className="admin-ia-table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Module</th>
+                <th>Order</th>
+                <th>Lessons</th>
+                <th>Outcomes</th>
+              </tr>
+            </thead>
+            <tbody>
+              {selectedModules.map(module => {
+                const lessons = state.lessons.filter(
+                  lesson => lesson.moduleId === module.id
+                );
+                return (
+                  <tr key={module.id}>
+                    <td>
+                      <strong>{module.title}</strong>
+                      <small>{module.id}</small>
+                    </td>
+                    <td>{module.order}</td>
+                    <td>{lessons.length}</td>
+                    <td>{module.outcomes.join(", ") || "No outcomes"}</td>
+                  </tr>
+                );
+              })}
+              {!selectedModules.length ? (
+                <tr>
+                  <td colSpan={4}>
+                    <div className="platform-empty-state">
+                      <strong>No modules yet</strong>
+                      <span>This course has no curriculum modules assigned.</span>
+                    </div>
+                  </td>
+                </tr>
+              ) : null}
+            </tbody>
+          </table>
+        </div>
+      </DataTableCard>
+    </div>
+  ) : (
+    <DataTableCard
+      title="Course not found"
+      subtitle="No matching catalog record"
+      className="admin-ia-table-card"
+    >
+      <div className="platform-empty-state">
+        <strong>No course record found</strong>
+        <span>Return to the catalog and open an existing course.</span>
+        <Link className="platform-row-link" href="/app/admin/courses">
+          Back to catalog
+        </Link>
       </div>
     </DataTableCard>
   );
@@ -480,40 +641,37 @@ export default function AdminCoursesPage({
 
   const pageCopy: Record<
     AdminCoursesView,
-    { title: string; description: string; icon: typeof BookOpen }
+    { title: string; description: string }
   > = {
     catalog: {
       title: "Courses",
       description: "Manage the course catalog only.",
-      icon: BookOpen,
     },
     programs: {
       title: "Programs",
       description: "Review program structure.",
-      icon: Library,
     },
     levels: {
       title: "Levels",
       description: "Review learning levels and prerequisites.",
-      icon: Layers,
     },
     curriculum: {
       title: "Curriculum",
       description: "Review modules and lessons.",
-      icon: FileText,
     },
     teachers: {
       title: "Course teachers",
       description: "Review teaching assignments.",
-      icon: Users,
     },
     resources: {
       title: "Resources",
       description: "Review lesson resources.",
-      icon: FileText,
+    },
+    detail: {
+      title: selectedCourse?.title ?? "Course detail",
+      description: "Review one course record and its relationships.",
     },
   };
-  const CurrentIcon = pageCopy[view].icon;
 
   const main = {
     catalog,
@@ -522,6 +680,7 @@ export default function AdminCoursesPage({
     curriculum,
     teachers,
     resources,
+    detail,
   }[view];
 
   return (
@@ -544,18 +703,19 @@ export default function AdminCoursesPage({
           )
         }
         toolbar={
-          <>
-            <nav className="admin-ia-subnav" aria-label="Course sections">
-              {tabs.map(tab => (
-                <Link
-                  key={tab.href}
-                  href={tab.href}
-                  className={tab.active ? "active" : ""}
-                >
-                  {tab.label}
-                </Link>
-              ))}
-            </nav>
+          view === "detail" ? null : (
+            <div className="admin-ia-control-row">
+              <nav className="admin-ia-subnav" aria-label="Course sections">
+                {tabs.map(tab => (
+                  <Link
+                    key={tab.href}
+                    href={tab.href}
+                    className={tab.active ? "active" : ""}
+                  >
+                    {tab.label}
+                  </Link>
+                ))}
+              </nav>
             {view === "catalog" ? (
               <div className="admin-ia-toolbar">
                 <label className="admin-ia-search">
@@ -585,16 +745,10 @@ export default function AdminCoursesPage({
                 </label>
               </div>
             ) : null}
-          </>
+            </div>
+          )
         }
         main={main}
-        side={
-          <section className="admin-courses-purpose-panel">
-            <CurrentIcon size={18} />
-            <strong>One job on this page</strong>
-            <span>{pageCopy[view].description}</span>
-          </section>
-        }
       />
     </PlatformShell>
   );

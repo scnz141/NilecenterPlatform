@@ -6,7 +6,7 @@ Build `/app/student/*` as a complete learner workspace: dashboard, courses, cust
 
 ## PLAN
 
-- Inspect `WorkflowExperiences.tsx`, `FeaturePage.tsx`, `PlatformShell`, and domain state.
+- Inspect `StudentLearningPage.tsx`, `StudentAssessmentPage.tsx`, `StudentRecordsPage.tsx`, `StudentSupportPage.tsx`, `PortalMessagesPage.tsx`, `WorkflowExperiences.tsx`, `PlatformShell`, and domain state.
 - Identify route params and selected entity behavior.
 
 ## IMPLEMENT

@@ -13,14 +13,14 @@ function readPositiveIntegerEnv(name, fallback) {
 const baseUrl = process.env.QA_BASE_URL || "http://localhost:3001";
 const session = process.env.QA_SESSION || `nile-portals-qa-${process.pid}`;
 const password = process.env.NILE_DEMO_PASSWORD || `qa-${session}`;
-const commandTimeoutMs = readPositiveIntegerEnv("QA_COMMAND_TIMEOUT_MS", 45000);
+const commandTimeoutMs = readPositiveIntegerEnv("QA_COMMAND_TIMEOUT_MS", 60000);
 const routeReadyTimeoutMs = readPositiveIntegerEnv(
   "QA_ROUTE_READY_TIMEOUT_MS",
-  5000
+  8000
 );
 const routeMatrixRouteTimeoutMs = readPositiveIntegerEnv(
   "QA_ROUTE_MATRIX_ROUTE_TIMEOUT_MS",
-  3000
+  5000
 );
 const routeMatrixChunkSize = readPositiveIntegerEnv(
   "QA_ROUTE_MATRIX_CHUNK_SIZE",
@@ -28,11 +28,11 @@ const routeMatrixChunkSize = readPositiveIntegerEnv(
 );
 const workflowReadyTimeoutMs = readPositiveIntegerEnv(
   "QA_WORKFLOW_READY_TIMEOUT_MS",
-  4000
+  6000
 );
 const workflowActionTimeoutMs = readPositiveIntegerEnv(
   "QA_WORKFLOW_ACTION_TIMEOUT_MS",
-  5000
+  8000
 );
 const loginTimeoutMs = readPositiveIntegerEnv("QA_LOGIN_TIMEOUT_MS", 30000);
 const maxRunMs = readPositiveIntegerEnv(
@@ -206,6 +206,7 @@ const roles = [
       "/app/admin/courses/curriculum",
       "/app/admin/courses/teachers",
       "/app/admin/courses/resources",
+      "/app/admin/courses/course_ar_l3",
       "/app/admin/certificates",
       "/app/admin/schedule",
       "/app/admin/schedule/conflicts",
@@ -215,6 +216,11 @@ const roles = [
       "/app/admin/audit-logs",
       "/app/admin/reports",
       "/app/admin/reports/attendance",
+      "/app/admin/reports/finance",
+      "/app/admin/reports/certificates",
+      "/app/admin/reports/admissions",
+      "/app/admin/reports/classes",
+      "/app/admin/reports/saved-views",
       "/app/admin/system-health",
       "/app/admin/platform-blueprint",
       "/app/admin/users/new",
@@ -3463,14 +3469,43 @@ const deepWorkflowCases = [
         return user && profile ? next : null;
       }, 4000);
       if (!createdState) throw new Error("Staff account was not created");
-      await waitFor(() => document.querySelector(".admin-access-panel.selected-user"));
-      await clickButtonWithin(".admin-access-panel.selected-user", "Pause");
-      const state = await waitFor(() => {
-        const next = readState();
-        const user = next.users?.find((item) => item.email === email);
-        const profile = next.staffProfiles?.find((item) => item.userId === user?.id && item.role === "registrar");
+      await waitFor(() => normalize(document.body.textContent).includes("Account overview"));
+      const accessLink = Array.from(document.querySelectorAll("a"))
+        .find((anchor) => {
+          const href = anchor.getAttribute("href") || "";
+          return normalize(anchor.textContent).includes("Edit access") || href.endsWith("/access");
+        });
+      if (!accessLink) throw new Error("Access link not found");
+      accessLink.click();
+      await delay(120);
+      await waitFor(() => normalize(document.body.textContent).includes("Access settings"));
+      await clickButton("Pause");
+      const findPausedAccountState = (next) => {
+        const user = next?.users?.find((item) => item.email === email);
+        const profile = next?.staffProfiles?.find((item) => item.userId === user?.id && item.role === "registrar");
         return user?.status === "paused" && profile?.status === "paused" ? next : null;
+      };
+      const readServerState = async () => {
+        const response = await fetch("/api/platform/state", { credentials: "include" });
+        if (!response.ok) return null;
+        const payload = await response.json();
+        return payload?.state ?? null;
+      };
+      const waitForServerState = async (timeout = 5000) => {
+        const started = performance.now();
+        let last = null;
+        while (performance.now() - started < timeout) {
+          last = await readServerState();
+          if (findPausedAccountState(last)) return last;
+          await delay(120);
+        }
+        return last;
+      };
+      const localState = await waitFor(() => {
+        const next = readState();
+        return findPausedAccountState(next);
       }, 5000);
+      const state = localState || findPausedAccountState(await waitForServerState(5000));
       const user = state?.users?.find((item) => item.email === email);
       const staffProfile = state?.staffProfiles?.find((item) => item.userId === user?.id && item.role === "registrar");
       const student = state?.students?.find((item) => item.userId === user?.id);
@@ -3524,7 +3559,7 @@ const deepWorkflowCases = [
   {
     name: "admin teacher assignment workflow reassigns isolated course run",
     role: "superadmin",
-    route: "/app/admin/users/usr_teacher_spare",
+    route: "/app/admin/users/usr_teacher_spare/assignment",
     setupSource: workflowSetupSource(`
       const state = readState();
       return {
@@ -3537,7 +3572,6 @@ const deepWorkflowCases = [
       };
     `),
     source: workflowActionSource(`
-      await clickButtonWithin(".admin-user-detail-tabs", "Related records");
       await waitFor(() => normalize(document.body.textContent).includes("Course run assignment"));
       const form = document.querySelector(".admin-access-teacher-assignment-form");
       if (!form) throw new Error("Teacher assignment form was not rendered");

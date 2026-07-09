@@ -104,9 +104,9 @@ Current architecture causing the old look:
 - `PlatformShell` and its CSS previously allowed a mixed collapsed/expanded sidebar behavior and a visually busy top bar.
 - Global search was visually centered on every portal page, even when page-level work mattered more.
 - Broad background gradients, decorative grid textures, and repeated card shadows competed with dense operational content.
-- `FeaturePage` fallback creates the same header, metric grid, generic action buttons, and generated work areas for many unrelated routes.
+- The historical `FeaturePage` fallback created the same header, metric grid, generic action buttons, and generated work areas for many unrelated routes. Current route work should continue using dedicated page owners instead.
 - `StatCard`, generic metric grids, and repeated panel classes make dashboards feel like interchangeable card walls.
-- Role dashboards and FeaturePage-generated pages show too many same-weight sections above the fold.
+- Role dashboards and legacy generated pages showed too many same-weight sections above the fold.
 
 These are architectural issues. UI V2 must replace the layout pattern before polishing colors, shadows, or icon choices.
 
@@ -681,7 +681,7 @@ Reference dashboard rule:
 - Pick one dashboard as the standard before applying V2 elsewhere.
 - The current approved reference is the Super Admin dashboard because it exercises shell navigation, access governance, audit, integrations, and system status without changing workflows.
 - The reference dashboard must include a page header, KPI strip, primary work area, secondary panel, lower summary area where useful, responsive state, loading state, empty state, and error state.
-- Do not migrate other dashboards or FeaturePage routes until the shell and Super Admin reference are visually reviewed.
+- Do not migrate other dashboards or route families until the shell and Super Admin reference are visually reviewed.
 
 ## 23. Page Acceptance Checklist
 

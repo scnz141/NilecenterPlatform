@@ -280,21 +280,21 @@ Do not combine create schedule forms, conflict review, room status, audit, and s
 
 Use these user-facing replacements:
 
-| Avoid | Use |
-| --- | --- |
-| RBAC | Roles and access |
-| Permission Matrix | Access rules |
-| Audit Trail | Activity |
-| Audit Evidence | Activity |
-| Integration Readiness | Connections |
-| Moodle Source | Moodle |
-| Platform State | System data |
-| Mock Mode | Test mode |
-| Server-only | Protected |
-| Local Records | Records |
-| Governance View | Admin view |
-| Branch Scope | Branch access |
-| Permission Scope | Access level |
+| Avoid                 | Use              |
+| --------------------- | ---------------- |
+| RBAC                  | Roles and access |
+| Permission Matrix     | Access rules     |
+| Audit Trail           | Activity         |
+| Audit Evidence        | Activity         |
+| Integration Readiness | Connections      |
+| Moodle Source         | Moodle           |
+| Platform State        | System data      |
+| Mock Mode             | Test mode        |
+| Server-only           | Protected        |
+| Local Records         | Records          |
+| Governance View       | Admin view       |
+| Branch Scope          | Branch access    |
+| Permission Scope      | Access level     |
 
 ## Anti-Patterns
 
@@ -305,7 +305,7 @@ Use these user-facing replacements:
 - Create/edit forms permanently inside side panels.
 - Full reports inside operational pages.
 - Navigation that exposes every internal route at the same level.
-- Generic FeaturePage layouts used for unrelated work.
+- Generic generated layouts used for unrelated work.
 
 ## Phase 1 Scope
 

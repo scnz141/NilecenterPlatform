@@ -549,7 +549,7 @@ export const seedPlatformState: PlatformState = {
     { id: "audit_certificate_seeded", actorId: "usr_admin_demo", action: "certificate.seeded", entityType: "Certificate", entityId: "cert_ar_completed_issued", summary: "Seeded issued certificate for completed demo student.", createdAt: "2026-06-19T10:00:00+03:00" },
   ],
   integrations: [
-    { id: "supabase", label: "Supabase data platform", status: "connected", envVars: ["VITE_SUPABASE_URL", "VITE_SUPABASE_PUBLISHABLE_KEY", "SUPABASE_SECRET_KEY"], serverOnly: false, lastSyncAt: "2026-06-26T08:00:00+03:00", notes: "Browser code uses only the publishable or anon key. Admin/service credentials stay server-only." },
+    { id: "supabase", label: "Supabase data platform", status: "connected", envVars: ["VITE_SUPABASE_URL", "VITE_SUPABASE_PUBLISHABLE_KEY", "VITE_SUPABASE_ANON_KEY"], serverOnly: false, lastSyncAt: "2026-06-26T08:00:00+03:00", notes: "Browser code uses only publishable or anon keys. Admin/service credentials are validated server-side and must never appear in browser setup fields." },
     { id: "moodle", label: "Moodle LMS", status: "mock_mode", envVars: ["MOODLE_BASE_URL", "MOODLE_SERVICE", "MOODLE_TOKEN"], serverOnly: true, notes: "Content, courses, grades, and assignments should sync server-side." },
     { id: "ems", label: "EMS registration portal", status: "mock_mode", envVars: ["EMS_BASE_URL"], serverOnly: true, notes: "Admissions and enrollment import boundary." },
     { id: "email", label: "Email provider", status: "not_configured", envVars: ["EMAIL_PROVIDER"], serverOnly: true, notes: "Templates are logged until delivery is connected." },

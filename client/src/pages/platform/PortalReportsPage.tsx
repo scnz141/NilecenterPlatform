@@ -143,7 +143,7 @@ export default function PortalReportsPage({ role, view = "overview" }: PortalRep
           </button>
         }
         toolbar={
-          <div className="portal-simple-toolbar">
+          <div className="portal-simple-toolbar portal-report-toolbar">
             <nav className="portal-simple-tabs" aria-label="Report views">
               {tabs.map(tab => (
                 <Link key={tab.href} href={tab.href} className={tab.active ? "active" : ""}>

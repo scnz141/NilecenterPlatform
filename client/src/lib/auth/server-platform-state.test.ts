@@ -5,22 +5,55 @@ import type { ServerRole, ServerSession } from "../../../../server/auth";
 import { applyPlatformWorkflowAction } from "../../../../server/platformState";
 
 const originalLocalOnly = process.env.NILE_PLATFORM_STATE_LOCAL_ONLY;
-const localStateFile = path.resolve(process.cwd(), ".local-data/platform-state.json");
+const localStateFile = path.resolve(
+  process.cwd(),
+  ".local-data/platform-state.json"
+);
 
-const sessionUsers: Record<ServerRole, { userId: string; email: string; name: string }> = {
-  student: { userId: "usr_student_demo", email: "student.demo@nilelearn.local", name: "Student Demo" },
-  teacher: { userId: "usr_teacher_demo", email: "teacher.demo@nilelearn.local", name: "Teacher Demo" },
-  registrar: { userId: "usr_registrar_demo", email: "registrar.demo@nilelearn.local", name: "Registrar Demo" },
-  headofdepartment: { userId: "usr_hod_demo", email: "hod.demo@nilelearn.local", name: "HOD Demo" },
-  branchadmin: { userId: "usr_branch_demo", email: "branch.demo@nilelearn.local", name: "Branch Demo" },
-  superadmin: { userId: "usr_admin_demo", email: "admin.demo@nilelearn.local", name: "Admin Demo" },
+const sessionUsers: Record<
+  ServerRole,
+  { userId: string; email: string; name: string }
+> = {
+  student: {
+    userId: "usr_student_demo",
+    email: "student.demo@nilelearn.local",
+    name: "Student Demo",
+  },
+  teacher: {
+    userId: "usr_teacher_demo",
+    email: "teacher.demo@nilelearn.local",
+    name: "Teacher Demo",
+  },
+  registrar: {
+    userId: "usr_registrar_demo",
+    email: "registrar.demo@nilelearn.local",
+    name: "Registrar Demo",
+  },
+  headofdepartment: {
+    userId: "usr_hod_demo",
+    email: "hod.demo@nilelearn.local",
+    name: "HOD Demo",
+  },
+  branchadmin: {
+    userId: "usr_branch_demo",
+    email: "branch.demo@nilelearn.local",
+    name: "Branch Demo",
+  },
+  superadmin: {
+    userId: "usr_admin_demo",
+    email: "admin.demo@nilelearn.local",
+    name: "Admin Demo",
+  },
 };
 
 function resetLocalPlatformState() {
   fs.rmSync(localStateFile, { force: true });
 }
 
-function sessionFor(role: ServerRole, override: Partial<ServerSession> = {}): ServerSession {
+function sessionFor(
+  role: ServerRole,
+  override: Partial<ServerSession> = {}
+): ServerSession {
   const user = sessionUsers[role];
   return {
     id: `test_${role}`,
@@ -60,11 +93,13 @@ describe("server platform action scope gates", () => {
         studentId: "stu_cairo_demo",
         actorId: "usr_admin_demo",
       },
-      sessionFor("student"),
+      sessionFor("student")
     );
 
     const submission = result.state.assignmentSubmissions.find(
-      (item) => item.assignmentId === "asg_ar_grammar" && item.response === "Server-scoped student response",
+      item =>
+        item.assignmentId === "asg_ar_grammar" &&
+        item.response === "Server-scoped student response"
     );
 
     expect(submission).toMatchObject({
@@ -89,8 +124,8 @@ describe("server platform action scope gates", () => {
           departmentId: "dep_admissions",
           permissionScope: "admissions",
         },
-        sessionFor("registrar"),
-      ),
+        sessionFor("registrar")
+      )
     ).rejects.toThrow("Role registrar cannot run staff.user.create.");
 
     const result = await applyPlatformWorkflowAction(
@@ -104,14 +139,26 @@ describe("server platform action scope gates", () => {
         permissionScope: "admissions",
         actorId: "usr_registrar_demo",
       },
-      sessionFor("superadmin"),
+      sessionFor("superadmin")
     );
 
     const created = result.result.result as {
-      user: { id: string; activeRole: string; branchId?: string; departmentId?: string };
-      staffProfile: { userId: string; role: string; branchIds: string[]; departmentIds: string[] };
+      user: {
+        id: string;
+        activeRole: string;
+        branchId?: string;
+        departmentId?: string;
+      };
+      staffProfile: {
+        userId: string;
+        role: string;
+        branchIds: string[];
+        departmentIds: string[];
+      };
     };
-    const audit = result.state.auditLogs.find((item) => item.entityId === created.user.id);
+    const audit = result.state.auditLogs.find(
+      item => item.entityId === created.user.id
+    );
 
     expect(created.user).toMatchObject({
       activeRole: "registrar",
@@ -142,8 +189,8 @@ describe("server platform action scope gates", () => {
           departmentId: "dep_arabic",
           status: "paused",
         },
-        sessionFor("branchadmin"),
-      ),
+        sessionFor("branchadmin")
+      )
     ).rejects.toThrow("Role branchadmin cannot run user.update.");
 
     const result = await applyPlatformWorkflowAction(
@@ -157,13 +204,25 @@ describe("server platform action scope gates", () => {
         status: "paused",
         actorId: "usr_teacher_demo",
       },
-      sessionFor("superadmin"),
+      sessionFor("superadmin")
     );
-    const updatedUser = result.state.users.find((item) => item.id === "usr_teacher_demo");
-    const staffProfile = result.state.staffProfiles.find((item) => item.userId === "usr_teacher_demo" && item.role === "teacher");
+    const updatedUser = result.state.users.find(
+      item => item.id === "usr_teacher_demo"
+    );
+    const staffProfile = result.state.staffProfiles.find(
+      item => item.userId === "usr_teacher_demo" && item.role === "teacher"
+    );
 
-    expect(updatedUser).toMatchObject({ status: "paused", branchId: "br_online", departmentId: "dep_arabic" });
-    expect(staffProfile).toMatchObject({ status: "paused", branchIds: ["br_online"], departmentIds: ["dep_arabic"] });
+    expect(updatedUser).toMatchObject({
+      status: "paused",
+      branchId: "br_online",
+      departmentId: "dep_arabic",
+    });
+    expect(staffProfile).toMatchObject({
+      status: "paused",
+      branchIds: ["br_online"],
+      departmentIds: ["dep_arabic"],
+    });
     expect(result.result).toMatchObject({
       action: "user.updated",
       entityId: "usr_teacher_demo",
@@ -183,8 +242,8 @@ describe("server platform action scope gates", () => {
           userId: "usr_student_demo",
           name: "Cross Account Edit",
         },
-        sessionFor("teacher"),
-      ),
+        sessionFor("teacher")
+      )
     ).rejects.toThrow("Users can only update their own profile.");
 
     const result = await applyPlatformWorkflowAction(
@@ -198,9 +257,11 @@ describe("server platform action scope gates", () => {
         branchId: "br_global",
         departmentId: "dep_admin",
       } as any,
-      sessionFor("teacher"),
+      sessionFor("teacher")
     );
-    const user = result.state.users.find((item) => item.id === "usr_teacher_demo");
+    const user = result.state.users.find(
+      item => item.id === "usr_teacher_demo"
+    );
 
     expect(user).toMatchObject({
       name: "Teacher Server Profile",
@@ -211,10 +272,58 @@ describe("server platform action scope gates", () => {
       preferredLanguage: "Arabic",
     });
     expect(user?.notificationPreferences).toMatchObject({ messages: false });
-    expect(result.state.auditLogs.map((item) => item.action)).toEqual(expect.arrayContaining(["profile.updated", "preferences.updated"]));
+    expect(result.state.auditLogs.map(item => item.action)).toEqual(
+      expect.arrayContaining(["profile.updated", "preferences.updated"])
+    );
     expect(result.state.auditLogs[0]).toMatchObject({
       actorId: "usr_teacher_demo",
     });
+  });
+
+  it("blocks students from submitting learning work outside their enrolled course runs", async () => {
+    await expect(
+      applyPlatformWorkflowAction(
+        {
+          type: "assignment.submit",
+          assignmentId: "asg_ar_l1_letters",
+          response: "This should not be accepted.",
+          studentId: "stu_alex_demo",
+          actorId: "usr_student_alex_demo",
+        },
+        sessionFor("student")
+      )
+    ).rejects.toThrow(
+      "Student can only submit assignments for enrolled course runs."
+    );
+
+    await expect(
+      applyPlatformWorkflowAction(
+        {
+          type: "quiz.submit",
+          quizId: "quiz_ar_l1_letters",
+          answers: { q1: "ب" },
+          studentId: "stu_alex_demo",
+          actorId: "usr_student_alex_demo",
+        },
+        sessionFor("student")
+      )
+    ).rejects.toThrow(
+      "Student can only submit quizzes for enrolled course runs."
+    );
+
+    await expect(
+      applyPlatformWorkflowAction(
+        {
+          type: "lesson.start",
+          lessonId: "lesson_ar_letters",
+          studentId: "stu_alex_demo",
+          actorId: "usr_student_alex_demo",
+        },
+        sessionFor("student")
+      )
+    ).rejects.toThrow(
+      "Student can only open lessons for enrolled course runs."
+    );
   });
 
   it("blocks unassigned teachers from class attendance actions", async () => {
@@ -232,9 +341,74 @@ describe("server platform action scope gates", () => {
           sessionId: "evt_ar_live",
           statuses: { stu_demo: "present" },
         },
-        spareTeacher,
-      ),
+        spareTeacher
+      )
     ).rejects.toThrow("Teacher can only save attendance for assigned classes.");
+  });
+
+  it("blocks teachers from unrelated class attendance, grading, and quiz review work", async () => {
+    await expect(
+      applyPlatformWorkflowAction(
+        {
+          type: "attendance.save",
+          classGroupId: "class_hifz_1_online",
+          sessionId: "evt_hifz_online",
+          statuses: { stu_ready_demo: "present", stu_paused_demo: "present" },
+        },
+        sessionFor("teacher")
+      )
+    ).rejects.toThrow("Teacher can only save attendance for assigned classes.");
+
+    await expect(
+      applyPlatformWorkflowAction(
+        {
+          type: "assignment.grade",
+          submissionId: "sub_ar_l1_letters_alex",
+          score: 90,
+          feedback: "This should not be accepted.",
+        },
+        sessionFor("teacher")
+      )
+    ).rejects.toThrow("Teacher can only grade assigned class submissions.");
+
+    await expect(
+      applyPlatformWorkflowAction(
+        {
+          type: "quiz.review",
+          attemptId: "attempt_ar_l1_alex",
+          score: 90,
+          feedback: "This should not be accepted.",
+        },
+        sessionFor("teacher")
+      )
+    ).rejects.toThrow("Teacher can only review assigned class quiz attempts.");
+  });
+
+  it("writes assignment grading audit with the authenticated teacher actor", async () => {
+    const result = await applyPlatformWorkflowAction(
+      {
+        type: "assignment.grade",
+        submissionId: "sub_ar_grammar_draft",
+        score: 91,
+        feedback: "Server-scoped grading feedback.",
+        actorId: "usr_admin_demo",
+      },
+      sessionFor("teacher")
+    );
+    const submission = result.state.assignmentSubmissions.find(
+      item => item.id === "sub_ar_grammar_draft"
+    );
+
+    expect(submission).toMatchObject({
+      status: "completed",
+      score: 91,
+      feedback: "Server-scoped grading feedback.",
+    });
+    expect(result.state.auditLogs[0]).toMatchObject({
+      action: "assignment.graded",
+      actorId: "usr_teacher_demo",
+      entityId: "sub_ar_grammar_draft",
+    });
   });
 
   it("overwrites spoofed teacher calendar owners with the authenticated teacher session", async () => {
@@ -248,10 +422,12 @@ describe("server platform action scope gates", () => {
         branchId: "br_online",
         ownerId: "usr_admin_demo",
       },
-      sessionFor("teacher"),
+      sessionFor("teacher")
     );
 
-    const createdEvent = result.result.result as { event: { ownerId: string; branchId: string } };
+    const createdEvent = result.result.result as {
+      event: { ownerId: string; branchId: string };
+    };
 
     expect(createdEvent.event).toMatchObject({
       ownerId: "usr_teacher_demo",
@@ -261,6 +437,35 @@ describe("server platform action scope gates", () => {
       action: "calendar.created",
       actorId: "usr_teacher_demo",
     });
+  });
+
+  it("blocks branch admins from attendance and room creation outside their branch", async () => {
+    const branchSession = sessionFor("branchadmin");
+
+    await expect(
+      applyPlatformWorkflowAction(
+        {
+          type: "attendance.save",
+          classGroupId: "class_ar_l3_a",
+          sessionId: "evt_ar_live",
+          statuses: { stu_demo: "present" },
+        },
+        branchSession
+      )
+    ).rejects.toThrow("Branch admin can only save attendance in their branch.");
+
+    await expect(
+      applyPlatformWorkflowAction(
+        {
+          type: "room.create",
+          branchId: "br_alex",
+          name: "Blocked Alexandria room",
+          capacity: 12,
+          equipment: ["Projector"],
+        },
+        branchSession
+      )
+    ).rejects.toThrow("Branch admin can only create rooms in their branch.");
   });
 
   it("blocks branch admins from mutating rooms and payments outside their branch", async () => {
@@ -273,8 +478,8 @@ describe("server platform action scope gates", () => {
           roomId: "room_online_a",
           status: "paused",
         },
-        branchSession,
-      ),
+        branchSession
+      )
     ).rejects.toThrow("Branch admin can only update rooms in their branch.");
 
     await expect(
@@ -286,9 +491,11 @@ describe("server platform action scope gates", () => {
           method: "manual",
           reference: "outside-branch-test",
         },
-        branchSession,
-      ),
-    ).rejects.toThrow("Branch admin can only record payments for their branch.");
+        branchSession
+      )
+    ).rejects.toThrow(
+      "Branch admin can only record payments for their branch."
+    );
   });
 
   it("blocks registrars from admissions actions outside configured branch scope", async () => {
@@ -302,10 +509,12 @@ describe("server platform action scope gates", () => {
         courseInterest: "Arabic Language",
         schedulePreference: "Evening",
       },
-      sessionFor("registrar"),
+      sessionFor("registrar")
     );
 
-    const application = allowed.result.result as { application: { branchId: string } };
+    const application = allowed.result.result as {
+      application: { branchId: string };
+    };
 
     expect(application.application.branchId).toBe("br_online");
     expect(allowed.state.auditLogs[0]).toMatchObject({
@@ -323,9 +532,50 @@ describe("server platform action scope gates", () => {
           schedulePreference: "Evening",
           status: "pending",
         },
-        sessionFor("registrar"),
-      ),
-    ).rejects.toThrow("Registrar can only create applications inside admissions branches.");
+        sessionFor("registrar")
+      )
+    ).rejects.toThrow(
+      "Registrar can only create applications inside admissions branches."
+    );
+  });
+
+  it("blocks registrars from student creation and payments outside admissions scope", async () => {
+    await expect(
+      applyPlatformWorkflowAction(
+        {
+          type: "student.create",
+          fullName: "Blocked Alexandria Student",
+          email: "blocked.alex.student@nilelearn.local",
+          phone: "+20 100 000 9090",
+          branchId: "br_alex",
+          preferredLanguage: "English",
+          courseInterest: "Arabic Level 1",
+          ageGroup: "Teen",
+          courseRunId: "run_ar_l1_alex_2026",
+          classGroupId: "class_ar_l1_alex",
+          status: "active",
+          source: "direct",
+        },
+        sessionFor("registrar")
+      )
+    ).rejects.toThrow(
+      "Registrar can only create students inside admissions branches."
+    );
+
+    await expect(
+      applyPlatformWorkflowAction(
+        {
+          type: "payment.record",
+          invoiceId: "inv_alex_demo_1",
+          amount: 100,
+          method: "manual",
+          reference: "outside-admissions-scope",
+        },
+        sessionFor("registrar")
+      )
+    ).rejects.toThrow(
+      "Registrar can only record payments inside admissions branches."
+    );
   });
 
   it("enforces role-scoped messaging recipients while preserving server actor ownership", async () => {
@@ -346,7 +596,7 @@ describe("server platform action scope gates", () => {
           },
         ],
       },
-      sessionFor("teacher"),
+      sessionFor("teacher")
     );
     const sentMessage = teacherResult.state.messages[0];
 
@@ -381,8 +631,8 @@ describe("server platform action scope gates", () => {
           subject: "Blocked class note",
           body: "Teacher cannot message unrelated students.",
         },
-        sessionFor("teacher"),
-      ),
+        sessionFor("teacher")
+      )
     ).rejects.toThrow("Message recipient is outside this role scope.");
 
     const adminResult = await applyPlatformWorkflowAction(
@@ -393,14 +643,21 @@ describe("server platform action scope gates", () => {
         subject: "Global announcement",
         body: "Super admin can message any active account.",
       },
-      sessionFor("superadmin"),
+      sessionFor("superadmin")
     );
 
-    const broadcastMessages = adminResult.state.messages.filter((item) => item.subject === "Global announcement");
+    const broadcastMessages = adminResult.state.messages.filter(
+      item => item.subject === "Global announcement"
+    );
 
     expect(broadcastMessages).toHaveLength(2);
-    expect(broadcastMessages.map((item) => item.toUserId).sort()).toEqual(["usr_student_alex_demo", "usr_teacher_demo"]);
-    expect(broadcastMessages.every((item) => item.fromUserId === "usr_admin_demo")).toBe(true);
+    expect(broadcastMessages.map(item => item.toUserId).sort()).toEqual([
+      "usr_student_alex_demo",
+      "usr_teacher_demo",
+    ]);
+    expect(
+      broadcastMessages.every(item => item.fromUserId === "usr_admin_demo")
+    ).toBe(true);
   });
 
   it("blocks HOD finance report presets outside academic report scope", async () => {
@@ -415,9 +672,86 @@ describe("server platform action scope gates", () => {
           status: "all",
           rowCount: 0,
         },
-        sessionFor("headofdepartment"),
-      ),
-    ).rejects.toThrow("Role headofdepartment cannot save finance report views.");
+        sessionFor("headofdepartment")
+      )
+    ).rejects.toThrow(
+      "Role headofdepartment cannot save finance report views."
+    );
+  });
+
+  it("blocks HOD academic actions outside their department scope", async () => {
+    await expect(
+      applyPlatformWorkflowAction(
+        {
+          type: "course.status.update",
+          courseId: "course_ar_l1",
+          status: "paused",
+        },
+        sessionFor("headofdepartment")
+      )
+    ).rejects.toThrow("HOD can only update course status in their department.");
+
+    await expect(
+      applyPlatformWorkflowAction(
+        {
+          type: "assignment.grade",
+          submissionId: "sub_hifz_revision_ready",
+          score: 88,
+          feedback: "This should not be accepted.",
+        },
+        sessionFor("headofdepartment")
+      )
+    ).rejects.toThrow("HOD can only grade department assignment submissions.");
+
+    await expect(
+      applyPlatformWorkflowAction(
+        {
+          type: "certificate.issue",
+          certificateId: "cert_paused_rejected",
+        },
+        sessionFor("headofdepartment")
+      )
+    ).rejects.toThrow("HOD can only manage certificates in their department.");
+  });
+
+  it("allows super admins to perform global governance actions with audit evidence", async () => {
+    const branchResult = await applyPlatformWorkflowAction(
+      {
+        type: "branch.update",
+        branchId: "br_alex",
+        status: "paused",
+      },
+      sessionFor("superadmin")
+    );
+    const branch = branchResult.state.branches.find(
+      item => item.id === "br_alex"
+    );
+
+    expect(branch).toMatchObject({ status: "paused" });
+    expect(branchResult.state.auditLogs[0]).toMatchObject({
+      action: "branch.updated",
+      actorId: "usr_admin_demo",
+      entityId: "br_alex",
+    });
+
+    const permissionResult = await applyPlatformWorkflowAction(
+      {
+        type: "permission.update",
+        role: "teacher",
+        permission: "payments:read",
+        granted: true,
+      },
+      sessionFor("superadmin")
+    );
+
+    expect(permissionResult.state.permissions.teacher).toContain(
+      "payments:read"
+    );
+    expect(permissionResult.state.auditLogs[0]).toMatchObject({
+      action: "permission.updated",
+      actorId: "usr_admin_demo",
+      entityId: "teacher",
+    });
   });
 
   it("saves scoped portal settings for branch, registrar, and HOD roles", async () => {
@@ -432,9 +766,13 @@ describe("server platform action scope gates", () => {
         notifications: true,
         attendanceCutoffMinutes: 20,
       },
-      sessionFor("branchadmin"),
+      sessionFor("branchadmin")
     );
-    expect(branchResult.state.portalSettings.find((item) => item.role === "branchadmin" && item.scopeId === "br_cairo")).toMatchObject({
+    expect(
+      branchResult.state.portalSettings.find(
+        item => item.role === "branchadmin" && item.scopeId === "br_cairo"
+      )
+    ).toMatchObject({
       label: "Cairo branch desk",
       updatedBy: "usr_branch_demo",
     });
@@ -451,9 +789,13 @@ describe("server platform action scope gates", () => {
         reviewCadenceDays: 2,
         paymentReminderDays: 5,
       },
-      sessionFor("registrar"),
+      sessionFor("registrar")
     );
-    expect(registrarResult.state.portalSettings.find((item) => item.role === "registrar" && item.scopeId === "br_cairo")).toMatchObject({
+    expect(
+      registrarResult.state.portalSettings.find(
+        item => item.role === "registrar" && item.scopeId === "br_cairo"
+      )
+    ).toMatchObject({
       paymentReminderDays: 5,
       updatedBy: "usr_registrar_demo",
     });
@@ -469,9 +811,14 @@ describe("server platform action scope gates", () => {
         notifications: true,
         reviewCadenceDays: 7,
       },
-      sessionFor("headofdepartment"),
+      sessionFor("headofdepartment")
     );
-    expect(hodResult.state.portalSettings.find((item) => item.role === "headofdepartment" && item.scopeId === "dep_arabic")).toMatchObject({
+    expect(
+      hodResult.state.portalSettings.find(
+        item =>
+          item.role === "headofdepartment" && item.scopeId === "dep_arabic"
+      )
+    ).toMatchObject({
       reviewCadenceDays: 7,
       updatedBy: "usr_hod_demo",
     });
@@ -489,8 +836,8 @@ describe("server platform action scope gates", () => {
           timezone: "Africa/Cairo",
           notifications: true,
         },
-        sessionFor("branchadmin"),
-      ),
+        sessionFor("branchadmin")
+      )
     ).rejects.toThrow("Portal settings are limited to your branch.");
 
     await expect(
@@ -504,8 +851,8 @@ describe("server platform action scope gates", () => {
           timezone: "Africa/Cairo",
           notifications: true,
         },
-        sessionFor("headofdepartment"),
-      ),
+        sessionFor("headofdepartment")
+      )
     ).rejects.toThrow("Portal settings are limited to your department.");
 
     await expect(
@@ -517,8 +864,8 @@ describe("server platform action scope gates", () => {
           academicTerm: "Summer 2026",
           retentionDays: 365,
         },
-        sessionFor("headofdepartment"),
-      ),
+        sessionFor("headofdepartment")
+      )
     ).rejects.toThrow("Role headofdepartment cannot run settings.save.");
   });
 });
