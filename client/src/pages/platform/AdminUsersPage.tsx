@@ -1,5 +1,5 @@
 import { useMemo, useState, type FormEvent } from "react";
-import { ArrowLeft, CheckCircle2, Search, UserPlus } from "lucide-react";
+import { ArrowLeft, ArrowRight, CheckCircle2, Search, UserPlus } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import { toast } from "sonner";
 import PlatformShell from "@/components/platform/PlatformShell";
@@ -181,6 +181,13 @@ function roleInitials(role: Role) {
     .join("")
     .slice(0, 2)
     .toUpperCase();
+}
+
+function compactEmail(email: string) {
+  const [name, domain] = email.split("@");
+  if (!domain) return email;
+  const shortName = name.length > 22 ? `${name.slice(0, 19)}...` : name;
+  return `${shortName}@${domain}`;
 }
 
 export default function AdminUsersPage({ mode = "list" }: AdminUsersPageProps) {
@@ -626,6 +633,15 @@ export default function AdminUsersPage({ mode = "list" }: AdminUsersPageProps) {
     >
       <div className="admin-users-simple-table-wrap">
         <table>
+          <colgroup>
+            <col className="admin-users-col-name" />
+            <col className="admin-users-col-role" />
+            <col className="admin-users-col-branch" />
+            <col className="admin-users-col-department" />
+            <col className="admin-users-col-status" />
+            <col className="admin-users-col-activity" />
+            <col className="admin-users-col-actions" />
+          </colgroup>
           <thead>
             <tr>
               <th>Name</th>
@@ -652,6 +668,7 @@ export default function AdminUsersPage({ mode = "list" }: AdminUsersPageProps) {
                     <Link
                       className="admin-users-simple-person"
                       href={`/app/admin/users/${user.id}`}
+                      aria-label={`Open ${user.name}`}
                     >
                       <span
                         style={{
@@ -663,7 +680,7 @@ export default function AdminUsersPage({ mode = "list" }: AdminUsersPageProps) {
                       </span>
                       <span>
                         <strong>{user.name}</strong>
-                        <small>{user.email}</small>
+                        <small title={user.email}>{compactEmail(user.email)}</small>
                       </span>
                     </Link>
                   </td>
@@ -678,7 +695,14 @@ export default function AdminUsersPage({ mode = "list" }: AdminUsersPageProps) {
                   <td>{formatActivity(activityByUser.get(user.id))}</td>
                   <td>
                     <div className="platform-row-actions">
-                      <Link href={`/app/admin/users/${user.id}`}>Open</Link>
+                      <Link
+                        className="admin-users-open-link"
+                        href={`/app/admin/users/${user.id}`}
+                        aria-label={`Open ${user.name}`}
+                      >
+                        <span>Open</span>
+                        <ArrowRight size={14} aria-hidden="true" />
+                      </Link>
                     </div>
                   </td>
                 </tr>

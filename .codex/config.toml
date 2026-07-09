@@ -6,6 +6,7 @@ project = "nile-learn"
 repository = "nile-center-platform"
 default_loop = "READ -> SPEC -> PLAN -> IMPLEMENT -> VERIFY -> REVIEW -> FIX -> DOCUMENT"
 
+sandbox_mode = "danger-full-access"
 [commands]
 format_check = "node_modules/.bin/prettier --check CLAUDE.md AGENTS.md .codex/hooks.json .codex/prompts/*.md"
 full_format_check = "FULL_FORMAT_CHECK=1 scripts/verify.sh"

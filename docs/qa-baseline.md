@@ -3,9 +3,9 @@
 Nile Learn is currently in internal alpha stabilization. The protected portal QA baseline is:
 
 - Portal QA: 1,205 checks, 0 failures.
-- Checked at: `2026-07-08T16:06:57.597Z`.
-- Validation command: `scripts/verify.sh`.
-- QA summary artifact: `output/playwright/portal-qa-summary.json`.
+- Checked at: `2026-07-09T09:38:47.361Z`.
+- Validation command: `QA_OUTPUT_DIR=output/playwright/beta-goal-20260709-verify scripts/verify.sh`.
+- QA summary artifact: `output/playwright/beta-goal-20260709-verify/portal-qa-summary.json`.
 
 Admin governance is now separated across focused Simple UI routes:
 
