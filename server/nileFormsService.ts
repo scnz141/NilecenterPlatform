@@ -545,7 +545,8 @@ function matchingAssignment(
 ) {
   return state.assignments.find(
     item =>
-      item.publicationId === publicationId && assignmentMatches(item, actor, now)
+      item.publicationId === publicationId &&
+      assignmentMatches(item, actor, now)
   );
 }
 
@@ -1691,7 +1692,9 @@ export function createNileFormsService(
       const session = requireSession(sessionInput);
       const actor = await authorize(session, "forms:assign");
       return repository.transaction(state => {
-        const assignment = state.assignments.find(item => item.id === assignmentId);
+        const assignment = state.assignments.find(
+          item => item.id === assignmentId
+        );
         if (!assignment) {
           throw new NileFormsError(
             "Form assignment not found.",
@@ -2115,7 +2118,9 @@ export function createNileFormsService(
           );
           const version = state.versions.find(value => value.id === versionId);
           const definition = publication
-            ? state.definitions.find(value => value.id === publication.definitionId)
+            ? state.definitions.find(
+                value => value.id === publication.definitionId
+              )
             : undefined;
           if (!publication || !version || !definition) {
             recordReceipt(
@@ -2367,7 +2372,8 @@ export function createNileFormsService(
       requireCompatibilityRuntime(input.session);
       const session = input.session ?? null;
       const actor = session ? await authorize(session, "forms:respond") : null;
-      const authorityState = actor?.platformState ?? (await readAuthorityState());
+      const authorityState =
+        actor?.platformState ?? (await readAuthorityState());
       const draftKey = resolveDraftKey(dependencies.draftKey);
       return repository.transaction(state => {
         const publication = requirePublication(state, input.publicationId);
@@ -2438,10 +2444,7 @@ export function createNileFormsService(
             "draft_denied"
           );
         }
-        if (
-          draft?.assignmentId &&
-          draft.assignmentId !== assignment?.id
-        ) {
+        if (draft?.assignmentId && draft.assignmentId !== assignment?.id) {
           throw new NileFormsError(
             "The assignment used by this draft is no longer active.",
             403,
@@ -2605,7 +2608,8 @@ export function createNileFormsService(
       requireCompatibilityRuntime(input.session);
       const session = input.session ?? null;
       const actor = session ? await authorize(session, "forms:respond") : null;
-      const authorityState = actor?.platformState ?? (await readAuthorityState());
+      const authorityState =
+        actor?.platformState ?? (await readAuthorityState());
       const clientSubmissionId = clean(input.clientSubmissionId, 128);
       if (!clientSubmissionIdPattern.test(clientSubmissionId)) {
         throw new NileFormsError(
@@ -3170,13 +3174,14 @@ export function createNileFormsService(
             "submission_scope_denied"
           );
         }
-        const adapterByKey: Partial<Record<string, FormPromotion["adapter"]>> = {
-          public_enquiry: "lead.create",
-          application_intake: "application.create",
-          placement_request: "placement.create",
-          student_support: "support_ticket.create",
-          attendance_exception: "attendance_exception.create",
-        };
+        const adapterByKey: Partial<Record<string, FormPromotion["adapter"]>> =
+          {
+            public_enquiry: "lead.create",
+            application_intake: "application.create",
+            placement_request: "placement.create",
+            student_support: "support_ticket.create",
+            attendance_exception: "attendance_exception.create",
+          };
         const adapter = adapterByKey[definition.key];
         if (!adapter) {
           throw new NileFormsError(
@@ -3187,7 +3192,8 @@ export function createNileFormsService(
         }
 
         let promotion = state.promotions.find(
-          item => item.submissionId === submission.id && item.adapter === adapter
+          item =>
+            item.submissionId === submission.id && item.adapter === adapter
         );
         if (promotion?.status === "succeeded") return promotion;
         if (promotion && promotion.idempotencyKey === idempotencyKey) {

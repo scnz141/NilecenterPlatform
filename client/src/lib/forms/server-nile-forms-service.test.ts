@@ -282,13 +282,11 @@ describe("Nile Forms server authority", () => {
         urgent: true,
       },
     });
-    await repository.transaction(state => {
-      const assignment = state.assignments.find(
-        item => item.publicationId === "publication_form_support_1"
-      );
-      if (!assignment) throw new Error("Expected student support assignment");
-      assignment.revokedAt = fixedNow.toISOString();
-    });
+    const assignment = (await repository.read()).assignments.find(
+      item => item.publicationId === "publication_form_support_1"
+    );
+    if (!assignment) throw new Error("Expected student support assignment");
+    await service.revokeAssignment(superAdmin, assignment.id);
 
     await expect(
       service.loadDraft({
@@ -737,7 +735,9 @@ describe("Nile Forms server authority", () => {
       publication.opensAt = "2026-07-11T14:00:00.000Z";
     });
 
-    await expect(createService().getPublicForm("free-trial-enquiry")).resolves.toMatchObject({
+    await expect(
+      createService().getPublicForm("free-trial-enquiry")
+    ).resolves.toMatchObject({
       publication: { id: "publication_form_enquiry_1" },
     });
   });
@@ -771,11 +771,9 @@ describe("Nile Forms server authority", () => {
   it("keeps delegated review inside the submission branch", async () => {
     const service = createService();
     const { submission } = await submitPublicEnquiry(service);
-    const onlineRegistrar = session(
-      "registrar",
-      "usr_registrar_online_demo",
-      { branchIds: ["br_online"] }
-    );
+    const onlineRegistrar = session("registrar", "usr_registrar_online_demo", {
+      branchIds: ["br_online"],
+    });
 
     await expect(
       service.reviewSubmission(onlineRegistrar, submission.id, {
@@ -797,14 +795,27 @@ describe("Nile Forms server authority", () => {
     const { submission } = await submitPublicEnquiry(service);
     const command = { decision: "under_review", expectedRevision: 1 };
 
-    const first = await service.reviewSubmission(registrar, submission.id, command);
-    const replay = await service.reviewSubmission(registrar, submission.id, command);
+    const first = await service.reviewSubmission(
+      registrar,
+      submission.id,
+      command
+    );
+    const replay = await service.reviewSubmission(
+      registrar,
+      submission.id,
+      command
+    );
 
     expect(first.replayed).toBe(false);
-    expect(replay).toMatchObject({ replayed: true, review: { id: first.review.id } });
+    expect(replay).toMatchObject({
+      replayed: true,
+      review: { id: first.review.id },
+    });
     const state = await repository.read();
     expect(state.reviews).toHaveLength(1);
-    expect(state.auditEvents.filter(item => item.action === "form.under_review")).toHaveLength(1);
+    expect(
+      state.auditEvents.filter(item => item.action === "form.under_review")
+    ).toHaveLength(1);
   });
 
   it("serializes concurrent promotion so the adapter executes once", async () => {
