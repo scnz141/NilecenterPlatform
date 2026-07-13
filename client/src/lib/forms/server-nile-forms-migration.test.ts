@@ -6,16 +6,16 @@ import type {
   JotformSubmission,
 } from "../../../../server/jotformClient";
 import {
-  createMemoryNileFormsRepository,
-  resetDefaultNileFormsRepository,
-  setNileFormsRepository,
-  type NileFormsRepository,
-} from "../../../../server/nileFormsRepository";
+  createMemoryNileFormsCompatibilityRepository,
+  resetDefaultNileFormsCompatibilityRepository,
+  setNileFormsCompatibilityRepository,
+  type NileFormsCompatibilityRepository,
+} from "../../../../server/nileFormsCompatibilityRepository";
 import { createNileFormsMigrationService } from "../../../../server/nileFormsMigrationService";
 
 const fixedNow = new Date("2026-07-11T20:00:00.000Z");
 let restoreRepository: (() => void) | undefined;
-let testRepository: NileFormsRepository;
+let testRepository: NileFormsCompatibilityRepository;
 let idCounter = 0;
 
 const superAdmin: ServerSession = {
@@ -119,22 +119,22 @@ const mapping = [
 
 beforeEach(() => {
   idCounter = 0;
-  testRepository = createMemoryNileFormsRepository();
-  restoreRepository = setNileFormsRepository(testRepository);
+  testRepository = createMemoryNileFormsCompatibilityRepository();
+  restoreRepository = setNileFormsCompatibilityRepository(testRepository);
 });
 
 afterEach(() => {
   restoreRepository?.();
   restoreRepository = undefined;
-  resetDefaultNileFormsRepository();
+  resetDefaultNileFormsCompatibilityRepository();
 });
 
 describe("Nile Forms finite Jotform migration", () => {
   it("dry-runs, imports without promotion, replays safely, and reconciles", async () => {
-    const repository = createMemoryNileFormsRepository();
+    const repository = createMemoryNileFormsCompatibilityRepository();
     testRepository = repository;
     restoreRepository?.();
-    restoreRepository = setNileFormsRepository(repository);
+    restoreRepository = setNileFormsCompatibilityRepository(repository);
     const submissions = [
       sourceSubmission("90001", [
         "Legacy Applicant",

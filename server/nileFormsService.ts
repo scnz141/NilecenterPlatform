@@ -4,9 +4,9 @@ import { seedPlatformState } from "../client/src/lib/domain/seed.js";
 import type { PlatformState } from "../client/src/lib/domain/types.js";
 import type { ServerSession } from "./auth.js";
 import {
-  getNileFormsRepository,
-  type NileFormsRepository,
-} from "./nileFormsRepository.js";
+  getNileFormsCompatibilityRepository,
+  type NileFormsCompatibilityRepository,
+} from "./nileFormsCompatibilityRepository.js";
 import {
   getPlatformStateRepository,
   normalizePlatformState,
@@ -36,6 +36,11 @@ import {
   type NileFormsState,
 } from "../shared/nileForms.js";
 import { executeNileFormPromotion } from "./nileFormsPromotionAdapters.js";
+import {
+  projectableNileFormFieldIds,
+  projectNileFormAnswers,
+  projectNileFormSubmission,
+} from "./nileFormsProjection.js";
 
 export class NileFormsError extends Error {
   constructor(
@@ -117,7 +122,7 @@ type PromotionResult = {
 };
 
 type NileFormsServiceDependencies = {
-  repository?: NileFormsRepository;
+  repository?: NileFormsCompatibilityRepository;
   now?: () => Date;
   randomId?: (prefix: string) => string;
   draftKey?: Buffer;
@@ -925,6 +930,14 @@ function requirePublication(state: NileFormsState, publicationId: string) {
   return publication;
 }
 
+function projectSubmissionForCompatibilityReader(
+  state: NileFormsState,
+  submission: FormSubmission
+) {
+  const version = requireVersion(state, submission.versionId);
+  return projectNileFormSubmission(submission, version.content, false);
+}
+
 function appendAudit(
   state: NileFormsState,
   input: Omit<FormAuditEvent, "id" | "createdAt">,
@@ -1332,7 +1345,8 @@ function csvCell(value: unknown) {
 export function createNileFormsService(
   dependencies: NileFormsServiceDependencies = {}
 ) {
-  const repository = dependencies.repository ?? getNileFormsRepository();
+  const repository =
+    dependencies.repository ?? getNileFormsCompatibilityRepository();
   const nowDate = dependencies.now ?? (() => new Date());
   const createId =
     dependencies.randomId ??
@@ -2615,7 +2629,7 @@ export function createNileFormsService(
         definition,
         publication,
         version,
-        submission,
+        submission: projectSubmissionForCompatibilityReader(state, submission),
         reviews: state.reviews
           .filter(item => item.submissionId === submission.id)
           .map(({ id, decision, comments, createdAt }) => ({
@@ -3176,7 +3190,10 @@ export function createNileFormsService(
             : false;
         })
         .map(submission => ({
-          submission,
+          submission: projectSubmissionForCompatibilityReader(
+            state,
+            submission
+          ),
           definition: requireDefinition(state, submission.definitionId),
           publication: requirePublication(state, submission.publicationId),
         }))
@@ -3213,7 +3230,7 @@ export function createNileFormsService(
         );
       }
       return {
-        submission,
+        submission: projectSubmissionForCompatibilityReader(state, submission),
         definition,
         publication: requirePublication(state, submission.publicationId),
         version: requireVersion(state, submission.versionId),
@@ -3363,11 +3380,7 @@ export function createNileFormsService(
             return [
               version.id,
               new Set(
-                version.content.pages.flatMap(page =>
-                  page.fields
-                    .filter(field => field.reportable)
-                    .map(field => field.id)
-                )
+                projectableNileFormFieldIds(version.content, "export", false)
               ),
             ] as const;
           })
@@ -3388,6 +3401,12 @@ export function createNileFormsService(
         ];
         const body = rows.map(submission => {
           const definition = requireDefinition(state, submission.definitionId);
+          const version = requireVersion(state, submission.versionId);
+          const projectedAnswers = projectNileFormAnswers(
+            version.content,
+            submission.answers,
+            { mode: "export", canReadSensitive: false }
+          );
           return [
             submission.id,
             definition.key,
@@ -3396,7 +3415,7 @@ export function createNileFormsService(
             submission.submittedAt,
             ...fieldIds.map(fieldId =>
               reportableByVersion.get(submission.versionId)?.has(fieldId)
-                ? submission.answers[fieldId]
+                ? projectedAnswers[fieldId]
                 : ""
             ),
           ];

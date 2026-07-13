@@ -34,7 +34,8 @@ export type FormPermission =
   | "forms:respond"
   | "form_submissions:read"
   | "form_submissions:review"
-  | "form_submissions:export";
+  | "form_submissions:export"
+  | "form_submissions:sensitive_read";
 
 export type LocalizedText = {
   en: string;

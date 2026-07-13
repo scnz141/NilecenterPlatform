@@ -10,9 +10,9 @@ import {
   type JotformSubmission,
 } from "./jotformClient.js";
 import {
-  getNileFormsRepository,
-  type NileFormsRepository,
-} from "./nileFormsRepository.js";
+  getNileFormsCompatibilityRepository,
+  type NileFormsCompatibilityRepository,
+} from "./nileFormsCompatibilityRepository.js";
 import { NileFormsError } from "./nileFormsService.js";
 import {
   normalizeAndValidateFormAnswers,
@@ -28,7 +28,7 @@ import {
 } from "../shared/nileForms.js";
 
 type MigrationDependencies = {
-  repository?: NileFormsRepository;
+  repository?: NileFormsCompatibilityRepository;
   getClient?: () => JotformClient;
   now?: () => Date;
   randomId?: (prefix: string) => string;
@@ -367,7 +367,8 @@ function asNileFormsError(error: unknown) {
 export function createNileFormsMigrationService(
   dependencies: MigrationDependencies = {}
 ) {
-  const repository = dependencies.repository ?? getNileFormsRepository();
+  const repository =
+    dependencies.repository ?? getNileFormsCompatibilityRepository();
   const getClient =
     dependencies.getClient ?? (() => createJotformClientFromEnvironment());
   const nowDate = dependencies.now ?? (() => new Date());

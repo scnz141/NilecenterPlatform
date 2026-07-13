@@ -10,6 +10,18 @@ import {
   createNileFormsMigrationService,
   type NileFormsMigrationService,
 } from "./nileFormsMigrationService.js";
+import {
+  nileFormsPublicClientEvidence,
+  NileFormsRequestSecurityError,
+  requireNileFormsMutationRequest,
+} from "./nileFormsRequestSecurity.js";
+import {
+  NileFormsRepositoryAuthorityError,
+  NileFormsRepositoryConflictError,
+  NileFormsRepositoryInputError,
+  NileFormsRepositoryRateLimitError,
+  NileFormsRepositoryUnavailableError,
+} from "./nileFormsRepository.js";
 
 type FormApiRequest = {
   method: string;
@@ -18,6 +30,7 @@ type FormApiRequest = {
   params?: Record<string, string | undefined>;
   headers: { cookie?: string };
   ip?: string;
+  socket?: { remoteAddress?: string };
   get(name: string): string | undefined;
 };
 
@@ -51,8 +64,11 @@ const publicSubmissionWindowMs = 10 * 60 * 1000;
 const publicSubmissionLimit = 12;
 const publicSubmissionBucketLimit = 5_000;
 
-function publicClientKey(req: FormApiRequest) {
-  return req.ip?.trim() || "local";
+function publicClientKeys(req: FormApiRequest) {
+  const evidence = nileFormsPublicClientEvidence(req);
+  return [evidence.active.ipHmac, evidence.previous?.ipHmac].filter(
+    (value): value is string => Boolean(value)
+  );
 }
 
 function prunePublicSubmissionBuckets(now: number) {
@@ -73,17 +89,24 @@ function consumePublicSubmissionAttempt(req: FormApiRequest) {
   if (publicSubmissionBuckets.size >= publicSubmissionBucketLimit) {
     prunePublicSubmissionBuckets(now);
   }
-  const key = publicClientKey(req);
-  const bucket = publicSubmissionBuckets.get(key);
-  if (!bucket || bucket.resetAt <= now) {
-    publicSubmissionBuckets.set(key, {
-      count: 1,
-      resetAt: now + publicSubmissionWindowMs,
-    });
-    return true;
+  const keys = publicClientKeys(req);
+  const buckets = keys
+    .map(key => publicSubmissionBuckets.get(key))
+    .filter((bucket): bucket is { count: number; resetAt: number } =>
+      Boolean(bucket && bucket.resetAt > now)
+    );
+  const count = buckets.reduce(
+    (maximum, bucket) => Math.max(maximum, bucket.count),
+    0
+  );
+  if (count >= publicSubmissionLimit) return false;
+  const resetAt = buckets.reduce(
+    (maximum, bucket) => Math.max(maximum, bucket.resetAt),
+    now + publicSubmissionWindowMs
+  );
+  for (const key of keys) {
+    publicSubmissionBuckets.set(key, { count: count + 1, resetAt });
   }
-  if (bucket.count >= publicSubmissionLimit) return false;
-  bucket.count += 1;
   return true;
 }
 
@@ -180,6 +203,32 @@ function respondWithError(res: FormApiResponse, error: unknown) {
     });
     return;
   }
+  if (
+    error instanceof NileFormsRequestSecurityError ||
+    error instanceof NileFormsRepositoryAuthorityError ||
+    error instanceof NileFormsRepositoryConflictError ||
+    error instanceof NileFormsRepositoryInputError ||
+    error instanceof NileFormsRepositoryRateLimitError ||
+    error instanceof NileFormsRepositoryUnavailableError
+  ) {
+    const statusCode =
+      error instanceof NileFormsRequestSecurityError
+        ? error.statusCode
+        : error instanceof NileFormsRepositoryAuthorityError
+          ? 403
+          : error instanceof NileFormsRepositoryConflictError
+            ? 409
+            : error instanceof NileFormsRepositoryInputError
+              ? 400
+              : error instanceof NileFormsRepositoryRateLimitError
+                ? 429
+                : 503;
+    res.status(statusCode).json({
+      error: error.message,
+      code: error.code,
+    });
+    return;
+  }
   res.status(500).json({
     error: "Nile Forms could not complete the request.",
     code: "forms_internal_error",
@@ -191,6 +240,9 @@ function handler(
 ): FormApiHandler {
   return async (req, res) => {
     try {
+      if (!["GET", "HEAD", "OPTIONS"].includes(req.method)) {
+        requireNileFormsMutationRequest(req);
+      }
       await operation(req, res);
     } catch (error) {
       respondWithError(res, error);

@@ -39,7 +39,8 @@ export type Permission =
   | "forms:respond"
   | "form_submissions:read"
   | "form_submissions:review"
-  | "form_submissions:export";
+  | "form_submissions:export"
+  | "form_submissions:sensitive_read";
 
 export type NavItem = {
   label: string;

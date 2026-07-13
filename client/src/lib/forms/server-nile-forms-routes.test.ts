@@ -1,12 +1,12 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ServerSession } from "../../../../server/auth";
 import {
-  createMemoryNileFormsRepository,
-  getNileFormsRepository,
-  resetDefaultNileFormsRepository,
-  setNileFormsRepository,
-} from "../../../../server/nileFormsRepository";
+  createMemoryNileFormsCompatibilityRepository,
+  getNileFormsCompatibilityRepository,
+  resetDefaultNileFormsCompatibilityRepository,
+  setNileFormsCompatibilityRepository,
+} from "../../../../server/nileFormsCompatibilityRepository";
 import {
   registerNileFormsRoutes,
   resetNileFormsRateLimitsForTests,
@@ -23,7 +23,7 @@ type RouteHandler = (
 function captureRoutes(getSession: () => Promise<ServerSession | null>) {
   const getRoutes = new Map<string, RouteHandler>();
   const postRoutes = new Map<string, RouteHandler>();
-  const repository = getNileFormsRepository();
+  const repository = getNileFormsCompatibilityRepository();
   registerNileFormsRoutes(
     {
       get(path, handler) {
@@ -42,7 +42,7 @@ function captureRoutes(getSession: () => Promise<ServerSession | null>) {
       migrationService: createNileFormsMigrationService({ repository }),
     }
   );
-  return { getRoutes, postRoutes };
+  return { getRoutes, postRoutes, repository };
 }
 
 function request(
@@ -65,7 +65,7 @@ function request(
     body: input.body ?? {},
     query: {},
     params: input.params ?? {},
-    headers: {},
+    headers: { cookie: headers.cookie },
     ip: input.ip ?? "127.0.0.1",
     get(name: string) {
       return headers[name.toLowerCase()];
@@ -133,18 +133,47 @@ const superAdmin: ServerSession = {
 let restoreRepository: (() => void) | undefined;
 
 beforeEach(() => {
-  restoreRepository = setNileFormsRepository(createMemoryNileFormsRepository());
+  restoreRepository = setNileFormsCompatibilityRepository(
+    createMemoryNileFormsCompatibilityRepository()
+  );
   resetNileFormsRateLimitsForTests();
 });
 
 afterEach(() => {
+  vi.unstubAllEnvs();
   restoreRepository?.();
   restoreRepository = undefined;
-  resetDefaultNileFormsRepository();
+  resetDefaultNileFormsCompatibilityRepository();
   resetNileFormsRateLimitsForTests();
 });
 
 describe("Nile Forms API routes", () => {
+  it("rejects a no-body cookie mutation before route logic when origin evidence is missing", async () => {
+    const { postRoutes, repository } = captureRoutes(async () => superAdmin);
+    const before = await repository.read();
+    const { response, result } = responseRecorder();
+
+    await postRoutes.get("/api/forms/publications/:publicationId/retire")?.(
+      request("POST", {
+        params: { publicationId: "publication_form_support_1" },
+        headers: {
+          cookie: "nilelearn_session=fake",
+          "x-nile-learn-request": "browser",
+        },
+      }),
+      response
+    );
+
+    expect(result).toEqual({
+      status: 403,
+      body: {
+        error: "A valid request origin is required.",
+        code: "forms_origin_denied",
+      },
+    });
+    expect(await repository.read()).toEqual(before);
+  });
+
   it("serves a bounded public publication without requiring a session", async () => {
     const { getRoutes } = captureRoutes(async () => null);
     const { response, result } = responseRecorder();
@@ -404,6 +433,51 @@ describe("Nile Forms API routes", () => {
         error: "Too many public form requests. Try again later.",
         code: "rate_limited",
       },
+    });
+  });
+
+  it("preserves the public rate-limit budget across HMAC rotation", async () => {
+    vi.stubEnv("NILE_FORMS_PUBLIC_HMAC_KEY", "11".repeat(32));
+    vi.stubEnv("NILE_FORMS_PUBLIC_HMAC_KEY_VERSION", "1");
+    vi.stubEnv("NILE_FORMS_PUBLIC_HMAC_PREVIOUS_KEY", "");
+    vi.stubEnv("NILE_FORMS_PUBLIC_HMAC_PREVIOUS_KEY_VERSION", "");
+    const { postRoutes } = captureRoutes(async () => null);
+    const route = postRoutes.get("/api/forms/public/:slug/submit");
+
+    for (let index = 0; index < 12; index += 1) {
+      await route?.(
+        request("POST", {
+          ip: "203.0.113.44",
+          params: { slug: "free-trial-enquiry" },
+          body: {
+            clientSubmissionId: `rotation-client-${String(index).padStart(4, "0")}`,
+            answers: {},
+          },
+        }),
+        responseRecorder().response
+      );
+    }
+
+    vi.stubEnv("NILE_FORMS_PUBLIC_HMAC_KEY", "22".repeat(32));
+    vi.stubEnv("NILE_FORMS_PUBLIC_HMAC_KEY_VERSION", "2");
+    vi.stubEnv("NILE_FORMS_PUBLIC_HMAC_PREVIOUS_KEY", "11".repeat(32));
+    vi.stubEnv("NILE_FORMS_PUBLIC_HMAC_PREVIOUS_KEY_VERSION", "1");
+    const denied = responseRecorder();
+    await route?.(
+      request("POST", {
+        ip: "203.0.113.44",
+        params: { slug: "free-trial-enquiry" },
+        body: {
+          clientSubmissionId: "rotation-client-0012",
+          answers: {},
+        },
+      }),
+      denied.response
+    );
+
+    expect(denied.result).toMatchObject({
+      status: 429,
+      body: { code: "rate_limited" },
     });
   });
 });

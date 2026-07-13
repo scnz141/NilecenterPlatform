@@ -2,11 +2,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ServerSession } from "../../../../server/auth";
 import {
-  createMemoryNileFormsRepository,
-  resetDefaultNileFormsRepository,
-  setNileFormsRepository,
-  type NileFormsRepository,
-} from "../../../../server/nileFormsRepository";
+  createMemoryNileFormsCompatibilityRepository,
+  resetDefaultNileFormsCompatibilityRepository,
+  setNileFormsCompatibilityRepository,
+  type NileFormsCompatibilityRepository,
+} from "../../../../server/nileFormsCompatibilityRepository";
 import {
   createNileFormsService,
   NileFormsError,
@@ -17,7 +17,7 @@ import { seedPlatformState } from "@/lib/domain/seed";
 
 const fixedNow = new Date("2026-07-11T15:00:00.000Z");
 let restoreRepository: (() => void) | undefined;
-let testRepository: NileFormsRepository;
+let testRepository: NileFormsCompatibilityRepository;
 let idCounter = 0;
 
 function session(
@@ -88,14 +88,14 @@ async function submitPublicEnquiry(service: ReturnType<typeof createService>) {
 
 beforeEach(() => {
   idCounter = 0;
-  testRepository = createMemoryNileFormsRepository();
-  restoreRepository = setNileFormsRepository(testRepository);
+  testRepository = createMemoryNileFormsCompatibilityRepository();
+  restoreRepository = setNileFormsCompatibilityRepository(testRepository);
 });
 
 afterEach(() => {
   restoreRepository?.();
   restoreRepository = undefined;
-  resetDefaultNileFormsRepository();
+  resetDefaultNileFormsCompatibilityRepository();
   vi.restoreAllMocks();
   vi.unstubAllEnvs();
 });
@@ -345,10 +345,10 @@ describe("Nile Forms server authority", () => {
   });
 
   it("stores guest drafts with only a token hash and encrypted payload", async () => {
-    const repository = createMemoryNileFormsRepository();
+    const repository = createMemoryNileFormsCompatibilityRepository();
     testRepository = repository;
     restoreRepository?.();
-    restoreRepository = setNileFormsRepository(repository);
+    restoreRepository = setNileFormsCompatibilityRepository(repository);
     const service = createService();
 
     const saved = await service.saveDraft({
@@ -436,10 +436,10 @@ describe("Nile Forms server authority", () => {
   });
 
   it("does not reveal an assigned draft after the assignment is revoked", async () => {
-    const repository = createMemoryNileFormsRepository();
+    const repository = createMemoryNileFormsCompatibilityRepository();
     testRepository = repository;
     restoreRepository?.();
-    restoreRepository = setNileFormsRepository(repository);
+    restoreRepository = setNileFormsCompatibilityRepository(repository);
     const service = createService();
 
     await service.saveDraft({
@@ -467,10 +467,10 @@ describe("Nile Forms server authority", () => {
   });
 
   it("validates, strips unknown answers, records evidence, and replays idempotently", async () => {
-    const repository = createMemoryNileFormsRepository();
+    const repository = createMemoryNileFormsCompatibilityRepository();
     testRepository = repository;
     restoreRepository?.();
-    restoreRepository = setNileFormsRepository(repository);
+    restoreRepository = setNileFormsCompatibilityRepository(repository);
     const service = createService();
 
     const first = await service.submit({
@@ -857,10 +857,10 @@ describe("Nile Forms server authority", () => {
   });
 
   it("syncs one offline response idempotently and emits one submission", async () => {
-    const repository = createMemoryNileFormsRepository();
+    const repository = createMemoryNileFormsCompatibilityRepository();
     testRepository = repository;
     restoreRepository?.();
-    restoreRepository = setNileFormsRepository(repository);
+    restoreRepository = setNileFormsCompatibilityRepository(repository);
     const service = createService();
     const enrollment = await service.enrollOfflineDevice(
       branchAdmin,
@@ -914,10 +914,10 @@ describe("Nile Forms server authority", () => {
   });
 
   it("quarantines an offline response when the assignment changes before sync", async () => {
-    const repository = createMemoryNileFormsRepository();
+    const repository = createMemoryNileFormsCompatibilityRepository();
     testRepository = repository;
     restoreRepository?.();
-    restoreRepository = setNileFormsRepository(repository);
+    restoreRepository = setNileFormsCompatibilityRepository(repository);
     const service = createService();
     const enrollment = await service.enrollOfflineDevice(
       branchAdmin,
@@ -1021,10 +1021,10 @@ describe("Nile Forms server authority", () => {
   });
 
   it("opens a scheduled publication when its opening time arrives", async () => {
-    const repository = createMemoryNileFormsRepository();
+    const repository = createMemoryNileFormsCompatibilityRepository();
     testRepository = repository;
     restoreRepository?.();
-    restoreRepository = setNileFormsRepository(repository);
+    restoreRepository = setNileFormsCompatibilityRepository(repository);
     await repository.transaction(state => {
       const publication = state.publications.find(
         item => item.id === "publication_form_enquiry_1"
@@ -1086,10 +1086,10 @@ describe("Nile Forms server authority", () => {
   });
 
   it("replays an identical review command without another mutation", async () => {
-    const repository = createMemoryNileFormsRepository();
+    const repository = createMemoryNileFormsCompatibilityRepository();
     testRepository = repository;
     restoreRepository?.();
-    restoreRepository = setNileFormsRepository(repository);
+    restoreRepository = setNileFormsCompatibilityRepository(repository);
     const service = createService();
     const { submission } = await submitPublicEnquiry(service);
     const command = { decision: "under_review", expectedRevision: 1 };

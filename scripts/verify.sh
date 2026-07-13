@@ -237,6 +237,9 @@ start_portal_qa_server() {
     NILE_PLATFORM_STATE_LOCAL_ONLY=1 \
     NILE_FORMS_COMPATIBILITY_ENABLED=1 \
     NILE_FORMS_DRAFT_KEY=000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f \
+    NILE_FORMS_PUBLIC_HMAC_KEY=101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f \
+    NILE_FORMS_PUBLIC_HMAC_KEY_VERSION=1 \
+    NILE_FORMS_ALLOWED_ORIGINS="$base_url" \
     NILE_LOCAL_DATA_DIR="$data_dir" \
     node dist-server/index.js >/tmp/nile-learn-portal-qa.log 2>&1 &
   QA_SERVER_PID="$!"
@@ -287,12 +290,31 @@ if has_script "check:forms-schema:runtime"; then
     run_package_script check:forms-schema:runtime
 fi
 
+if has_script "check:forms-phase13f1"; then
+  run_step "Nile Forms Phase 13F1 contract" \
+    run_package_script check:forms-phase13f1
+fi
+
+if has_script "check:forms-phase13f1:runtime"; then
+  run_step "Nile Forms Phase 13F1 PostgreSQL runtime" \
+    run_package_script check:forms-phase13f1:runtime
+fi
+
 if has_script "check:phase1-schema:supabase"; then
   if [[ "${RUN_SUPABASE_LOCAL_CHECK:-0}" == "1" ]]; then
     run_step "Phase 1 local Supabase promotion gate" \
       run_package_script check:phase1-schema:supabase
   else
     printf '\n==> Phase 1 local Supabase promotion gate skipped (RUN_SUPABASE_LOCAL_CHECK=1 to enable)\n'
+  fi
+fi
+
+if has_script "check:forms-phase13f1:supabase"; then
+  if [[ "${RUN_SUPABASE_LOCAL_CHECK:-0}" == "1" ]]; then
+    run_step "Nile Forms Phase 13F1 local Supabase gate" \
+      run_package_script check:forms-phase13f1:supabase
+  else
+    printf '\n==> Nile Forms Phase 13F1 local Supabase gate skipped (RUN_SUPABASE_LOCAL_CHECK=1 to enable)\n'
   fi
 fi
 
