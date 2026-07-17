@@ -106,6 +106,9 @@ const TeacherClassWorkspacePage = lazy(
 const MoodleSourcePage = lazy(
   () => import("./pages/platform/MoodleSourcePage")
 );
+const MoodleCourseContentPage = lazy(
+  () => import("./pages/platform/MoodleCourseContentPage")
+);
 const PortalReportsPage = lazy(
   () => import("./pages/platform/PortalReportsPage")
 );
@@ -1260,6 +1263,17 @@ function Router() {
           )}
         </Route>
 
+        <Route path="/app/student/moodle-source/:courseId">
+          {params => (
+            <ProtectedRoute role="student" pageId="moodle-source">
+              <MoodleCourseContentPage
+                role="student"
+                courseId={params.courseId}
+              />
+            </ProtectedRoute>
+          )}
+        </Route>
+
         <Route path="/app/student/moodle-source">
           <ProtectedRoute role="student" pageId="moodle-source">
             <MoodleSourcePage role="student" />
@@ -1340,16 +1354,49 @@ function Router() {
           </ProtectedRoute>
         </Route>
 
+        <Route path="/app/teacher/moodle-source/:courseId">
+          {params => (
+            <ProtectedRoute role="teacher" pageId="moodle-source">
+              <MoodleCourseContentPage
+                role="teacher"
+                courseId={params.courseId}
+              />
+            </ProtectedRoute>
+          )}
+        </Route>
+
         <Route path="/app/teacher/moodle-source">
           <ProtectedRoute role="teacher" pageId="moodle-source">
             <MoodleSourcePage role="teacher" />
           </ProtectedRoute>
         </Route>
 
+        <Route path="/app/hod/moodle-source/:courseId">
+          {params => (
+            <ProtectedRoute role="headofdepartment" pageId="moodle-source">
+              <MoodleCourseContentPage
+                role="headofdepartment"
+                courseId={params.courseId}
+              />
+            </ProtectedRoute>
+          )}
+        </Route>
+
         <Route path="/app/hod/moodle-source">
           <ProtectedRoute role="headofdepartment" pageId="moodle-source">
             <MoodleSourcePage role="headofdepartment" />
           </ProtectedRoute>
+        </Route>
+
+        <Route path="/app/admin/moodle-source/:courseId">
+          {params => (
+            <ProtectedRoute role="superadmin" pageId="moodle-source">
+              <MoodleCourseContentPage
+                role="superadmin"
+                courseId={params.courseId}
+              />
+            </ProtectedRoute>
+          )}
         </Route>
 
         <Route path="/app/admin/moodle-source">

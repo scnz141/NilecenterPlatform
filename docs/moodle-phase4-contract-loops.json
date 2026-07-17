@@ -1,0 +1,175 @@
+{
+  "version": 1,
+  "status": "accepted",
+  "acceptedOn": "2026-07-16",
+  "acceptanceEvidence": "docs/qa-attestations/moodle-phase4-contract-loops-20260716.json",
+  "productionWritesEnabled": false,
+  "portalWritesEnabled": false,
+  "requiredStages": [
+    "setup",
+    "create_or_fixture_discovery",
+    "read",
+    "replay",
+    "reconciliation",
+    "denial_or_failure",
+    "cleanup",
+    "repeated_cleanup",
+    "token_teardown"
+  ],
+  "evidenceArtifacts": [
+    {
+      "path": "output/moodle-m2cr-20260716/read-pass-1.json",
+      "sha256": "b99fca2c96ac4b492155cbbc7a8b38f1c374e4f2b2f55c5943fecadad003dc82"
+    },
+    {
+      "path": "output/moodle-m2cr-20260716/read-pass-2.json",
+      "sha256": "b99fca2c96ac4b492155cbbc7a8b38f1c374e4f2b2f55c5943fecadad003dc82"
+    },
+    {
+      "path": "docs/moodle-m2c-read-closure-evidence-20260716.md",
+      "sha256": "5f117fa25c24928e4913a3f12503c3dc732352fab5f4c6b9bc2713a6e0765da6"
+    },
+    {
+      "path": "docs/moodle-m2b-write-proof-evidence-20260713.md",
+      "sha256": "02cf689e2b714a65f489b0a2048644b481115f74d8dc31c391991d7ed7672a05"
+    },
+    {
+      "path": "client/src/lib/moodle/server-moodle-read-models.test.ts",
+      "sha256": "f6f2213fc42b5f121a53ec0f46d1e5641898d493c1e0983f425f65e807c47720"
+    },
+    {
+      "path": "client/src/lib/moodle/validate-moodle-sandbox.test.ts",
+      "sha256": "823d36f474c54d34cb199603dea63fb015508db7745b61f9b1e86be879775283"
+    },
+    {
+      "path": "client/src/lib/moodle/server-moodle-sandbox-write-client.test.ts",
+      "sha256": "37e6e94e4b3dc72ca066de57185b77e380b258d1b11ad6e76033cd938fcbbe09"
+    },
+    {
+      "path": "client/src/lib/moodle/server-moodle-sandbox-write-workflow.test.ts",
+      "sha256": "8e248735eaf4d614b7357927b31974a3464f7d06a002e21db9587bb394838812"
+    },
+    {
+      "path": "client/src/lib/moodle/validate-moodle-sandbox-writes.test.ts",
+      "sha256": "908489d47ba3e4e49b534b83c1307223f55cd6fb2d910639ddaadacf952b4696"
+    }
+  ],
+  "lanes": [
+    {
+      "id": "m2cr_read_projection_contracts",
+      "mode": "fixture_discovery_and_read_only",
+      "familyIds": [
+        "moodle_identity_projection",
+        "moodle_catalog_content_projection",
+        "moodle_enrollment_groups_projection",
+        "moodle_completion_projection",
+        "moodle_assignment_projection",
+        "moodle_quiz_projection",
+        "moodle_outcomes_projection"
+      ],
+      "functions": [
+        "core_webservice_get_site_info",
+        "core_course_get_categories",
+        "core_course_get_courses_by_field",
+        "core_course_get_contents",
+        "core_course_get_course_module",
+        "core_enrol_get_enrolled_users",
+        "core_enrol_get_users_courses",
+        "core_user_get_users_by_field",
+        "core_group_get_course_groups",
+        "core_group_get_course_groupings",
+        "core_group_get_course_user_groups",
+        "core_completion_get_activities_completion_status",
+        "core_completion_get_course_completion_status",
+        "gradereport_user_get_grade_items",
+        "mod_assign_get_assignments",
+        "mod_assign_get_submissions",
+        "mod_assign_get_grades",
+        "mod_quiz_get_quizzes_by_courses",
+        "mod_quiz_get_user_attempts",
+        "mod_quiz_get_attempt_review",
+        "mod_h5pactivity_get_h5pactivities_by_courses",
+        "mod_h5pactivity_get_attempts",
+        "mod_h5pactivity_get_results",
+        "mod_scorm_get_scorms_by_courses",
+        "mod_scorm_get_scorm_sco_tracks",
+        "mod_lesson_get_lessons_by_courses",
+        "mod_lesson_get_user_grade",
+        "mod_book_get_books_by_courses",
+        "mod_page_get_pages_by_courses",
+        "mod_resource_get_resources_by_courses",
+        "mod_url_get_urls_by_courses"
+      ],
+      "stages": {
+        "setup": "proven",
+        "create_or_fixture_discovery": "proven",
+        "read": "proven",
+        "replay": "proven",
+        "reconciliation": "proven",
+        "denial_or_failure": "proven",
+        "cleanup": "proven",
+        "repeated_cleanup": "proven",
+        "token_teardown": "proven"
+      },
+      "liveProof": {
+        "passes": 2,
+        "functionCount": 31,
+        "failed": 0,
+        "combinedFingerprint": "25c9d418fa19337412488068310abf212f2507be4e02d6156385be5170d610d8",
+        "cleanupVerified": true,
+        "repeatedCleanupVerified": true,
+        "retiredTokenRejected": true
+      }
+    },
+    {
+      "id": "m2b_bounded_write_contracts",
+      "mode": "synthetic_sandbox_write_only",
+      "familyIds": [
+        "moodle_sandbox_user_contract",
+        "moodle_sandbox_enrollment_group_contract",
+        "moodle_sandbox_status_contract"
+      ],
+      "functions": [
+        "core_webservice_get_site_info",
+        "core_user_get_users",
+        "core_user_create_users",
+        "core_user_update_users",
+        "core_user_delete_users",
+        "enrol_manual_enrol_users",
+        "enrol_manual_unenrol_users",
+        "core_group_create_groups",
+        "core_group_delete_groups",
+        "core_group_add_group_members",
+        "core_group_delete_group_members"
+      ],
+      "stages": {
+        "setup": "proven",
+        "create_or_fixture_discovery": "proven",
+        "read": "proven",
+        "replay": "proven",
+        "reconciliation": "proven",
+        "denial_or_failure": "proven",
+        "cleanup": "proven",
+        "repeated_cleanup": "proven",
+        "token_teardown": "proven"
+      },
+      "liveProof": {
+        "ensurePasses": 2,
+        "redactedEvidenceRows": 20,
+        "readProjectionUnchanged": true,
+        "cleanupVerified": true,
+        "repeatedCleanupVerified": true,
+        "retiredTokenRejected": true
+      }
+    }
+  ],
+  "authorityDenials": {
+    "productionMoodleWrites": "blocked",
+    "portalToMoodleWrites": "blocked",
+    "attendanceWriteback": "blocked",
+    "certificateWriteback": "blocked",
+    "nileMessagesWriteback": "blocked",
+    "nileSchedulesWriteback": "blocked",
+    "privateStudentDocumentsExport": "blocked"
+  }
+}

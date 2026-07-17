@@ -4,6 +4,38 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 
+VERIFY_SCOPE="${VERIFY_SCOPE:-final}"
+FAST_FOCUSED="${FAST_FOCUSED:-0}"
+FOCUSED_QA_ONLY="${FOCUSED_QA_ONLY:-0}"
+if [[ "$VERIFY_SCOPE" != "final" && "$VERIFY_SCOPE" != "focused" ]]; then
+  printf 'VERIFY_SCOPE must be final or focused, received: %s\n' "$VERIFY_SCOPE" >&2
+  exit 2
+fi
+if [[ "$FAST_FOCUSED" == "1" || "$FOCUSED_QA_ONLY" == "1" ]]; then
+  if [[ "$VERIFY_SCOPE" != "focused" ]]; then
+    printf 'Focused verification requires VERIFY_SCOPE=focused.\n' >&2
+    exit 2
+  fi
+  if [[ -z "${QA_ONLY_ROLES:-}" && -z "${QA_ONLY_WORKFLOWS:-}" ]]; then
+    printf 'Focused verification requires QA_ONLY_ROLES or QA_ONLY_WORKFLOWS.\n' >&2
+    exit 2
+  fi
+fi
+if [[ "$FAST_FOCUSED" == "1" && "$FOCUSED_QA_ONLY" == "1" ]]; then
+  printf 'FAST_FOCUSED=1 and FOCUSED_QA_ONLY=1 are mutually exclusive.\n' >&2
+  exit 2
+fi
+if [[ "$VERIFY_SCOPE" == "final" ]]; then
+  if [[ -n "${QA_ONLY_ROLES:-}" || -n "${QA_ONLY_WORKFLOWS:-}" ]]; then
+    printf 'Final verification rejects QA filters. Use VERIFY_SCOPE=focused for filtered QA.\n' >&2
+    exit 2
+  fi
+  if [[ "${SKIP_PORTAL_QA:-0}" == "1" ]]; then
+    printf 'Final verification cannot skip portal QA. Use VERIFY_SCOPE=focused for the inner loop.\n' >&2
+    exit 2
+  fi
+fi
+
 run_step() {
   local label="$1"
   shift
@@ -18,6 +50,19 @@ check_required_guides() {
     package.json
     docs/NILE_LEARN_MASTER_PLAN.md
     docs/MODERNIZATION_EXECUTION_CONTRACT.md
+    docs/INTEGRATION_STABILIZATION_PROGRAM.md
+    docs/INTEGRATION_OWNERSHIP.md
+    docs/integration-feature-freeze.json
+    docs/integration-ownership-matrix.json
+    docs/integration-phase5-staging-foundation.json
+    docs/integration-phase6-moodle-projections.json
+    docs/moodle-phase4-contract-loops.json
+    docs/integration-phase6-moodle-projections.json
+    docs/qa-attestations/moodle-m2cr-phase2-20260716.json
+    docs/qa-attestations/integration-ownership-phase3-20260716.json
+    docs/qa-attestations/moodle-phase4-contract-loops-20260716.json
+    docs/qa-attestations/integration-phase6-projection-contract-20260716.json
+    docs/qa-attestations/integration-phase6g-assessment-status-observation-20260717.json
   )
   for guide in "${guides[@]}"; do
     if [[ ! -r "$guide" ]]; then
@@ -40,6 +85,7 @@ run_prettier_check() {
     package.json
     docs/NILE_LEARN_MASTER_PLAN.md
     docs/MODERNIZATION_EXECUTION_CONTRACT.md
+    docs/INTEGRATION_OWNERSHIP.md
     docs/UI_INFORMATION_ARCHITECTURE.md
     docs/DESIGN_V2.md
     docs/SIMPLE_UI.md
@@ -50,6 +96,14 @@ run_prettier_check() {
     docs/auth-session-hardening.md
     docs/internal-admin-workflows.md
     docs/qa-baseline.md
+    docs/qa-attestations/integration-feature-freeze-phase1-20260716.json
+    docs/qa-attestations/moodle-m2cr-phase2-20260716.json
+    docs/qa-attestations/integration-ownership-phase3-20260716.json
+    docs/qa-attestations/moodle-phase4-contract-loops-20260716.json
+    docs/qa-attestations/integration-phase6-projection-contract-20260716.json
+    docs/qa-attestations/integration-phase6g-assessment-status-observation-20260717.json
+    docs/moodle-m2c-read-closure-evidence-20260716.md
+    docs/moodle-phase4-contract-loops.json
     supabase/manual/README.md
     docs/decisions/README.md
     docs/decisions/ADR-001-system-authority.md
@@ -60,6 +114,31 @@ run_prettier_check() {
     docs/decisions/ADR-006-nile-forms-authority.md
     docs/decisions/ADR-007-nile-forms-processing-boundary.md
     scripts/validate-phase1-schema.mjs
+    scripts/validate-integration-feature-freeze.mjs
+    scripts/validate-integration-ownership.mjs
+    scripts/validate-integration-phase5-staging.mjs
+    scripts/validate-integration-phase6-moodle-projections.mjs
+    scripts/validate-phase5-session-runtime.ts
+    scripts/verify-phase5-staging-db.mjs
+    scripts/validate-moodle-read-closure-evidence.mjs
+    scripts/validate-moodle-phase4-contract-loops.mjs
+    scripts/verify-integration-fast.mjs
+    scripts/validate-phase6b-moodle-observation-schema.mjs
+    scripts/validate-phase6b-moodle-observation-pglite.mjs
+    scripts/validate-phase6e-moodle-user-mapping-schema.mjs
+    scripts/validate-phase6e-moodle-user-mapping-pglite.mjs
+    scripts/validate-phase6f-moodle-enrollment-group-schema.mjs
+    scripts/validate-phase6f-moodle-enrollment-group-pglite.mjs
+    scripts/validate-phase6g-moodle-assessment-status-schema.mjs
+    scripts/validate-phase6g-moodle-assessment-status-pglite.mjs
+    scripts/validate-phase6h1-moodle-assignment-result-schema.mjs
+    scripts/validate-phase6h1-moodle-assignment-result-pglite.mjs
+    scripts/validate-phase6h2-moodle-quiz-attempt-schema.mjs
+    scripts/validate-phase6h2-moodle-quiz-attempt-pglite.mjs
+    scripts/validate-phase6h3-moodle-grade-outcome-schema.mjs
+    scripts/validate-phase6h3-moodle-grade-outcome-pglite.mjs
+    scripts/validate-phase6h4-moodle-activity-outcome-schema.mjs
+    scripts/validate-phase6h4-moodle-activity-outcome-pglite.mjs
     scripts/validate-phase1-pglite.mjs
     scripts/validate-phase2-session-schema.mjs
     scripts/validate-phase2-session-pglite.mjs
@@ -178,6 +257,41 @@ print_portal_qa_summary() {
   ' "$summary_path" >&2
 }
 
+assert_portal_qa_baseline() {
+  local summary_path
+  summary_path="$(portal_qa_summary_path)"
+  node -e '
+    const fs = require("node:fs");
+    const summaryPath = process.argv[1];
+    const expectedChecks = Number(process.argv[2]);
+    if (!fs.existsSync(summaryPath)) {
+      console.error(`Portal QA baseline summary is missing: ${summaryPath}`);
+      process.exit(1);
+    }
+    const summary = JSON.parse(fs.readFileSync(summaryPath, "utf8"));
+    const valid =
+      summary.totalChecks === expectedChecks &&
+      summary.failedChecks === 0 &&
+      summary.inProgress === false &&
+      summary.interrupted === false &&
+      summary.selection?.fullSuite === true;
+    if (!valid) {
+      console.error("Portal QA baseline assertion failed:");
+      console.error(JSON.stringify({
+        summaryPath,
+        expectedChecks,
+        totalChecks: summary.totalChecks,
+        failedChecks: summary.failedChecks,
+        inProgress: summary.inProgress,
+        interrupted: summary.interrupted,
+        selection: summary.selection,
+      }, null, 2));
+      process.exit(1);
+    }
+    console.log(`Portal QA baseline protected: ${summary.totalChecks} checks, 0 failures.`);
+  ' "$summary_path" "1634"
+}
+
 run_portal_qa() {
   set +e
   run_package_script qa:portals
@@ -220,6 +334,8 @@ start_portal_qa_server() {
   local port="${QA_PORT:-3001}"
   local base_url="${QA_BASE_URL:-http://127.0.0.1:${port}}"
   local data_dir="${QA_LOCAL_DATA_DIR:-${ROOT_DIR}/.local-data/portal-qa-${QA_SESSION:-$$}}"
+  local output_dir="${QA_OUTPUT_DIR:-${ROOT_DIR}/output/playwright}"
+  local server_log="${output_dir}/portal-qa-server.log"
   export QA_BASE_URL="$base_url"
 
   if [[ "${QA_RESET_LOCAL_STATE:-1}" == "1" ]]; then
@@ -227,13 +343,20 @@ start_portal_qa_server() {
   fi
 
   if node -e "fetch(process.argv[1]).then((res) => process.exit(res.ok ? 0 : 1)).catch(() => process.exit(1))" "${base_url}/auth/login"; then
-    printf 'Using existing portal server at %s\n' "$base_url"
-    return 0
+    if [[ "${QA_REUSE_SERVER:-0}" == "1" ]]; then
+      printf 'Using explicitly approved existing portal server at %s\n' "$base_url"
+      return 0
+    fi
+    printf 'Portal QA port is already in use: %s (set QA_REUSE_SERVER=1 only for an intentional focused run)\n' "$base_url" >&2
+    return 1
   fi
 
   printf 'Starting portal QA server at %s\n' "$base_url"
+  mkdir -p "$output_dir"
   PORT="$port" \
     NODE_ENV=production \
+    DEMO_AUTH_ENABLED=true \
+    NILE_SESSION_REPOSITORY=memory \
     NILE_PLATFORM_STATE_LOCAL_ONLY=1 \
     NILE_FORMS_COMPATIBILITY_ENABLED=1 \
     NILE_FORMS_DRAFT_KEY=000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f \
@@ -241,11 +364,19 @@ start_portal_qa_server() {
     NILE_FORMS_PUBLIC_HMAC_KEY_VERSION=1 \
     NILE_FORMS_ALLOWED_ORIGINS="$base_url" \
     NILE_LOCAL_DATA_DIR="$data_dir" \
-    node dist-server/index.js >/tmp/nile-learn-portal-qa.log 2>&1 &
+    SUPABASE_URL= \
+    SUPABASE_PUBLISHABLE_KEY= \
+    SUPABASE_SECRET_KEY= \
+    SUPABASE_SERVICE_ROLE_KEY= \
+    VITE_SUPABASE_URL= \
+    VITE_SUPABASE_PUBLISHABLE_KEY= \
+    VITE_SUPABASE_ANON_KEY= \
+    node dist-server/index.js >"$server_log" 2>&1 &
   QA_SERVER_PID="$!"
   wait_for_url "${base_url}/auth/login"
 }
 
+run_step "Verification scope" printf '%s\n' "$VERIFY_SCOPE"
 run_step "Package manager" printf '%s\n' "$PM"
 run_step "Required guides" check_required_guides
 
@@ -257,6 +388,142 @@ fi
 
 if has_script "qa:portals"; then
   run_step "Portal QA syntax" node --check scripts/qa-portals-cli.mjs
+fi
+
+if [[ "$FOCUSED_QA_ONLY" == "1" ]]; then
+  run_step "Focused QA production build" run_package_script build
+elif [[ "$FAST_FOCUSED" == "1" ]]; then
+  run_step "Fast integration validation" \
+    run_package_script verify:integration-fast
+  run_step "Focused QA production build" run_package_script build
+else
+if has_script "check:integration-freeze"; then
+  run_step "Integration feature freeze" run_package_script check:integration-freeze
+fi
+
+if has_script "check:integration-ownership"; then
+  run_step "Integration ownership matrix" \
+    run_package_script check:integration-ownership
+fi
+
+if has_script "check:integration-phase5-staging"; then
+  run_step "Phase 5 isolated staging contract" \
+    run_package_script check:integration-phase5-staging
+fi
+
+if has_script "check:integration-phase6-projections"; then
+  run_step "Phase 6 read-only Moodle projection contract" \
+    run_package_script check:integration-phase6-projections
+fi
+
+if has_script "check:phase6a-moodle-authority"; then
+  run_step "Phase 6A Moodle authority schema contract" \
+    run_package_script check:phase6a-moodle-authority
+fi
+
+if has_script "check:phase6a-moodle-authority:runtime"; then
+  run_step "Phase 6A Moodle authority PostgreSQL runtime" \
+    run_package_script check:phase6a-moodle-authority:runtime
+fi
+
+if has_script "check:phase6b-moodle-observation"; then
+  run_step "Phase 6B Moodle observation schema contract" \
+    run_package_script check:phase6b-moodle-observation
+fi
+
+if has_script "check:phase6b-moodle-observation:runtime"; then
+  run_step "Phase 6B Moodle observation PostgreSQL runtime" \
+    run_package_script check:phase6b-moodle-observation:runtime
+fi
+
+if has_script "check:phase6e-moodle-user-mapping"; then
+  run_step "Phase 6E Moodle user mapping schema contract" \
+    run_package_script check:phase6e-moodle-user-mapping
+fi
+
+if has_script "check:phase6e-moodle-user-mapping:runtime"; then
+  run_step "Phase 6E Moodle user mapping PostgreSQL runtime" \
+    run_package_script check:phase6e-moodle-user-mapping:runtime
+fi
+
+if has_script "check:phase6f-moodle-enrollment-group"; then
+  run_step "Phase 6F Moodle enrollment/group schema contract" \
+    run_package_script check:phase6f-moodle-enrollment-group
+fi
+
+if has_script "check:phase6f-moodle-enrollment-group:runtime"; then
+  run_step "Phase 6F Moodle enrollment/group PostgreSQL runtime" \
+    run_package_script check:phase6f-moodle-enrollment-group:runtime
+fi
+
+if has_script "check:phase6g-moodle-assessment-status"; then
+  run_step "Phase 6G Moodle assessment status schema contract" \
+    run_package_script check:phase6g-moodle-assessment-status
+fi
+
+if has_script "check:phase6g-moodle-assessment-status:runtime"; then
+  run_step "Phase 6G Moodle assessment status PostgreSQL runtime" \
+    run_package_script check:phase6g-moodle-assessment-status:runtime
+fi
+
+if has_script "check:phase6h1-moodle-assignment-result"; then
+  run_step "Phase 6H1 Moodle assignment result schema contract" \
+    run_package_script check:phase6h1-moodle-assignment-result
+fi
+
+if has_script "check:phase6h1-moodle-assignment-result:runtime"; then
+  run_step "Phase 6H1 Moodle assignment result PostgreSQL runtime" \
+    run_package_script check:phase6h1-moodle-assignment-result:runtime
+fi
+
+if has_script "check:phase6h2-moodle-quiz-attempt"; then
+  run_step "Phase 6H2 Moodle quiz attempt schema contract" \
+    run_package_script check:phase6h2-moodle-quiz-attempt
+fi
+
+if has_script "check:phase6h2-moodle-quiz-attempt:runtime"; then
+  run_step "Phase 6H2 Moodle quiz attempt PostgreSQL runtime" \
+    run_package_script check:phase6h2-moodle-quiz-attempt:runtime
+fi
+
+if has_script "check:phase6h3-moodle-grade-outcome"; then
+  run_step "Phase 6H3 Moodle grade outcome schema contract" \
+    run_package_script check:phase6h3-moodle-grade-outcome
+fi
+
+if has_script "check:phase6h3-moodle-grade-outcome:runtime"; then
+  run_step "Phase 6H3 Moodle grade outcome PostgreSQL runtime" \
+    run_package_script check:phase6h3-moodle-grade-outcome:runtime
+fi
+
+if has_script "check:phase6h4-moodle-activity-outcome"; then
+  run_step "Phase 6H4 Moodle activity outcome schema contract" \
+    run_package_script check:phase6h4-moodle-activity-outcome
+fi
+
+if has_script "check:phase6h4-moodle-activity-outcome:runtime"; then
+  run_step "Phase 6H4 Moodle activity outcome PostgreSQL runtime" \
+    run_package_script check:phase6h4-moodle-activity-outcome:runtime
+fi
+
+if has_script "check:phase5-staging-db:static"; then
+  run_step "Phase 5 staging database preflight" \
+    run_package_script check:phase5-staging-db:static
+fi
+
+if has_script "check:phase5-session-runtime"; then
+  run_step "Phase 5 durable-session runtime preflight" \
+    run_package_script check:phase5-session-runtime
+fi
+
+if has_script "check:moodle-read-closure-evidence"; then
+  run_step "Moodle M2C-R closure evidence" \
+    run_package_script check:moodle-read-closure-evidence
+fi
+
+if has_script "check:moodle-phase4-loops"; then
+  run_step "Moodle Phase 4 contract loops" \
+    run_package_script check:moodle-phase4-loops
 fi
 
 if has_script "check:phase1-schema"; then
@@ -321,6 +588,7 @@ fi
 run_step "TypeScript check" run_package_script check
 run_step "Unit tests" run_package_script test
 run_step "Production build" run_package_script build
+fi
 
 if has_script "qa:portals"; then
   if [[ "${SKIP_PORTAL_QA:-0}" != "1" ]]; then
@@ -334,6 +602,9 @@ if has_script "qa:portals"; then
     export QA_LOGIN_TIMEOUT_MS="${QA_LOGIN_TIMEOUT_MS:-30000}"
     run_step "Portal QA server" start_portal_qa_server
     run_step "Portal QA" run_portal_qa
+    if [[ "$VERIFY_SCOPE" == "final" ]]; then
+      run_step "Portal QA baseline assertion" assert_portal_qa_baseline
+    fi
   else
     printf '\n==> Portal QA skipped (SKIP_PORTAL_QA=1)\n'
   fi

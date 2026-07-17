@@ -1,0 +1,88 @@
+{
+  "version": 1,
+  "recordedOn": "2026-07-17",
+  "sourceCommit": "95b884ebdf12553ebe213bef01c45412abb54a3f",
+  "phase": "integration-stabilization-phase6b-observation-repository",
+  "status": "repository-contract-accepted-staging-promotion-pending",
+  "observationPackage": {
+    "manualSqlOnly": true,
+    "migrationHistoryModified": false,
+    "productionRuntimeActivated": false,
+    "tables": 1,
+    "serviceRoleOnlyRpcs": 5,
+    "projectionFamilies": ["course_catalog", "course_content"],
+    "maximumRetentionDays": 30,
+    "forwardApplications": 2,
+    "semanticAssertionPasses": 2,
+    "rollbackReapplyCycles": 1,
+    "runtimeRoleDenials": 18,
+    "serviceRoleRpcCalls": 12
+  },
+  "repositoryBoundary": {
+    "runtimeFlag": "NILE_MOODLE_PROJECTION_REPOSITORY",
+    "default": "disabled",
+    "normalizedSessionRequired": true,
+    "compatibilityReadersIgnoredForNormalizedSessions": true,
+    "currentAuthorityResolvedBeforeObservation": true,
+    "retainedPayloadHashVerified": true,
+    "retainedPayloadSanitizerEquivalent": true,
+    "staleProjectionAuthorizesAccess": false,
+    "partialCatalogAvailabilityPreserved": true,
+    "portalWriteRoutes": 0,
+    "productionMoodleWritesEnabled": false
+  },
+  "focusedEvidence": {
+    "projectionTests": 91,
+    "checks": [
+      "normalized-session-cannot-enter-compatibility-provider-path",
+      "current-role-and-course-authority-re-resolved",
+      "mapping-scope-and-identity-drift-rejected",
+      "retained-payload-hash-and-shape-verified",
+      "retained-text-must-match-shared-sanitizer",
+      "fresh-stale-unavailable-deterministic",
+      "expired-observation-fails-closed",
+      "provider-outage-retains-display-only-stale-payload",
+      "partial-catalog-unavailability-does-not-hide-valid-rows",
+      "no-normalized-live-provider-call"
+    ]
+  },
+  "efficientValidation": {
+    "focusedCommand": "npm run verify:phase6b-fast",
+    "focusedElapsedSeconds": 2.9,
+    "completeCommand": "npm run verify:integration-fast",
+    "completeElapsedSeconds": 6.4,
+    "contractGates": 10,
+    "focusedImplementationGates": 4,
+    "completeImplementationGates": 5,
+    "perCommandTimeoutMilliseconds": 120000,
+    "interruptCleanup": true,
+    "fullPortalQaRunsAfterFinalFix": 1,
+    "replacesFinalGate": false
+  },
+  "qualityGate": {
+    "command": "QA_OUTPUT_DIR=output/playwright/integration-phase6b-fast-final-20260717 scripts/verify.sh",
+    "artifact": "output/playwright/integration-phase6b-fast-final-20260717/portal-qa-summary.json",
+    "artifactSha256": "d90e32ab7cf4d145269ba2081513f82999f445d752b37176775b005227c43689",
+    "checkedAt": "2026-07-17T01:58:41.068Z",
+    "elapsedMs": 568367,
+    "totalChecks": 1598,
+    "failedChecks": 0,
+    "interrupted": false,
+    "unitTests": 700,
+    "testFiles": 56,
+    "typescriptPassed": true,
+    "buildPassed": true,
+    "verifyPassed": true
+  },
+  "remainingGates": [
+    "approved-isolated-staging-sql-promotion-and-postgrest-rls-proof",
+    "approved-live-minimum-privilege-moodle-read-token-proof",
+    "portal-ui-wiring",
+    "user-enrollment-assessment-and-outcome-projection-families"
+  ],
+  "liveMoodleProviderContacted": false,
+  "remoteDatabaseContacted": false,
+  "productionDatabaseModified": false,
+  "dockerUsed": false,
+  "credentialMaterialStored": false
+}

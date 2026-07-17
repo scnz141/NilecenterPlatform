@@ -1,0 +1,66 @@
+{
+  "version": 1,
+  "status": "accepted-local",
+  "phase": "integration-stabilization-phase6f-enrollment-group-observation",
+  "checkedAt": "2026-07-17T06:54:31.551Z",
+  "scope": {
+    "roles": ["teacher", "headofdepartment", "superadmin"],
+    "authority": "server-normalized-current-class-relationships",
+    "projectionEntity": "class-enrollment-group",
+    "audiences": ["person_level", "aggregate"],
+    "portalRoutesAdded": 0,
+    "apiRoutesAdded": 1,
+    "productionMoodleWritesEnabled": false
+  },
+  "sqlLifecycle": {
+    "command": "npm run check:phase6f-moodle-enrollment-group:runtime",
+    "result": "passed",
+    "forwardApplications": 2,
+    "assertionPasses": 2,
+    "rollbackReapplyPasses": 1,
+    "browserRoleDenials": 14,
+    "serviceRoleCalls": 8,
+    "remoteCalls": 0,
+    "dockerUsed": false
+  },
+  "fastGate": {
+    "command": "npm run verify:phase6f-fast",
+    "result": "passed",
+    "contractChecks": 5,
+    "implementationChecks": 4,
+    "elapsedMsApproximate": 3400
+  },
+  "fullValidation": {
+    "command": "QA_OUTPUT_DIR=output/playwright/phase6f-enrollment-group-acceptance-20260717 scripts/verify.sh",
+    "unitTestFiles": 58,
+    "unitTests": 772,
+    "typescript": "passed",
+    "productionBuild": "passed",
+    "diffCheck": "passed"
+  },
+  "fullPortalQa": {
+    "artifact": "output/playwright/phase6f-enrollment-group-acceptance-20260717/portal-qa-summary.json",
+    "artifactSha256": "6838cef5036ec614197f584fb482ca20bfff04722755960d9b50a1a113cc99d1",
+    "totalChecks": 1634,
+    "failedChecks": 0,
+    "elapsedMs": 578246,
+    "fullSuite": true,
+    "interrupted": false
+  },
+  "boundaries": {
+    "teacherPersonLevelOnly": true,
+    "hodAndSuperadminAggregateOnly": true,
+    "studentRegistrarBranchDenied": true,
+    "currentClassMembershipRevalidated": true,
+    "exactMappingOnly": true,
+    "emailOrDisplayNameMatching": false,
+    "browserRpcAccess": false,
+    "contactDataReturned": false,
+    "maximumRetentionDays": 30,
+    "manualSqlUnapplied": true,
+    "normalizedRuntimeActivated": false,
+    "providerCalled": false,
+    "moodleWritePerformed": false,
+    "portalBehaviorChanged": false
+  }
+}

@@ -22,6 +22,7 @@ import "./styles/hod-v4.css";
 import "./styles/branch-v4.css";
 import "./styles/student-v5.css";
 import "./styles/messages-v1.css";
+import "./styles/auth-v2.css";
 
 createRoot(document.getElementById("root")!).render(
   <MotionConfig reducedMotion="user">

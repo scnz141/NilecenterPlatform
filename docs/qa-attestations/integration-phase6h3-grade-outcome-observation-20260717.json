@@ -1,0 +1,81 @@
+{
+  "version": 1,
+  "status": "accepted-local",
+  "phase": "integration-stabilization-phase6h3-grade-outcome-observation",
+  "checkedAt": "2026-07-17T14:13:29Z",
+  "scope": {
+    "roles": ["student", "teacher", "headofdepartment", "superadmin"],
+    "authority": "server-normalized-current-class-user-and-grade-item-relationships",
+    "projectionEntity": "grade-outcome-summary",
+    "audiences": ["learner", "person_level", "aggregate"],
+    "portalRoutesAdded": 0,
+    "apiRoutesAdded": 1,
+    "productionMoodleWritesEnabled": false
+  },
+  "sqlLifecycle": {
+    "command": "npm run check:phase6h3-moodle-grade-outcome:runtime",
+    "result": "passed",
+    "forwardApplications": 2,
+    "assertionPasses": 2,
+    "rollbackReapplyPasses": 1,
+    "browserRoleDenials": 22,
+    "serviceRoleCalls": 16,
+    "remoteCalls": 0,
+    "dockerUsed": false
+  },
+  "focusedValidation": {
+    "executionMode": "sequential-low-load",
+    "commands": [
+      "npm run check:integration-freeze",
+      "npm run check:integration-ownership",
+      "npm run check:integration-phase6-projections",
+      "npm run check:phase6h3-moodle-grade-outcome",
+      "npm run check:phase6h3-moodle-grade-outcome:runtime",
+      "npm run check",
+      "npm test -- --run client/src/lib/moodle/server-moodle-projection-freshness.test.ts client/src/lib/moodle/server-moodle-projection-repository.test.ts client/src/lib/moodle/server-moodle-projection-routes.test.ts",
+      "npm run build"
+    ],
+    "result": "passed",
+    "parallelWorkersUsed": false
+  },
+  "fullValidation": {
+    "command": "QA_OUTPUT_DIR=output/playwright/phase6h3-grade-outcomes-acceptance-20260717 scripts/verify.sh",
+    "unitTestFiles": 58,
+    "unitTests": 822,
+    "typescript": "passed",
+    "productionBuild": "passed",
+    "diffCheck": "passed"
+  },
+  "fullPortalQa": {
+    "artifact": "output/playwright/phase6h3-grade-outcomes-acceptance-20260717/portal-qa-summary.json",
+    "artifactSha256": "1803e8f9fbb634daae04b843c117dffcea6b8cd964de2d4d84d8b5bb01cc3487",
+    "totalChecks": 1634,
+    "failedChecks": 0,
+    "elapsedMs": 576782,
+    "fullSuite": true,
+    "interrupted": false
+  },
+  "boundaries": {
+    "studentOwnReleasedOutcomeOnly": true,
+    "teacherExactAssignedClassOnly": true,
+    "hodDepartmentAggregateOnly": true,
+    "superadminAggregateOnly": true,
+    "registrarAndBranchDenied": true,
+    "exactCourseGroupUserAndGradeItemMappings": true,
+    "unreleasedLearnerOutcomeRejected": true,
+    "feedbackRequiresRelease": true,
+    "unsafeFeedbackRejected": true,
+    "staleResultRejected": true,
+    "questionsAnswersFilesCommentsGraderAndContactsExcluded": true,
+    "rawProviderIdentifiersExcluded": true,
+    "emailOrDisplayNameMatching": false,
+    "browserRpcAccess": false,
+    "freshnessMinutes": 15,
+    "maximumRetentionDays": 30,
+    "manualSqlUnapplied": true,
+    "normalizedRuntimeActivated": false,
+    "providerCalled": false,
+    "moodleWritePerformed": false,
+    "portalBehaviorChanged": false
+  }
+}

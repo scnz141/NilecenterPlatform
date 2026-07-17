@@ -1,5 +1,15 @@
-import { demoUsers, roleMeta, type DemoUser, type Role } from "@/lib/platformData";
-import { fetchSessionRequest, logoutRequest, signInRequest, type AuthSessionDto } from "@/lib/backend/api";
+import {
+  demoUsers,
+  roleMeta,
+  type DemoUser,
+  type Role,
+} from "@/lib/platformData";
+import {
+  fetchSessionRequest,
+  logoutRequest,
+  signInRequest,
+  type AuthSessionDto,
+} from "@/lib/backend/api";
 
 const ACTIVE_ROLE_KEY = "nilelearn.activeRole";
 const AUTH_SESSION_KEY = "nilelearn.auth.session";
@@ -19,10 +29,15 @@ export function setStoredRole(role: Role) {
   const session = getStoredAuthSession();
   if (!session || !session.roles.includes(role)) {
     window.localStorage.removeItem(ACTIVE_ROLE_KEY);
-    window.dispatchEvent(new CustomEvent("nilelearn:session", { detail: null }));
+    window.dispatchEvent(
+      new CustomEvent("nilelearn:session", { detail: null })
+    );
     return;
   }
-  window.localStorage.setItem(AUTH_SESSION_KEY, JSON.stringify({ ...session, activeRole: role }));
+  window.localStorage.setItem(
+    AUTH_SESSION_KEY,
+    JSON.stringify({ ...session, activeRole: role })
+  );
   window.localStorage.setItem(ACTIVE_ROLE_KEY, role);
   window.dispatchEvent(new CustomEvent("nilelearn:session", { detail: role }));
 }
@@ -33,7 +48,10 @@ export function getStoredAuthSession(): AuthSessionDto | null {
   if (!raw) return null;
   try {
     const session = JSON.parse(raw) as AuthSessionDto;
-    if (!isRole(session.activeRole) || Date.parse(session.expiresAt) <= Date.now()) {
+    if (
+      !isRole(session.activeRole) ||
+      Date.parse(session.expiresAt) <= Date.now()
+    ) {
       window.localStorage.removeItem(AUTH_SESSION_KEY);
       return null;
     }
@@ -48,7 +66,9 @@ function setStoredAuthSession(session: AuthSessionDto) {
   if (typeof window === "undefined") return;
   window.localStorage.setItem(AUTH_SESSION_KEY, JSON.stringify(session));
   window.localStorage.setItem(ACTIVE_ROLE_KEY, session.activeRole);
-  window.dispatchEvent(new CustomEvent("nilelearn:session", { detail: session.activeRole }));
+  window.dispatchEvent(
+    new CustomEvent("nilelearn:session", { detail: session.activeRole })
+  );
 }
 
 function clearStoredSessionLocal() {
@@ -58,12 +78,23 @@ function clearStoredSessionLocal() {
   window.dispatchEvent(new CustomEvent("nilelearn:session", { detail: null }));
 }
 
-export function clearStoredSession() {
+export async function clearStoredSession() {
+  const result = await logoutRequest();
+  if (!result.ok) {
+    return {
+      ok: false as const,
+      error: result.error ?? "Sign out could not be confirmed.",
+    };
+  }
   clearStoredSessionLocal();
-  void logoutRequest();
+  return { ok: true as const };
 }
 
-export async function signInWithPassword(email: string, password: string, role: Role) {
+export async function signInWithPassword(
+  email: string,
+  password: string,
+  role: Role
+) {
   const result = await signInRequest({ email, password, role });
   if (result.ok && result.data) {
     setStoredAuthSession(result.data);
@@ -87,12 +118,14 @@ export async function refreshServerSession() {
 export function getActiveUser(): DemoUser | null {
   const role = getStoredRole();
   if (!role) return null;
-  return demoUsers.find((user) => user.activeRole === role) ?? null;
+  return demoUsers.find(user => user.activeRole === role) ?? null;
 }
 
 export function canAccessRole(requiredRole: Role) {
   const activeRole = getStoredRole();
-  if (!activeRole) return { ok: false, reason: "not_authenticated" as const, activeRole };
-  if (activeRole !== requiredRole) return { ok: false, reason: "wrong_role" as const, activeRole };
+  if (!activeRole)
+    return { ok: false, reason: "not_authenticated" as const, activeRole };
+  if (activeRole !== requiredRole)
+    return { ok: false, reason: "wrong_role" as const, activeRole };
   return { ok: true, reason: "allowed" as const, activeRole };
 }

@@ -2120,13 +2120,6 @@ function SuperAdminDashboard() {
     student => student.status === "active"
   ).length;
   const activeClasses = state.classGroups.length;
-  const connectedIntegrations = state.integrations.filter(
-    integration => integration.status === "connected"
-  ).length;
-  const usableIntegrations = state.integrations.filter(
-    integration =>
-      integration.status === "connected" || integration.status === "mock_mode"
-  ).length;
   const pendingInvoices = state.invoices.filter(
     invoice => invoice.status !== "paid" && invoice.status !== "cancelled"
   ).length;
@@ -2136,9 +2129,8 @@ function SuperAdminDashboard() {
   const pendingCertificates = state.certificates.filter(
     certificate => certificate.status === "pending_approval"
   ).length;
-  const integrationReadiness = state.integrations.length
-    ? Math.round((usableIntegrations / state.integrations.length) * 100)
-    : 0;
+  const itemsNeedingReview =
+    pausedUsers + pendingInvoices + pendingCertificates;
   const superAdminStats: Stat[] = [
     {
       label: "Active users",
@@ -2159,10 +2151,10 @@ function SuperAdminDashboard() {
       tone: "amber",
     },
     {
-      label: "Connections",
-      value: `${integrationReadiness}%`,
-      change: `${connectedIntegrations} connected`,
-      tone: "purple",
+      label: "Needs review",
+      value: String(itemsNeedingReview),
+      change: "Access, finance, certificates",
+      tone: itemsNeedingReview ? "amber" : "green",
     },
   ];
   const administrationTiles = [
@@ -2230,17 +2222,6 @@ function SuperAdminDashboard() {
         : ("green" as Stat["tone"]),
     },
     {
-      label:
-        integrationReadiness < 100 ? "Finish connections" : "Connections ready",
-      detail: `${usableIntegrations}/${state.integrations.length} connectors are usable.`,
-      href: "/app/admin/integrations",
-      Icon: PlugZap,
-      tone:
-        integrationReadiness < 100
-          ? ("purple" as Stat["tone"])
-          : ("green" as Stat["tone"]),
-    },
-    {
       label: pendingCertificates
         ? "Certificate approvals"
         : "Certificate queue clear",
@@ -2263,64 +2244,12 @@ function SuperAdminDashboard() {
     },
   ];
   const recentAudits = state.auditLogs.slice(0, 4);
-  const integrationStatusTone: Record<string, Stat["tone"]> = {
-    connected: "green",
-    mock_mode: "amber",
-    not_configured: "slate",
-    error: "red",
-  };
-  const integrationStatusLabel: Record<string, string> = {
-    connected: "Connected",
-    mock_mode: "Test mode",
-    not_configured: "Setup needed",
-    error: "Error",
-  };
-  const accessInsightPoints: InsightPoint[] = [
-    {
-      label: "Students",
-      value: state.users.filter(
-        user => user.activeRole === "student" && user.status === "active"
-      ).length,
-    },
-    {
-      label: "Teachers",
-      value: state.users.filter(
-        user => user.activeRole === "teacher" && user.status === "active"
-      ).length,
-    },
-    {
-      label: "Registrars",
-      value: state.users.filter(
-        user => user.activeRole === "registrar" && user.status === "active"
-      ).length,
-    },
-    {
-      label: "HODs",
-      value: state.users.filter(
-        user =>
-          user.activeRole === "headofdepartment" && user.status === "active"
-      ).length,
-    },
-    {
-      label: "Branch",
-      value: state.users.filter(
-        user => user.activeRole === "branchadmin" && user.status === "active"
-      ).length,
-    },
-    {
-      label: "Admins",
-      value: state.users.filter(
-        user => user.activeRole === "superadmin" && user.status === "active"
-      ).length,
-    },
-  ];
-
   return (
     <PlatformShell role="superadmin" title="Command center">
       <PlatformPageHeader
         compact
-        title="Platform Command Center"
-        description="Review access, academic structure, branch operations, connections, and activity."
+        title="Platform overview"
+        description="Open the area that needs attention and continue the next admin task."
         actions={
           <>
             <Link
@@ -2330,7 +2259,7 @@ function SuperAdminDashboard() {
               View activity
             </Link>
             <Link
-              href="/app/admin/users"
+              href="/app/admin/users/new"
               className="platform-primary-button"
               style={{ background: meta.color }}
             >
@@ -2431,7 +2360,7 @@ function SuperAdminDashboard() {
       </motion.div>
 
       <motion.div
-        className="platform-v2-admin-lower"
+        className="platform-v2-admin-activity"
         initial="hidden"
         animate="visible"
         custom={0.2}
@@ -2472,60 +2401,7 @@ function SuperAdminDashboard() {
             )}
           </div>
         </section>
-
-        <section className="platform-v2-panel">
-          <PlatformWorkspaceHeader
-            title="Connections"
-            description={`${usableIntegrations}/${state.integrations.length} connectors are ready for demo operations.`}
-            actions={
-              <Link
-                href="/app/admin/integrations"
-                className="platform-secondary-button compact"
-              >
-                Manage
-              </Link>
-            }
-          />
-          <div className="platform-v2-integration-list">
-            {state.integrations.length ? (
-              state.integrations.slice(0, 5).map(integration => (
-                <article key={integration.id}>
-                  <div>
-                    <strong>{integration.label}</strong>
-                    <small>{integration.notes}</small>
-                  </div>
-                  <StatusBadge
-                    tone={integrationStatusTone[integration.status] ?? "slate"}
-                  >
-                    {integrationStatusLabel[integration.status] ??
-                      formatConnectionStatus(integration.status)}
-                  </StatusBadge>
-                </article>
-              ))
-            ) : (
-              <article>
-                <div>
-                  <strong>No connections configured</strong>
-                  <small>Connector status will appear after setup.</small>
-                </div>
-                <StatusBadge tone="slate">Ready</StatusBadge>
-              </article>
-            )}
-          </div>
-        </section>
       </motion.div>
-
-      <PortalInsight
-        eyebrow="Access overview"
-        title="Active access by role"
-        value={activeUsers}
-        valueLabel="active accounts"
-        description="See how active people are distributed across the platform roles."
-        points={accessInsightPoints}
-        variant="bars"
-        tone="slate"
-        testId="admin-dashboard-insight"
-      />
     </PlatformShell>
   );
 }

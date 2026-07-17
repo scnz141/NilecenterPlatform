@@ -925,6 +925,8 @@ describe("Moodle provider-neutral read models", () => {
         data: {
           attempt: 2,
           tracks: [
+            { element: "score_raw", value: 88.5 },
+            { element: "total_time", value: "01:05:00" },
             { element: "cmi.core.lesson_status", value: "completed" },
             { element: "cmi.core.score.raw", value: "88.5" },
             { element: "cmi.core.score.min", value: "0" },

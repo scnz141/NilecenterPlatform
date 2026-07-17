@@ -2,11 +2,11 @@
 
 Nile Learn is currently in internal alpha stabilization. The protected portal QA baseline is:
 
-- Portal QA: 1,598 checks, 0 failures.
-- Checked at: `2026-07-13T13:19:02.018Z`.
-- Validation command: `QA_BASE_URL=http://127.0.0.1:3061 QA_OUTPUT_DIR=output/playwright/forms-program-final-matrix-c-20260713 QA_SESSION=forms-program-final-matrix-c-20260713 npm run qa:portals`.
+- Portal QA: 1,634 checks, 0 failures.
+- Checked at: `2026-07-17T21:30:16.353Z`.
+- Validation command: `QA_OUTPUT_DIR=output/playwright/phase6i-staging-promotion-acceptance-20260717 scripts/verify.sh`.
 - QA summary artifact:
-  `output/playwright/forms-program-final-matrix-c-20260713/portal-qa-summary.json`.
+  `output/playwright/phase6i-staging-promotion-acceptance-20260717/portal-qa-summary.json`.
 
 `docs/NILE_LEARN_MASTER_PLAN.md` defines the next architecture phases, and
 `docs/MODERNIZATION_EXECUTION_CONTRACT.md` defines how this baseline is
@@ -14,20 +14,321 @@ protected during each slice.
 
 ## Latest Preservation Evidence
 
-The accepted count was intentionally expanded after dedicated Forms creation,
-publication-history, and assignment routes were added to the role matrices and
-the complete route, workflow, denial, accessibility, responsive, and console
-checks passed:
+The Phase 6I staging-promotion slice changes no portal route or portal behavior.
+It promotes the nine accepted read-only projection packages only to the pinned
+isolated fake-data staging project and proves their combined database boundary:
 
-- Checked at: `2026-07-13T13:19:02.018Z`.
+- Checked at: `2026-07-17T21:30:16.353Z`.
 - QA summary artifact:
-  `output/playwright/forms-program-final-matrix-c-20260713/portal-qa-summary.json`.
-- Result: 1,598 checks, 0 failures in 1,294,206 ms.
-- Supporting validation: all static and portable PostgreSQL gates passed, 528
-  unit tests passed across 47 files, TypeScript passed, and the production build
-  passed through `SKIP_PORTAL_QA=1 scripts/verify.sh`.
-- Sequential data, security, UI/accessibility, and workflow reviews closed with
-  no remaining high or medium finding.
+  `output/playwright/phase6i-staging-promotion-acceptance-20260717/portal-qa-summary.json`.
+- Artifact SHA-256:
+  `c6fb6089fd8c2723bcd3c6f18b368e12caea58e73f779534a228b7f4f88342f6`.
+- Result: 1,634 checks, 0 failures in 625,986 ms.
+- Supporting validation: 829 unit tests pass across 58 files; TypeScript, the
+  production build, focused Phase 6 gates, and `git diff --check` pass.
+- The isolated staging lifecycle passed two applications, two deterministic
+  seed and semantic assertion passes, rollback/reapply, 18 service-role RPC
+  checks, and 8 browser-role denials.
+- All 16 projection tables have forced RLS, browser table/routine grants remain
+  zero, and 32 bounded routines remain service-role-only.
+- Production was not targeted. No live Moodle provider call or Moodle write
+  occurred. The normalized projection repository remains disabled, and the SQL
+  remains outside migration history.
+- Redacted staging acceptance is recorded in
+  `docs/qa-attestations/integration-phase6i-staging-promotion-20260717.json`.
+
+The Phase 6H4 evidence below remains historical evidence for the preceding
+accepted slice.
+
+The Phase 6H4 activity-outcome observation slice adds one server-only GET route
+and no portal route or portal check. It exposes bounded completion and released
+score summaries for lesson, H5P, and SCORM activities through current normalized
+relationships:
+
+- Checked at: `2026-07-17T15:24:57.253Z`.
+- QA summary artifact:
+  `output/playwright/phase6h4-activity-outcomes-acceptance-20260717/portal-qa-summary.json`.
+- Artifact SHA-256:
+  `02d7b26dbbf4408c5c4c4be3ae225436bf27b81e503bd9438e61efca7b9060aa`.
+- Result: 1,634 checks, 0 failures in 576,402 ms.
+- Supporting validation: 829 unit tests pass across 58 files; TypeScript, the
+  production build, and `git diff --check` pass.
+- The portable PostgreSQL lifecycle passed two applications, two semantic
+  assertion passes, rollback/reapply, 22 browser-role denials, and 16 bounded
+  service-role calls without a remote request.
+- Students receive only their own outcome, teachers only exact assigned-class
+  learner outcomes, and HOD/Super Admin aggregate counts. Registrar and Branch
+  Admin are denied.
+- Unreleased scores and stale results fail closed. Raw tracks, interactions,
+  questions, answers, files, comments, grader identity, contact data, and raw
+  Moodle identifiers remain excluded.
+- Focused validation was run sequentially without parallel workers to reduce
+  local machine load; it preserved the same contracts, portable SQL lifecycle,
+  TypeScript, focused tests, and build checks.
+- The SQL is manual and unapplied, normalized runtime remains disabled, and no
+  remote database, live Moodle provider, Moodle write, or portal behavior
+  change occurred.
+
+The Phase 6H3 evidence below remains historical evidence for the preceding
+accepted slice.
+
+The Phase 6H3 grade-outcome observation slice adds one server-only GET route
+and no portal route or portal check. It exposes bounded gradebook and released
+feedback summaries through current normalized relationships:
+
+- Checked at: `2026-07-17T14:13:29Z`.
+- QA summary artifact:
+  `output/playwright/phase6h3-grade-outcomes-acceptance-20260717/portal-qa-summary.json`.
+- Artifact SHA-256:
+  `1803e8f9fbb634daae04b843c117dffcea6b8cd964de2d4d84d8b5bb01cc3487`.
+- Result: 1,634 checks, 0 failures in 576,782 ms.
+- Supporting validation: 822 unit tests pass across 58 files; TypeScript, the
+  production build, and `git diff --check` pass.
+- The portable PostgreSQL lifecycle passed two applications, two semantic
+  assertion passes, rollback/reapply, 22 browser-role denials, and 16 bounded
+  service-role calls without a remote request.
+- Students receive only their own explicitly released outcome, teachers only
+  exact assigned-class learner outcomes, and HOD/Super Admin aggregate counts.
+  Registrar and Branch Admin are denied.
+- Unreleased learner outcomes, unreleased feedback, unsafe feedback, and stale
+  results fail closed. Questions, answers, files, comments, grader identity,
+  contact data, and raw Moodle identifiers remain excluded.
+- Focused validation was run sequentially without parallel workers to reduce
+  local machine load; it preserved the same contracts, portable SQL lifecycle,
+  TypeScript, focused tests, and build checks.
+- The SQL is manual and unapplied, normalized runtime remains disabled, and no
+  remote database, live Moodle provider, Moodle write, or portal behavior
+  change occurred.
+
+The Phase 6H2 evidence below remains historical evidence for the preceding
+accepted slice.
+
+The Phase 6H2 quiz-attempt observation slice adds one server-only GET route and
+no portal route or portal check. It exposes bounded quiz-attempt summary state
+through current normalized relationships:
+
+- Checked at: `2026-07-17T12:46:17.298Z`.
+- QA summary artifact:
+  `output/playwright/phase6h2-quiz-attempts-acceptance-20260717/portal-qa-summary.json`.
+- Artifact SHA-256:
+  `0320742824f6d36734fa226cbae148105a6f6cd37e7b8651452f976796f561aa`.
+- Result: 1,634 checks, 0 failures in 576,871 ms.
+- Supporting validation: 815 unit tests pass across 58 files; TypeScript, the
+  production build, and `git diff --check` pass.
+- The portable PostgreSQL lifecycle passed two applications, two semantic
+  assertion passes, rollback/reapply, 22 browser-role denials, and 16 bounded
+  service-role calls without a remote request.
+- Students receive only their own attempt, teachers only exact assigned-class
+  learners, and HOD/Super Admin aggregate counts. Registrar and Branch Admin
+  are denied.
+- Preview attempts and stale results fail closed. Question text, answers,
+  feedback, files, comments, contact data, and raw Moodle identifiers remain
+  excluded.
+- `npm run verify:phase6h2-fast` preserves eight contract gates and seven
+  focused implementation gates and completes in about 3.8 seconds on a warm
+  workspace.
+- The SQL is manual and unapplied, normalized runtime remains disabled, and no
+  remote database, live Moodle provider, Moodle write, or portal behavior
+  change occurred.
+
+The Phase 6H1 evidence below remains historical evidence for the preceding
+accepted slice.
+
+The Phase 6H1 assignment-result observation slice adds one server-only GET
+route and no portal route or portal check. It exposes only bounded assignment
+submission and grade-result state through current normalized relationships:
+
+- Checked at: `2026-07-17T10:56:00Z`.
+- QA summary artifact:
+  `output/playwright/phase6h1-assignment-results-acceptance-20260717/portal-qa-summary.json`.
+- Artifact SHA-256:
+  `a3a2d5e578b814c02b2f3e01f56966fa6073062a29a800c2ca6b631716d19683`.
+- Result: 1,634 checks, 0 failures in 579,569 ms.
+- Supporting validation: 809 unit tests pass across 58 files; TypeScript, the
+  production build, and `git diff --check` pass.
+- The portable PostgreSQL lifecycle passed two applications, two semantic
+  assertion passes, rollback/reapply, 22 browser-role denials, and 16 bounded
+  service-role calls without a remote request.
+- Students receive only their own result, teachers only exact assigned-class
+  learners, and HOD/Super Admin aggregate counts. Registrar and Branch Admin
+  are denied.
+- Stale results fail closed. Files, answers, comments, feedback, grader
+  identity, contact data, and raw Moodle identifiers remain excluded.
+- `npm run verify:phase6h1-fast` preserves seven contract gates and six focused
+  implementation gates and completes in about 3.8 seconds on a warm workspace.
+- The SQL is manual and unapplied, normalized runtime remains disabled, and no
+  remote database, live Moodle provider, Moodle write, or portal behavior
+  change occurred.
+
+The Phase 6G evidence below remains historical evidence for the preceding
+accepted slice.
+
+The Phase 6G assessment-status observation slice adds one server-only GET route
+and no portal route or portal check. It exposes only assignment and quiz
+definitions plus bounded schedule state for an exact authorized class:
+
+- Checked at: `2026-07-17T09:39:52Z`.
+- QA summary artifact:
+  `output/playwright/phase6g-assessment-status-acceptance-20260717/portal-qa-summary.json`.
+- Artifact SHA-256:
+  `b73f22c8efc95cf57dda64f9bece4e1b0d9f382a199593b98ce01ea610cfd08c`.
+- Result: 1,634 checks, 0 failures in 584,906 ms.
+- Supporting validation: 783 unit tests pass across 58 files; TypeScript, the
+  production build, and `git diff --check` pass.
+- The portable PostgreSQL lifecycle passed two applications, two semantic
+  assertion passes, rollback/reapply, 22 browser-role denials, and 14 bounded
+  service-role calls without a remote request.
+- Students are limited to their own exact class enrollment, teachers to a
+  currently assigned class, HOD to department scope, and Super Admin to global
+  scope. Registrar and Branch Admin are denied.
+- Submissions, attempts, answers, grades, scores, feedback, completion, contact
+  data, and raw Moodle identifiers remain outside this route.
+- `npm run verify:phase6g-fast` preserves six contract gates and five focused
+  implementation gates and completes in about 2.9 seconds on a warm workspace.
+- The SQL is manual and unapplied, normalized runtime remains disabled, and no
+  remote database, live Moodle provider, Moodle write, or portal behavior
+  change occurred.
+
+The Phase 6F evidence below remains historical evidence for the preceding
+accepted slice.
+
+The Phase 6F enrollment/group observation slice adds one server-only GET route
+and no portal route or portal check. It establishes the bounded read-only
+relationship projection needed before any enrollment, roster, completion, or
+outcome portal wiring:
+
+- Checked at: `2026-07-17T06:54:31.551Z`.
+- QA summary artifact:
+  `output/playwright/phase6f-enrollment-group-acceptance-20260717/portal-qa-summary.json`.
+- Artifact SHA-256:
+  `6838cef5036ec614197f584fb482ca20bfff04722755960d9b50a1a113cc99d1`.
+- Result: 1,634 checks, 0 failures in 578,246 ms.
+- Supporting validation: 772 unit tests pass across 58 files; TypeScript, the
+  production build, and `git diff --check` pass.
+- The portable PostgreSQL lifecycle passed two applications, two semantic
+  assertion passes, rollback/reapply, 14 browser-role denials, and 8 bounded
+  service-role calls without a remote request.
+- Teachers receive only exact currently assigned class person-level IDs. HOD
+  and Super Admin receive aggregate counts only. Student, Registrar, and Branch
+  Admin are denied.
+- `npm run verify:phase6f-fast` preserves five contract gates and four focused
+  implementation gates and completes in about 3.4 seconds on a warm workspace.
+- The SQL is manual and unapplied, normalized runtime remains disabled, and no
+  remote database, live Moodle provider, Moodle write, or portal behavior
+  change occurred.
+
+The Phase 6E user-mapping evidence below remains historical evidence for the
+preceding accepted slice.
+
+The Phase 6E exact user-mapping authority slice adds no route or portal check.
+It preserves the current scope while proving the server-only prerequisite for
+future enrollment, roster, completion, and outcome projections:
+
+- Checked at: `2026-07-17T05:45:31Z`.
+- QA summary artifact:
+  `output/playwright/phase6e-user-mapping-acceptance-20260717/portal-qa-summary.json`.
+- Artifact SHA-256:
+  `8101d6e97fc4843b710e7e5945c03a30568358c40b88b3f9815de441a6d5d63e`.
+- Result: 1,634 checks, 0 failures in 578,448 ms.
+- Supporting validation: 763 unit tests pass across 58 files; TypeScript and the
+  production build pass.
+- The portable PostgreSQL lifecycle passed two applications, two semantic
+  assertion passes, rollback/reapply, 8 browser-role denials, and 8 bounded
+  service-role calls.
+- `npm run verify:phase6e-fast` is the focused inner loop and completes in about
+  2 seconds on a warm workspace.
+- The SQL is manual and unapplied, runtime remains disabled, and no remote
+  database, Docker stack, provider request, Moodle write, or portal behavior
+  change occurred.
+
+The Phase 6D course-content evidence below remains historical evidence for the
+preceding accepted slice.
+
+The Phase 6D course-content detail slice intentionally adds four protected
+routes across desktop and mobile plus one complete server-boundary workflow.
+The current evidence is:
+
+- Checked at: `2026-07-17T04:27:48Z`.
+- QA summary artifact:
+  `output/playwright/integration-phase6d-final-20260717/portal-qa-summary.json`.
+- Artifact SHA-256:
+  `ad31884c3e3cc9edf5e34522a9f3d55f6604190c4a9efbb8cd11f8fc5494a722`.
+- Result: 1,634 checks, 0 failures in 578,333 ms.
+- Supporting validation: 758 unit tests pass across 58 files; TypeScript and the
+  production build pass.
+- Focused browser evidence: 6 checks, 0 failures at
+  `output/playwright/integration-phase6c-focused-20260717-r2/portal-qa-summary.json`.
+- `npm run verify:phase6c-fast` is the focused inner loop and completes in about
+  3 seconds on a warm workspace. It preserves both portable PostgreSQL gates,
+  TypeScript, the Phase 6 contracts, and the focused projection test suites.
+- No remote database, Docker stack, live Moodle provider, or Moodle write was
+  used. Phase 6A/6B SQL remains manual and unapplied.
+
+The Phase 6C catalog evidence below remains historical evidence for the
+preceding accepted slice.
+
+The Phase 6C catalog portal wiring intentionally adds four checks to the
+accepted scope: server-derived catalog settlement plus unexpected browser
+console error detection in focused and complete runs. The current evidence is:
+
+- Checked at: `2026-07-17T03:21:24.316Z`.
+- QA summary artifact:
+  `output/playwright/integration-phase6c-final-20260717/portal-qa-summary.json`.
+- Artifact SHA-256:
+  `4f3cd344bbe01e7a9517ebea53289af005815e8166fbd74746f99c39947c7e6c`.
+- Result: 1,602 checks, 0 failures in 573,395 ms.
+- Supporting validation: 715 unit tests pass across 58 files; TypeScript and the
+  production build pass.
+- Focused browser evidence: 6 checks, 0 failures at
+  `output/playwright/integration-phase6c-focused-review2-20260717/portal-qa-summary.json`.
+- The portal reads only the same-origin Nile Learn projection API, validates the
+  complete DTO, and provides explicit loading, empty, unavailable, stale,
+  partial, and retry states. It has no local-state authority fallback, direct
+  browser Moodle request, or write action.
+- Phase 6A and 6B SQL remains manual and unapplied; normalized runtime remains
+  disabled. No remote database, Docker stack, live Moodle provider, or provider
+  credential was used in this slice.
+
+The Phase 6B observation and fast-runner evidence below remains the previous
+accepted baseline and records the optimization work that this slice preserves.
+
+The Phase 6B observation and fast-runner slice preserved the complete route,
+workflow, denial, accessibility, responsive, and console matrix:
+
+- Checked at: `2026-07-17T01:58:41.068Z`.
+- QA summary artifact:
+  `output/playwright/integration-phase6b-fast-final-20260717/portal-qa-summary.json`.
+- Artifact SHA-256:
+  `d90e32ab7cf4d145269ba2081513f82999f445d752b37176775b005227c43689`.
+- Result: 1,598 checks, 0 failures in 568,367 ms.
+- Supporting validation: all static and portable PostgreSQL, session, and Nile
+  Forms gates passed; 700 unit tests passed across 56 files; TypeScript and the
+  production build passed in the same `scripts/verify.sh` run.
+- The Phase 6A and 6B packages add server-only normalized authority, exact
+  Moodle course mappings, immutable bounded observations, deterministic
+  freshness, and retained sanitized projection contracts. Their reviewed SQL
+  remains unapplied and the runtime flag remains disabled.
+  Approved staging promotion, live provider proof, remaining projection
+  families, and portal UI wiring are still pending; production and portal Moodle
+  writes remain disabled.
+
+The accepted runner optimization preserves the exact 1,598-check contract,
+uses deterministic hard navigation between stateful workflows, batches route
+matrices in groups of 12, and settles each route across two animation frames.
+Compared with the previous 619,718 ms acceptance run, this run completed 8.3%
+faster. Use `npm run verify:phase6b-fast` for the focused Phase 6B loop,
+`npm run verify:integration-fast` for the complete implementation loop, and
+`QA_ONLY_WORKFLOWS="<exact workflow>" npm run verify:focused-fast` for one
+changed browser workflow. Only unfiltered `scripts/verify.sh` certifies this
+baseline.
+
+The Phase 6B inner loop completes in about 3 seconds on this workspace and the
+complete integration loop in about 6 seconds. Both run independent checks in
+parallel, enforce a bounded per-command timeout, and terminate active child
+process groups on interruption. The focused loop now covers normalized-session
+separation, retained-payload sanitizer equivalence, projection hash and
+retention validation, partial catalog availability, mapping scope drift, and
+current-authority denial without contacting Moodle or a remote database.
 
 This is the current protected baseline. The previous 1,509/0 evidence remains
 below as historical acceptance for the earlier route matrix.
@@ -52,7 +353,7 @@ shell assertions in each shard. The evidence therefore preserves, but does not
 renumber, the official baseline. Exact artifacts and provider cleanup evidence
 are recorded in `docs/moodle-m2b-write-proof-evidence-20260713.md`.
 
-## Moodle M2C-R Preservation Evidence
+## Moodle M2C-R Historical Partial Evidence
 
 The partial M2C-R provider-contract run did not change the accepted application
 baseline. After sandbox cleanup and credential teardown, the full repository
@@ -65,8 +366,8 @@ gate completed in one run:
   Forms gates passed; 572 unit tests passed across 50 files; TypeScript and the
   production build passed.
 
-The provider result remains partial at 26/31 because H5P and SCORM fixtures are
-not available. The exact provider boundary, cleanup, and stop decision are
+That provider result remained partial at 26/31 because H5P and SCORM fixtures
+were not available at that time. The historical boundary and stop decision are
 recorded in `docs/moodle-m2c-read-closure-evidence-20260713.md`.
 
 ## Previous 1,509 Preservation Evidence

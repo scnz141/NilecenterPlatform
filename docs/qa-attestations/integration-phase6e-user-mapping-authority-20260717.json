@@ -1,0 +1,57 @@
+{
+  "version": 1,
+  "status": "accepted-local",
+  "phase": "integration-stabilization-phase6e-user-mapping-authority",
+  "checkedAt": "2026-07-17T05:45:31Z",
+  "scope": {
+    "roles": ["student", "teacher", "headofdepartment", "superadmin"],
+    "authority": "server-normalized-current-relationships",
+    "mappingEntity": "user",
+    "portalRoutesAdded": 0,
+    "productionMoodleWritesEnabled": false
+  },
+  "sqlLifecycle": {
+    "command": "npm run check:phase6e-moodle-user-mapping:runtime",
+    "result": "passed",
+    "forwardApplications": 2,
+    "assertionPasses": 2,
+    "rollbackReapplyPasses": 1,
+    "browserRoleDenials": 8,
+    "serviceRoleRpcCalls": 8,
+    "remoteDatabaseContacted": false,
+    "dockerUsed": false
+  },
+  "fastGate": {
+    "command": "npm run verify:phase6e-fast",
+    "result": "passed",
+    "contractChecks": 4,
+    "implementationChecks": 3
+  },
+  "fullValidation": {
+    "command": "QA_OUTPUT_DIR=output/playwright/phase6e-user-mapping-acceptance-20260717 scripts/verify.sh",
+    "unitTestFiles": 58,
+    "unitTests": 763,
+    "typescript": "passed",
+    "productionBuild": "passed"
+  },
+  "fullPortalQa": {
+    "artifact": "output/playwright/phase6e-user-mapping-acceptance-20260717/portal-qa-summary.json",
+    "artifactSha256": "8101d6e97fc4843b710e7e5945c03a30568358c40b88b3f9815de441a6d5d63e",
+    "totalChecks": 1634,
+    "failedChecks": 0,
+    "elapsedMs": 578448,
+    "fullSuite": true,
+    "interrupted": false
+  },
+  "boundaries": {
+    "exactMappingOnly": true,
+    "emailOrDisplayNameMatching": false,
+    "browserRpcAccess": false,
+    "contactDataReturned": false,
+    "newPersistentTable": false,
+    "manualSqlUnapplied": true,
+    "normalizedRuntimeActivated": false,
+    "providerCalled": false,
+    "portalBehaviorChanged": false
+  }
+}

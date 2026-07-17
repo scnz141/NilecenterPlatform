@@ -4,11 +4,16 @@ import path from "path";
 import { fileURLToPath } from "url";
 import { registerApiRoutes } from "./routes.js";
 import { initializeNileFormsRepository } from "./nileFormsRepository.js";
+import { loadServerEnv } from "./env.js";
+import { validateRuntimeProfile } from "./runtimeProfile.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 async function startServer() {
+  loadServerEnv();
+  validateRuntimeProfile();
+
   const app = express();
   const server = createServer(app);
 
@@ -45,4 +50,7 @@ async function startServer() {
   });
 }
 
-startServer().catch(console.error);
+startServer().catch(error => {
+  console.error(error);
+  process.exitCode = 1;
+});

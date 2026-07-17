@@ -1,0 +1,203 @@
+{
+  "version": 1,
+  "contractId": "integration-phase6-staging-promotion",
+  "phase": "6I",
+  "immutable": true,
+  "targetRefHashes": {
+    "algorithm": "sha256",
+    "staging": "aa412ac2a6b666be6ad96683495e92778e2c70aae68891799d1f5754a050140c",
+    "production": "7728e57c3295ac6c1d964e067911e56d922fb6ed5319d1a9b3f00a13572db70f"
+  },
+  "compatibility": {
+    "forward": {
+      "path": "supabase/manual/015_phase6i_pgcrypto_schema_compatibility.sql",
+      "sha256": "77828bb6983ec6eea94a702bae84ebbc3e57265dbb5ab32a1d71bc1c180c3672"
+    },
+    "rollback": {
+      "path": "supabase/manual/915_phase6i_pgcrypto_schema_compatibility_rollback.sql",
+      "sha256": "9eafe6785ce9728c0afec62f460c43aa6f46cdf125cf28bc63fb19c5a616ca87"
+    }
+  },
+  "packages": [
+    {
+      "id": "phase6a",
+      "forward": {
+        "path": "supabase/manual/006_phase6a_moodle_projection_authority.sql",
+        "sha256": "fd4c6e2c8993a6e8cb03dda98bd9d240c03ad91f24356958800940449f380ca5"
+      },
+      "seed": {
+        "path": "supabase/manual/106_phase6a_moodle_projection_authority_fake_seed.sql",
+        "sha256": "377755f32cccb9f88837acb2cf28973285487eca1f462f4b6720cf6f339fa69c"
+      },
+      "assertions": {
+        "path": "supabase/manual/206_phase6a_moodle_projection_authority_assertions.sql",
+        "sha256": "bb95f7acec358562a141444173f063c719e9826799f82200988463f128b47888"
+      },
+      "rollback": {
+        "path": "supabase/manual/906_phase6a_moodle_projection_authority_rollback.sql",
+        "sha256": "9cbd268a9ad52a3ac35ea546646c5970a8cb72e6beedd2ce63658c050236e111"
+      }
+    },
+    {
+      "id": "phase6b",
+      "forward": {
+        "path": "supabase/manual/007_phase6b_moodle_projection_observation.sql",
+        "sha256": "056eb327bbaf41745654b01ce08ab3b6b2e392617a957578007144cc202d1c38"
+      },
+      "seed": {
+        "path": "supabase/manual/107_phase6b_moodle_projection_observation_fake_seed.sql",
+        "sha256": "4c83594d7e3a2ff98e5c25cad055bc93b2d83908e0d1a26ea107210a7120c3bd"
+      },
+      "assertions": {
+        "path": "supabase/manual/207_phase6b_moodle_projection_observation_assertions.sql",
+        "sha256": "33e7d93a11f7a120874926f54616b44e383a61f4fe7302755e0956af9f265abd"
+      },
+      "rollback": {
+        "path": "supabase/manual/907_phase6b_moodle_projection_observation_rollback.sql",
+        "sha256": "31873524b5201254694f1977f3e45bbe33140d42d13d548346d77973b90e159f"
+      }
+    },
+    {
+      "id": "phase6e",
+      "forward": {
+        "path": "supabase/manual/008_phase6e_moodle_user_mapping_authority.sql",
+        "sha256": "93eb7c1c910287e276c38a358ddbe8e53a3d5e34dc8672e9ad2d76a4b05204f5"
+      },
+      "seed": {
+        "path": "supabase/manual/108_phase6e_moodle_user_mapping_authority_fake_seed.sql",
+        "sha256": "8d71b538e12a44e413161c6187e69f2a9fd4511259f36b50b64e5c7b2a299429"
+      },
+      "assertions": {
+        "path": "supabase/manual/208_phase6e_moodle_user_mapping_authority_assertions.sql",
+        "sha256": "9ab58ea62704d38df78c4584929e1c82379643677a9e79f0474191fbb69a71a4"
+      },
+      "rollback": {
+        "path": "supabase/manual/908_phase6e_moodle_user_mapping_authority_rollback.sql",
+        "sha256": "c2cb1cd15128a3013d38b6d748f8bd02516e87652da89772dec3d7152be3e4a3"
+      }
+    },
+    {
+      "id": "phase6f",
+      "forward": {
+        "path": "supabase/manual/009_phase6f_moodle_enrollment_group_observation.sql",
+        "sha256": "0c1f88626c1e663c23d28951aa12884bc4cf1c3d069bb0df72d90593c0477181"
+      },
+      "seed": {
+        "path": "supabase/manual/109_phase6f_moodle_enrollment_group_observation_fake_seed.sql",
+        "sha256": "2b6d5bbb2d28adc28509f2a9e955ef4b7677a8f26c70fdf93b2f41b4f8a66724"
+      },
+      "assertions": {
+        "path": "supabase/manual/209_phase6f_moodle_enrollment_group_observation_assertions.sql",
+        "sha256": "8060e93f953589e93c6a4414af42e66f171514e67df40b51de8c76d89edd7638"
+      },
+      "rollback": {
+        "path": "supabase/manual/909_phase6f_moodle_enrollment_group_observation_rollback.sql",
+        "sha256": "b0190ff16e99f449f087ea2b1c8660652df38cf63181078fce9962b700fa82db"
+      }
+    },
+    {
+      "id": "phase6g",
+      "forward": {
+        "path": "supabase/manual/010_phase6g_moodle_assessment_status_observation.sql",
+        "sha256": "7b5822379bca66f6f77fbc2ac7ef7f70b79d5a683dcc71ccbe16dc8c970ae6ab"
+      },
+      "seed": {
+        "path": "supabase/manual/110_phase6g_moodle_assessment_status_fake_seed.sql",
+        "sha256": "9af0518460cd6ed6a1fe691d988bd8191cf150067ffe657d0676d29a9290a0e9"
+      },
+      "assertions": {
+        "path": "supabase/manual/210_phase6g_moodle_assessment_status_assertions.sql",
+        "sha256": "fd2c0610c05ff1bf4a6c86e6de27e1573556ef4afbaadfebcb32bd0c449ef433"
+      },
+      "rollback": {
+        "path": "supabase/manual/910_phase6g_moodle_assessment_status_rollback.sql",
+        "sha256": "e40baf879d0fc2d4706fe564cca11d85cf5d82de377696d2ea5ca29edb4ffbd0"
+      }
+    },
+    {
+      "id": "phase6h1",
+      "forward": {
+        "path": "supabase/manual/011_phase6h1_moodle_assignment_result_observation.sql",
+        "sha256": "433bf8b839cee61a9e143887237c16c9491bf5b49fa917e1a307ffb8c5a71762"
+      },
+      "seed": {
+        "path": "supabase/manual/111_phase6h1_moodle_assignment_result_fake_seed.sql",
+        "sha256": "58c1b0bc9139fb9a0ab0a41c3e7c9e711e37572ea7edc9f008fb8b656424c3b5"
+      },
+      "assertions": {
+        "path": "supabase/manual/211_phase6h1_moodle_assignment_result_assertions.sql",
+        "sha256": "9239500ae23ae407a9c89f19e9f9587f9d83374132c75a66dc288276c82f8077"
+      },
+      "rollback": {
+        "path": "supabase/manual/911_phase6h1_moodle_assignment_result_rollback.sql",
+        "sha256": "de6dbd92df523a27d4a12552153c498f12f65cdbaa638d9b1d3af4d43aad51fc"
+      }
+    },
+    {
+      "id": "phase6h2",
+      "forward": {
+        "path": "supabase/manual/012_phase6h2_moodle_quiz_attempt_observation.sql",
+        "sha256": "ddf22544f9c74c9fa11bea5fa9b4f5776af5891cc73879b7594cc1a997c3fff9"
+      },
+      "seed": {
+        "path": "supabase/manual/112_phase6h2_moodle_quiz_attempt_fake_seed.sql",
+        "sha256": "008ecdb29438b7681be3e434413dc854cc0b638810b343d77006f14df11b4197"
+      },
+      "assertions": {
+        "path": "supabase/manual/212_phase6h2_moodle_quiz_attempt_assertions.sql",
+        "sha256": "bed650b6821cc658501a82b7103f9bbc71b6700154295558881d3ed2724b1ab3"
+      },
+      "rollback": {
+        "path": "supabase/manual/912_phase6h2_moodle_quiz_attempt_rollback.sql",
+        "sha256": "ac6b0ef2984bd9fd1ef1c8c195125b4c142d6e095c7a7dec111b37a88ae46ced"
+      }
+    },
+    {
+      "id": "phase6h3",
+      "forward": {
+        "path": "supabase/manual/013_phase6h3_moodle_grade_outcome_observation.sql",
+        "sha256": "b6b80a373b2e273481c3cfe3913afc11f776c29a976aafe90c8beec1bde7ba87"
+      },
+      "seed": {
+        "path": "supabase/manual/113_phase6h3_moodle_grade_outcome_fake_seed.sql",
+        "sha256": "f8cc28c7407096c1a0136a67ba337860b01f2fd4573d87c5f3331791d2d96643"
+      },
+      "assertions": {
+        "path": "supabase/manual/213_phase6h3_moodle_grade_outcome_assertions.sql",
+        "sha256": "51b3e018168ff9aa87873838b1b4b435ae3f29b5965aa953945c185b22d2016d"
+      },
+      "rollback": {
+        "path": "supabase/manual/913_phase6h3_moodle_grade_outcome_rollback.sql",
+        "sha256": "f1de52ccac1541a55cf5690d6c5de26b163378f8bfc2b6ab0f35eebea57c37cc"
+      }
+    },
+    {
+      "id": "phase6h4",
+      "forward": {
+        "path": "supabase/manual/014_phase6h4_moodle_activity_outcome_observation.sql",
+        "sha256": "6a6992e719ecc0bf98519c5a51c87736e396fd0c438980e8b55e0b703a4cf18a"
+      },
+      "seed": {
+        "path": "supabase/manual/114_phase6h4_moodle_activity_outcome_fake_seed.sql",
+        "sha256": "a6e490ba6626d33d21b10e183f6df77f20196aac5a6b10aabfdda849edfad39e"
+      },
+      "assertions": {
+        "path": "supabase/manual/214_phase6h4_moodle_activity_outcome_assertions.sql",
+        "sha256": "6efe3b73e4967ad35aa57ae14041207204e87c452f4218f5d69ced2f525fe114"
+      },
+      "rollback": {
+        "path": "supabase/manual/914_phase6h4_moodle_activity_outcome_rollback.sql",
+        "sha256": "b86eef776087c933f3da5d6a0806d2b660e04b427fe7638fe293870ecb289030"
+      }
+    }
+  ],
+  "constraints": {
+    "isolatedStagingOnly": true,
+    "productionTargetingAllowed": false,
+    "fakeIdentitiesOnly": true,
+    "moodleProviderCallsAllowed": false,
+    "moodleWritesAllowed": false,
+    "runtimeDefaultsChanged": false,
+    "normalizedRuntimeActivated": false
+  }
+}

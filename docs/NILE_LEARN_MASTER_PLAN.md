@@ -28,7 +28,7 @@ leaks, crowded UI, or ambiguous ownership.
 
 The protected internal-alpha baseline is:
 
-- Portal QA: 1,598 checks, 0 failures.
+- Portal QA: 1,634 checks, 0 failures.
 - TypeScript check, unit tests, and production build are required gates.
 - The accepted evidence is recorded in `docs/qa-baseline.md`.
 
@@ -594,9 +594,199 @@ here rather than restating this checkpoint.
 
 Current status:
 
+- The product owner approved the seven-phase integration stabilization program
+  on 2026-07-16. Its sequence and acceptance gates are defined in
+  `docs/INTEGRATION_STABILIZATION_PROGRAM.md`. Program Phase 1 is accepted: the
+  source-derived freeze records 6 roles, 282 concrete route patterns, 65
+  workflow actions, 51 API routes, 31 Moodle reads, and 11 bounded sandbox
+  writes in `docs/integration-feature-freeze.json`. The integrated acceptance
+  run passed every repository gate and 1,598 portal checks with 0 failures; its
+  tracked attestation is
+  `docs/qa-attestations/integration-feature-freeze-phase1-20260716.json`.
+  Program Phase 2 is accepted. M2C-R reached 31/31 reads twice with an identical
+  combined fingerprint, removed all disposable course modules, users, service,
+  private uploads, WebDAV configuration, and H5P libraries, revoked temporary
+  capabilities, stopped its local bridge, and proved retired-token rejection.
+  The full phase-boundary verification passed 572 unit tests and 1,598 portal
+  checks with 0 failures. The redacted proof is
+  `docs/qa-attestations/moodle-m2cr-phase2-20260716.json`. Program Phase 3 is
+  accepted. Its executable matrix maps all 282 routes, 65 workflow actions, 51
+  APIs, 31 Moodle reads, and 11 bounded sandbox writes to exactly one of 33
+  feature families. The final acceptance run passed 591 unit tests and 1,598
+  portal checks with 0 failures. Evidence is recorded in
+  `docs/qa-attestations/integration-ownership-phase3-20260716.json`. Program
+  Phase 4 is accepted. Its executable contract proves both provider lanes, 10
+  feature families, all 31 reads, all 11 bounded sandbox writes, all 9 lifecycle
+  stages, 7 authority denials, and 5 negative controls. The final acceptance
+  run passed 591 unit tests and all 1,598 portal checks with 0 failures in
+  615,566 ms. Evidence is recorded in
+  `docs/qa-attestations/moodle-phase4-contract-loops-20260716.json`. Program
+  Phase 5 is accepted. The pinned isolated staging project passed two reviewed
+  database applications, two semantic assertion passes, rollback, deterministic
+  reseeding, RLS and browser-role denial checks, real Supabase login, hashed
+  durable sessions, two-instance resolution, live scope refresh, revocation,
+  logout, expiry, and fail-closed outage behavior. The phase-boundary run passed
+  624 unit tests and all 1,598 portal checks with 0 failures. Redacted evidence
+  is recorded in
+  `docs/qa-attestations/integration-phase5-staging-foundation-20260716.json`.
+  Program Phase 6 is now active and is limited to role-scoped, read-only Moodle
+  projections. Its initial course/content contract is accepted: two GET-only
+  endpoints enforce the four-role catalog ownership contract, canonical active
+  identity and relationship scope, exact mappings, hidden learner-content
+  filtering, minimum-privilege evidence, deterministic replay, and fail-closed
+  repository/provider behavior. The phase-boundary run passed 659 unit tests
+  and all 1,598 portal checks with 0 failures in 619,666 ms. Evidence is in
+  `docs/qa-attestations/integration-phase6-projection-contract-20260716.json`.
+  The additive Phase 6A authority repository contract is also accepted. It adds
+  a normalized server-only authority and Moodle course-mapping boundary, nine
+  forced-RLS tables, two bounded service-role RPCs, explicit 403/503 failure
+  classification, and no compatibility-state fallback. The package passed two
+  portable PostgreSQL applications, two semantic assertion passes, rollback and
+  reapply, 49 focused repository/service/route tests, 673 total unit tests, and
+  all 1,598 portal checks with 0 failures in 619,718 ms. Evidence is in
+  `docs/qa-attestations/integration-phase6a-authority-repository-20260717.json`.
+  Its SQL remains manual and unapplied, and runtime activation remains disabled.
+  The additive Phase 6B observation repository is accepted locally. It retains
+  bounded sanitized course-catalog and course-content observations, re-resolves
+  current authority before every read, distinguishes fresh, stale, unavailable,
+  and partial results, and never uses stale data as authority. Its reviewed SQL
+  remains manual and unapplied. Evidence is in
+  `docs/qa-attestations/integration-phase6b-observation-repository-20260717.json`.
+  Phase 6C now wires the four approved catalog roles to the same-origin server
+  projection through a strict client DTO boundary. The portal has explicit
+  loading, empty, unavailable, stale, partial, and retry states, no local-state
+  fallback, no browser-to-Moodle call, and no write control. The approved QA
+  scope adds server-source and unexpected-console-error checks, establishing the
+  protected 1,602/0 baseline. Evidence is in
+  `docs/qa-attestations/integration-phase6c-portal-catalog-wiring-20260717.json`.
+  Phase 6D adds the exact-course content route for the same four roles, strict
+  nested DTO validation, current-authority and exact-course observation scope,
+  fail-closed student visibility, and explicit read-only detail states. Desktop,
+  mobile, accessibility, console, and same-origin request coverage establish the
+  protected 1,634/0 baseline. Evidence is in
+  `docs/qa-attestations/integration-phase6d-course-content-wiring-20260717.json`.
+  Phase 6E establishes the prerequisite exact Moodle user-mapping authority
+  boundary before enrollment, roster, completion, or outcome projections. Its
+  two service-role-only RPCs derive user scope from current normalized grants
+  and relationships, return IDs and synchronization metadata only, reject
+  browser roles, and never match by email or display name. The additive SQL is
+  manual and unapplied, runtime activation remains disabled, and no portal
+  route or provider call was added. Two portable PostgreSQL applications, two
+  semantic assertion passes, rollback/reapply, 8 browser-role denials, 763 unit
+  tests, the production build, and the complete 1,634/0 portal suite pass.
+  Evidence is in
+  `docs/qa-attestations/integration-phase6e-user-mapping-authority-20260717.json`.
+  Phase 6F establishes a bounded enrollment/group observation repository and
+  server-only class projection route on top of exact current mappings. Teachers
+  receive only person-level IDs for learners in classes currently assigned to
+  them; HOD and Super Admin receive aggregate counts only; Student, Registrar,
+  and Branch Admin are denied. Strict payload parsing, hash validation,
+  30-day maximum retention, fresh/stale-retained/expired/unavailable states,
+  reconciliation outcomes, replay, rollback/reapply, and current relationship
+  revalidation are enforced without names, emails, provider identifiers, or
+  direct Moodle calls. Two portable PostgreSQL applications, two semantic
+  assertion passes, rollback/reapply, 14 browser-role denials, 8 bounded
+  service calls, 772 unit tests, the production build, and the complete
+  1,634/0 portal suite pass. The SQL remains manual and unapplied, normalized
+  runtime activation remains disabled, and no Moodle write occurred. Evidence
+  is in
+  `docs/qa-attestations/integration-phase6f-enrollment-group-observation-20260717.json`.
+  Phase 6G establishes an atomic assignment/quiz definition and schedule-status
+  observation boundary for exact authorized classes. Students are limited to
+  their own active or completed enrollment and exact user mapping; teachers to
+  a currently assigned class; HOD to department scope; and Super Admin to
+  global scope. Registrar and Branch Admin are denied. Strict payload parsing,
+  hash and retention validation, reconciliation-only missing mappings, and
+  rollback/reapply are enforced while submissions, attempts, answers, grades,
+  feedback, completion, contact data, and raw Moodle identifiers remain
+  excluded. Two portable PostgreSQL applications, two semantic assertion
+  passes, rollback/reapply, 22 browser-role denials, 14 bounded service calls,
+  783 unit tests, the production build, and the complete 1,634/0 portal suite
+  pass. The SQL remains manual and unapplied, normalized runtime activation is
+  disabled, and no provider call or Moodle write occurred. Evidence is in
+  `docs/qa-attestations/integration-phase6g-assessment-status-observation-20260717.json`.
+  Phase 6H1 establishes the first result-family boundary for assignment
+  submissions and grade state. Students receive only their own current mapped
+  result, teachers receive person-level results only for exact currently
+  assigned classes, and HOD/Super Admin receive aggregate counts. Registrar and
+  Branch Admin are denied. Strict closed payloads, exact course/group/user/
+  assignment mappings, 15-minute freshness, stale-result denial, 30-day maximum
+  retention, replay/conflict handling, rollback/reapply, and current authority
+  revalidation are enforced. Files, answers, comments, feedback, grader
+  identity, contact data, and raw Moodle identifiers remain excluded. Two
+  portable PostgreSQL applications, two semantic assertion passes,
+  rollback/reapply, 22 browser-role denials, 16 bounded service calls, 809 unit
+  tests, the production build, and the complete 1,634/0 portal suite pass. The
+  SQL remains manual and unapplied, normalized runtime activation is disabled,
+  and no provider call or Moodle write occurred. Evidence is in
+  `docs/qa-attestations/integration-phase6h1-assignment-results-observation-20260717.json`.
+  Phase 6H2 establishes the separate quiz-attempt summary boundary. Students
+  receive only their own current mapped attempt, teachers receive person-level
+  summaries only for exact currently assigned classes, and HOD/Super Admin
+  receive aggregate counts. Registrar and Branch Admin are denied. Exact
+  course/group/user/quiz/attempt mappings, preview-attempt rejection,
+  15-minute freshness, stale-result denial, 30-day maximum retention,
+  replay/conflict handling, rollback/reapply, and current authority
+  revalidation are enforced. Question text, answers, feedback, files, comments,
+  contact data, and raw Moodle identifiers remain excluded. Two portable
+  PostgreSQL applications, two semantic assertion passes, rollback/reapply,
+  22 browser-role denials, 16 bounded service calls, 815 unit tests, the
+  production build, and the complete 1,634/0 portal suite pass. The SQL remains
+  manual and unapplied, normalized runtime activation is disabled, and no
+  provider call or Moodle write occurred. Evidence is in
+  `docs/qa-attestations/integration-phase6h2-quiz-attempt-observation-20260717.json`.
+  Phase 6H3 establishes the separate gradebook and released-feedback summary
+  boundary. Students receive only their own explicitly released outcome,
+  teachers receive person-level outcomes only for exact currently assigned
+  classes, and HOD/Super Admin receive aggregate counts. Registrar and Branch
+  Admin are denied. Exact course/group/user/grade-item mappings, explicit
+  feedback release, unsafe-feedback rejection, 15-minute freshness, 30-day
+  maximum retention, replay/conflict handling, rollback/reapply, and current
+  authority revalidation are enforced. Questions, answers, files, comments,
+  grader identity, contact data, and raw Moodle identifiers remain excluded.
+  Two portable PostgreSQL applications, two semantic assertion passes,
+  rollback/reapply, 22 browser-role denials, 16 bounded service calls, 822 unit
+  tests, the production build, and the complete 1,634/0 portal suite pass. The
+  SQL remains manual and unapplied, normalized runtime activation is disabled,
+  and no provider call or Moodle write occurred. Evidence is in
+  `docs/qa-attestations/integration-phase6h3-grade-outcome-observation-20260717.json`.
+  Phase 6H4 establishes the separate lesson, H5P, and SCORM outcome-summary
+  boundary. Students receive only their own current mapped outcome, teachers
+  receive person-level outcomes only for exact currently assigned classes, and
+  HOD/Super Admin receive aggregate counts. Registrar and Branch Admin are
+  denied. Exact course/group/user/activity mappings, completion state,
+  explicitly released scores, 15-minute freshness, 30-day maximum retention,
+  replay/conflict handling, rollback/reapply, and current authority
+  revalidation are enforced. Raw tracks, interactions, questions, answers,
+  files, comments, provider identifiers, grader identity, and contact data
+  remain excluded. Two portable PostgreSQL applications, two semantic
+  assertion passes, rollback/reapply, 22 browser-role denials, 16 bounded
+  service calls, 829 unit tests, the production build, and the complete
+  1,634/0 portal suite pass. The SQL remains manual and unapplied, normalized
+  runtime activation is disabled, and no provider call or Moodle write
+  occurred. Evidence is in
+  `docs/qa-attestations/integration-phase6h4-activity-outcome-observation-20260717.json`.
+  Phase 6I is accepted on the pinned isolated fake-data staging project. All
+  nine accepted read-only Phase 6 packages passed two applications, two
+  deterministic fixture and semantic assertion passes, one complete rollback,
+  reapply, PostgreSQL and forced-RLS inspection, 18 service-role PostgREST RPC
+  checks, and 8 anonymous/authenticated denial checks. The run verified 16
+  forced-RLS tables, 32 service-role routines, no browser grants, Supabase's
+  `extensions`-schema pgcrypto deployment, and collation-independent grade
+  payload validation. The temporary fake Auth identity was deleted. The final
+  gate passed 829 unit tests, the production build, and all 1,634 portal checks
+  with 0 failures. Production was not targeted, no provider call or Moodle
+  write occurred, and `NILE_MOODLE_PROJECTION_REPOSITORY` remains disabled.
+  Evidence is in
+  `docs/qa-attestations/integration-phase6i-staging-promotion-20260717.json`.
+  The SQL remains outside migration history and is accepted only on the pinned
+  isolated staging target. No further Phase 6 projection family, production
+  promotion, live-provider proof, or runtime activation is approved at this
+  checkpoint. The next implementation slice requires an explicit product
+  decision; Phase 7 remains gated.
 - Phase 0 is accepted: authority, legacy boundaries, architecture decisions,
   and its then-current 1,317/0 QA baseline are recorded. The current protected
-  baseline is 1,598/0.
+  baseline is 1,634/0.
 - Phase 1 is accepted as a local-only migration package. It is not approved for
   linked, shared, or remote Supabase promotion.
 - Phase 2A is accepted as a non-default local foundation. The repository
@@ -663,7 +853,7 @@ integrity**, one feature family at a time:
 6. Require valid session state, run dates, active rooms, and room capacity for
    attendance and class scheduling.
 7. Add domain and server-authority tests for every invariant, run focused portal
-   workflows, then preserve the full 1,598/0 baseline.
+   workflows, then preserve the full 1,634/0 baseline.
 8. Do not add live provider integrations, activate normalized production writes,
    or begin broad route UI polish in this workstream.
 
@@ -992,11 +1182,9 @@ response through its model, then create the missing disposable fixtures and
 re-run all 31 reads. Broader learner and outcome writes begin only after that
 slice is green and its credential teardown is recorded.
 
-The 2026-07-13 M2C-R run is partial: 26/31 reads passed, including the newly
-created Resource fixture, while five H5P/SCORM reads remain fixture-blocked.
-The Resource, temporary course enrolment, disposable service, and token were
-removed, and the retired token was rejected. The evidence and exact stop
-condition are recorded in
-`docs/moodle-m2c-read-closure-evidence-20260713.md`. No later M2C lane may start
-until an approved upload-capable fixture path enables 31/31 and repeated
-cleanup.
+The 2026-07-13 M2C-R run remains historical partial evidence. The resumed
+2026-07-16 run closed its H5P/SCORM fixture gaps, passed all 31 reads twice,
+restored the disposable sandbox surfaces, and completed credential teardown.
+The accepted closure evidence is
+`docs/moodle-m2c-read-closure-evidence-20260716.md`. Broader M2C loops remain
+gated by Program Phase 3 ownership acceptance.

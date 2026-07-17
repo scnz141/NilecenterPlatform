@@ -1,0 +1,86 @@
+{
+  "version": 1,
+  "recordedOn": "2026-07-16",
+  "sourceCommit": "95b884ebdf12553ebe213bef01c45412abb54a3f",
+  "phase": "M2C-R",
+  "mode": "sandbox_read_contract",
+  "sandboxHost": "moodle-no-data.enesekremergunesh.com",
+  "readPasses": [
+    {
+      "artifact": "output/moodle-m2cr-20260716/read-pass-1.json",
+      "artifactSha256": "b99fca2c96ac4b492155cbbc7a8b38f1c374e4f2b2f55c5943fecadad003dc82",
+      "functionCount": 31,
+      "passed": 31,
+      "failed": 0,
+      "combinedFingerprint": "25c9d418fa19337412488068310abf212f2507be4e02d6156385be5170d610d8"
+    },
+    {
+      "artifact": "output/moodle-m2cr-20260716/read-pass-2.json",
+      "artifactSha256": "b99fca2c96ac4b492155cbbc7a8b38f1c374e4f2b2f55c5943fecadad003dc82",
+      "functionCount": 31,
+      "passed": 31,
+      "failed": 0,
+      "combinedFingerprint": "25c9d418fa19337412488068310abf212f2507be4e02d6156385be5170d610d8"
+    }
+  ],
+  "deterministicReplay": true,
+  "remoteCleanup": {
+    "courseId": 2,
+    "courseModuleIds": [9, 10, 11],
+    "courseModulesAbsent": true,
+    "syntheticUserIds": [32, 33],
+    "syntheticUsersDeleted": true,
+    "serviceId": 5,
+    "serviceAbsent": true,
+    "repositoryInstanceId": 9,
+    "repositoryInstanceAbsent": true,
+    "privateUploadsAbsent": true,
+    "h5pContentTypesAndLibrariesAbsent": true,
+    "temporaryCapabilities": [
+      "mod/h5pactivity:reviewattempts",
+      "mod/scorm:viewreport"
+    ],
+    "temporaryCapabilitiesRevoked": true,
+    "userWebdavInstancesDisabled": true,
+    "repeatedCleanupResult": "no_op_absence_confirmed"
+  },
+  "credentialTeardown": {
+    "serviceDeleted": true,
+    "retiredTokenRejected": true,
+    "retiredTokenErrorCode": "invalidtoken",
+    "localCredentialFilesRemoved": true
+  },
+  "localBridgeTeardown": {
+    "webdavStopped": true,
+    "ngrokStopped": true,
+    "port8766Closed": true,
+    "temporaryNgrokConfigRemoved": true
+  },
+  "fixturePackages": [
+    {
+      "kind": "scorm_12",
+      "sha256": "11d975e30dc52f4e9aa80d56e38a6dfcd54cbbdd474fa91257da84662dc81aab"
+    },
+    {
+      "kind": "h5p_full",
+      "sha256": "d9062bc8576d260e66165d1094ff617b3551160773d13ff3e798ab9a8e6424de"
+    }
+  ],
+  "qualityGate": {
+    "command": "QA_PORT=3021 QA_OUTPUT_DIR=output/playwright/integration-stabilization-phase2-20260716 QA_LOCAL_DATA_DIR=.local-data/integration-stabilization-phase2-20260716 QA_SESSION=integration-stabilization-phase2-20260716 scripts/verify.sh",
+    "artifact": "output/playwright/integration-stabilization-phase2-20260716/portal-qa-summary.json",
+    "artifactSha256": "08a3fc040c2cca399fe15060ef4988bc69b8f53ff9e1f2d1750e040610fab8d5",
+    "checkedAt": "2026-07-16T14:37:24.804Z",
+    "totalChecks": 1598,
+    "failedChecks": 0,
+    "inProgress": false,
+    "unitTests": 572,
+    "testFiles": 50,
+    "typescriptPassed": true,
+    "buildPassed": true,
+    "verifyPassed": true
+  },
+  "realIdentityOrDocumentUsed": false,
+  "rawProviderPayloadStored": false,
+  "credentialMaterialStored": false
+}

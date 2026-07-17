@@ -326,9 +326,15 @@ describe("server session store", () => {
 
   it("sets production cookies with secure HttpOnly session attributes", async () => {
     process.env.NODE_ENV = "production";
+    vi.spyOn(Date, "now").mockReturnValue(
+      Date.parse("2026-07-04T00:00:00.000Z")
+    );
     const { headers, response } = responseRecorder();
 
-    attachSession(response, testSession());
+    attachSession(
+      response,
+      testSession({ expiresAt: "2026-07-04T12:00:00.000Z" })
+    );
     const cookie = headers.get("Set-Cookie") ?? "";
 
     expect(cookie).toContain("nilelearn_session=sess_test_1");
@@ -345,6 +351,34 @@ describe("server session store", () => {
 
     expect(headers.get("Set-Cookie")).toContain("Max-Age=0");
     expect(headers.get("Set-Cookie")).toContain("Secure");
+  });
+
+  it("caps cookie lifetime at the normal session TTL", () => {
+    vi.spyOn(Date, "now").mockReturnValue(
+      Date.parse("2026-07-04T00:00:00.000Z")
+    );
+    const { headers, response } = responseRecorder();
+
+    attachSession(
+      response,
+      testSession({ expiresAt: "2026-07-05T00:00:00.000Z" })
+    );
+
+    expect(headers.get("Set-Cookie")).toContain("; Max-Age=43200;");
+  });
+
+  it.each([
+    ["expired", "2026-07-03T23:59:59.999Z"],
+    ["invalid", "not-a-session-expiry"],
+  ])("expires the cookie for %s persisted timing", (_label, expiresAt) => {
+    vi.spyOn(Date, "now").mockReturnValue(
+      Date.parse("2026-07-04T00:00:00.000Z")
+    );
+    const { headers, response } = responseRecorder();
+
+    attachSession(response, testSession({ expiresAt }));
+
+    expect(headers.get("Set-Cookie")).toContain("; Max-Age=0;");
   });
 
   it("keeps local development cookies non-secure for localhost testing", () => {
@@ -372,7 +406,7 @@ describe("server session store", () => {
     restoreStore();
   });
 
-  it("clears the browser cookie even when durable revocation is unavailable", async () => {
+  it("retains the browser cookie when durable revocation is unavailable", async () => {
     const store: SessionStore = {
       kind: "supabase",
       create: async () => undefined,
@@ -391,13 +425,79 @@ describe("server session store", () => {
         response
       )
     ).rejects.toBeInstanceOf(SessionRepositoryUnavailableError);
-    expect(headers.get("Set-Cookie")).toContain("Max-Age=0");
+    expect(headers.has("Set-Cookie")).toBe(false);
 
     restoreStore();
   });
 });
 
 describe("server durable session authority", () => {
+  it("uses a role-grant-clipped durable expiry for the session cookie", async () => {
+    const now = Date.parse("2026-07-04T00:00:00.000Z");
+    vi.spyOn(Date, "now").mockReturnValue(now);
+    process.env.SUPABASE_URL = "https://phase1-test.supabase.co";
+    process.env.SUPABASE_PUBLISHABLE_KEY = "test-only-publishable-key";
+    const repository: SessionStore = {
+      kind: "supabase",
+      create: async () => ({
+        createdAt: "2026-07-04T00:00:00.000Z",
+        expiresAt: "2026-07-04T00:02:00.999Z",
+      }),
+      get: async () => null,
+      delete: async () => undefined,
+      clear: async () => undefined,
+      resolveSupabaseIdentity: async () => ({
+        userId: "40000000-0000-4000-8000-000000000002",
+        authUserId: "10000000-0000-4000-8000-000000000002",
+        email: "teacher@nilelearn.local",
+        name: "Local Teacher",
+        activeRole: "teacher",
+        activeRoleGrantId: "50000000-0000-4000-8000-000000000002",
+        branchIds: ["20000000-0000-4000-8000-000000000001"],
+        departmentIds: ["30000000-0000-4000-8000-000000000001"],
+      }),
+    };
+    const restoreStore = setSessionStore(repository);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response(
+            JSON.stringify({
+              user: {
+                id: "10000000-0000-4000-8000-000000000002",
+                email: "teacher@nilelearn.local",
+              },
+            }),
+            { status: 200, headers: { "Content-Type": "application/json" } }
+          )
+      )
+    );
+    const { headers, response } = (() => {
+      const values = new Map<string, string>();
+      return {
+        headers: values,
+        response: {
+          setHeader(name: string, value: string) {
+            values.set(name, value);
+          },
+        },
+      };
+    })();
+
+    const session = await signIn(
+      "teacher@nilelearn.local",
+      "test-password",
+      "teacher"
+    );
+    attachSession(response, session);
+
+    expect(session.expiresAt).toBe("2026-07-04T00:02:00.999Z");
+    expect(headers.get("Set-Cookie")).toContain("; Max-Age=120;");
+
+    restoreStore();
+  });
+
   it("uses normalized identity and one role grant instead of Auth metadata", async () => {
     process.env.SUPABASE_URL = "https://phase1-test.supabase.co";
     process.env.SUPABASE_PUBLISHABLE_KEY = "test-only-publishable-key";

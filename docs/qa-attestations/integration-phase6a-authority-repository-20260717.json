@@ -1,0 +1,81 @@
+{
+  "version": 1,
+  "recordedOn": "2026-07-17",
+  "sourceCommit": "95b884ebdf12553ebe213bef01c45412abb54a3f",
+  "phase": "integration-stabilization-phase6a-authority-repository",
+  "status": "repository-contract-accepted-staging-promotion-pending",
+  "normalizedAuthorityPackage": {
+    "manualSqlOnly": true,
+    "migrationHistoryModified": false,
+    "productionRuntimeActivated": false,
+    "tables": 9,
+    "serviceRoleOnlyRpcs": 2,
+    "requiredIndexes": 15,
+    "forwardApplications": 2,
+    "semanticAssertionPasses": 2,
+    "rollbackReapplyCycles": 1,
+    "browserRoleDenials": 12,
+    "serviceRoleRpcCalls": 4
+  },
+  "repositoryBoundary": {
+    "runtimeFlag": "NILE_MOODLE_PROJECTION_REPOSITORY",
+    "default": "disabled",
+    "enabledValue": "supabase",
+    "compatibilityFallbackAllowed": false,
+    "demoSessionAllowed": false,
+    "normalizedSessionRequired": true,
+    "authorityDenialStatus": 403,
+    "repositoryFailureStatus": 503,
+    "portalWriteRoutes": 0,
+    "productionMoodleWritesEnabled": false
+  },
+  "focusedEvidence": {
+    "repositoryServiceAndRouteTests": 49,
+    "checks": [
+      "canonical-normalized-session-required",
+      "active-role-grant-required",
+      "student-enrollment-course-scope",
+      "teacher-class-assignment-course-scope",
+      "hod-department-course-scope",
+      "superadmin-global-course-scope",
+      "exact-moodle-course-mapping",
+      "ignored-and-duplicate-mapping-rejection",
+      "authority-role-drift-rejection",
+      "authority-denial-403",
+      "repository-outage-503",
+      "runtime-composition-without-snapshot-state"
+    ]
+  },
+  "efficientValidation": {
+    "developmentCommand": "npm run verify:integration-fast",
+    "contractGates": 9,
+    "implementationGates": 4,
+    "fullPortalQaRunsDuringSlice": 1,
+    "replacesFinalGate": false
+  },
+  "qualityGate": {
+    "command": "QA_OUTPUT_DIR=output/playwright/integration-phase6a-authority-20260717 scripts/verify.sh",
+    "artifact": "output/playwright/integration-phase6a-authority-20260717/portal-qa-summary.json",
+    "artifactSha256": "673d03fcc1036c9529eb87e85dc17b376831e1a5143b2bce2aded569ca497694",
+    "checkedAt": "2026-07-16T23:46:00.350Z",
+    "elapsedMs": 619718,
+    "totalChecks": 1598,
+    "failedChecks": 0,
+    "interrupted": false,
+    "unitTests": 673,
+    "testFiles": 55,
+    "typescriptPassed": true,
+    "buildPassed": true,
+    "verifyPassed": true
+  },
+  "remainingGates": [
+    "approved-isolated-staging-sql-promotion-and-postgrest-rls-proof",
+    "live-minimum-privilege-moodle-read-token-proof",
+    "projection-freshness-and-reconciliation-read-model",
+    "portal-ui-wiring",
+    "user-enrollment-assessment-and-outcome-projection-families"
+  ],
+  "liveMoodleProviderContacted": false,
+  "productionDatabaseModified": false,
+  "credentialMaterialStored": false
+}

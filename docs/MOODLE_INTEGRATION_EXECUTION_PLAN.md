@@ -234,12 +234,22 @@ Status: approved and in progress on the dedicated practice sandbox. This is not
 production integration acceptance.
 
 M2C-R reached a sanitized partial result of 26 passing reads and five
-fixture-only H5P/SCORM gaps on 2026-07-13. The disposable Resource fixture,
-temporary course enrolment, service, and token were removed, and the retired
-token was rejected. The exact partial result and stop decision are recorded in
-`docs/moodle-m2c-read-closure-evidence-20260713.md`. M2C-R is not accepted, and
-later M2C lanes remain blocked until a permitted upload-capable fixture path
-allows a complete 31/31 run and repeated cleanup.
+fixture-only H5P/SCORM gaps on 2026-07-13. The resumed 2026-07-16 run used an
+administrator-private, temporary WebDAV fixture path, passed all 31 approved
+reads twice with identical fingerprints, removed every disposable remote and
+local artifact, revoked temporary capabilities, and proved retired-token
+rejection. M2C-R is accepted. The closure proof is
+`docs/moodle-m2c-read-closure-evidence-20260716.md`. Later M2C loops remain
+blocked until the integration stabilization ownership matrix is complete.
+
+The 2026-07-16 closure validator requires a separate disposable interaction
+learner for H5P and SCORM evidence. It accepts H5P results only when an attempt
+contains at least one nested interaction result, and it accepts SCORM tracks
+only when at least one supported status, score, or time metric is present.
+Every successful function is hashed from its sanitized provider-neutral model;
+the validator emits stable function, family, and combined fingerprints for the
+required two-pass comparison. All fixture environment names are documented as
+empty local-command placeholders in `.env.example`.
 
 Run M2C in serial, isolated lanes:
 

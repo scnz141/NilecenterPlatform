@@ -1,0 +1,80 @@
+{
+  "version": 1,
+  "status": "accepted-local",
+  "phase": "integration-stabilization-phase6h4-activity-outcome-observation",
+  "checkedAt": "2026-07-17T15:24:57.253Z",
+  "scope": {
+    "roles": ["student", "teacher", "headofdepartment", "superadmin"],
+    "authority": "server-normalized-current-class-user-and-activity-relationships",
+    "projectionEntity": "lesson-h5p-scorm-outcome-summary",
+    "activityKinds": ["lesson", "h5p", "scorm"],
+    "audiences": ["learner", "person_level", "aggregate"],
+    "portalRoutesAdded": 0,
+    "apiRoutesAdded": 1,
+    "productionMoodleWritesEnabled": false
+  },
+  "sqlLifecycle": {
+    "command": "npm run check:phase6h4-moodle-activity-outcome:runtime",
+    "result": "passed",
+    "forwardApplications": 2,
+    "assertionPasses": 2,
+    "rollbackReapplyPasses": 1,
+    "browserRoleDenials": 22,
+    "serviceRoleCalls": 16,
+    "remoteCalls": 0,
+    "dockerUsed": false
+  },
+  "focusedValidation": {
+    "executionMode": "sequential-low-load",
+    "commands": [
+      "npm run check:integration-freeze",
+      "npm run check:integration-ownership",
+      "npm run check:integration-phase6-projections",
+      "npm run check:phase6h4-moodle-activity-outcome",
+      "npm run check:phase6h4-moodle-activity-outcome:runtime",
+      "npm run check",
+      "npm test -- --run client/src/lib/moodle/server-moodle-projection-freshness.test.ts client/src/lib/moodle/server-moodle-projection-repository.test.ts client/src/lib/moodle/server-moodle-projection-routes.test.ts",
+      "npm run build"
+    ],
+    "result": "passed",
+    "parallelWorkersUsed": false
+  },
+  "fullValidation": {
+    "command": "QA_OUTPUT_DIR=output/playwright/phase6h4-activity-outcomes-acceptance-20260717 scripts/verify.sh",
+    "unitTestFiles": 58,
+    "unitTests": 829,
+    "typescript": "passed",
+    "productionBuild": "passed",
+    "diffCheck": "passed"
+  },
+  "fullPortalQa": {
+    "artifact": "output/playwright/phase6h4-activity-outcomes-acceptance-20260717/portal-qa-summary.json",
+    "artifactSha256": "02d7b26dbbf4408c5c4c4be3ae225436bf27b81e503bd9438e61efca7b9060aa",
+    "totalChecks": 1634,
+    "failedChecks": 0,
+    "elapsedMs": 576402,
+    "fullSuite": true,
+    "interrupted": false
+  },
+  "boundaries": {
+    "studentOwnOutcomeOnly": true,
+    "teacherExactAssignedClassOnly": true,
+    "hodDepartmentAggregateOnly": true,
+    "superadminAggregateOnly": true,
+    "registrarAndBranchDenied": true,
+    "exactCourseGroupUserAndActivityMappings": true,
+    "releasedScoresOnly": true,
+    "staleResultRejected": true,
+    "rawTracksInteractionsQuestionsAnswersFilesCommentsExcluded": true,
+    "providerIdentifiersGraderAndContactsExcluded": true,
+    "emailOrDisplayNameMatching": false,
+    "browserRpcAccess": false,
+    "freshnessMinutes": 15,
+    "maximumRetentionDays": 30,
+    "manualSqlUnapplied": true,
+    "normalizedRuntimeActivated": false,
+    "providerCalled": false,
+    "moodleWritePerformed": false,
+    "portalBehaviorChanged": false
+  }
+}

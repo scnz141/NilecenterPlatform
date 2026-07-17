@@ -386,6 +386,7 @@ export default function PlatformShell({ role, children, title }: ShellProps) {
   const profileHref =
     sidebar.find(item => item.label === "Profile")?.href ?? meta.defaultRoute;
   const hasSearchQuery = Boolean(query.trim());
+  const isDashboard = /\/dashboard\/?$/.test(location);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -1011,22 +1012,24 @@ export default function PlatformShell({ role, children, title }: ShellProps) {
             </div>
           </motion.header>
 
-          <section
-            className="platform-context-quote platform-context-quote-a11y"
-            aria-label={`${translateUiLabel(locale, meta.label)} inspiration`}
-          >
-            <span className="platform-quote-mark" aria-hidden="true">
-              ۞
-            </span>
-            <div>
-              <small>{inspiration.theme}</small>
-              <strong lang="ar" dir="rtl">
-                {inspiration.arabic}
-              </strong>
-              <p>{inspiration.meaning}</p>
-            </div>
-            <em>{inspiration.source}</em>
-          </section>
+          {isDashboard ? (
+            <section
+              className="platform-context-quote"
+              aria-label={`${translateUiLabel(locale, meta.label)} inspiration`}
+            >
+              <span className="platform-quote-mark" aria-hidden="true">
+                ۞
+              </span>
+              <div>
+                <small>{inspiration.theme}</small>
+                <strong lang="ar" dir="rtl">
+                  {inspiration.arabic}
+                </strong>
+                <p>{inspiration.meaning}</p>
+              </div>
+              <em>{inspiration.source}</em>
+            </section>
+          ) : null}
 
           <motion.main
             key={location}

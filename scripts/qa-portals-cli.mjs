@@ -24,7 +24,7 @@ const routeMatrixRouteTimeoutMs = readPositiveIntegerEnv(
 );
 const routeMatrixChunkSize = readPositiveIntegerEnv(
   "QA_ROUTE_MATRIX_CHUNK_SIZE",
-  6
+  12
 );
 const workflowReadyTimeoutMs = readPositiveIntegerEnv(
   "QA_WORKFLOW_READY_TIMEOUT_MS",
@@ -45,23 +45,29 @@ const roleNameFilters = (process.env.QA_ONLY_ROLES || "")
   .split(",")
   .map(value => value.trim().toLowerCase())
   .filter(Boolean);
+const localPwcli = path.join(
+  process.cwd(),
+  "node_modules",
+  ".bin",
+  "playwright-cli"
+);
+const fallbackPwcli = path.join(
+  os.homedir(),
+  ".codex",
+  "skills",
+  "playwright",
+  "scripts",
+  "playwright_cli.sh"
+);
 const pwcli =
-  process.env.PWCLI ||
-  path.join(
-    os.homedir(),
-    ".codex",
-    "skills",
-    "playwright",
-    "scripts",
-    "playwright_cli.sh"
-  );
+  process.env.PWCLI || (fs.existsSync(localPwcli) ? localPwcli : fallbackPwcli);
 if (!fs.existsSync(pwcli)) {
   console.error(
     JSON.stringify(
       {
-        error: "Playwright CLI wrapper is missing",
+        error: "Playwright CLI executable is missing",
         pwcli,
-        hint: "Set PWCLI to an executable browser automation runner before running portal QA.",
+        hint: "Install dependencies or set PWCLI to an executable browser automation runner before running portal QA.",
       },
       null,
       2
@@ -84,6 +90,7 @@ const roles = [
       "/app/student/quizzes/quiz_ar_3",
       "/app/student/courses",
       "/app/student/moodle-source",
+      "/app/student/moodle-source/course_ar_l3",
       "/app/student/assignments",
       "/app/student/quizzes",
       "/app/student/grades",
@@ -113,6 +120,7 @@ const roles = [
       "/app/teacher/assignments/asg_ar_grammar",
       "/app/teacher/classes",
       "/app/teacher/moodle-source",
+      "/app/teacher/moodle-source/course_ar_l3",
       "/app/teacher/assignments",
       "/app/teacher/grading",
       "/app/teacher/quizzes",
@@ -173,6 +181,7 @@ const roles = [
       "/app/hod/programs",
       "/app/hod/courses",
       "/app/hod/moodle-source",
+      "/app/hod/moodle-source/course_ar_l3",
       "/app/hod/levels",
       "/app/hod/curriculum",
       "/app/hod/teachers",
@@ -247,6 +256,7 @@ const roles = [
       "/app/admin/schedule",
       "/app/admin/schedule/conflicts",
       "/app/admin/moodle-source",
+      "/app/admin/moodle-source/course_ar_l3",
       "/app/admin/settings",
       "/app/admin/integrations",
       "/app/admin/audit-logs",
@@ -336,10 +346,16 @@ function elapsedMs() {
   return Date.now() - startedAt;
 }
 
-function writeSummary(extra = {}) {
+function writeSummary(extra = {}, includeDetails = true) {
   fs.mkdirSync(outputDir, { recursive: true });
   const summary = {
     baseUrl,
+    session,
+    selection: {
+      fullSuite: !workflowNameFilter && roleNameFilters.length === 0,
+      workflowNameFilter: workflowNameFilter || null,
+      roleNameFilters,
+    },
     checkedAt: new Date().toISOString(),
     elapsedMs: elapsedMs(),
     lastBrowserCommand,
@@ -347,9 +363,10 @@ function writeSummary(extra = {}) {
     currentProgress,
     totalChecks: checks.length,
     failedChecks: failures.length,
-    progressEvents,
+    interrupted: false,
     failures,
-    checks,
+    progressEventCount: progressEvents.length,
+    ...(includeDetails ? { progressEvents, checks } : {}),
     ...extra,
   };
   fs.writeFileSync(outputPath, JSON.stringify(summary, null, 2));
@@ -368,7 +385,7 @@ function recordProgress(stage, details = {}) {
   console.error(
     `[portal-qa ${seconds}s] ${stage} checks=${checks.length} failures=${failures.length}${suffix}`
   );
-  writeSummary({ inProgress: true });
+  writeSummary({ inProgress: true }, false);
 }
 
 function assertRunBudget(stage) {
@@ -448,7 +465,10 @@ async function runPw(command, args = [], options = {}) {
   if (process.env.QA_VERBOSE === "1") {
     console.error(`[portal-qa] ${label}`);
   }
-  const child = spawn(pwcli, ["-s", session, command, ...args], {
+  const cliArgs = ["-s", session];
+  if (command === "eval") cliArgs.push("--raw");
+  cliArgs.push(command, ...args);
+  const child = spawn(pwcli, cliArgs, {
     cwd: process.cwd(),
     detached: true,
     stdio: ["ignore", "pipe", "pipe"],
@@ -553,6 +573,14 @@ async function runPw(command, args = [], options = {}) {
 }
 
 function extractResult(output) {
+  const raw = output.trim();
+  if (raw) {
+    try {
+      return JSON.parse(raw);
+    } catch {
+      // Fall through to the verbose CLI response parser.
+    }
+  }
   const start = output.indexOf("### Result");
   if (start === -1) return null;
   const after = output.slice(start + "### Result".length).trimStart();
@@ -581,6 +609,44 @@ async function assertCheck(name, actual, predicate, details = {}) {
   lastCheck = check;
   if (!ok) failures.push({ name, actual, ...details });
   return ok;
+}
+
+function inspectBrowserConsole(output) {
+  const totalMatch = output.match(
+    /Total messages:\s*(\d+)\s*\(Errors:\s*(\d+),\s*Warnings:\s*(\d+)\)/
+  );
+  const lines = output
+    .split("\n")
+    .map(line => line.trim())
+    .filter(line => line.startsWith("[ERROR]"));
+  const expected = lines.filter(
+    line =>
+      line.includes(
+        "Failed to load resource: the server responded with a status of 503 (Service Unavailable)"
+      ) && line.includes("/api/integrations/moodle/projections/courses")
+  );
+  const unexpected = lines.filter(line => !expected.includes(line));
+  return {
+    parsed: Boolean(totalMatch),
+    total: totalMatch ? Number(totalMatch[1]) : null,
+    errors: totalMatch ? Number(totalMatch[2]) : null,
+    warnings: totalMatch ? Number(totalMatch[3]) : null,
+    expected,
+    unexpected,
+    raw: output.slice(0, 1000),
+  };
+}
+
+async function assertNoUnexpectedBrowserConsoleErrors() {
+  const consoleOutput = await runPw("console", ["error"]);
+  await assertCheck(
+    "browser console has no unexpected errors",
+    inspectBrowserConsole(consoleOutput),
+    value =>
+      value?.parsed === true &&
+      value?.errors === value?.expected?.length &&
+      value?.unexpected?.length === 0
+  );
 }
 
 function chunkItems(items, size) {
@@ -807,7 +873,7 @@ function inspectAuthSource(expectedPath) {
         })
         .slice(0, 8)
       : [];
-    const quoteArabic = document.querySelector(".auth-calligraphy-panel strong, .auth-flow-calligraphy strong")?.textContent?.trim() || "";
+    const quoteArabic = document.querySelector(".auth-v2-calligraphy p, .auth-calligraphy-panel strong, .auth-flow-calligraphy strong")?.textContent?.trim() || "";
     const text = normalize(document.body.innerText || document.body.textContent);
     return {
       expectedPath: ${JSON.stringify(expectedPath)},
@@ -974,6 +1040,16 @@ function inspectRouteMatrixSource(routes) {
         const text = normalize(document.body.innerText || document.body.textContent);
         const contentText = normalize(document.querySelector(".platform-content")?.textContent || "");
         const loading = document.querySelector(".platform-route-loading");
+        const moodleSourceLoading = document.querySelector('[data-testid="moodle-source-loading"]');
+        const moodleContentLoading = document.querySelector('[data-testid="moodle-content-loading"]');
+        const moodleSourceSettled = !route.endsWith("/moodle-source") || Boolean(
+          document.querySelector('[data-testid="moodle-source-course"], [data-testid="moodle-source-error"]') ||
+          text.includes("No Moodle courses are assigned")
+        );
+        const moodleContentRoute = route.includes("/moodle-source/");
+        const moodleContentSettled = !moodleContentRoute || Boolean(
+          document.querySelector('[data-testid="moodle-content-ready"], [data-testid="moodle-content-error"], [data-testid="moodle-content-empty"]')
+        );
         const hasMessageWorkspace = Boolean(
           document.querySelector('[data-testid^="portal-messages-inbox-"]')
         );
@@ -985,6 +1061,10 @@ function inspectRouteMatrixSource(routes) {
           !text.includes("Loading workspace") &&
           (contentText.length > 80 || hasMessageWorkspace) &&
           !loading &&
+          !moodleSourceLoading &&
+          !moodleContentLoading &&
+          moodleSourceSettled &&
+          moodleContentSettled &&
           (changed || settled)
         ) {
           return true;
@@ -998,14 +1078,14 @@ function inspectRouteMatrixSource(routes) {
       history.pushState({}, "", route);
       window.dispatchEvent(new PopStateEvent("popstate"));
       const ready = await waitForRoute(route);
-      await delay(80);
+      await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
       results.push({ ...inspect(route), ready });
     }
     return results;
   }`;
 }
 
-function loginSource(role) {
+function loginSource(role, { resetPlatformState = false } = {}) {
   return `async () => {
     localStorage.clear();
     const controller = new AbortController();
@@ -1042,37 +1122,36 @@ function loginSource(role) {
     }
     localStorage.setItem("nilelearn.auth.session", JSON.stringify(payload));
     localStorage.setItem("nilelearn.activeRole", ${JSON.stringify(role.role)});
-    return { ok: true, status: response.status, provider: payload?.provider, activeRole: payload?.activeRole };
-  }`;
-}
-
-function resetPlatformStateSource() {
-  return `async () => {
-    localStorage.removeItem(${JSON.stringify(platformStorageKey)});
-    const response = await fetch("/api/platform/state/reset", {
-      method: "POST",
-      credentials: "include",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Nile-Learn-Request": "browser",
-        "X-Nile-Learn-QA-Reset": "1"
-      },
-      body: "{}"
-    });
-    if (!response.ok) {
-      const text = await response.text().catch(() => "");
-      return {
-        ok: false,
-        status: response.status,
-        body: text.slice(0, 180)
-      };
+    let reset = null;
+    if (${JSON.stringify(resetPlatformState)}) {
+      localStorage.removeItem(${JSON.stringify(platformStorageKey)});
+      const resetResponse = await fetch("/api/platform/state/reset", {
+        method: "POST",
+        credentials: "include",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Nile-Learn-Request": "browser",
+          "X-Nile-Learn-QA-Reset": "1"
+        },
+        body: "{}"
+      });
+      if (!resetResponse.ok) {
+        const resetText = await resetResponse.text().catch(() => "");
+        reset = {
+          ok: false,
+          status: resetResponse.status,
+          body: resetText.slice(0, 180)
+        };
+      } else {
+        const resetPayload = await resetResponse.json();
+        if (resetPayload?.state) {
+          localStorage.setItem(${JSON.stringify(platformStorageKey)}, JSON.stringify(resetPayload.state));
+          window.dispatchEvent(new Event(${JSON.stringify(platformStateUpdatedEvent)}));
+        }
+        reset = { ok: true, persistence: resetPayload?.persistence };
+      }
     }
-    const payload = await response.json();
-    if (payload?.state) {
-      localStorage.setItem(${JSON.stringify(platformStorageKey)}, JSON.stringify(payload.state));
-      window.dispatchEvent(new Event(${JSON.stringify(platformStateUpdatedEvent)}));
-    }
-    return { ok: true, persistence: payload?.persistence };
+    return { ok: true, status: response.status, provider: payload?.provider, activeRole: payload?.activeRole, reset };
   }`;
 }
 
@@ -1289,13 +1368,53 @@ function routeReadySource(expectedPath) {
     const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
     const normalize = (value) => (value || "").replace(/\\s+/g, " ").trim();
     const started = performance.now();
+    const isMoodleContentRoute = ${JSON.stringify(expectedPath)}.includes("/moodle-source/");
     while (performance.now() - started < timeoutMs) {
       const loading = document.querySelector("main.platform-route-loading");
       const shell = document.querySelector(".platform-shell");
       const content = document.querySelector(".platform-content");
       const accessDenied = normalize(document.body.innerText || document.body.textContent).includes("Access denied");
       const standaloneAccessDenied = accessDenied && !shell && Boolean(document.querySelector(".platform-access-denied"));
-      if (location.pathname === ${JSON.stringify(expectedPath)} && !loading && ((shell && content) || standaloneAccessDenied)) {
+      const moodleContentLoading = document.querySelector('[data-testid="moodle-content-loading"]');
+      const moodleContentSettled = !isMoodleContentRoute || Boolean(
+        document.querySelector('[data-testid="moodle-content-ready"], [data-testid="moodle-content-empty"], [data-testid="moodle-content-error"]')
+      );
+      if (location.pathname === ${JSON.stringify(expectedPath)} && !loading && !moodleContentLoading && moodleContentSettled && ((shell && content) || standaloneAccessDenied)) {
+        return { ok: true, path: location.pathname, shell: Boolean(shell), content: Boolean(content), standaloneAccessDenied };
+      }
+      await delay(100);
+    }
+    return {
+      ok: false,
+      path: location.pathname,
+      hasLoading: Boolean(document.querySelector("main.platform-route-loading")),
+      hasShell: Boolean(document.querySelector(".platform-shell")),
+      hasContent: Boolean(document.querySelector(".platform-content")),
+      text: normalize(document.body.innerText || document.body.textContent).slice(0, 500)
+    };
+  }`;
+}
+
+function navigateAndReadySource(expectedPath) {
+  return `async () => {
+    history.pushState({}, "", ${JSON.stringify(expectedPath)});
+    window.dispatchEvent(new PopStateEvent("popstate"));
+    const timeoutMs = ${JSON.stringify(routeReadyTimeoutMs)};
+    const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+    const normalize = (value) => (value || "").replace(/\\s+/g, " ").trim();
+    const started = performance.now();
+    const isMoodleContentRoute = ${JSON.stringify(expectedPath)}.includes("/moodle-source/");
+    while (performance.now() - started < timeoutMs) {
+      const loading = document.querySelector("main.platform-route-loading");
+      const shell = document.querySelector(".platform-shell");
+      const content = document.querySelector(".platform-content");
+      const accessDenied = normalize(document.body.innerText || document.body.textContent).includes("Access denied");
+      const standaloneAccessDenied = accessDenied && !shell && Boolean(document.querySelector(".platform-access-denied"));
+      const moodleContentLoading = document.querySelector('[data-testid="moodle-content-loading"]');
+      const moodleContentSettled = !isMoodleContentRoute || Boolean(
+        document.querySelector('[data-testid="moodle-content-ready"], [data-testid="moodle-content-empty"], [data-testid="moodle-content-error"]')
+      );
+      if (location.pathname === ${JSON.stringify(expectedPath)} && !loading && !moodleContentLoading && moodleContentSettled && ((shell && content) || standaloneAccessDenied)) {
         return { ok: true, path: location.pathname, shell: Boolean(shell), content: Boolean(content), standaloneAccessDenied };
       }
       await delay(100);
@@ -1313,7 +1432,6 @@ function routeReadySource(expectedPath) {
 
 async function authenticateRole(role, checkName, details = {}) {
   assertRunBudget(`authenticating ${role.role}`);
-  await goto(role.loginPath);
   const loginResult = await pageEval(loginSource(role), {
     label: `login ${role.role}`,
     timeoutMs: Math.min(
@@ -1335,18 +1453,66 @@ async function authenticateRole(role, checkName, details = {}) {
   );
 }
 
-async function navigateToProtectedRoute(role, route, checkName, details = {}) {
+async function authenticateRoleAndReset(
+  role,
+  loginCheckName,
+  resetCheckName,
+  details = {}
+) {
+  assertRunBudget(`authenticating and resetting ${role.role}`);
+  const loginResult = await pageEval(
+    loginSource(role, { resetPlatformState: true }),
+    {
+      label: `login and reset ${role.role}`,
+      timeoutMs: Math.min(
+        commandTimeoutMs,
+        Math.max(loginTimeoutMs + 5000, 30000)
+      ),
+    }
+  );
+  if (loginResult?.ok && loginResult.provider) {
+    authenticatedProviders.set(role.role, loginResult.provider);
+  }
+  const loginOk = await assertCheck(
+    loginCheckName,
+    loginResult,
+    value => value?.ok && value?.activeRole === role.role,
+    { role: role.role, ...details }
+  );
+  const resetOk = await assertCheck(
+    resetCheckName,
+    loginResult?.reset,
+    value => value?.ok,
+    { role: role.role, ...details }
+  );
+  return loginOk && resetOk;
+}
+
+async function navigateToProtectedRoute(
+  role,
+  route,
+  checkName,
+  details = {},
+  { hardReload = false } = {}
+) {
   assertRunBudget(`navigating ${route}`);
-  await goto(route);
-  let routeReady = await pageEval(routeReadySource(route));
+  if (hardReload) await goto(route);
+  const readinessSource = hardReload
+    ? routeReadySource(route)
+    : navigateAndReadySource(route);
+  let routeReady = await pageEval(readinessSource, {
+    label: `navigate and wait ${route}`,
+  });
   let recoveredTransientNotFound = false;
   if (
     !routeReady?.ok &&
     routeReady?.path === route &&
     routeReady?.text === "Not Found"
   ) {
-    await goto(route);
-    routeReady = await pageEval(routeReadySource(route));
+    if (hardReload) await goto(route);
+    routeReady = await pageEval(readinessSource, {
+      label: `retry navigation and wait ${route}`,
+    });
     recoveredTransientNotFound = Boolean(routeReady?.ok);
   }
   const ok = await assertCheck(checkName, routeReady, value => value?.ok, {
@@ -1372,36 +1538,25 @@ async function runDeepWorkflow({
   const role = roles.find(item => item.role === roleName);
   if (!role) throw new Error(`Unknown role for deep workflow: ${roleName}`);
 
-  const loginOk = await authenticateRole(role, `${name} login`, {
-    route,
-    deepWorkflow: true,
-  });
-  if (!loginOk) return;
-
-  const resetResult = await pageEval(resetPlatformStateSource(), {
-    label: `${name} reset platform state`,
-    timeoutMs: Math.min(commandTimeoutMs, 30000),
-  });
-  const resetOk = await assertCheck(
+  const loginAndResetOk = await authenticateRoleAndReset(
+    role,
+    `${name} login`,
     `${name} reset platform state`,
-    resetResult,
-    value => value?.ok,
     {
       role: role.role,
       route,
       deepWorkflow: true,
     }
   );
-  if (!resetOk) return;
-  const { ok: routeReadyOk } = await navigateToProtectedRoute(
+  if (!loginAndResetOk) return;
+  const { ok: initialRouteReady } = await navigateToProtectedRoute(
     role,
     route,
     `${name} route ready`,
-    {
-      deepWorkflow: true,
-    }
+    { deepWorkflow: true },
+    { hardReload: true }
   );
-  if (!routeReadyOk) return;
+  if (!initialRouteReady) return;
 
   if (setupSource) {
     const setupResult = await pageEval(setupSource);
@@ -1417,7 +1572,8 @@ async function runDeepWorkflow({
         `${name} route ready after setup`,
         {
           deepWorkflow: true,
-        }
+        },
+        { hardReload: true }
       );
       if (!routeReadyAfterSetupOk) return;
     }
@@ -5196,6 +5352,124 @@ const deepWorkflowCases = [
       value?.auditActorId === "usr_branch_demo",
   },
   {
+    name: "admin Moodle source workflow displays server projection state",
+    role: "superadmin",
+    route: "/app/admin/moodle-source",
+    source: workflowActionSource(`
+      const list = await waitFor(
+        () => document.querySelector('[data-testid="moodle-source-list-superadmin"]'),
+        4000
+      );
+      if (!list) throw new Error("Moodle source list did not render");
+      const settled = await waitFor(() => {
+        const loading = document.querySelector('[data-testid="moodle-source-loading"]');
+        const rows = document.querySelectorAll('[data-testid="moodle-source-course"]');
+        const error = document.querySelector('[data-testid="moodle-source-error"]');
+        const empty = normalize(list.textContent).includes("No Moodle courses are assigned");
+        return !loading && (rows.length > 0 || error || empty)
+          ? { rows: rows.length, error: Boolean(error), empty }
+          : null;
+      }, 5000);
+      const text = normalize(list.textContent || "");
+      const projectionRequests = performance
+        .getEntriesByType("resource")
+        .filter((entry) => {
+          try {
+            return new URL(entry.name).pathname === "/api/integrations/moodle/projections/courses";
+          } catch {
+            return false;
+          }
+        }).length;
+      return {
+        ok: Boolean(settled),
+        ...settled,
+        hasReadOnlyBoundary: text.includes("Read-only Moodle course source") || settled?.error || settled?.empty,
+        projectionSource: list.getAttribute("data-projection-source"),
+        projectionRequests,
+        hasFreshness: Boolean(document.querySelector('[data-testid="moodle-source-freshness"]'))
+      };
+    `),
+    predicate: value =>
+      value?.ok &&
+      value?.hasReadOnlyBoundary === true &&
+      value?.projectionRequests > 0 &&
+      ["server", "unavailable"].includes(value?.projectionSource) &&
+      (value?.error === true ||
+        value?.empty === true ||
+        (value?.rows > 0 && value?.hasFreshness === true)),
+  },
+  {
+    name: "admin Moodle course content workflow preserves read-only server projection boundary",
+    role: "superadmin",
+    route: "/app/admin/moodle-source/course_ar_l3",
+    source: workflowActionSource(`
+      const workspace = await waitFor(
+        () => document.querySelector('[data-testid="moodle-course-content-superadmin"]'),
+        4000
+      );
+      if (!workspace) throw new Error("Moodle course content workspace did not render");
+      const settled = await waitFor(() => {
+        const loading = document.querySelector('[data-testid="moodle-content-loading"]');
+        const ready = document.querySelector('[data-testid="moodle-content-ready"]');
+        const error = document.querySelector('[data-testid="moodle-content-error"]');
+        const empty = document.querySelector('[data-testid="moodle-content-empty"]');
+        return !loading && (ready || error || empty)
+          ? { ready: Boolean(ready), error: Boolean(error), empty: Boolean(empty) }
+          : null;
+      }, 5000);
+      const expectedPath = "/api/integrations/moodle/projections/courses/course_ar_l3/content";
+      const projectionRequests = performance
+        .getEntriesByType("resource")
+        .filter((entry) => {
+          try {
+            return new URL(entry.name).pathname === expectedPath;
+          } catch {
+            return false;
+          }
+        }).length;
+      const directProviderRequests = performance
+        .getEntriesByType("resource")
+        .filter((entry) => {
+          try {
+            return new URL(entry.name).hostname.includes("moodle");
+          } catch {
+            return false;
+          }
+        }).length;
+      return {
+        ok: Boolean(settled),
+        ...settled,
+        projectionRequests,
+        directProviderRequests,
+        readOnly: workspace.getAttribute("data-read-only") === "true",
+        projectionSource: workspace.getAttribute("data-projection-source"),
+        forms: workspace.querySelectorAll("form").length,
+        fileInputs: workspace.querySelectorAll('input[type="file"]').length,
+        editableControls: workspace.querySelectorAll("input, select, textarea").length,
+        unexpectedButtons: Array.from(workspace.querySelectorAll("button"))
+          .filter((button) => normalize(button.textContent).toLowerCase() !== "retry")
+          .length,
+        sections: workspace.querySelectorAll('[data-testid="moodle-content-section"]').length,
+        activities: workspace.querySelectorAll('[data-testid="moodle-content-activity"]').length,
+      };
+    `),
+    predicate: value =>
+      value?.ok &&
+      value?.projectionRequests > 0 &&
+      value?.directProviderRequests === 0 &&
+      value?.readOnly === true &&
+      ["server", "unavailable"].includes(value?.projectionSource) &&
+      value?.forms === 0 &&
+      value?.fileInputs === 0 &&
+      value?.editableControls === 0 &&
+      value?.unexpectedButtons === 0 &&
+      (value?.error === true ||
+        value?.empty === true ||
+        (value?.ready === true &&
+          value?.sections >= 0 &&
+          value?.activities >= 0)),
+  },
+  {
     name: "admin integrations workflow checks mock provider and logs result",
     role: "superadmin",
     route: "/app/admin/integrations",
@@ -5338,6 +5612,7 @@ try {
     if (selectedFormsRoleDenials) {
       await runFormsRoleDenialChecks();
     }
+    await assertNoUnexpectedBrowserConsoleErrors();
     throw new Error("__QA_FILTER_COMPLETE__");
   }
 
@@ -5434,12 +5709,27 @@ try {
   }
 
   await goto("/auth/login");
-  const gateway = await pageEval(`() => ({
-    path: location.pathname,
-    portalLinks: Array.from(document.querySelectorAll('a[href^="/auth/"]')).map((anchor) => anchor.getAttribute("href")),
-    quoteArabic: document.querySelector(".auth-calligraphy-panel strong")?.textContent?.trim() || "",
-    overflow: Math.max(0, document.documentElement.scrollWidth - document.documentElement.clientWidth)
-  })`);
+  const gateway = await pageEval(`async () => {
+    const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+    let portalLinks = [];
+    let quoteArabic = "";
+    for (let index = 0; index < 40; index += 1) {
+      portalLinks = Array.from(document.querySelectorAll('a[href^="/auth/"]')).map((anchor) => anchor.getAttribute("href"));
+      quoteArabic = document.querySelector(".auth-v2-calligraphy p, .auth-calligraphy-panel strong")?.textContent?.trim() || "";
+      if (
+        portalLinks.includes("/auth/student-login") &&
+        portalLinks.includes("/auth/administration-login") &&
+        quoteArabic
+      ) break;
+      await delay(50);
+    }
+    return {
+      path: location.pathname,
+      portalLinks,
+      quoteArabic,
+      overflow: Math.max(0, document.documentElement.scrollWidth - document.documentElement.clientWidth)
+    };
+  }`);
   await assertCheck(
     "auth gateway has separate student/admin links",
     gateway,
@@ -5599,10 +5889,10 @@ try {
   }
 
   recordProgress("mobile portal routes");
+  await runPw("resize", ["390", "844"]);
   for (const role of selectedRoles) {
     recordProgress(`mobile role: ${role.role}`);
     assertRunBudget(`checking mobile role ${role.role}`);
-    await runPw("resize", ["390", "844"]);
     const mobileLoginOk = await authenticateRole(
       role,
       `${role.role} mobile login API succeeds`
@@ -5672,12 +5962,7 @@ try {
   }
   await runPw("resize", ["1440", "1000"]);
 
-  const consoleOutput = await runPw("console", ["error"]);
-  checks.push({
-    name: "browser console errors captured",
-    ok: true,
-    actual: consoleOutput.slice(0, 1000),
-  });
+  await assertNoUnexpectedBrowserConsoleErrors();
 } catch (error) {
   if (error instanceof Error && error.message === "__QA_FILTER_COMPLETE__") {
     // Focused workflow mode completed successfully.

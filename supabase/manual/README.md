@@ -15,11 +15,260 @@ Run each file as one complete transaction in this order:
 
 The seed is fake demo data only. Never run it in a real school database.
 
+## Phase 6A Moodle Projection Authority Package - Outside Migration History
+
+The following additive package is reviewed and portable-runtime tested. It is
+not in migration history and is not approved for a shared or production target.
+It is accepted only on the pinned isolated fake-data staging project through
+the guarded Phase 6I runner:
+
+1. `006_phase6a_moodle_projection_authority.sql`
+2. `106_phase6a_moodle_projection_authority_fake_seed.sql` for disposable fake
+   data only
+3. `206_phase6a_moodle_projection_authority_assertions.sql`
+4. `906_phase6a_moodle_projection_authority_rollback.sql` for the disposable
+   rollback drill only
+
+Validate the package without Docker or a remote database:
+
+```bash
+npm run check:phase6a-moodle-authority
+npm run check:phase6a-moodle-authority:runtime
+```
+
+The runtime check applies the Phase 1 foundation plus Phase 6A twice in portable
+PGlite PostgreSQL, runs semantic assertions twice, proves browser-role denials
+and service-role RPC behavior, and performs rollback/reapply. It does not contact
+Supabase. Keep `NILE_MOODLE_PROJECTION_REPOSITORY=disabled`; Phase 6I staging
+acceptance did not approve runtime activation.
+
+## Phase 6E Moodle User Mapping Authority Package - Outside Migration History
+
+This additive package establishes exact internal-user to Moodle-user mappings
+before any enrollment, roster, completion, or outcome projection is exposed.
+It does not add a portal route, contact-data projection, Moodle write, or runtime
+activation:
+
+1. `008_phase6e_moodle_user_mapping_authority.sql`
+2. `108_phase6e_moodle_user_mapping_authority_fake_seed.sql` for disposable fake
+   data only
+3. `208_phase6e_moodle_user_mapping_authority_assertions.sql`
+4. `908_phase6e_moodle_user_mapping_authority_rollback.sql` for the disposable
+   rollback drill only
+
+Validate it without Docker or a remote database:
+
+```bash
+npm run check:phase6e-moodle-user-mapping
+npm run check:phase6e-moodle-user-mapping:runtime
+```
+
+The authority RPC resolves only current normalized session relationships. The
+mapping RPC returns IDs and synchronization metadata only; it never matches by
+email or display name. Both RPCs are service-role-only. The package remains
+manual, outside migration history, and runtime-disabled. Phase 6I accepted it
+only on the pinned isolated fake-data staging target after PostgREST/RLS proof.
+
+## Phase 6F Moodle Enrollment/Group Observation Package - Unapplied
+
+This additive package stores sanitized class enrollment/group observations
+without replacing Nile Learn roster authority. Teachers receive person-level
+internal IDs only for an exact currently assigned class; HOD and Super Admin
+receive aggregate counts only. Student, Registrar, and Branch Admin access is
+denied. Names, emails, provider IDs, roles, access times, and raw metadata are
+not stored:
+
+1. `009_phase6f_moodle_enrollment_group_observation.sql`
+2. `109_phase6f_moodle_enrollment_group_observation_fake_seed.sql` for
+   disposable fake data only
+3. `209_phase6f_moodle_enrollment_group_observation_assertions.sql`
+4. `909_phase6f_moodle_enrollment_group_observation_rollback.sql` for the
+   disposable rollback drill only
+
+Validate it without Docker or a remote database:
+
+```bash
+npm run check:phase6f-moodle-enrollment-group
+npm run check:phase6f-moodle-enrollment-group:runtime
+```
+
+The observation table is immutable, forced-RLS, and RPC-only. The package
+remains manual, unapplied, and runtime-disabled. The server endpoint reads only
+retained sanitized observations after re-resolving the normalized session,
+role grant, exact class assignment, department scope, and external mappings.
+
+## Phase 6G Moodle Assessment Status Observation Package - Unapplied
+
+This additive package stores an atomic, sanitized snapshot of assignment and
+quiz definitions plus bounded schedule status for an exact class. It does not
+store or expose submissions, attempts, answers, scores, grades, feedback,
+completion, contact data, or raw Moodle identifiers:
+
+1. `010_phase6g_moodle_assessment_status_observation.sql`
+2. `110_phase6g_moodle_assessment_status_fake_seed.sql` for disposable fake
+   data only
+3. `210_phase6g_moodle_assessment_status_assertions.sql`
+4. `910_phase6g_moodle_assessment_status_rollback.sql` for the disposable
+   rollback drill only
+
+Validate it without Docker or a remote database:
+
+```bash
+npm run check:phase6g-moodle-assessment-status
+npm run check:phase6g-moodle-assessment-status:runtime
+```
+
+The table is immutable, forced-RLS, policy-free, and service-role-only. Student
+access requires the signed-in learner's exact active or completed class
+enrollment and exact user mapping. Teacher access requires the current exact
+class assignment; HOD and Super Admin remain governed by canonical scope. The
+package remains manual, unapplied, and runtime-disabled.
+
+## Phase 6H1 Moodle Assignment Result Observation Package - Unapplied
+
+This additive package stores a sanitized, immutable assignment-result snapshot
+for one exact internal class and assignment projection. Student access is
+limited to the signed-in learner, teachers receive person-level results only
+for an exactly assigned class, HOD and Super Admin receive aggregate counts,
+and Registrar and Branch Admin are denied. It excludes raw Moodle identifiers,
+files, answers, comments, feedback, and grader identity:
+
+1. `011_phase6h1_moodle_assignment_result_observation.sql`
+2. `111_phase6h1_moodle_assignment_result_fake_seed.sql` for disposable fake
+   data only
+3. `211_phase6h1_moodle_assignment_result_assertions.sql`
+4. `911_phase6h1_moodle_assignment_result_rollback.sql` for the disposable
+   rollback drill only
+
+Validate it without Docker or a remote database:
+
+```bash
+npm run check:phase6h1-moodle-assignment-result
+npm run check:phase6h1-moodle-assignment-result:runtime
+```
+
+The table is immutable, forced-RLS, policy-free, and service-role-only.
+Observations are fresh for at most 15 minutes and retained for at most 30 days.
+The route is read-only and repository-backed; it performs no Moodle provider
+call or write. The package remains manual, unapplied, and runtime-disabled.
+
+## Phase 6H2 Moodle Quiz Attempt Observation Package - Unapplied
+
+This separate package stores sanitized latest-attempt summaries for one exact
+class and quiz projection. Students receive only their own mapped attempt,
+teachers receive person-level summaries only for an exactly assigned class,
+HOD and Super Admin receive aggregate counts, and Registrar and Branch Admin
+are denied. Question text, answers, feedback, files, preview attempts, contact
+data, and raw Moodle identifiers are excluded:
+
+1. `012_phase6h2_moodle_quiz_attempt_observation.sql`
+2. `112_phase6h2_moodle_quiz_attempt_fake_seed.sql`
+3. `212_phase6h2_moodle_quiz_attempt_assertions.sql`
+4. `912_phase6h2_moodle_quiz_attempt_rollback.sql`
+
+Validate it without Docker or a remote database:
+
+```bash
+npm run check:phase6h2-moodle-quiz-attempt
+npm run check:phase6h2-moodle-quiz-attempt:runtime
+```
+
+The table is immutable, forced-RLS, policy-free, service-role-only, fresh for
+15 minutes, and retained for no more than 30 days. The package is manual,
+unapplied, runtime-disabled, read-only, and performs no provider call.
+
+### Phase 6H4 Moodle activity outcome summary observation
+
+This separate package stores sanitized lesson, H5P, and SCORM outcome summaries
+for one exact class and activity projection. Students receive only their own
+outcome, teachers receive person-level outcomes only for an exactly assigned
+class, and HOD and Super Admin receive aggregate counts. Registrar and Branch
+Admin are denied. Raw tracks, interactions, questions, answers, files,
+comments, provider identifiers, grader identity, and contact data are excluded:
+
+1. `014_phase6h4_moodle_activity_outcome_observation.sql`
+2. `114_phase6h4_moodle_activity_outcome_fake_seed.sql`
+3. `214_phase6h4_moodle_activity_outcome_assertions.sql`
+4. `914_phase6h4_moodle_activity_outcome_rollback.sql`
+
+Validate it without Docker or a remote database:
+
+```bash
+npm run check:phase6h4-moodle-activity-outcome
+npm run check:phase6h4-moodle-activity-outcome:runtime
+```
+
+The table is immutable, forced-RLS, policy-free, service-role-only, fresh for
+15 minutes, and retained for no more than 30 days. The package is manual,
+unapplied, runtime-disabled, read-only, and performs no provider call.
+
+## Phase 6H3 Moodle Grade Outcome Observation Package - Unapplied
+
+This separate package stores sanitized released grade outcomes for one exact
+class and grade-item projection. Students receive only their own released
+result and feedback, teachers receive person-level outcomes only for an exactly
+assigned class, HOD and Super Admin receive aggregate counts, and Registrar and
+Branch Admin are denied. Questions, answers, files, comments, grader identity,
+contact data, and raw Moodle identifiers are excluded:
+
+1. `013_phase6h3_moodle_grade_outcome_observation.sql`
+2. `113_phase6h3_moodle_grade_outcome_fake_seed.sql`
+3. `213_phase6h3_moodle_grade_outcome_assertions.sql`
+4. `913_phase6h3_moodle_grade_outcome_rollback.sql`
+
+Validate it without Docker or a remote database:
+
+```bash
+npm run check:phase6h3-moodle-grade-outcome
+npm run check:phase6h3-moodle-grade-outcome:runtime
+```
+
+The table is immutable, forced-RLS, policy-free, service-role-only, fresh for
+15 minutes, and retained for no more than 30 days. The package is manual,
+unapplied, runtime-disabled, read-only, and performs no provider call.
+
+## Phase 6I Isolated Staging Promotion
+
+The master-plan checkpoint accepts one remote use of the reviewed Phase 6
+packages: the pinned isolated fake-data staging project. It does not approve
+production, a shared school database, Moodle provider calls, Moodle writes, a
+new projection family, or runtime activation.
+
+Run the contract and target guards before the live proof:
+
+```bash
+npm run check:phase6-staging-db:static
+npm run check:phase6-staging-db:dry-run
+```
+
+The live command requires the pinned staging and production references, exact
+staging Supabase URL and pooler host, and an explicit acknowledgement. Server
+credentials must come from the shell or the documented local Keychain entries;
+never put them in source, command output, or evidence. The runner verifies fake
+identities, applies all nine packages in dependency order, seeds deterministic
+fixtures, runs every semantic assertion, proves PostgreSQL and PostgREST access
+boundaries, performs rollback and reapply, and invalidates its temporary fake
+login. It leaves the reviewed read-only schema applied in staging while
+`NILE_MOODLE_PROJECTION_REPOSITORY` remains `disabled`.
+
+```bash
+NILE_PHASE6_ALLOW_REMOTE=1 \
+NILE_PHASE6_STAGING_ACK=I_ACKNOWLEDGE_PHASE6_READ_ONLY_STAGING_PROMOTION \
+npm run check:phase6-staging-db:live
+```
+
+The exact package order, target hashes, and artifact hashes are pinned in
+`docs/integration-phase6-staging-promotion.json`. Redacted evidence is written
+under `output/phase6/`, with accepted results summarized in
+`docs/qa-attestations/integration-phase6i-staging-promotion-20260717.json`.
+This staging pass does not authorize a production migration or runtime flag
+change.
+
 ## Manual SQL Editor Steps - Not Currently Approved For Remote Use
 
-Use only an isolated disposable local project, or a remote development project
-explicitly approved by a later master-plan checkpoint. The current checkpoint
-does not approve a linked, shared, tunneled, staging, or production target.
+Use only an isolated disposable local project. Phase 6I has its own guarded
+runner for the single approved staging target above; these general editor steps
+do not approve a linked, shared, tunneled, staging, or production target.
 
 1. Open the approved isolated project in Supabase Dashboard or local Studio.
 2. Open **SQL Editor** and create a new query.

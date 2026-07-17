@@ -1,0 +1,51 @@
+{
+  "version": 1,
+  "status": "accepted-local",
+  "phase": "integration-stabilization-phase6d-course-content-wiring",
+  "checkedAt": "2026-07-17T04:27:48Z",
+  "scope": {
+    "roles": ["student", "teacher", "headofdepartment", "superadmin"],
+    "routes": [
+      "/app/student/moodle-source/:courseId",
+      "/app/teacher/moodle-source/:courseId",
+      "/app/hod/moodle-source/:courseId",
+      "/app/admin/moodle-source/:courseId"
+    ],
+    "mode": "server-scoped-read-only",
+    "productionMoodleWritesEnabled": false
+  },
+  "fastGate": {
+    "command": "npm run verify:phase6c-fast",
+    "result": "passed",
+    "contractChecks": 10,
+    "implementationChecks": 4,
+    "remoteDatabaseContacted": false,
+    "dockerUsed": false
+  },
+  "focusedPortalQa": {
+    "command": "INTEGRATION_FAST_SCOPE=phase6c QA_ONLY_WORKFLOWS='moodle course content' QA_OUTPUT_DIR=output/playwright/integration-phase6c-focused-20260717-r2 npm run verify:focused-fast",
+    "artifact": "output/playwright/integration-phase6c-focused-20260717-r2/portal-qa-summary.json",
+    "totalChecks": 6,
+    "failedChecks": 0
+  },
+  "fullPortalQa": {
+    "command": "QA_OUTPUT_DIR=output/playwright/integration-phase6d-final-20260717 scripts/verify.sh",
+    "artifact": "output/playwright/integration-phase6d-final-20260717/portal-qa-summary.json",
+    "artifactSha256": "ad31884c3e3cc9edf5e34522a9f3d55f6604190c4a9efbb8cd11f8fc5494a722",
+    "totalChecks": 1634,
+    "failedChecks": 0,
+    "elapsedMs": 578333,
+    "fullSuite": true,
+    "interrupted": false
+  },
+  "boundaries": {
+    "sameOriginProjectionApi": true,
+    "strictClientDto": true,
+    "exactCourseObservationScope": true,
+    "studentVisibilityFailsClosed": true,
+    "localStateAuthorityFallback": false,
+    "browserProviderCall": false,
+    "portalWriteControl": false,
+    "normalizedRuntimeActivated": false
+  }
+}

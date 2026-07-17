@@ -1,3 +1,4 @@
+import crypto from "node:crypto";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
@@ -11,6 +12,7 @@ import {
   type MoodleReadFunction,
 } from "../server/moodleClient";
 import {
+  normalizeMoodleScormProgressElement,
   parseMoodleReadResponse,
   type MoodleProjectionFunction,
 } from "../server/moodleReadModels";
@@ -22,6 +24,7 @@ type FixtureEnvironment =
   | "MOODLE_FIXTURE_COURSE_ID"
   | "MOODLE_FIXTURE_COURSE_MODULE_ID"
   | "MOODLE_FIXTURE_USER_ID"
+  | "MOODLE_FIXTURE_INTERACTION_USER_ID"
   | "MOODLE_FIXTURE_GROUPING_ID"
   | "MOODLE_FIXTURE_ASSIGNMENT_ID"
   | "MOODLE_FIXTURE_QUIZ_ID"
@@ -54,6 +57,10 @@ type FunctionSpec = {
   expectedShape: PayloadShape;
   parameters: (fixtures: FixtureValues) => MoodleCallParameters;
   count: (payload: unknown) => number | null;
+  fixtureMatch?: (
+    projection: unknown,
+    fixtures: FixtureValues
+  ) => "match" | "fixture_absent" | "invalid_response";
 };
 
 type ReadClient = Pick<MoodleClient, "call" | "probe">;
@@ -69,11 +76,19 @@ type ValidationDependencies = {
 export type MoodleSandboxReadValidationResult = Readonly<{
   exitCode: 0 | 1 | 2;
   results: readonly FunctionSummary[];
+  fingerprints: Readonly<{
+    functions: Readonly<Record<MoodleReadFunction, string | null>>;
+    families: Readonly<Record<string, string | null>>;
+    combined: string | null;
+  }>;
 }>;
 
 const MAX_MOODLE_ID = 2_147_483_647;
 const MAX_SCORM_ATTEMPT_NUMBER = 10_000;
 const ENROLLED_USER_LIMIT = 100;
+const FINGERPRINT_VERSION = "nile:m2c-r:v1";
+const H5P_FIXTURE_TITLE = "Nile Learn M2C-R TrueFalse Fixture";
+const SCORM_FIXTURE_TITLE = "Nile Learn M2C-R SCORM 1.2 Fixture";
 export const MOODLE_PROJECTION_FUNCTIONS = MOODLE_READ_FUNCTIONS.slice(
   1
 ) as readonly MoodleProjectionFunction[];
@@ -114,6 +129,7 @@ const fixtureEnvironments = [
   "MOODLE_FIXTURE_COURSE_ID",
   "MOODLE_FIXTURE_COURSE_MODULE_ID",
   "MOODLE_FIXTURE_USER_ID",
+  "MOODLE_FIXTURE_INTERACTION_USER_ID",
   "MOODLE_FIXTURE_GROUPING_ID",
   "MOODLE_FIXTURE_ASSIGNMENT_ID",
   "MOODLE_FIXTURE_QUIZ_ID",
@@ -179,14 +195,140 @@ function h5pAttemptCount(payload: unknown) {
 
 function h5pResultCount(payload: unknown) {
   if (!isRecord(payload)) return null;
-  if (Array.isArray(payload.attempts)) return payload.attempts.length;
-  if (Array.isArray(payload.results)) return payload.results.length;
-  return null;
+  if (!Array.isArray(payload.attempts)) return null;
+  let count = 0;
+  for (const attempt of payload.attempts) {
+    if (!isRecord(attempt)) return null;
+    if (!Object.hasOwn(attempt, "results")) continue;
+    if (!Array.isArray(attempt.results)) return null;
+    count += attempt.results.length;
+  }
+  return count;
 }
 
 function scormTrackCount(payload: unknown) {
   if (!isRecord(payload) || !isRecord(payload.data)) return null;
-  return Array.isArray(payload.data.tracks) ? payload.data.tracks.length : null;
+  if (!Array.isArray(payload.data.tracks)) return null;
+  return payload.data.tracks.filter(
+    track =>
+      isRecord(track) &&
+      typeof track.element === "string" &&
+      normalizeMoodleScormProgressElement(track.element) !== null
+  ).length;
+}
+
+function stringField(value: unknown, key: string) {
+  return isRecord(value) && typeof value[key] === "string" ? value[key] : null;
+}
+
+function arrayField(value: unknown, key: string) {
+  return isRecord(value) && Array.isArray(value[key]) ? value[key] : null;
+}
+
+function matchH5PActivity(projection: unknown, fixtures: FixtureValues) {
+  if (!Array.isArray(projection)) return "invalid_response" as const;
+  const activity = projection.find(
+    item =>
+      stringField(item, "sourceId") ===
+      String(fixtures.MOODLE_FIXTURE_H5P_ACTIVITY_ID)
+  );
+  if (!activity) return "fixture_absent" as const;
+  return stringField(activity, "courseSourceId") ===
+    String(fixtures.MOODLE_FIXTURE_COURSE_ID) &&
+    stringField(activity, "title") === H5P_FIXTURE_TITLE
+    ? ("match" as const)
+    : ("invalid_response" as const);
+}
+
+function matchH5PAttempt(projection: unknown, fixtures: FixtureValues) {
+  if (
+    !isRecord(projection) ||
+    stringField(projection, "activitySourceId") !==
+      String(fixtures.MOODLE_FIXTURE_H5P_ACTIVITY_ID)
+  ) {
+    return "invalid_response" as const;
+  }
+  const users = arrayField(projection, "users");
+  if (!users) return "invalid_response" as const;
+  const user = users.find(
+    item =>
+      stringField(item, "sourceUserId") ===
+      String(fixtures.MOODLE_FIXTURE_INTERACTION_USER_ID)
+  );
+  if (!user) return "fixture_absent" as const;
+  const attempts = arrayField(user, "attempts");
+  if (!attempts) return "invalid_response" as const;
+  const attempt = attempts.find(
+    item =>
+      stringField(item, "sourceId") ===
+      String(fixtures.MOODLE_FIXTURE_H5P_ATTEMPT_ID)
+  );
+  if (!attempt) return "fixture_absent" as const;
+  return stringField(attempt, "sourceUserId") ===
+    String(fixtures.MOODLE_FIXTURE_INTERACTION_USER_ID) &&
+    stringField(attempt, "activityInstanceSourceId") ===
+      String(fixtures.MOODLE_FIXTURE_H5P_ACTIVITY_ID)
+    ? ("match" as const)
+    : ("invalid_response" as const);
+}
+
+function matchH5PResult(projection: unknown, fixtures: FixtureValues) {
+  if (
+    !isRecord(projection) ||
+    stringField(projection, "activitySourceId") !==
+      String(fixtures.MOODLE_FIXTURE_H5P_ACTIVITY_ID)
+  ) {
+    return "invalid_response" as const;
+  }
+  const attempts = arrayField(projection, "attempts");
+  if (!attempts) return "invalid_response" as const;
+  const attempt = attempts.find(
+    item =>
+      stringField(item, "sourceId") ===
+      String(fixtures.MOODLE_FIXTURE_H5P_ATTEMPT_ID)
+  );
+  if (!attempt) return "fixture_absent" as const;
+  if (
+    stringField(attempt, "sourceUserId") !==
+      String(fixtures.MOODLE_FIXTURE_INTERACTION_USER_ID) ||
+    stringField(attempt, "activityInstanceSourceId") !==
+      String(fixtures.MOODLE_FIXTURE_H5P_ACTIVITY_ID)
+  ) {
+    return "invalid_response" as const;
+  }
+  const results = arrayField(attempt, "results");
+  if (!results) return "invalid_response" as const;
+  return results.length > 0 ? ("match" as const) : ("fixture_absent" as const);
+}
+
+function matchScormActivity(projection: unknown, fixtures: FixtureValues) {
+  if (!Array.isArray(projection)) return "invalid_response" as const;
+  const activity = projection.find(
+    item => stringField(item, "title") === SCORM_FIXTURE_TITLE
+  );
+  if (!activity) return "fixture_absent" as const;
+  return stringField(activity, "courseSourceId") ===
+    String(fixtures.MOODLE_FIXTURE_COURSE_ID)
+    ? ("match" as const)
+    : ("invalid_response" as const);
+}
+
+function matchScormTrack(projection: unknown, fixtures: FixtureValues) {
+  if (!isRecord(projection)) return "invalid_response" as const;
+  if (projection.attempt !== fixtures.MOODLE_FIXTURE_SCORM_ATTEMPT_NUMBER) {
+    return "invalid_response" as const;
+  }
+  return [
+    "status",
+    "completionStatus",
+    "successStatus",
+    "score",
+    "minimumScore",
+    "maximumScore",
+    "totalTime",
+  ].some(key => projection[key] !== undefined)
+    ? ("match" as const)
+    : ("fixture_absent" as const);
 }
 
 function warningCount(payload: unknown) {
@@ -396,26 +538,33 @@ const functionSpecs = {
     count: payload => collectionCount(payload, "questions"),
   },
   mod_h5pactivity_get_h5pactivities_by_courses: {
-    fixtures: ["MOODLE_FIXTURE_COURSE_ID"],
+    fixtures: ["MOODLE_FIXTURE_COURSE_ID", "MOODLE_FIXTURE_H5P_ACTIVITY_ID"],
     expectedShape: "object",
     parameters: fixtures => ({
       courseids: [fixtures.MOODLE_FIXTURE_COURSE_ID],
     }),
     count: payload => collectionCount(payload, "h5pactivities"),
+    fixtureMatch: matchH5PActivity,
   },
   mod_h5pactivity_get_attempts: {
-    fixtures: ["MOODLE_FIXTURE_H5P_ACTIVITY_ID", "MOODLE_FIXTURE_USER_ID"],
+    fixtures: [
+      "MOODLE_FIXTURE_H5P_ACTIVITY_ID",
+      "MOODLE_FIXTURE_H5P_ATTEMPT_ID",
+      "MOODLE_FIXTURE_INTERACTION_USER_ID",
+    ],
     expectedShape: "object",
     parameters: fixtures => ({
       h5pactivityid: fixtures.MOODLE_FIXTURE_H5P_ACTIVITY_ID,
-      userids: [fixtures.MOODLE_FIXTURE_USER_ID],
+      userids: [fixtures.MOODLE_FIXTURE_INTERACTION_USER_ID],
     }),
     count: h5pAttemptCount,
+    fixtureMatch: matchH5PAttempt,
   },
   mod_h5pactivity_get_results: {
     fixtures: [
       "MOODLE_FIXTURE_H5P_ACTIVITY_ID",
       "MOODLE_FIXTURE_H5P_ATTEMPT_ID",
+      "MOODLE_FIXTURE_INTERACTION_USER_ID",
     ],
     expectedShape: "object",
     parameters: fixtures => ({
@@ -423,6 +572,7 @@ const functionSpecs = {
       attemptids: [fixtures.MOODLE_FIXTURE_H5P_ATTEMPT_ID],
     }),
     count: h5pResultCount,
+    fixtureMatch: matchH5PResult,
   },
   mod_scorm_get_scorms_by_courses: {
     fixtures: ["MOODLE_FIXTURE_COURSE_ID"],
@@ -431,20 +581,22 @@ const functionSpecs = {
       courseids: [fixtures.MOODLE_FIXTURE_COURSE_ID],
     }),
     count: payload => collectionCount(payload, "scorms"),
+    fixtureMatch: matchScormActivity,
   },
   mod_scorm_get_scorm_sco_tracks: {
     fixtures: [
       "MOODLE_FIXTURE_SCORM_SCO_ID",
-      "MOODLE_FIXTURE_USER_ID",
+      "MOODLE_FIXTURE_INTERACTION_USER_ID",
       "MOODLE_FIXTURE_SCORM_ATTEMPT_NUMBER",
     ],
     expectedShape: "object",
     parameters: fixtures => ({
       scoid: fixtures.MOODLE_FIXTURE_SCORM_SCO_ID,
-      userid: fixtures.MOODLE_FIXTURE_USER_ID,
+      userid: fixtures.MOODLE_FIXTURE_INTERACTION_USER_ID,
       attempt: fixtures.MOODLE_FIXTURE_SCORM_ATTEMPT_NUMBER,
     }),
     count: scormTrackCount,
+    fixtureMatch: matchScormTrack,
   },
   mod_lesson_get_lessons_by_courses: {
     fixtures: ["MOODLE_FIXTURE_COURSE_ID"],
@@ -554,6 +706,163 @@ function sanitizedErrorCode(error: unknown): MoodleErrorCode {
   return error instanceof MoodleApiError ? error.code : "invalid_response";
 }
 
+function canonicalize(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(canonicalize);
+  if (!isRecord(value)) return value;
+  return Object.fromEntries(
+    Object.keys(value)
+      .sort((left, right) => left.localeCompare(right))
+      .map(key => [key, canonicalize(value[key])])
+  );
+}
+
+function fingerprintSortKey(value: unknown) {
+  if (isRecord(value) && typeof value.sourceId === "string") {
+    return `source:${value.sourceId}`;
+  }
+  return `value:${JSON.stringify(canonicalize(value))}`;
+}
+
+function sortTrueSet(value: unknown) {
+  if (!Array.isArray(value)) return value;
+  return [...value]
+    .map(canonicalize)
+    .sort((left, right) =>
+      fingerprintSortKey(left).localeCompare(fingerprintSortKey(right))
+    );
+}
+
+const topLevelTrueSetFunctions = new Set<MoodleReadFunction>([
+  "core_course_get_categories",
+  "core_course_get_courses_by_field",
+  "core_enrol_get_enrolled_users",
+  "core_enrol_get_users_courses",
+  "core_user_get_users_by_field",
+  "core_group_get_course_groups",
+  "core_group_get_course_groupings",
+  "mod_quiz_get_quizzes_by_courses",
+  "mod_h5pactivity_get_h5pactivities_by_courses",
+  "mod_scorm_get_scorms_by_courses",
+  "mod_lesson_get_lessons_by_courses",
+  "mod_book_get_books_by_courses",
+  "mod_page_get_pages_by_courses",
+  "mod_resource_get_resources_by_courses",
+  "mod_url_get_urls_by_courses",
+]);
+
+function normalizeProjectionForFingerprint(
+  functionName: MoodleReadFunction,
+  projection: unknown
+) {
+  if (topLevelTrueSetFunctions.has(functionName)) {
+    return sortTrueSet(projection);
+  }
+  if (
+    functionName === "core_group_get_course_user_groups" &&
+    isRecord(projection)
+  ) {
+    return { ...projection, groups: sortTrueSet(projection.groups) };
+  }
+  if (functionName === "mod_h5pactivity_get_attempts" && isRecord(projection)) {
+    return { ...projection, users: sortTrueSet(projection.users) };
+  }
+  return projection;
+}
+
+function sanitizedFingerprint(domain: string, value: unknown) {
+  return crypto
+    .createHash("sha256")
+    .update(`${domain}\0${JSON.stringify(canonicalize(value))}`)
+    .digest("hex");
+}
+
+function functionFamily(functionName: MoodleReadFunction) {
+  if (
+    functionName.startsWith("mod_h5pactivity_") ||
+    functionName.startsWith("mod_scorm_")
+  ) {
+    return "interactive_content";
+  }
+  if (
+    functionName.startsWith("mod_assign_") ||
+    functionName.startsWith("mod_quiz_") ||
+    functionName.startsWith("mod_lesson_") ||
+    functionName.startsWith("gradereport_") ||
+    functionName.startsWith("core_completion_")
+  ) {
+    return "progress_outcomes";
+  }
+  if (
+    functionName.startsWith("core_course_") ||
+    functionName.startsWith("mod_book_") ||
+    functionName.startsWith("mod_page_") ||
+    functionName.startsWith("mod_resource_") ||
+    functionName.startsWith("mod_url_")
+  ) {
+    return "course_content";
+  }
+  return "identity_access";
+}
+
+function finalizeValidation(
+  exitCode: 0 | 1 | 2,
+  results: FunctionSummary[],
+  successfulFingerprints: ReadonlyMap<MoodleReadFunction, string>
+): MoodleSandboxReadValidationResult {
+  const functions = Object.fromEntries(
+    MOODLE_READ_FUNCTIONS.map(functionName => [
+      functionName,
+      successfulFingerprints.get(functionName) ?? null,
+    ])
+  ) as Record<MoodleReadFunction, string | null>;
+  const families = Object.fromEntries(
+    [...new Set(MOODLE_READ_FUNCTIONS.map(functionFamily))]
+      .sort((left, right) => left.localeCompare(right))
+      .map(family => {
+        const familyResults = results.filter(
+          result => functionFamily(result.function) === family
+        );
+        if (
+          !familyResults.length ||
+          familyResults.some(
+            result => !result.ok || functions[result.function] === null
+          )
+        ) {
+          return [family, null];
+        }
+        const entries = familyResults
+          .map(result => ({
+            function: result.function,
+            fingerprint: functions[result.function],
+          }))
+          .sort((left, right) => left.function.localeCompare(right.function));
+        return [
+          family,
+          sanitizedFingerprint(
+            `${FINGERPRINT_VERSION}:family:${family}`,
+            entries
+          ),
+        ];
+      })
+  ) as Record<string, string | null>;
+  const complete =
+    exitCode === 0 &&
+    results.length === MOODLE_READ_FUNCTIONS.length &&
+    results.every(result => result.ok) &&
+    Object.values(families).every(Boolean);
+  return {
+    exitCode,
+    results,
+    fingerprints: {
+      functions,
+      families,
+      combined: complete
+        ? sanitizedFingerprint(`${FINGERPRINT_VERSION}:combined`, families)
+        : null,
+    },
+  };
+}
+
 function notRunSummaries(errorCode: SummaryErrorCode): FunctionSummary[] {
   return MOODLE_READ_FUNCTIONS.map(functionName => ({
     function: functionName,
@@ -564,23 +873,24 @@ function notRunSummaries(errorCode: SummaryErrorCode): FunctionSummary[] {
   }));
 }
 
-function emit(results: FunctionSummary[], exitCode: number) {
-  const passed = results.filter(result => result.ok).length;
+function emit(result: MoodleSandboxReadValidationResult) {
+  const passed = result.results.filter(item => item.ok).length;
   process.stdout.write(
     `${JSON.stringify(
       {
-        ok: exitCode === 0,
+        ok: result.exitCode === 0,
         mode: "read_only",
         functionCount: MOODLE_READ_FUNCTIONS.length,
         passed,
-        failed: results.length - passed,
-        results,
+        failed: result.results.length - passed,
+        results: result.results,
+        fingerprints: result.fingerprints,
       },
       null,
       2
     )}\n`
   );
-  process.exitCode = exitCode;
+  process.exitCode = result.exitCode;
 }
 
 function configurationErrorCode(env: NodeJS.ProcessEnv): SummaryErrorCode {
@@ -602,11 +912,13 @@ export async function runMoodleSandboxReadValidation(
   env: NodeJS.ProcessEnv = process.env,
   dependencies: ValidationDependencies = {}
 ): Promise<MoodleSandboxReadValidationResult> {
+  const successfulFingerprints = new Map<MoodleReadFunction, string>();
   if (!getMoodleServerStatus(env).configured) {
-    return {
-      exitCode: 1,
-      results: notRunSummaries(configurationErrorCode(env)),
-    };
+    return finalizeValidation(
+      1,
+      notRunSummaries(configurationErrorCode(env)),
+      successfulFingerprints
+    );
   }
 
   let client: ReadClient;
@@ -615,10 +927,11 @@ export async function runMoodleSandboxReadValidation(
       env
     );
   } catch (error) {
-    return {
-      exitCode: 1,
-      results: notRunSummaries(sanitizedErrorCode(error)),
-    };
+    return finalizeValidation(
+      1,
+      notRunSummaries(sanitizedErrorCode(error)),
+      successfulFingerprints
+    );
   }
 
   const results: FunctionSummary[] = [];
@@ -631,6 +944,24 @@ export async function runMoodleSandboxReadValidation(
       count: probe.availableFunctionCount,
       shape: "object",
     });
+
+    if (probe.minimumPrivilegeVerified) {
+      successfulFingerprints.set(
+        "core_webservice_get_site_info",
+        sanitizedFingerprint(
+          `${FINGERPRINT_VERSION}:function:core_webservice_get_site_info`,
+          {
+            availableFunctionCount: probe.availableFunctionCount,
+            approvedFunctionCount: probe.approvedFunctionCount,
+            missingApprovedFunctions: [
+              ...probe.missingApprovedFunctions,
+            ].sort(),
+            unexpectedFunctions: [...probe.unexpectedFunctions].sort(),
+            minimumPrivilegeVerified: probe.minimumPrivilegeVerified,
+          }
+        )
+      );
+    }
 
     if (!probe.minimumPrivilegeVerified) {
       const missing = new Set(probe.missingApprovedFunctions);
@@ -645,7 +976,7 @@ export async function runMoodleSandboxReadValidation(
           shape: null,
         });
       }
-      return { exitCode: 1, results };
+      return finalizeValidation(1, results, successfulFingerprints);
     }
   } catch (error) {
     const errorCode = sanitizedErrorCode(error);
@@ -665,7 +996,7 @@ export async function runMoodleSandboxReadValidation(
         shape: null,
       });
     }
-    return { exitCode: 1, results };
+    return finalizeValidation(1, results, successfulFingerprints);
   }
 
   const fixtures = parseFixtureEnvironment(env);
@@ -708,6 +1039,32 @@ export async function runMoodleSandboxReadValidation(
         });
         continue;
       }
+      const fixtureMatch = spec.fixtureMatch?.(
+        projection,
+        fixtures.values as FixtureValues
+      );
+      if (fixtureMatch === "invalid_response") {
+        hasUnexpectedFailure = true;
+        results.push({
+          function: functionName,
+          ok: false,
+          errorCode: "invalid_response",
+          count,
+          shape,
+        });
+        continue;
+      }
+      if (fixtureMatch === "fixture_absent") {
+        hasFixtureFailure = true;
+        results.push({
+          function: functionName,
+          ok: false,
+          errorCode: "fixture_absent",
+          count,
+          shape,
+        });
+        continue;
+      }
       if (count === 0 || warningCount(payload) > 0) {
         hasFixtureFailure = true;
         results.push({
@@ -719,6 +1076,13 @@ export async function runMoodleSandboxReadValidation(
         });
         continue;
       }
+      successfulFingerprints.set(
+        functionName,
+        sanitizedFingerprint(
+          `${FINGERPRINT_VERSION}:function:${functionName}`,
+          normalizeProjectionForFingerprint(functionName, projection)
+        )
+      );
       results.push({
         function: functionName,
         ok: true,
@@ -738,18 +1102,25 @@ export async function runMoodleSandboxReadValidation(
     }
   }
 
-  return {
-    exitCode: hasUnexpectedFailure ? 1 : hasFixtureFailure ? 2 : 0,
+  return finalizeValidation(
+    hasUnexpectedFailure ? 1 : hasFixtureFailure ? 2 : 0,
     results,
-  };
+    successfulFingerprints
+  );
 }
 
 async function main() {
   try {
     const result = await runMoodleSandboxReadValidation();
-    emit([...result.results], result.exitCode);
+    emit(result);
   } catch {
-    emit(notRunSummaries("invalid_response"), 1);
+    emit(
+      finalizeValidation(
+        1,
+        notRunSummaries("invalid_response"),
+        new Map<MoodleReadFunction, string>()
+      )
+    );
   }
 }
 

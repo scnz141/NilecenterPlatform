@@ -64,7 +64,7 @@ Do not duplicate or infer that status in companion files.
 
 Current QA baseline:
 
-- Portal QA: 1,598 checks, 0 failures.
+- Portal QA: 1,634 checks, 0 failures.
 - This baseline must not be broken.
 
 Current priority:
@@ -218,12 +218,112 @@ Use the commands that exist in `package.json`:
   explicit local-only acknowledgement, rejects non-local URLs, requires the
   exact fresh fake fixture marker, and never applies SQL or changes the runtime
   default.
+- `QA_ONLY_WORKFLOWS="<workflow>" npm run verify:focused-fast` for the fast
+  workflow inner loop. It runs the integration contracts, TypeScript, unit
+  tests, build, and only the selected isolated portal workflow. It never
+  replaces the unfiltered final gate.
+- `QA_ONLY_WORKFLOWS="<workflow>" npm run verify:focused-qa` builds the current
+  application and runs only the selected isolated portal workflow. Use it after
+  `npm run verify:phase6d-fast` to avoid repeating unrelated contracts and unit
+  tests. It never replaces the unfiltered final gate.
 - `npm test -- --run` for Vitest in this local workspace.
 - `npm run build` for production build.
 - `scripts/verify.sh` runs a non-mutating Prettier check for `CLAUDE.md`, `AGENTS.md`, `.codex/hooks.json`, and `.codex/prompts/*.md` by default.
+- `npm run verify:integration-fast` runs the integration ownership/evidence contracts, TypeScript, unit tests, and build in a bounded parallel inner loop. It does not replace the final database and portal gates.
+- `npm run verify:phase6b-fast` runs the Phase 6 contracts, Phase 6A/6B portable PostgreSQL gates, TypeScript, and the focused Moodle projection tests in parallel. Use it while implementing Phase 6B; it intentionally omits the full unit suite, build, and portal QA.
+- `VERIFY_SCOPE=focused SKIP_PORTAL_QA=1 scripts/verify.sh` is the explicit focused verifier when portal QA is not relevant. Filtered portal runs also require `VERIFY_SCOPE=focused`.
+- `npm run verify:phase6c-fast` runs the Phase 6 contracts, Phase 6A/6B portable PostgreSQL gates, TypeScript, and the focused catalog/content portal tests in parallel. Use it for the Moodle projection portal inner loop; it intentionally omits the full unit suite, build, and portal QA.
+- `npm run verify:phase6d-fast` runs the feature-freeze, ownership, and Phase 6
+  projection contracts with TypeScript and focused projection portal tests in
+  parallel. It intentionally omits historical contracts, database runtimes,
+  the full unit suite, build, and portal QA.
+- `npm run verify:phase6e-fast` runs the feature-freeze, ownership, Phase 6,
+  and Phase 6E user-mapping contracts with the portable Phase 6E PostgreSQL
+  lifecycle, TypeScript, and focused repository tests. It intentionally omits
+  the full unit suite, build, and portal QA.
+- `npm run check:phase6f-moodle-enrollment-group` and
+  `npm run check:phase6f-moodle-enrollment-group:runtime` verify the manual,
+  unapplied enrollment/group observation SQL, service-only role boundaries,
+  exact-class teacher scope, aggregate governance scope, retention, replay,
+  rollback, and browser-role denials in portable PostgreSQL.
+- `npm run verify:phase6f-fast` runs the feature-freeze, ownership, Phase 6,
+  Phase 6E, and Phase 6F contracts with both portable PostgreSQL lifecycles,
+  TypeScript, and focused enrollment/group repository and route tests. It
+  intentionally omits the full unit suite, build, and portal QA.
+- `npm run check:phase6g-moodle-assessment-status` and
+  `npm run check:phase6g-moodle-assessment-status:runtime` verify the manual,
+  unapplied assessment-definition and schedule-status observation package,
+  service-only authorization, exact class/user mappings, replay, retention,
+  rollback, and browser-role denials in portable PostgreSQL.
+- `npm run verify:phase6g-fast` runs the bounded Phase 6G contracts, portable
+  PostgreSQL lifecycles, TypeScript, and focused assessment projection tests in
+  parallel. It intentionally omits the full unit suite, build, and portal QA.
+- `npm run check:phase6h1-moodle-assignment-result` and
+  `npm run check:phase6h1-moodle-assignment-result:runtime` verify the manual,
+  unapplied assignment-result observation package, normalized-session and
+  role-grant authority, exact class/assignment/user mappings, 15-minute
+  freshness, 30-day retention, replay, rollback, and browser-role denials.
+- `npm run verify:phase6h1-fast` runs the existing Phase 6 contracts, the new
+  static and portable PostgreSQL gates, TypeScript, and focused freshness,
+  repository, and route tests in parallel. It intentionally omits the full unit
+  suite, build, and portal QA.
+- `npm run check:phase6h2-moodle-quiz-attempt` and
+  `npm run check:phase6h2-moodle-quiz-attempt:runtime` verify the separate,
+  manual quiz-attempt summary package, exact quiz/attempt/user mappings,
+  student-own and exact-class teacher results, aggregate governance scope,
+  freshness, retention, replay, rollback, and browser-role denials.
+- `npm run verify:phase6h2-fast` runs the bounded Phase 6H2 contracts,
+  portable PostgreSQL lifecycles, TypeScript, and focused projection tests. It
+  intentionally omits the full unit suite, build, and portal QA.
+- `npm run check:phase6h3-moodle-grade-outcome` and
+  `npm run check:phase6h3-moodle-grade-outcome:runtime` verify the separate,
+  manual grade-outcome package, exact grade-item and user mappings, released
+  learner feedback, aggregate governance scope, freshness, retention, replay,
+  rollback, and browser-role denials.
+- `npm run verify:phase6h3-fast` runs the bounded Phase 6H3 contracts, portable
+  PostgreSQL lifecycle, TypeScript, and focused projection tests. It
+  intentionally omits the full unit suite, build, and portal QA.
+- `npm run check:phase6h4-moodle-activity-outcome` and
+  `npm run check:phase6h4-moodle-activity-outcome:runtime` verify the separate,
+  manual lesson/H5P/SCORM outcome-summary package, exact activity and user
+  mappings, released scores, aggregate governance scope, freshness, retention,
+  replay, rollback, and browser-role denials.
+- `npm run verify:phase6h4-fast` runs the bounded Phase 6H4 contracts, portable
+  PostgreSQL lifecycle, TypeScript, and focused projection tests. It
+  intentionally omits the full unit suite, build, and portal QA.
+- `npm run check:phase6-staging-db:static` verifies the immutable Phase 6I
+  target, ordered SQL package, artifact hashes, and trusted local tooling
+  without reading credentials or contacting a remote project.
+- `npm run check:phase6i-pgcrypto-compatibility:runtime` proves the service-only
+  `public.digest` compatibility wrappers against an `extensions`-schema
+  pgcrypto installation, including rollback/reapply and browser-role denial.
+- `npm run check:phase6-staging-db:dry-run` verifies the explicitly supplied
+  isolated-staging target guards without reading credentials or contacting the
+  database. It rejects the pinned production project and keeps the normalized
+  projection repository disabled.
+- `npm run check:phase6-staging-db:live` is the explicit, acknowledgement-gated
+  Phase 6I isolated-staging promotion and PostgREST/RLS proof. It accepts only
+  the pinned fake-data staging project, applies the reviewed read-only packages,
+  runs semantic assertions, proves service-role access and browser-role denial,
+  drills rollback/reapply, invalidates the temporary fake login, and writes
+  redacted evidence. It must never target production or enable Moodle calls,
+  Moodle writes, or the normalized runtime.
+- Plain `scripts/verify.sh` is the final gate. It rejects portal filters/skips and asserts the protected `1,634/0` summary.
 - `FULL_FORMAT_CHECK=1 scripts/verify.sh` runs the repo-wide Prettier audit. Use this intentionally because the current app has existing formatting drift.
 - `npm run qa:portals` for portal route QA when browser/runtime context is available.
 - `npm run seed:supabase` only when explicitly working on Supabase demo seeding.
+- `npm run check:moodle-phase4-loops` verifies that every frozen Moodle read and
+  bounded sandbox-write contract has complete lifecycle evidence, deterministic
+  replay, cleanup, teardown, and authority-denial coverage.
+- `npm run check:integration-phase5-staging` verifies the immutable, redacted
+  Phase 5 target and SQL artifact contract without network access.
+- `npm run check:phase5-staging-db` is the explicit opt-in isolated-staging
+  migration, assertion, rollback, reapply, and denial proof. It must reject the
+  production project and must never print credentials.
+- `npm run check:phase5-staging-db:static` and
+  `npm run check:phase5-session-runtime` are network-free Phase 5 preflights.
+  The live durable-session command remains explicit, staging-only, and
+  credential-gated.
 
 `scripts/verify.sh` keeps the Docker-backed Phase 1 Supabase gate opt-in. Set
 `RUN_SUPABASE_LOCAL_CHECK=1` only when the disposable local stack is running.

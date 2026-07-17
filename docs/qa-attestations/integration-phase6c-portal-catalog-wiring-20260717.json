@@ -1,0 +1,78 @@
+{
+  "version": 1,
+  "recordedOn": "2026-07-17",
+  "sourceCommit": "95b884ebdf12553ebe213bef01c45412abb54a3f",
+  "phase": "integration-stabilization-phase6c-portal-catalog-wiring",
+  "status": "portal-catalog-wiring-accepted-phase6-still-active",
+  "portalReadBoundary": {
+    "roles": ["student", "teacher", "headofdepartment", "superadmin"],
+    "transport": "same-origin-server-api",
+    "endpoint": "/api/integrations/moodle/projections/courses",
+    "strictResponseValidation": true,
+    "serverProjectionSourceMarker": true,
+    "localStateFallbackAllowed": false,
+    "browserProviderCallAllowed": false,
+    "portalWriteControls": 0,
+    "productionMoodleWritesEnabled": false
+  },
+  "viewStates": {
+    "loading": true,
+    "empty": true,
+    "unavailable": true,
+    "stale": true,
+    "partial": true,
+    "retry": true,
+    "malformedSuccessRejected": true,
+    "responsiveCourseTitleWrapping": true,
+    "conciseLiveRegion": true
+  },
+  "focusedEvidence": {
+    "command": "QA_ONLY_WORKFLOWS='admin Moodle source workflow displays server projection state' QA_OUTPUT_DIR=output/playwright/integration-phase6c-focused-review2-20260717 npm run verify:focused-fast",
+    "artifact": "output/playwright/integration-phase6c-focused-review2-20260717/portal-qa-summary.json",
+    "artifactSha256": "1ef9a78676a4b3e220ef8c6dbabbb3c1bd57b14dec358e40412d2f359754306f",
+    "checkedAt": "2026-07-17T03:07:06.049Z",
+    "elapsedMs": 5406,
+    "totalChecks": 6,
+    "failedChecks": 0,
+    "interrupted": false,
+    "clientProjectionTests": 12,
+    "unexpectedConsoleErrors": 0
+  },
+  "efficientValidation": {
+    "projectionLoop": "npm run verify:phase6b-fast",
+    "projectionLoopSeconds": 2.4,
+    "integrationLoop": "npm run verify:integration-fast",
+    "integrationLoopSeconds": 5.3,
+    "focusedBrowserLoopSeconds": 5.4,
+    "fullPortalQaRunsAfterFinalFix": 1,
+    "fullGateReplacedByFastLoop": false
+  },
+  "qualityGate": {
+    "command": "QA_OUTPUT_DIR=output/playwright/integration-phase6c-final-20260717 scripts/verify.sh",
+    "artifact": "output/playwright/integration-phase6c-final-20260717/portal-qa-summary.json",
+    "artifactSha256": "4f3cd344bbe01e7a9517ebea53289af005815e8166fbd74746f99c39947c7e6c",
+    "checkedAt": "2026-07-17T03:21:24.316Z",
+    "elapsedMs": 573395,
+    "totalChecks": 1602,
+    "failedChecks": 0,
+    "interrupted": false,
+    "unitTests": 715,
+    "testFiles": 58,
+    "typescriptPassed": true,
+    "buildPassed": true,
+    "verifyPassed": true
+  },
+  "remainingGates": [
+    "approved-isolated-staging-sql-promotion-and-postgrest-rls-proof",
+    "approved-live-minimum-privilege-moodle-read-token-proof",
+    "course-content-portal-wiring",
+    "user-enrollment-assessment-and-outcome-projection-families"
+  ],
+  "manualSqlApplied": false,
+  "productionRuntimeActivated": false,
+  "liveMoodleProviderContacted": false,
+  "remoteDatabaseContacted": false,
+  "productionDatabaseModified": false,
+  "dockerUsed": false,
+  "credentialMaterialStored": false
+}

@@ -1,0 +1,817 @@
+{
+  "version": 1,
+  "status": "accepted",
+  "policy": {
+    "oneWritableAuthorityPerRecord": true,
+    "browserStateIsAuthority": false,
+    "productionMoodleWritesEnabled": false,
+    "allowedProjectionDirections": [
+      "none",
+      "supabase_auth_to_nile_learn",
+      "moodle_to_nile_learn",
+      "sandbox_test_only"
+    ]
+  },
+  "featureFamilies": [
+    {
+      "id": "public_discovery",
+      "name": "Public discovery and booking",
+      "nileLearnAuthority": "canonical_writable",
+      "moodleAuthority": "none",
+      "projectionDirection": "none",
+      "externalId": "none",
+      "conflictRule": "Nile Learn public catalog and booking records win; provider titles are never identity keys.",
+      "permittedRoles": [
+        "public",
+        "student",
+        "teacher",
+        "registrar",
+        "headofdepartment",
+        "branchadmin",
+        "superadmin"
+      ],
+      "auditOwner": "nile_learn_public_and_booking_audit",
+      "failureBehavior": "Show an explicit unavailable or validation state and do not fabricate a booking.",
+      "futureWriteStatus": "nile_learn_writable",
+      "selectors": {
+        "clientRoutes": [
+          "^/$",
+          "^/(404|about|apply|book-free-trial|book-placement-test|classes|contact|courses(?:/.*)?|faq|privacy|terms|verify-certificate)$"
+        ]
+      }
+    },
+    {
+      "id": "authentication_sessions",
+      "name": "Authentication and durable sessions",
+      "nileLearnAuthority": "session_projection",
+      "moodleAuthority": "none",
+      "projectionDirection": "supabase_auth_to_nile_learn",
+      "externalId": "auth_identity_id mapped to nile_learn user_id",
+      "conflictRule": "Authenticated identity and live role grants must both validate; mismatch fails closed.",
+      "permittedRoles": [
+        "student",
+        "teacher",
+        "registrar",
+        "headofdepartment",
+        "branchadmin",
+        "superadmin"
+      ],
+      "auditOwner": "nile_learn_security_audit",
+      "failureBehavior": "Reject login or session resolution without demo fallback in production.",
+      "futureWriteStatus": "supabase_auth_identity_only",
+      "selectors": {
+        "clientRoutes": ["^/app$", "^/auth(?:/.*)?$", "^/login$"],
+        "serverApiRoutes": ["^(GET|POST) /api/auth(?:/.*)?$"]
+      }
+    },
+    {
+      "id": "legacy_route_compatibility",
+      "name": "Legacy route compatibility redirects",
+      "nileLearnAuthority": "compatibility_gateway",
+      "moodleAuthority": "none",
+      "projectionDirection": "none",
+      "externalId": "none",
+      "conflictRule": "Compatibility routes redirect to a canonical role route and never own data.",
+      "permittedRoles": [
+        "student",
+        "teacher",
+        "registrar",
+        "headofdepartment",
+        "branchadmin",
+        "superadmin"
+      ],
+      "auditOwner": "none_for_read_only_redirect",
+      "failureBehavior": "Resolve to the role-safe destination or deny access.",
+      "futureWriteStatus": "no_writes",
+      "selectors": {
+        "clientRoutes": [
+          "^/(dashboard|messages|notifications|payments|profile|registrar(?:/.*)?|reports|schedule|settings|student(?:/.*)?|students|teacher(?:/.*)?|users)$"
+        ]
+      }
+    },
+    {
+      "id": "portal_overviews",
+      "name": "Role portal overviews",
+      "nileLearnAuthority": "read_model_only",
+      "moodleAuthority": "none",
+      "projectionDirection": "none",
+      "externalId": "none",
+      "conflictRule": "Dashboard metrics are derived from authoritative family repositories and never written from the dashboard.",
+      "permittedRoles": [
+        "student",
+        "teacher",
+        "registrar",
+        "headofdepartment",
+        "branchadmin",
+        "superadmin"
+      ],
+      "auditOwner": "source_workflow_audit",
+      "failureBehavior": "Show scoped unavailable states without substituting demo records.",
+      "futureWriteStatus": "no_direct_writes",
+      "selectors": {
+        "clientRoutes": [
+          "^/app/(admin|branch|hod|registrar|student|teacher)/dashboard$"
+        ]
+      }
+    },
+    {
+      "id": "nile_forms",
+      "name": "Nile Forms definitions, publications, assignments, and submissions",
+      "nileLearnAuthority": "canonical_writable",
+      "moodleAuthority": "none",
+      "projectionDirection": "none",
+      "externalId": "migration_source_record_id only for finite imports",
+      "conflictRule": "Published versions are immutable; submission transitions use server commands and idempotency evidence.",
+      "permittedRoles": [
+        "student",
+        "teacher",
+        "registrar",
+        "headofdepartment",
+        "branchadmin",
+        "superadmin",
+        "public"
+      ],
+      "auditOwner": "nile_forms_command_audit",
+      "failureBehavior": "Fail closed and preserve the draft or offline queue for an explicit retry.",
+      "futureWriteStatus": "nile_learn_writable",
+      "selectors": {
+        "clientRoutes": [
+          "^/forms/:slug$",
+          "^/app/(admin|branch|hod|registrar|student|teacher)/forms(?:/.*)?$"
+        ],
+        "serverApiRoutes": ["^(GET|POST) /api/forms(?:/.*)?$"]
+      }
+    },
+    {
+      "id": "profiles_preferences",
+      "name": "Self profile and safe preferences",
+      "nileLearnAuthority": "canonical_writable",
+      "moodleAuthority": "none",
+      "projectionDirection": "none",
+      "externalId": "none",
+      "conflictRule": "Self-service may update safe fields only; role, branch, department, and permission scope remain admin-controlled.",
+      "permittedRoles": [
+        "student",
+        "teacher",
+        "registrar",
+        "headofdepartment",
+        "branchadmin",
+        "superadmin"
+      ],
+      "auditOwner": "nile_learn_profile_audit",
+      "failureBehavior": "Reject the complete command when any protected field or validation rule fails.",
+      "futureWriteStatus": "nile_learn_writable",
+      "selectors": {
+        "clientRoutes": [
+          "^/app/(admin|branch|hod|registrar|student|teacher)/profile$"
+        ],
+        "workflowActions": ["^(profile[.]update|portal[.]settings[.]save)$"]
+      }
+    },
+    {
+      "id": "identity_access_governance",
+      "name": "Users, role grants, permissions, and staff scope",
+      "nileLearnAuthority": "canonical_writable",
+      "moodleAuthority": "none",
+      "projectionDirection": "none",
+      "externalId": "auth_identity_id and provider user mappings",
+      "conflictRule": "The server resolves the actor and effective grants; only an active superadmin grant may act globally.",
+      "permittedRoles": [
+        "registrar",
+        "headofdepartment",
+        "branchadmin",
+        "superadmin"
+      ],
+      "auditOwner": "nile_learn_access_audit",
+      "failureBehavior": "Deny the whole command on permission or scope mismatch.",
+      "futureWriteStatus": "nile_learn_writable",
+      "selectors": {
+        "clientRoutes": [
+          "^/app/admin/(users(?:/.*)?|roles|permissions)$",
+          "^/app/branch/(students|teachers)$",
+          "^/app/hod/teachers$",
+          "^/app/registrar/students(?:/.*)?$"
+        ],
+        "workflowActions": [
+          "^(permission[.]update|staff[.]user[.]create|user[.](create|update))$"
+        ]
+      }
+    },
+    {
+      "id": "organization_governance",
+      "name": "Branches, departments, and workspace settings",
+      "nileLearnAuthority": "canonical_writable",
+      "moodleAuthority": "none",
+      "projectionDirection": "none",
+      "externalId": "none",
+      "conflictRule": "Branch and department scope must match the live role grant; global mutation requires superadmin.",
+      "permittedRoles": ["headofdepartment", "branchadmin", "superadmin"],
+      "auditOwner": "nile_learn_organization_audit",
+      "failureBehavior": "Reject cross-scope reads and writes and preserve the previous state.",
+      "futureWriteStatus": "nile_learn_writable",
+      "selectors": {
+        "clientRoutes": [
+          "^/app/admin/(branches|departments)$",
+          "^/app/(branch|hod|registrar)/settings$",
+          "^/app/hod/departments$"
+        ],
+        "workflowActions": ["^branch[.]update$"]
+      }
+    },
+    {
+      "id": "admissions_student_lifecycle",
+      "name": "Admissions, placement, students, and enrollments",
+      "nileLearnAuthority": "canonical_writable",
+      "moodleAuthority": "none",
+      "projectionDirection": "none",
+      "externalId": "legacy EMS identifier retained only as finite migration evidence",
+      "conflictRule": "Lifecycle transitions require exact branch, level, enrollment, course run, and class group targets.",
+      "permittedRoles": ["registrar", "branchadmin", "superadmin"],
+      "auditOwner": "nile_learn_student_lifecycle_audit",
+      "failureBehavior": "Reject invalid transitions atomically; never choose a fallback class or teacher.",
+      "futureWriteStatus": "nile_learn_writable",
+      "selectors": {
+        "clientRoutes": [
+          "^/app/registrar/(applications(?:/.*)?|enrollments(?:/.*)?|leads(?:/.*)?|placement-tests(?:/.*)?)$"
+        ],
+        "workflowActions": [
+          "^(application[.](convert|create)|enrollment[.](activate|status[.]update|transfer)|lead[.](convert|create)|placement[.](create|result[.]record)|student[.](create|document[.]add|status[.]update))$"
+        ]
+      }
+    },
+    {
+      "id": "academic_catalog_curriculum",
+      "name": "Programs, levels, course catalog, and Nile-native curriculum governance",
+      "nileLearnAuthority": "canonical_writable",
+      "moodleAuthority": "none",
+      "projectionDirection": "none",
+      "externalId": "Moodle course mapping is separate from Nile Learn course identity",
+      "conflictRule": "Nile Learn owns catalog and delivery metadata; Moodle content is never copied into writable curriculum fields.",
+      "permittedRoles": ["headofdepartment", "superadmin"],
+      "auditOwner": "nile_learn_academic_governance_audit",
+      "failureBehavior": "Reject invalid status or curriculum transitions and retain the prior published version.",
+      "futureWriteStatus": "nile_learn_writable",
+      "selectors": {
+        "clientRoutes": [
+          "^/app/admin/(courses(?:/.*)?|programs)$",
+          "^/app/hod/(courses(?:/.*)?|curriculum(?:/.*)?|levels|programs)$"
+        ],
+        "workflowActions": [
+          "^(course[.]status[.]update|curriculum[.]module[.]create)$"
+        ]
+      }
+    },
+    {
+      "id": "class_delivery_schedule",
+      "name": "Course runs, classes, rooms, sessions, and schedules",
+      "nileLearnAuthority": "canonical_writable",
+      "moodleAuthority": "none",
+      "projectionDirection": "none",
+      "externalId": "Moodle course and group mappings are external mapping records only",
+      "conflictRule": "Writes require exact active course run, class group, teacher, branch, room, and schedule targets.",
+      "permittedRoles": [
+        "teacher",
+        "registrar",
+        "headofdepartment",
+        "branchadmin",
+        "superadmin"
+      ],
+      "auditOwner": "nile_learn_delivery_audit",
+      "failureBehavior": "Reject conflicts or create an explicitly pending conflict state where the command contract allows it.",
+      "futureWriteStatus": "nile_learn_writable",
+      "selectors": {
+        "clientRoutes": [
+          "^/app/admin/schedule(?:/.*)?$",
+          "^/app/branch/(classes(?:/.*)?|rooms(?:/.*)?|schedule(?:/.*)?)$",
+          "^/app/hod/(classes(?:/.*)?|schedule(?:/.*)?)$",
+          "^/app/registrar/(classes|schedule(?:/.*)?)$",
+          "^/app/teacher/calendar(?:/.*)?$",
+          "^/app/teacher/classes(?:$|/:classId(?:$|/(sessions|students)))$",
+          "^/app/student/calendar$"
+        ],
+        "workflowActions": [
+          "^(calendar[.]create|class[.](create|session[.](cancel|reschedule)|status[.]update|update)|course-run[.]create|room[.](create|status[.]update)|teacher[.]assign)$"
+        ]
+      }
+    },
+    {
+      "id": "attendance_exceptions",
+      "name": "Attendance and attendance exceptions",
+      "nileLearnAuthority": "canonical_writable",
+      "moodleAuthority": "none",
+      "projectionDirection": "none",
+      "externalId": "optional future Moodle attendance activity mapping",
+      "conflictRule": "Class session and roster membership are authoritative; Moodle writeback remains disabled.",
+      "permittedRoles": [
+        "student",
+        "teacher",
+        "branchadmin",
+        "headofdepartment",
+        "superadmin"
+      ],
+      "auditOwner": "nile_learn_attendance_audit",
+      "failureBehavior": "Reject out-of-scope sessions and preserve the last saved roster.",
+      "futureWriteStatus": "moodle_write_blocked",
+      "selectors": {
+        "clientRoutes": [
+          "^/app/(branch|student)/attendance$",
+          "^/app/teacher/classes/:classId/attendance$"
+        ],
+        "workflowActions": ["^attendance[.](exception[.](review|submit)|save)$"]
+      }
+    },
+    {
+      "id": "nile_native_assignments",
+      "name": "Nile-native assignments, submissions, grading, and feedback",
+      "nileLearnAuthority": "canonical_writable",
+      "moodleAuthority": "none",
+      "projectionDirection": "none",
+      "externalId": "source_system must be nile_learn; Moodle activity IDs are not accepted",
+      "conflictRule": "A record is Nile-native or Moodle-managed, never both.",
+      "permittedRoles": [
+        "student",
+        "teacher",
+        "headofdepartment",
+        "superadmin"
+      ],
+      "auditOwner": "nile_learn_assessment_audit",
+      "failureBehavior": "Reject unrelated class submissions and grades atomically.",
+      "futureWriteStatus": "nile_learn_native_only",
+      "selectors": {
+        "clientRoutes": [
+          "^/app/student/assignments(?:/.*)?$",
+          "^/app/teacher/(assignments(?:/.*)?|grading(?:/.*)?)$"
+        ],
+        "workflowActions": [
+          "^assignment[.](create|grade|status[.]update|submit|update)$"
+        ]
+      }
+    },
+    {
+      "id": "nile_native_quizzes",
+      "name": "Nile-native quizzes, attempts, question bank, and review",
+      "nileLearnAuthority": "canonical_writable",
+      "moodleAuthority": "none",
+      "projectionDirection": "none",
+      "externalId": "source_system must be nile_learn; Moodle quiz IDs are not accepted",
+      "conflictRule": "A quiz is Nile-native or Moodle-managed, never both.",
+      "permittedRoles": [
+        "student",
+        "teacher",
+        "headofdepartment",
+        "superadmin"
+      ],
+      "auditOwner": "nile_learn_assessment_audit",
+      "failureBehavior": "Reject attempts, review, or question changes outside the assigned class scope.",
+      "futureWriteStatus": "nile_learn_native_only",
+      "selectors": {
+        "clientRoutes": [
+          "^/app/student/quizzes(?:/.*)?$",
+          "^/app/teacher/(question-bank(?:/.*)?|quizzes(?:/.*)?)$",
+          "^/app/hod/assessments(?:/.*)?$"
+        ],
+        "workflowActions": [
+          "^(question[.]create|quiz[.](create|questions[.]set|review|status[.]update|submit|update))$"
+        ]
+      }
+    },
+    {
+      "id": "learning_progress",
+      "name": "Nile Learn learning workspace and local lesson progress",
+      "nileLearnAuthority": "canonical_writable",
+      "moodleAuthority": "none",
+      "projectionDirection": "none",
+      "externalId": "Moodle-managed lessons use the separate read projection family",
+      "conflictRule": "Local completion commands accept Nile-native lessons only.",
+      "permittedRoles": [
+        "student",
+        "teacher",
+        "headofdepartment",
+        "superadmin"
+      ],
+      "auditOwner": "nile_learn_learning_audit",
+      "failureBehavior": "Reject unknown enrollment, lesson, or ownership and keep prior progress.",
+      "futureWriteStatus": "nile_learn_native_only",
+      "selectors": {
+        "clientRoutes": [
+          "^/app/student/(courses(?:/.*)?|grades)$",
+          "^/app/teacher/classes/:classId/materials$"
+        ],
+        "workflowActions": [
+          "^(lesson[.](complete|start)|material[.]publish[.]update)$"
+        ]
+      }
+    },
+    {
+      "id": "quran_learning",
+      "name": "Quran progress and recitation review",
+      "nileLearnAuthority": "canonical_writable",
+      "moodleAuthority": "none",
+      "projectionDirection": "none",
+      "externalId": "none",
+      "conflictRule": "Student ownership and assigned-teacher scope must both pass.",
+      "permittedRoles": [
+        "student",
+        "teacher",
+        "headofdepartment",
+        "superadmin"
+      ],
+      "auditOwner": "nile_learn_quran_audit",
+      "failureBehavior": "Reject unrelated learner or recitation changes and preserve the prior review.",
+      "futureWriteStatus": "nile_learn_writable",
+      "selectors": {
+        "clientRoutes": [
+          "^/app/student/quran-progress$",
+          "^/app/teacher/quran-review(?:/.*)?$"
+        ],
+        "workflowActions": [
+          "^(quran[.]progress[.]update|recitation[.](review|submit))$"
+        ]
+      }
+    },
+    {
+      "id": "internal_communications",
+      "name": "Internal messages and notifications",
+      "nileLearnAuthority": "canonical_writable",
+      "moodleAuthority": "none",
+      "projectionDirection": "none",
+      "externalId": "none",
+      "conflictRule": "Recipient resolution is server-scoped by role, class, department, or branch.",
+      "permittedRoles": [
+        "student",
+        "teacher",
+        "registrar",
+        "headofdepartment",
+        "branchadmin",
+        "superadmin"
+      ],
+      "auditOwner": "nile_learn_communication_audit",
+      "failureBehavior": "Deny the send or read mutation if any recipient is outside scope.",
+      "futureWriteStatus": "internal_only_no_external_delivery",
+      "selectors": {
+        "clientRoutes": [
+          "^/app/(admin|branch|hod|registrar|student|teacher)/messages(?:/new)?$"
+        ],
+        "workflowActions": ["^(message[.](read|send)|notification[.]read)$"]
+      }
+    },
+    {
+      "id": "finance",
+      "name": "Invoices and internal payment records",
+      "nileLearnAuthority": "canonical_writable",
+      "moodleAuthority": "none",
+      "projectionDirection": "none",
+      "externalId": "future payment provider reference only after approval",
+      "conflictRule": "Payment records are append-only internal evidence and require branch or global finance scope.",
+      "permittedRoles": ["registrar", "branchadmin", "superadmin"],
+      "auditOwner": "nile_learn_finance_audit",
+      "failureBehavior": "Reject invalid invoice or scope and never report external settlement.",
+      "futureWriteStatus": "internal_placeholder_no_gateway",
+      "selectors": {
+        "clientRoutes": ["^/app/(branch|registrar)/payments(?:/.*)?$"],
+        "workflowActions": ["^payment[.]record$"]
+      }
+    },
+    {
+      "id": "certificates",
+      "name": "Certificate approval, issue, and verification",
+      "nileLearnAuthority": "canonical_writable",
+      "moodleAuthority": "none",
+      "projectionDirection": "none",
+      "externalId": "verification_code",
+      "conflictRule": "Eligibility, approval, and issue transitions are ordered and auditable.",
+      "permittedRoles": ["student", "headofdepartment", "superadmin", "public"],
+      "auditOwner": "nile_learn_certificate_audit",
+      "failureBehavior": "Reject invalid transitions and preserve the current certificate state.",
+      "futureWriteStatus": "nile_learn_writable",
+      "selectors": {
+        "clientRoutes": [
+          "^/app/admin/certificates$",
+          "^/app/hod/certificates(?:/.*)?$",
+          "^/app/student/certificates$"
+        ],
+        "workflowActions": ["^certificate[.](approve|issue|reject)$"],
+        "serverApiRoutes": ["^GET /api/certificates/verify$"]
+      }
+    },
+    {
+      "id": "reports_audit_health",
+      "name": "Reports, saved views, audit, and system health",
+      "nileLearnAuthority": "read_model_only",
+      "moodleAuthority": "none",
+      "projectionDirection": "none",
+      "externalId": "none",
+      "conflictRule": "Reports derive from authoritative repositories; audit events are immutable.",
+      "permittedRoles": [
+        "student",
+        "teacher",
+        "registrar",
+        "headofdepartment",
+        "branchadmin",
+        "superadmin"
+      ],
+      "auditOwner": "nile_learn_platform_audit",
+      "failureBehavior": "Show unavailable or stale-at timestamps; never substitute demo metrics.",
+      "futureWriteStatus": "saved_presets_only",
+      "selectors": {
+        "clientRoutes": [
+          "^/app/admin/(audit-logs|reports(?:/.*)?|system-health)$",
+          "^/app/(branch|hod)/reports$",
+          "^/app/registrar/reports(?:/.*)?$",
+          "^/app/student/reports$",
+          "^/app/teacher/reports(?:/.*)?$"
+        ],
+        "workflowActions": ["^(report[.]preset[.]save|system[.]health_check)$"]
+      }
+    },
+    {
+      "id": "support",
+      "name": "Student support cases",
+      "nileLearnAuthority": "canonical_writable",
+      "moodleAuthority": "none",
+      "projectionDirection": "none",
+      "externalId": "none",
+      "conflictRule": "Students may create and read their own support records; staff access is scoped.",
+      "permittedRoles": ["student", "registrar", "branchadmin", "superadmin"],
+      "auditOwner": "nile_learn_support_audit",
+      "failureBehavior": "Reject cross-student access and retain the existing case state.",
+      "futureWriteStatus": "nile_learn_writable",
+      "selectors": {
+        "clientRoutes": ["^/app/student/support(?:/new)?$"],
+        "workflowActions": ["^record[.]save$"]
+      }
+    },
+    {
+      "id": "platform_configuration_integrations",
+      "name": "Platform configuration and integration operations",
+      "nileLearnAuthority": "canonical_writable",
+      "moodleAuthority": "none",
+      "projectionDirection": "none",
+      "externalId": "provider configuration identifier with server-only credential reference",
+      "conflictRule": "Visual connected state requires current server evidence; credentials never enter browser state.",
+      "permittedRoles": ["headofdepartment", "superadmin"],
+      "auditOwner": "nile_learn_integration_audit",
+      "failureBehavior": "Remain visibly disconnected or unavailable and fail provider operations closed.",
+      "futureWriteStatus": "configuration_only_provider_writes_blocked",
+      "selectors": {
+        "clientRoutes": [
+          "^/app/admin/(integrations|platform-blueprint|settings)$"
+        ],
+        "workflowActions": [
+          "^(integration[.](local_check|status[.]update)|settings[.]save)$"
+        ],
+        "serverApiRoutes": ["^GET /api/integrations/(moodle|supabase)/status$"]
+      }
+    },
+    {
+      "id": "compatibility_state_gateway",
+      "name": "Alpha platform state compatibility gateway",
+      "nileLearnAuthority": "compatibility_gateway",
+      "moodleAuthority": "none",
+      "projectionDirection": "none",
+      "externalId": "none",
+      "conflictRule": "Server action gates remain authoritative; this endpoint is not a production repository design.",
+      "permittedRoles": [
+        "student",
+        "teacher",
+        "registrar",
+        "headofdepartment",
+        "branchadmin",
+        "superadmin"
+      ],
+      "auditOwner": "underlying_domain_action_audit",
+      "failureBehavior": "Fail closed when server state is unavailable; never authorize from localStorage.",
+      "futureWriteStatus": "replace_with_granular_repositories",
+      "selectors": {
+        "serverApiRoutes": [
+          "^(GET|POST) /api/platform/(records|state(?:/actions|/reset)?)$"
+        ]
+      }
+    },
+    {
+      "id": "moodle_identity_projection",
+      "name": "Moodle site and user identity projection",
+      "nileLearnAuthority": "read_only_projection",
+      "moodleAuthority": "canonical_writable",
+      "projectionDirection": "moodle_to_nile_learn",
+      "externalId": "external_object_mappings(provider=moodle, object_type=user_or_site)",
+      "conflictRule": "Unmatched or ambiguous users are quarantined; email and display name are not fallback identifiers.",
+      "permittedRoles": ["superadmin"],
+      "auditOwner": "moodle_projection_run_audit",
+      "failureBehavior": "Keep the prior projection visibly stale and open a reconciliation case.",
+      "futureWriteStatus": "production_write_blocked",
+      "selectors": {
+        "moodleReadFunctions": [
+          "^(core_user_get_users_by_field|core_webservice_get_site_info)$"
+        ]
+      }
+    },
+    {
+      "id": "moodle_catalog_content_projection",
+      "name": "Moodle course structure, content, and activity definitions",
+      "nileLearnAuthority": "read_only_projection",
+      "moodleAuthority": "canonical_writable",
+      "projectionDirection": "moodle_to_nile_learn",
+      "externalId": "external_object_mappings(provider=moodle, object_type=course_section_module_activity)",
+      "conflictRule": "Provider IDs and hashes identify records; title matching is prohibited.",
+      "permittedRoles": [
+        "student",
+        "teacher",
+        "headofdepartment",
+        "superadmin"
+      ],
+      "auditOwner": "moodle_projection_run_audit",
+      "failureBehavior": "Retain the last successful projection as stale and expose reconciliation errors.",
+      "futureWriteStatus": "production_write_blocked",
+      "selectors": {
+        "clientRoutes": [
+          "^/app/(admin|hod|student|teacher)/moodle-source(?:/:courseId)?$"
+        ],
+        "serverApiRoutes": [
+          "^GET /api/integrations/moodle/projections/courses(?:/:courseId/content)?$",
+          "^GET /api/integrations/moodle/projections/classes/:classGroupId/assessment-status$"
+        ],
+        "moodleReadFunctions": [
+          "^(core_course_get_(categories|contents|course_module|courses_by_field)|mod_(assign_get_assignments|book_get_books_by_courses|h5pactivity_get_h5pactivities_by_courses|lesson_get_lessons_by_courses|page_get_pages_by_courses|quiz_get_quizzes_by_courses|resource_get_resources_by_courses|scorm_get_scorms_by_courses|url_get_urls_by_courses))$"
+        ]
+      }
+    },
+    {
+      "id": "moodle_enrollment_groups_projection",
+      "name": "Moodle enrollments, rosters, groups, and groupings",
+      "nileLearnAuthority": "read_only_projection",
+      "moodleAuthority": "canonical_writable",
+      "projectionDirection": "moodle_to_nile_learn",
+      "externalId": "external_object_mappings(provider=moodle, object_type=enrollment_group_grouping)",
+      "conflictRule": "Missing mappings are reconciliation cases; Nile Learn class membership is not silently overwritten.",
+      "permittedRoles": [
+        "teacher",
+        "registrar",
+        "headofdepartment",
+        "branchadmin",
+        "superadmin"
+      ],
+      "auditOwner": "moodle_projection_run_audit",
+      "failureBehavior": "Expose stale roster status and block dependent provider actions.",
+      "futureWriteStatus": "production_write_blocked",
+      "selectors": {
+        "serverApiRoutes": [
+          "^GET /api/integrations/moodle/projections/classes/:classGroupId/enrollment-groups$"
+        ],
+        "moodleReadFunctions": [
+          "^(core_enrol_get_(enrolled_users|users_courses)|core_group_get_course_(groupings|groups|user_groups))$"
+        ]
+      }
+    },
+    {
+      "id": "moodle_completion_projection",
+      "name": "Moodle activity and course completion",
+      "nileLearnAuthority": "read_only_projection",
+      "moodleAuthority": "canonical_writable",
+      "projectionDirection": "moodle_to_nile_learn",
+      "externalId": "external_object_mappings(provider=moodle, object_type=completion)",
+      "conflictRule": "Completion is keyed by mapped user, course, and activity IDs only.",
+      "permittedRoles": [
+        "student",
+        "teacher",
+        "headofdepartment",
+        "superadmin"
+      ],
+      "auditOwner": "moodle_projection_run_audit",
+      "failureBehavior": "Show the last successful completion timestamp and a stale marker.",
+      "futureWriteStatus": "production_write_blocked",
+      "selectors": {
+        "moodleReadFunctions": [
+          "^core_completion_get_(activities|course)_completion_status$"
+        ]
+      }
+    },
+    {
+      "id": "moodle_assignment_projection",
+      "name": "Moodle assignment result observations",
+      "nileLearnAuthority": "read_only_projection",
+      "moodleAuthority": "canonical_writable",
+      "projectionDirection": "moodle_to_nile_learn",
+      "externalId": "external_object_mappings(provider=moodle, object_type=assignment_assignment_submission_assignment_grade_user)",
+      "conflictRule": "The normalized session and role grant resolve exact class, assignment, and user mappings. Students receive only their own learner result, teachers receive person-level results only for an exactly assigned class, and HOD/Super Admin receive aggregate counts. Registrar and Branch Admin are denied. Moodle-managed assignment records reject Nile Learn write commands.",
+      "permittedRoles": [
+        "student",
+        "teacher",
+        "headofdepartment",
+        "superadmin"
+      ],
+      "auditOwner": "moodle_projection_run_audit",
+      "failureBehavior": "Keep a retained observation visibly stale for no more than 30 days, never use stale data as authority, and prohibit local edit or grade overwrite. The read route performs no provider call.",
+      "futureWriteStatus": "production_write_blocked",
+      "selectors": {
+        "serverApiRoutes": [
+          "^GET /api/integrations/moodle/projections/classes/:classGroupId/assignments/:assignmentProjectionId/outcomes$"
+        ],
+        "moodleReadFunctions": ["^mod_assign_get_(grades|submissions)$"]
+      }
+    },
+    {
+      "id": "moodle_quiz_projection",
+      "name": "Moodle quiz attempts and review",
+      "nileLearnAuthority": "read_only_projection",
+      "moodleAuthority": "canonical_writable",
+      "projectionDirection": "moodle_to_nile_learn",
+      "externalId": "external_object_mappings(provider=moodle, object_type=quiz_attempt)",
+      "conflictRule": "Attempt and review data are keyed by Moodle quiz and attempt IDs.",
+      "permittedRoles": [
+        "student",
+        "teacher",
+        "headofdepartment",
+        "superadmin"
+      ],
+      "auditOwner": "moodle_projection_run_audit",
+      "failureBehavior": "Keep prior projection stale and do not invent scores or attempt state.",
+      "futureWriteStatus": "production_write_blocked",
+      "selectors": {
+        "serverApiRoutes": [
+          "^GET /api/integrations/moodle/projections/classes/:classGroupId/quizzes/:quizProjectionId/attempts$"
+        ],
+        "moodleReadFunctions": ["^mod_quiz_get_(attempt_review|user_attempts)$"]
+      }
+    },
+    {
+      "id": "moodle_outcomes_projection",
+      "name": "Moodle grades, feedback, H5P results, SCORM tracks, and lesson outcomes",
+      "nileLearnAuthority": "read_only_projection",
+      "moodleAuthority": "canonical_writable",
+      "projectionDirection": "moodle_to_nile_learn",
+      "externalId": "external_object_mappings(provider=moodle, object_type=grade_attempt_result_track)",
+      "conflictRule": "Provider-managed outcome fields are immutable in Nile Learn and keyed by provider IDs.",
+      "permittedRoles": [
+        "student",
+        "teacher",
+        "headofdepartment",
+        "superadmin"
+      ],
+      "auditOwner": "moodle_projection_run_audit",
+      "failureBehavior": "Retain the last successful value with source and stale timestamp; never substitute zero.",
+      "futureWriteStatus": "production_write_blocked",
+      "selectors": {
+        "serverApiRoutes": [
+          "^GET /api/integrations/moodle/projections/classes/:classGroupId/grade-items/:gradeItemProjectionId/outcomes$",
+          "^GET /api/integrations/moodle/projections/classes/:classGroupId/activities/:activityProjectionId/outcomes$"
+        ],
+        "moodleReadFunctions": [
+          "^(gradereport_user_get_grade_items|mod_h5pactivity_get_(attempts|results)|mod_lesson_get_user_grade|mod_scorm_get_scorm_sco_tracks)$"
+        ]
+      }
+    },
+    {
+      "id": "moodle_sandbox_user_contract",
+      "name": "Synthetic Moodle user write contract",
+      "nileLearnAuthority": "none",
+      "moodleAuthority": "sandbox_test_only",
+      "projectionDirection": "sandbox_test_only",
+      "externalId": "synthetic sandbox user id",
+      "conflictRule": "Only namespaced disposable fixtures are writable; cleanup and retired-token proof are mandatory.",
+      "permittedRoles": ["integration_test_operator"],
+      "auditOwner": "sandbox_contract_evidence",
+      "failureBehavior": "Stop the campaign, reconcile the fixture, and clean it before any retry.",
+      "futureWriteStatus": "sandbox_only_not_production_authority",
+      "selectors": {
+        "moodleSandboxWriteFunctions": [
+          "^core_user_(create_users|delete_users|get_users|update_users)$"
+        ]
+      }
+    },
+    {
+      "id": "moodle_sandbox_enrollment_group_contract",
+      "name": "Synthetic Moodle enrollment and group write contract",
+      "nileLearnAuthority": "none",
+      "moodleAuthority": "sandbox_test_only",
+      "projectionDirection": "sandbox_test_only",
+      "externalId": "synthetic sandbox enrollment and group ids",
+      "conflictRule": "Only namespaced disposable fixtures are writable; replay and cleanup must be idempotent.",
+      "permittedRoles": ["integration_test_operator"],
+      "auditOwner": "sandbox_contract_evidence",
+      "failureBehavior": "Stop the campaign and complete reconciliation and cleanup before retry.",
+      "futureWriteStatus": "sandbox_only_not_production_authority",
+      "selectors": {
+        "moodleSandboxWriteFunctions": [
+          "^(core_group_(add_group_members|create_groups|delete_group_members|delete_groups)|enrol_manual_(enrol_users|unenrol_users))$"
+        ]
+      }
+    },
+    {
+      "id": "moodle_sandbox_status_contract",
+      "name": "Synthetic Moodle service status contract",
+      "nileLearnAuthority": "none",
+      "moodleAuthority": "sandbox_test_only",
+      "projectionDirection": "sandbox_test_only",
+      "externalId": "sandbox site identity",
+      "conflictRule": "The response must match the approved sandbox fingerprint before writes run.",
+      "permittedRoles": ["integration_test_operator"],
+      "auditOwner": "sandbox_contract_evidence",
+      "failureBehavior": "Abort all write tests when the sandbox fingerprint does not match.",
+      "futureWriteStatus": "sandbox_only_not_production_authority",
+      "selectors": {
+        "moodleSandboxWriteFunctions": ["^core_webservice_get_site_info$"]
+      }
+    }
+  ]
+}

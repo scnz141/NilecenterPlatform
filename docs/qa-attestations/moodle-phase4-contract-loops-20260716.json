@@ -1,0 +1,53 @@
+{
+  "version": 1,
+  "recordedOn": "2026-07-16",
+  "sourceCommit": "95b884ebdf12553ebe213bef01c45412abb54a3f",
+  "phase": "integration-stabilization-phase4",
+  "status": "accepted",
+  "contract": {
+    "artifact": "docs/moodle-phase4-contract-loops.json",
+    "artifactSha256": "4341a02728dcca80c841e5f0660189a980a30f09a6124a4c80b087c6efb1b2ef",
+    "lanes": 2,
+    "featureFamilies": 10,
+    "moodleReadFunctions": 31,
+    "moodleSandboxWriteFunctions": 11,
+    "lifecycleStages": 9,
+    "authorityDenials": 7,
+    "negativeControls": 5
+  },
+  "efficientValidation": {
+    "implementationCommand": "npm run verify:integration-fast",
+    "focusedCommand": "QA_ONLY_WORKFLOWS=\"<exact workflow>\" npm run verify:focused-fast",
+    "focusedArtifact": "output/playwright/qa-local-cli-speed-20260716/portal-qa-summary.json",
+    "focusedArtifactSha256": "15fbbc3b17839388b604b8b701a554d55e1d1beaf778385a3a7ef4e0bec00ee4",
+    "focusedElapsedMs": 4182,
+    "focusedChecks": 5,
+    "focusedFailures": 0,
+    "usesPinnedLocalPlaywrightCli": true,
+    "preservesDeterministicWorkflowReloads": true,
+    "replacesFinalGate": false
+  },
+  "qualityGate": {
+    "command": "QA_PORT=3039 QA_OUTPUT_DIR=output/playwright/moodle-phase4-accepted-final-20260716 QA_LOCAL_DATA_DIR=.local-data/moodle-phase4-accepted-final-20260716 QA_SESSION=moodle-phase4-accepted-final-20260716 scripts/verify.sh",
+    "artifact": "output/playwright/moodle-phase4-accepted-final-20260716/portal-qa-summary.json",
+    "artifactSha256": "d29c91aaeaed2823452651eb20369a0ce963c6e9e1ba407e80602c631b27f4eb",
+    "checkedAt": "2026-07-16T18:40:02.791Z",
+    "elapsedMs": 615566,
+    "previousAcceptedElapsedMs": 1315407,
+    "elapsedReductionPercent": 53.2,
+    "totalChecks": 1598,
+    "failedChecks": 0,
+    "inProgress": false,
+    "interrupted": false,
+    "fullSuite": true,
+    "unitTests": 591,
+    "testFiles": 50,
+    "typescriptPassed": true,
+    "buildPassed": true,
+    "verifyPassed": true
+  },
+  "productionMoodleWritesEnabled": false,
+  "portalMoodleWritesEnabled": false,
+  "productionPersistenceActivated": false,
+  "credentialsStored": false
+}

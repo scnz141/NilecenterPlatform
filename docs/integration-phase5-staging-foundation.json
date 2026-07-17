@@ -1,0 +1,52 @@
+{
+  "version": 1,
+  "contractId": "integration-phase5-staging-foundation",
+  "phase": 5,
+  "immutable": true,
+  "targetRefHashes": {
+    "algorithm": "sha256",
+    "staging": "aa412ac2a6b666be6ad96683495e92778e2c70aae68891799d1f5754a050140c",
+    "production": "7728e57c3295ac6c1d964e067911e56d922fb6ed5319d1a9b3f00a13572db70f"
+  },
+  "artifacts": [
+    {
+      "id": "phase1",
+      "path": "supabase/migrations/20260710053837_phase1_identity_scope_session_audit_mapping.sql",
+      "sha256": "fc08d23a1b12534e572ebeb50e9d32874e84b8d8e89c06c24abe4aff376a49d9"
+    },
+    {
+      "id": "phase2",
+      "path": "supabase/migrations/20260710132000_phase2b_atomic_session_lifecycle.sql",
+      "sha256": "4e1d37eee9c2898fad15491781812b65c3e4aad937263cd62ec740b4cd612325"
+    },
+    {
+      "id": "seed",
+      "path": "supabase/seed.sql",
+      "sha256": "e9a483ee34a5074c7da4eeecc9371c8c3666ae5d29aa8e0ca8cd56b1850608f2"
+    },
+    {
+      "id": "assertions",
+      "path": "docs/supabase-phase-1-identity-session-rls-assertions.sql",
+      "sha256": "6a57832c0568514b1f2c91ba07a208a9328728bb61e9ab1f36dc2e0033c8aa3b"
+    },
+    {
+      "id": "rollback2",
+      "path": "supabase/manual/901_phase2b_rollback.sql",
+      "sha256": "ff703a00a7b91ef5c16a0a78ff8e6f40b95f234673fa19a8885e1c3c27fd72f7"
+    },
+    {
+      "id": "rollback1",
+      "path": "supabase/manual/902_phase1_rollback.sql",
+      "sha256": "0bea9bd8e81f34fee8f3f253cb6520260dc0940a50fb2d5375432e7c676fa6e9"
+    }
+  ],
+  "constraints": {
+    "isolatedStagingOnly": true,
+    "productionTargetingAllowed": false,
+    "remoteNetworkAllowed": false,
+    "plaintextProjectRefsAllowed": false,
+    "plaintextSecretsAllowed": false,
+    "fakeIdentitiesOnly": true,
+    "runtimeDefaultsChanged": false
+  }
+}

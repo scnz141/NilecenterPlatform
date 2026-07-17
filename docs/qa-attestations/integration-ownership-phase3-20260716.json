@@ -1,0 +1,59 @@
+{
+  "version": 1,
+  "recordedOn": "2026-07-16",
+  "sourceCommit": "95b884ebdf12553ebe213bef01c45412abb54a3f",
+  "phase": "integration-stabilization-phase3",
+  "status": "accepted",
+  "ownershipContract": {
+    "artifact": "docs/integration-ownership-matrix.json",
+    "artifactSha256": "5eef562c6e78d56efcc971da1ba7ba829ba6092d475e78feba09584060a3ed89",
+    "featureFamilies": 33,
+    "clientRoutes": 282,
+    "workflowActions": 65,
+    "serverApiRoutes": 51,
+    "moodleReadFunctions": 31,
+    "moodleSandboxWriteFunctions": 11,
+    "negativeControls": 5,
+    "unmappedItems": 0,
+    "ambiguousItems": 0
+  },
+  "efficientValidation": {
+    "command": "npm run verify:integration-fast",
+    "elapsedMsApproximate": 5400,
+    "contractsPassed": true,
+    "typescriptPassed": true,
+    "unitTestsPassed": true,
+    "buildPassed": true,
+    "replacesFinalGate": false
+  },
+  "focusedQa": {
+    "command": "VERIFY_SCOPE=focused QA_ONLY_WORKFLOWS=\"branch reports render scoped report workspace without audit leakage\" QA_PORT=3026 QA_OUTPUT_DIR=output/playwright/integration-ownership-phase3-focused-branch-reports QA_LOCAL_DATA_DIR=.local-data/integration-ownership-phase3-focused-branch-reports QA_SESSION=integration-ownership-phase3-focused-branch-reports scripts/verify.sh",
+    "artifact": "output/playwright/integration-ownership-phase3-focused-branch-reports/portal-qa-summary.json",
+    "artifactSha256": "196645e12b3b09d9f6b0dbe377b3d2c043189315ede2fbe012f1c16f48bdab78",
+    "checkedAt": "2026-07-16T15:49:48.752Z",
+    "elapsedMs": 13998,
+    "totalChecks": 5,
+    "failedChecks": 0,
+    "fullSuite": false
+  },
+  "qualityGate": {
+    "command": "QA_PORT=3027 QA_OUTPUT_DIR=output/playwright/integration-ownership-phase3-final-20260716 QA_LOCAL_DATA_DIR=.local-data/integration-ownership-phase3-final-20260716 QA_SESSION=integration-ownership-phase3-final-20260716 scripts/verify.sh",
+    "artifact": "output/playwright/integration-ownership-phase3-final-20260716/portal-qa-summary.json",
+    "artifactSha256": "1659353d709b0cd8f866ed662355652aacea5c6a5a618128baf892ea9cd9e9b7",
+    "checkedAt": "2026-07-16T16:16:22.115Z",
+    "elapsedMs": 1315407,
+    "totalChecks": 1598,
+    "failedChecks": 0,
+    "inProgress": false,
+    "interrupted": false,
+    "fullSuite": true,
+    "unitTests": 591,
+    "testFiles": 50,
+    "typescriptPassed": true,
+    "buildPassed": true,
+    "verifyPassed": true
+  },
+  "productionMoodleWritesEnabled": false,
+  "productionPersistenceActivated": false,
+  "credentialsStored": false
+}

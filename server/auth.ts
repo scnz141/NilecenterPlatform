@@ -183,10 +183,23 @@ function parseCookies(req: SessionCookieRequest) {
   );
 }
 
-function writeSessionCookie(res: SessionCookieResponse, sessionId: string) {
+function sessionCookieMaxAgeSeconds(expiresAt: string) {
+  const remainingMs = Date.parse(expiresAt) - Date.now();
+  if (!Number.isFinite(remainingMs) || remainingMs <= 0) return 0;
+  return Math.min(
+    Math.floor(SESSION_TTL_MS / 1000),
+    Math.floor(remainingMs / 1000)
+  );
+}
+
+function writeSessionCookie(
+  res: SessionCookieResponse,
+  sessionId: string,
+  expiresAt: string
+) {
   res.setHeader(
     "Set-Cookie",
-    `${COOKIE_NAME}=${encodeURIComponent(sessionId)}; Path=/; Max-Age=${Math.floor(SESSION_TTL_MS / 1000)}; HttpOnly; SameSite=Lax${secureCookieAttribute()}`
+    `${COOKIE_NAME}=${encodeURIComponent(sessionId)}; Path=/; Max-Age=${sessionCookieMaxAgeSeconds(expiresAt)}; HttpOnly; SameSite=Lax${secureCookieAttribute()}`
   );
 }
 
@@ -241,11 +254,8 @@ export async function endRequestSession(
   res: SessionCookieResponse
 ) {
   const sessionId = parseCookies(req)[COOKIE_NAME];
-  try {
-    if (sessionId) await getSessionRepository().delete(sessionId);
-  } finally {
-    clearSessionCookie(res);
-  }
+  if (sessionId) await getSessionRepository().delete(sessionId);
+  clearSessionCookie(res);
 }
 
 type SupabaseAuthUser = {
@@ -487,7 +497,7 @@ export function attachSession(
   res: SessionCookieResponse,
   session: ServerSession
 ) {
-  writeSessionCookie(res, session.id);
+  writeSessionCookie(res, session.id, session.expiresAt);
   return {
     userId: session.userId,
     email: session.email,

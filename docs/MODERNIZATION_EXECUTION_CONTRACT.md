@@ -18,7 +18,7 @@ UI work also requires `DESIGN.md`, `docs/DESIGN_V2.md`, and
 ## Non-Negotiables
 
 - Nile Learn remains in internal alpha stabilization and modernization.
-- Preserve the accepted portal QA baseline: exactly 1,598 checks and 0
+- Preserve the accepted portal QA baseline: exactly 1,634 checks and 0
   failures. A count change requires an intentional QA-scope decision and an
   updated accepted baseline.
 - Preserve server-derived identity and scope, RBAC, RLS, validation, action
@@ -126,7 +126,7 @@ Completion requires:
 
 - command exit status 0;
 - a final portal summary that is not interrupted or in progress;
-- 1,598 checks and 0 failures, unless an approved QA-scope change establishes a
+- 1,634 checks and 0 failures, unless an approved QA-scope change establishes a
   new baseline;
 - no unresolved high-confidence reviewer finding.
 

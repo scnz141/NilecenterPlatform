@@ -4,6 +4,7 @@ import { registerApiRoutes } from "../../../../server/routes";
 import {
   resetDefaultSessionStore,
   SessionAuthorityDeniedError,
+  SessionCommandConflictError,
   SessionRepositoryUnavailableError,
   setSessionStore,
   type SessionStore,
@@ -97,7 +98,7 @@ describe("API durable session outage handling", () => {
     restore();
   });
 
-  it("clears the cookie and returns 503 when durable logout cannot revoke", async () => {
+  it("retains the cookie and returns 503 when durable logout cannot revoke", async () => {
     const restore = setSessionStore(unavailableRepository());
     const { postRoutes } = captureRoutes();
     const { headers, response, result } = responseRecorder();
@@ -108,7 +109,31 @@ describe("API durable session outage handling", () => {
       status: 503,
       body: { error: "Session service is temporarily unavailable." },
     });
-    expect(headers.get("Set-Cookie")).toContain("Max-Age=0");
+    expect(headers.has("Set-Cookie")).toBe(false);
+    restore();
+  });
+
+  it("retains the cookie when durable logout evidence conflicts", async () => {
+    const repository: SessionStore = {
+      kind: "supabase",
+      create: async () => undefined,
+      get: async () => null,
+      delete: async () => {
+        throw new SessionCommandConflictError();
+      },
+      clear: async () => undefined,
+    };
+    const restore = setSessionStore(repository);
+    const { postRoutes } = captureRoutes();
+    const { headers, response, result } = responseRecorder();
+
+    await postRoutes.get("/api/auth/logout")?.(request("POST"), response);
+
+    expect(result).toEqual({
+      status: 409,
+      body: { error: "Sign out could not be completed safely." },
+    });
+    expect(headers.has("Set-Cookie")).toBe(false);
     restore();
   });
 });

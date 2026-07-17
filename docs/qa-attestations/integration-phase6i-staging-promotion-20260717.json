@@ -1,0 +1,86 @@
+{
+  "version": 1,
+  "status": "accepted-isolated-staging",
+  "phase": "integration-stabilization-phase6i-staging-promotion",
+  "checkedAt": "2026-07-17T21:13:06.465Z",
+  "scope": {
+    "target": "pinned-fake-data-isolated-staging",
+    "packages": [
+      "phase6a",
+      "phase6b",
+      "phase6e",
+      "phase6f",
+      "phase6g",
+      "phase6h1",
+      "phase6h2",
+      "phase6h3",
+      "phase6h4"
+    ],
+    "artifactCount": 38,
+    "productionTargeted": false,
+    "providerCalls": 0,
+    "moodleWrites": 0,
+    "normalizedRuntimeActivated": false
+  },
+  "stagingValidation": {
+    "command": "npm run check:phase6-staging-db:live -- --output=output/phase6/phase6i-live-browser-denial-20260717.json",
+    "artifact": "output/phase6/phase6i-live-browser-denial-20260717.json",
+    "artifactSha256": "aced5b2bc80bef85db4f3606619be0a06dbd65ce20c30fb5497c6c55da7a0779",
+    "result": "passed",
+    "forwardApplications": 2,
+    "fixturePasses": 2,
+    "semanticAssertionPasses": 2,
+    "rollbackPasses": 1,
+    "postgresProofPasses": 2,
+    "postgrestProofPasses": 2,
+    "serviceRpcChecks": 18,
+    "browserDenialChecks": 8,
+    "forcedRlsTables": 16,
+    "browserTableGrants": 0,
+    "browserRoutineGrants": 0,
+    "serviceRoutineGrants": 32,
+    "temporaryAuthIdentityDeleted": true,
+    "pgcryptoSchemaCompatibilityProved": true,
+    "gradePayloadCollationIndependenceProved": true
+  },
+  "localValidation": {
+    "commands": [
+      "npm run check:phase6-staging-db:static",
+      "npm run check:phase6-staging-db:dry-run",
+      "npm run check:phase6i-pgcrypto-compatibility:runtime",
+      "npm run check:phase6h3-moodle-grade-outcome:runtime",
+      "npm run verify:phase6h4-fast",
+      "npm run check",
+      "npm test -- --run",
+      "npm run build",
+      "git diff --check"
+    ],
+    "result": "passed",
+    "unitTestFiles": 58,
+    "unitTests": 829,
+    "typescript": "passed",
+    "productionBuild": "passed",
+    "diffCheck": "passed"
+  },
+  "fullPortalQa": {
+    "command": "QA_OUTPUT_DIR=output/playwright/phase6i-staging-promotion-acceptance-20260717 scripts/verify.sh",
+    "artifact": "output/playwright/phase6i-staging-promotion-acceptance-20260717/portal-qa-summary.json",
+    "artifactSha256": "c6fb6089fd8c2723bcd3c6f18b368e12caea58e73f779534a228b7f4f88342f6",
+    "totalChecks": 1634,
+    "failedChecks": 0,
+    "elapsedMs": 625986,
+    "fullSuite": true,
+    "interrupted": false
+  },
+  "boundaries": {
+    "productionTouched": false,
+    "liveMoodleProviderCalled": false,
+    "moodleWritePerformed": false,
+    "normalizedProjectionRepository": "disabled",
+    "sqlAddedToMigrationHistory": false,
+    "portalBehaviorChanged": false,
+    "newProjectionFamilyAdded": false,
+    "runtimeActivationApproved": false,
+    "productionPromotionApproved": false
+  }
+}

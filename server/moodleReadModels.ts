@@ -357,6 +357,36 @@ export type ExternalScormTracksReadModel = Readonly<{
   totalTime?: string;
 }>;
 
+export const MOODLE_SCORM_PROGRESS_ELEMENTS = [
+  "cmi.core.lesson_status",
+  "cmi.completion_status",
+  "cmi.success_status",
+  "cmi.core.score.raw",
+  "cmi.score.raw",
+  "cmi.core.score.min",
+  "cmi.score.min",
+  "cmi.core.score.max",
+  "cmi.score.max",
+  "cmi.core.total_time",
+  "cmi.total_time",
+] as const;
+
+export type MoodleScormProgressElement =
+  (typeof MOODLE_SCORM_PROGRESS_ELEMENTS)[number];
+
+const moodleScormProgressElementSet = new Set<string>(
+  MOODLE_SCORM_PROGRESS_ELEMENTS
+);
+
+export function normalizeMoodleScormProgressElement(
+  value: string
+): MoodleScormProgressElement | null {
+  const normalized = value.trim().toLowerCase();
+  return moodleScormProgressElementSet.has(normalized)
+    ? (normalized as MoodleScormProgressElement)
+    : null;
+}
+
 export type ExternalLessonReadModel = Readonly<{
   sourceId: string;
   activitySourceId?: string;
@@ -502,7 +532,11 @@ function decodeHtmlEntity(value: string) {
     : "";
 }
 
-function sanitizeText(value: string, label: string, maxCharacters: number) {
+export function sanitizeMoodleProjectionText(
+  value: string,
+  label: string,
+  maxCharacters: number
+) {
   const maxRawCharacters = maxCharacters * 8;
   if (value.length > maxRawCharacters) return invalid(label);
   const sanitized = value
@@ -527,7 +561,7 @@ function requiredText(
   maxCharacters: number = MOODLE_READ_MODEL_LIMITS.titleCharacters
 ) {
   if (typeof value[key] !== "string") return invalid(label);
-  const result = sanitizeText(value[key], label, maxCharacters);
+  const result = sanitizeMoodleProjectionText(value[key], label, maxCharacters);
   return result || invalid(label);
 }
 
@@ -542,7 +576,9 @@ function optionalText(
     return undefined;
   }
   if (typeof candidate !== "string") return invalid(label);
-  return sanitizeText(candidate, label, maxCharacters) || undefined;
+  return (
+    sanitizeMoodleProjectionText(candidate, label, maxCharacters) || undefined
+  );
 }
 
 function optionalTextOrNumber(
@@ -1407,16 +1443,26 @@ export function parseMoodleScormTracksResponse(payload: unknown) {
   arrayField(data, "tracks", "SCORM tracks").forEach((value, index) => {
     const label = `SCORM track item ${index}`;
     const item = record(value, label);
-    const element = requiredText(item, "element", label, 128).toLowerCase();
+    const element = normalizeMoodleScormProgressElement(
+      requiredText(item, "element", label, 128)
+    );
     const rawTrackValue = item.value;
     if (
-      typeof rawTrackValue !== "string" ||
-      rawTrackValue.length > MOODLE_READ_MODEL_LIMITS.textCharacters * 8
+      (typeof rawTrackValue !== "string" &&
+        (typeof rawTrackValue !== "number" ||
+          !Number.isFinite(rawTrackValue))) ||
+      (typeof rawTrackValue === "string" &&
+        rawTrackValue.length > MOODLE_READ_MODEL_LIMITS.textCharacters * 8)
     ) {
       return invalid(label);
     }
+    if (!element) return;
+
     const safeTrackValue = () =>
-      sanitizeText(rawTrackValue, label, 160) || invalid(label);
+      typeof rawTrackValue === "string"
+        ? sanitizeMoodleProjectionText(rawTrackValue, label, 160) ||
+          invalid(label)
+        : invalid(label);
     switch (element) {
       case "cmi.core.lesson_status":
         status = consistentMetric(status, safeTrackValue(), label);

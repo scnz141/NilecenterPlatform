@@ -1,0 +1,69 @@
+{
+  "version": 1,
+  "status": "accepted-local",
+  "phase": "integration-stabilization-phase6g-assessment-status-observation",
+  "checkedAt": "2026-07-17T09:39:52Z",
+  "scope": {
+    "roles": ["student", "teacher", "headofdepartment", "superadmin"],
+    "authority": "server-normalized-current-class-and-user-relationships",
+    "projectionEntity": "class-assignment-and-quiz-status",
+    "audiences": ["learner", "class_staff"],
+    "portalRoutesAdded": 0,
+    "apiRoutesAdded": 1,
+    "productionMoodleWritesEnabled": false
+  },
+  "sqlLifecycle": {
+    "command": "npm run check:phase6g-moodle-assessment-status:runtime",
+    "result": "passed",
+    "forwardApplications": 2,
+    "assertionPasses": 2,
+    "rollbackReapplyPasses": 1,
+    "browserRoleDenials": 22,
+    "serviceRoleCalls": 14,
+    "remoteCalls": 0,
+    "dockerUsed": false
+  },
+  "fastGate": {
+    "command": "npm run verify:phase6g-fast",
+    "result": "passed",
+    "contractChecks": 6,
+    "implementationChecks": 5,
+    "elapsedMsApproximate": 2900
+  },
+  "fullValidation": {
+    "command": "QA_OUTPUT_DIR=output/playwright/phase6g-assessment-status-acceptance-20260717 scripts/verify.sh",
+    "unitTestFiles": 58,
+    "unitTests": 783,
+    "typescript": "passed",
+    "productionBuild": "passed",
+    "diffCheck": "passed"
+  },
+  "fullPortalQa": {
+    "artifact": "output/playwright/phase6g-assessment-status-acceptance-20260717/portal-qa-summary.json",
+    "artifactSha256": "b73f22c8efc95cf57dda64f9bece4e1b0d9f382a199593b98ce01ea610cfd08c",
+    "totalChecks": 1634,
+    "failedChecks": 0,
+    "elapsedMs": 584906,
+    "fullSuite": true,
+    "interrupted": false
+  },
+  "boundaries": {
+    "studentOwnEnrollmentOnly": true,
+    "teacherExactAssignedClassOnly": true,
+    "hodDepartmentScopeOnly": true,
+    "superadminGlobalScope": true,
+    "registrarAndBranchDenied": true,
+    "exactCourseGroupUserAndAssessmentMappings": true,
+    "definitionsAndScheduleStatusOnly": true,
+    "submissionsAttemptsGradesFeedbackAnswersExcluded": true,
+    "rawProviderIdentifiersExcluded": true,
+    "emailOrDisplayNameMatching": false,
+    "browserRpcAccess": false,
+    "maximumRetentionDays": 30,
+    "manualSqlUnapplied": true,
+    "normalizedRuntimeActivated": false,
+    "providerCalled": false,
+    "moodleWritePerformed": false,
+    "portalBehaviorChanged": false
+  }
+}

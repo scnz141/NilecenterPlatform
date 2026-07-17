@@ -1,0 +1,77 @@
+{
+  "version": 1,
+  "recordedOn": "2026-07-16",
+  "sourceCommit": "95b884ebdf12553ebe213bef01c45412abb54a3f",
+  "phase": "integration-stabilization-phase6-projection-contract",
+  "status": "contract-accepted-provider-activation-pending",
+  "projectionBoundary": {
+    "mode": "server-scoped-read-only",
+    "routes": 2,
+    "permittedCatalogRoles": 4,
+    "portalWriteRoutes": 0,
+    "productionMoodleWritesEnabled": false,
+    "exactExternalIdsRequired": true,
+    "titleMatchingAllowed": false,
+    "compatibilityStateFallbackAllowed": false,
+    "emptyMappingFallbackAllowed": false,
+    "minimumPrivilegeEvidenceCached": true,
+    "minimumPrivilegeCacheSeconds": 300
+  },
+  "focusedEvidence": {
+    "serviceAndRouteTests": 35,
+    "contractNegativeControls": 10,
+    "checks": [
+      "server-session-required-before-provider",
+      "active-canonical-identity-and-role-profile",
+      "student-enrollment-scope",
+      "teacher-assigned-course-scope",
+      "hod-department-scope",
+      "catalog-role-ownership",
+      "hidden-learner-content-filtering",
+      "exact-safe-integer-mapping",
+      "duplicate-and-orphan-mapping-rejection",
+      "deterministic-replay-without-state-mutation",
+      "stale-mapping-visibility-without-authority",
+      "repository-and-provider-outage-fail-closed",
+      "empty-scope-provider-short-circuit",
+      "minimum-privilege-probe-cache",
+      "no-moodle-write-route"
+    ]
+  },
+  "efficientValidation": {
+    "developmentCommand": "npm run verify:integration-fast",
+    "contractGates": 8,
+    "contractElapsedMs": 400,
+    "implementationGates": 3,
+    "implementationElapsedMs": 4400,
+    "fullPortalQaRunsDuringSlice": 1,
+    "replacesFinalGate": false
+  },
+  "qualityGate": {
+    "command": "QA_OUTPUT_DIR=output/playwright/integration-phase6-contract-20260716 scripts/verify.sh",
+    "artifact": "output/playwright/integration-phase6-contract-20260716/portal-qa-summary.json",
+    "artifactSha256": "b9f899005e9a14899111dcf7f66af47d0b8ca6b870618f780611919552933cbe",
+    "checkedAt": "2026-07-16T22:54:41.570Z",
+    "elapsedMs": 619666,
+    "totalChecks": 1598,
+    "failedChecks": 0,
+    "interrupted": false,
+    "unitTests": 659,
+    "testFiles": 54,
+    "typescriptPassed": true,
+    "buildPassed": true,
+    "verifyPassed": true
+  },
+  "remainingGates": [
+    "normalized-course-authority-repository",
+    "normalized-external-mapping-repository-and-rls-evidence",
+    "live-minimum-privilege-moodle-read-token-proof",
+    "projection-freshness-and-reconciliation-persistence",
+    "portal-ui-wiring",
+    "user-enrollment-assessment-and-outcome-projection-families"
+  ],
+  "productionRuntimeActivated": false,
+  "liveMoodleProviderContacted": false,
+  "productionDatabaseModified": false,
+  "credentialMaterialStored": false
+}

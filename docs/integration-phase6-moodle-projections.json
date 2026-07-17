@@ -1,0 +1,394 @@
+{
+  "version": 1,
+  "contractId": "integration-phase6-moodle-projections",
+  "phase": 6,
+  "mode": "server_scoped_read_only",
+  "sourceFiles": {
+    "routes": "server/moodleRoutes.ts",
+    "repository": "server/moodleProjectionRepository.ts",
+    "freshness": "server/moodleProjectionFreshness.ts",
+    "projectionService": "server/moodleProjectionService.ts",
+    "readModels": "server/moodleReadModels.ts",
+    "clientApi": "client/src/lib/backend/api.ts",
+    "clientPage": "client/src/pages/platform/MoodleSourcePage.tsx",
+    "clientContentPage": "client/src/pages/platform/MoodleCourseContentPage.tsx"
+  },
+  "authority": {
+    "moodle": "canonical_writable_for_provider_managed_fields",
+    "nileLearn": "read_only_projection",
+    "projectionDirection": "moodle_to_nile_learn",
+    "authorization": "authenticated_server_session_and_canonical_relationships",
+    "requestAuthorityAllowed": false,
+    "staleProjectionAuthorizesAccess": false
+  },
+  "externalIds": {
+    "routeIdentity": "internal_canonical_course_or_class_group_id",
+    "providerLookup": "exact_external_course_group_and_user_mappings",
+    "externalCourseIdFormat": "positive_decimal_string",
+    "oneToOneMappings": true,
+    "titleOrNameFallbackAllowed": false,
+    "missingMappingProjectsProviderData": false,
+    "ambiguousMappingProjectsProviderData": false,
+    "unmatchedProviderRecordVisibility": "superadmin_reconciliation_only"
+  },
+  "roleScopes": {
+    "student": "canonical_active_or_completed_enrollment",
+    "teacher": "canonical_active_assigned_course_run",
+    "headofdepartment": "canonical_department_scope",
+    "superadmin": "canonical_global_scope"
+  },
+  "readModels": {
+    "rawProviderPayloadAllowed": false,
+    "parsers": [
+      "parseMoodleCoursesResponse",
+      "parseMoodleCourseContentsResponse",
+      "parseStoredMoodleEnrollmentGroupProjection",
+      "parseStoredMoodleAssessmentStatusProjection",
+      "parseStoredMoodleAssignmentResultProjection",
+      "parseStoredMoodleQuizAttemptProjection",
+      "parseStoredMoodleGradeOutcomeProjection",
+      "parseStoredMoodleActivityOutcomeProjection"
+    ],
+    "sanitization": [
+      "bounded_arrays",
+      "bounded_text",
+      "contact_data_removed",
+      "unsafe_html_removed",
+      "invalid_payload_rejected"
+    ],
+    "allowedFields": {
+      "course": [
+        "sourceId",
+        "categorySourceId",
+        "title",
+        "shortTitle",
+        "visible",
+        "startsAt",
+        "endsAt",
+        "completionTrackingEnabled"
+      ],
+      "section": ["sourceId", "position", "title", "visible", "activities"],
+      "activity": [
+        "sourceId",
+        "instanceSourceId",
+        "type",
+        "title",
+        "visible",
+        "completionTracking"
+      ],
+      "enrollmentPerson": [
+        "internalCourseId",
+        "internalClassGroupId",
+        "providerState",
+        "mappingStatus",
+        "learners"
+      ],
+      "enrollmentLearner": [
+        "internalUserId",
+        "internalEnrollmentId",
+        "internalMembershipId",
+        "providerState",
+        "mappingStatus"
+      ],
+      "enrollmentAggregate": [
+        "internalCourseId",
+        "internalClassGroupId",
+        "providerState",
+        "mappingStatus",
+        "learnerCount",
+        "mappedLearnerCount",
+        "unmappedLearnerCount"
+      ],
+      "assessmentStatus": [
+        "internalCourseId",
+        "internalClassGroupId",
+        "providerState",
+        "mappingStatus",
+        "items"
+      ],
+      "assessmentStatusItem": [
+        "projectionId",
+        "kind",
+        "title",
+        "visibility",
+        "scheduleState",
+        "opensAt",
+        "dueAt",
+        "cutoffAt",
+        "closesAt",
+        "acceptsSubmissions"
+      ],
+      "assignmentResultPerson": [
+        "internalCourseId",
+        "internalClassGroupId",
+        "assignmentProjectionId",
+        "providerState",
+        "mappingStatus",
+        "learners"
+      ],
+      "assignmentResultLearner": [
+        "internalUserId",
+        "internalEnrollmentId",
+        "internalMembershipId",
+        "submissionState",
+        "attemptNumber",
+        "gradingState",
+        "latest",
+        "submittedAt",
+        "modifiedAt",
+        "score",
+        "maximumScore",
+        "gradedAt"
+      ],
+      "assignmentResultAggregate": [
+        "internalCourseId",
+        "internalClassGroupId",
+        "assignmentProjectionId",
+        "providerState",
+        "mappingStatus",
+        "learnerCount",
+        "submittedCount",
+        "gradedCount"
+      ],
+      "quizAttemptPerson": [
+        "internalCourseId",
+        "internalClassGroupId",
+        "quizProjectionId",
+        "providerState",
+        "mappingStatus",
+        "learners"
+      ],
+      "quizAttemptLearner": [
+        "internalUserId",
+        "internalEnrollmentId",
+        "internalMembershipId",
+        "attemptProjectionId",
+        "attemptState",
+        "attemptNumber",
+        "gradingState",
+        "latest",
+        "preview",
+        "startedAt",
+        "finishedAt",
+        "modifiedAt",
+        "score",
+        "maximumScore"
+      ],
+      "quizAttemptAggregate": [
+        "internalCourseId",
+        "internalClassGroupId",
+        "quizProjectionId",
+        "providerState",
+        "mappingStatus",
+        "learnerCount",
+        "attemptedCount",
+        "finishedCount",
+        "gradedCount"
+      ],
+      "gradeOutcomePerson": [
+        "internalCourseId",
+        "internalClassGroupId",
+        "gradeItemProjectionId",
+        "providerState",
+        "mappingStatus",
+        "learners"
+      ],
+      "gradeOutcomeLearner": [
+        "internalUserId",
+        "internalEnrollmentId",
+        "internalMembershipId",
+        "gradingState",
+        "score",
+        "maximumScore",
+        "gradedAt",
+        "releasedAt",
+        "feedback"
+      ],
+      "gradeOutcomeAggregate": [
+        "internalCourseId",
+        "internalClassGroupId",
+        "gradeItemProjectionId",
+        "providerState",
+        "mappingStatus",
+        "learnerCount",
+        "gradedCount",
+        "releasedCount",
+        "feedbackReleasedCount"
+      ],
+      "activityOutcomePerson": [
+        "internalCourseId",
+        "internalClassGroupId",
+        "activityProjectionId",
+        "activityKind",
+        "providerState",
+        "mappingStatus",
+        "learners"
+      ],
+      "activityOutcomeLearner": [
+        "internalUserId",
+        "internalEnrollmentId",
+        "internalMembershipId",
+        "completionState",
+        "scoreState",
+        "completedAt",
+        "score",
+        "maximumScore",
+        "releasedAt"
+      ],
+      "activityOutcomeAggregate": [
+        "internalCourseId",
+        "internalClassGroupId",
+        "activityProjectionId",
+        "activityKind",
+        "providerState",
+        "mappingStatus",
+        "learnerCount",
+        "startedCount",
+        "completedCount",
+        "passedCount",
+        "failedCount",
+        "scoredCount"
+      ]
+    }
+  },
+  "observationPolicies": {
+    "assignmentResults": {
+      "projectionFamily": "assignment_results",
+      "freshnessMinutes": 15,
+      "retentionDaysMaximum": 30,
+      "providerCallOnRead": false,
+      "providerWriteAllowed": false
+    },
+    "quizAttempts": {
+      "projectionFamily": "quiz_attempts",
+      "freshnessMinutes": 15,
+      "retentionDaysMaximum": 30,
+      "providerCallOnRead": false,
+      "providerWriteAllowed": false
+    },
+    "gradeOutcomes": {
+      "projectionFamily": "grade_outcomes",
+      "freshnessMinutes": 15,
+      "retentionDaysMaximum": 30,
+      "providerCallOnRead": false,
+      "providerWriteAllowed": false,
+      "learnerFeedbackRequiresRelease": true
+    },
+    "activityOutcomes": {
+      "projectionFamily": "activity_outcomes",
+      "activityKinds": ["lesson", "h5p", "scorm"],
+      "freshnessMinutes": 15,
+      "retentionDaysMaximum": 30,
+      "providerCallOnRead": false,
+      "providerWriteAllowed": false,
+      "releasedScoresOnly": true,
+      "rawTracksAllowed": false
+    }
+  },
+  "states": {
+    "freshness": ["fresh", "stale", "unavailable"],
+    "availability": ["available", "empty", "unavailable"],
+    "mapping": [
+      "discovered",
+      "matched",
+      "synced",
+      "stale",
+      "error",
+      "missing",
+      "unmatched"
+    ],
+    "reconciliationReasons": [
+      "missing_mapping",
+      "missing_provider_record",
+      "ambiguous_mapping"
+    ]
+  },
+  "projectionRoutes": [
+    {
+      "method": "GET",
+      "path": "/api/integrations/moodle/projections/courses",
+      "family": "course_catalog",
+      "roles": ["student", "teacher", "headofdepartment", "superadmin"],
+      "providerLookup": "server_resolved_exact_mapping"
+    },
+    {
+      "method": "GET",
+      "path": "/api/integrations/moodle/projections/courses/:courseId/content",
+      "family": "course_content",
+      "roles": ["student", "teacher", "headofdepartment", "superadmin"],
+      "providerLookup": "server_resolved_exact_mapping"
+    },
+    {
+      "method": "GET",
+      "path": "/api/integrations/moodle/projections/classes/:classGroupId/enrollment-groups",
+      "family": "enrollment_groups",
+      "roles": ["teacher", "headofdepartment", "superadmin"],
+      "providerLookup": "server_resolved_exact_mapping"
+    },
+    {
+      "method": "GET",
+      "path": "/api/integrations/moodle/projections/classes/:classGroupId/assessment-status",
+      "family": "assessment_status",
+      "roles": ["student", "teacher", "headofdepartment", "superadmin"],
+      "providerLookup": "server_resolved_exact_mapping"
+    },
+    {
+      "method": "GET",
+      "path": "/api/integrations/moodle/projections/classes/:classGroupId/assignments/:assignmentProjectionId/outcomes",
+      "family": "assignment_results",
+      "roles": ["student", "teacher", "headofdepartment", "superadmin"],
+      "providerLookup": "server_resolved_exact_mapping"
+    },
+    {
+      "method": "GET",
+      "path": "/api/integrations/moodle/projections/classes/:classGroupId/quizzes/:quizProjectionId/attempts",
+      "family": "quiz_attempts",
+      "roles": ["student", "teacher", "headofdepartment", "superadmin"],
+      "providerLookup": "server_resolved_exact_mapping"
+    },
+    {
+      "method": "GET",
+      "path": "/api/integrations/moodle/projections/classes/:classGroupId/grade-items/:gradeItemProjectionId/outcomes",
+      "family": "grade_outcomes",
+      "roles": ["student", "teacher", "headofdepartment", "superadmin"],
+      "providerLookup": "server_resolved_exact_mapping"
+    },
+    {
+      "method": "GET",
+      "path": "/api/integrations/moodle/projections/classes/:classGroupId/activities/:activityProjectionId/outcomes",
+      "family": "activity_outcomes",
+      "roles": ["student", "teacher", "headofdepartment", "superadmin"],
+      "providerLookup": "server_resolved_exact_mapping"
+    }
+  ],
+  "failureBehavior": {
+    "unauthenticated": "401_before_provider_call",
+    "unauthorized": "403_before_provider_call",
+    "canonicalAuthorityUnavailable": "503_no_client_or_demo_fallback",
+    "providerOutage": "unavailable_no_authority_fallback",
+    "missingMapping": "reconciliation_metadata_only_no_provider_projection",
+    "ambiguousMapping": "reject_ambiguous_mapping_no_provider_projection",
+    "staleProjection": "may_display_with_timestamp_but_never_authorizes"
+  },
+  "portalReadBoundary": {
+    "routeOwners": ["MoodleSourcePage", "MoodleCourseContentPage"],
+    "routes": [
+      "/app/{student|teacher|hod|admin}/moodle-source",
+      "/app/{student|teacher|hod|admin}/moodle-source/:courseId"
+    ],
+    "dataSource": "same_origin_server_projection",
+    "localStateFallbackAllowed": false,
+    "browserProviderCallAllowed": false,
+    "loadingStateRequired": true,
+    "emptyStateRequired": true,
+    "unavailableStateRequired": true,
+    "staleStateRequired": true,
+    "partialStateRequired": true
+  },
+  "writeBoundary": {
+    "allowedMethods": ["GET"],
+    "portalWriteRoutesAllowed": false,
+    "productionMoodleWritesEnabled": false,
+    "writeFunctionsAllowed": []
+  }
+}

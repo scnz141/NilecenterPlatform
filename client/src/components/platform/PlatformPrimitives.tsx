@@ -1,5 +1,5 @@
 import { motion } from "framer-motion";
-import type { ReactNode } from "react";
+import { isValidElement, type ReactNode } from "react";
 import { useUiLabel } from "@/lib/i18n-context";
 
 export const platformReveal = {
@@ -10,6 +10,30 @@ export const platformReveal = {
     transition: { duration: 0.42, delay, ease: [0.23, 1, 0.32, 1] as const },
   }),
 };
+
+const genericRoleContexts = new Set([
+  "admin",
+  "branch admin",
+  "head of department",
+  "hod",
+  "registrar",
+  "student",
+  "super admin",
+  "teacher",
+]);
+
+function shouldShowContext(context: ReactNode) {
+  if (typeof context === "string") {
+    return !genericRoleContexts.has(context.trim().toLowerCase());
+  }
+  if (isValidElement<{ children?: ReactNode }>(context)) {
+    const child = context.props.children;
+    if (typeof child === "string") {
+      return !genericRoleContexts.has(child.trim().toLowerCase());
+    }
+  }
+  return Boolean(context);
+}
 
 export function PlatformPageHeader({
   title,
@@ -34,7 +58,9 @@ export function PlatformPageHeader({
       variants={platformReveal}
     >
       <div className="platform-page-header-copy">
-        {context ? <div className="platform-page-context">{ui(context)}</div> : null}
+        {shouldShowContext(context) ? (
+          <div className="platform-page-context">{ui(context)}</div>
+        ) : null}
         <h1>{ui(title)}</h1>
         {description ? <p>{ui(description)}</p> : null}
       </div>
@@ -68,7 +94,9 @@ export function PlatformWorkspaceHeader({
   return (
     <section className={`platform-workspace-header ${className}`.trim()}>
       <div className={`platform-workspace-header-copy ${copyClassName}`.trim()}>
-        {context ? <div className="platform-page-context">{ui(context)}</div> : null}
+        {shouldShowContext(context) ? (
+          <div className="platform-page-context">{ui(context)}</div>
+        ) : null}
         <h2>{ui(title)}</h2>
         {description ? <p>{ui(description)}</p> : null}
         {meta}
