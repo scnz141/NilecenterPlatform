@@ -192,6 +192,15 @@ const NileFormsOfflinePage = lazy(
 const NileFormsMigrationPage = lazy(
   () => import("./pages/platform/NileFormsMigrationPage")
 );
+const NileRequestsListPage = lazy(
+  () => import("./pages/platform/NileRequestsListPage")
+);
+const NileRequestDetailPage = lazy(
+  () => import("./pages/platform/NileRequestDetailPage")
+);
+const NileRequestCreatePage = lazy(
+  () => import("./pages/platform/NileRequestCreatePage")
+);
 const NotFound = lazy(() => import("./pages/NotFound"));
 
 const dashboardRoutes: { path: string; role: Role }[] = [
@@ -346,6 +355,35 @@ function Router() {
 
         {formsRoleRoutes.map(route => (
           <Fragment key={route.prefix}>
+            {route.role === "branchadmin" || route.role === "superadmin" ? (
+              <Route
+                path={`${route.prefix}/requests/from-submission/:submissionId`}
+              >
+                {params => (
+                  <ProtectedRoute role={route.role} pageId="request-create">
+                    <NileRequestCreatePage
+                      role={route.role}
+                      submissionId={params.submissionId}
+                    />
+                  </ProtectedRoute>
+                )}
+              </Route>
+            ) : null}
+            <Route path={`${route.prefix}/requests/:requestId`}>
+              {params => (
+                <ProtectedRoute role={route.role} pageId="request-detail">
+                  <NileRequestDetailPage
+                    role={route.role}
+                    requestId={params.requestId}
+                  />
+                </ProtectedRoute>
+              )}
+            </Route>
+            <Route path={`${route.prefix}/requests`}>
+              <ProtectedRoute role={route.role} pageId="requests">
+                <NileRequestsListPage role={route.role} />
+              </ProtectedRoute>
+            </Route>
             {route.manage ? (
               <>
                 <Route path={`${route.prefix}/forms/manage/new`}>

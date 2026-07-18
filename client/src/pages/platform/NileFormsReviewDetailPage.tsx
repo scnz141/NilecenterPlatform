@@ -20,7 +20,9 @@ import {
 } from "@/lib/forms/api";
 import { formsRoute } from "@/lib/forms/routes";
 import type { Role } from "@/lib/platformData";
+import { requestsRoute } from "@/lib/requests/routes";
 import { getLocalizedText } from "@shared/nileForms";
+import { branchIncidentRequestProfile } from "@shared/nileRequests";
 
 function displayValue(value: unknown) {
   if (typeof value === "boolean") return value ? "Yes" : "No";
@@ -96,6 +98,16 @@ export default function NileFormsReviewDetailPage({
     : false;
   const failedPromotion = detail?.promotions.find(
     item => item.status === "failed"
+  );
+  const canCreateRequest = Boolean(
+    detail &&
+      (role === "branchadmin" || role === "superadmin") &&
+      detail.submission.status === "accepted" &&
+      detail.definition.id ===
+        branchIncidentRequestProfile.sourceDefinitionId &&
+      detail.definition.key ===
+        branchIncidentRequestProfile.sourceDefinitionKey &&
+      detail.version.id === branchIncidentRequestProfile.sourceVersionId
   );
 
   const decide = async (decision: "under_review" | "accepted" | "rejected") => {
@@ -374,6 +386,27 @@ export default function NileFormsReviewDetailPage({
                     {detail.promotions[0]?.resultingEntityId}
                   </p>
                 </div>
+              </section>
+            ) : null}
+
+            {canCreateRequest ? (
+              <section className="nile-form-review-actions">
+                <header>
+                  <h2>Create operational request</h2>
+                </header>
+                <p>
+                  Confirm the mapped incident before creating a separate,
+                  auditable request. This submission remains unchanged.
+                </p>
+                <Link
+                  href={requestsRoute(
+                    role,
+                    `/from-submission/${submission.id}`
+                  )}
+                  className="platform-primary-button"
+                >
+                  <Send size={16} /> Continue to request
+                </Link>
               </section>
             ) : null}
 

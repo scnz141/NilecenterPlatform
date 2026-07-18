@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  evaluateFormCalculations,
   evaluateFormLogic,
   getOfflineEligibility,
   normalizeAndValidateFormAnswers,
@@ -13,7 +14,79 @@ import {
 } from "@shared/nileFormsFixtures";
 
 describe("Nile Forms schema and answer authority", () => {
-  it("validates all seven bilingual initial templates", () => {
+  const calculationContent = (): FormVersionContent => ({
+    contractVersion: 2,
+    title: { en: "Fee summary", ar: "ملخص الرسوم", tr: "Ücret özeti" },
+    description: { en: "", ar: "", tr: "" },
+    defaultLanguage: "en",
+    languages: ["en", "ar", "tr"],
+    submitLabel: { en: "Submit", ar: "إرسال", tr: "Gönder" },
+    confirmationMessage: {
+      en: "Received",
+      ar: "تم الاستلام",
+      tr: "Alındı",
+    },
+    pages: [
+      {
+        id: "fees",
+        title: { en: "Fees", ar: "الرسوم", tr: "Ücretler" },
+        fields: [
+          {
+            id: "tuition",
+            type: "number",
+            label: { en: "Tuition", ar: "الرسوم", tr: "Öğrenim ücreti" },
+            required: true,
+          },
+          {
+            id: "materials",
+            type: "number",
+            label: { en: "Materials", ar: "المواد", tr: "Materyaller" },
+            required: true,
+          },
+          {
+            id: "subtotal",
+            type: "number",
+            label: {
+              en: "Subtotal",
+              ar: "المجموع الفرعي",
+              tr: "Ara toplam",
+            },
+            required: true,
+          },
+          {
+            id: "total",
+            type: "number",
+            label: { en: "Total", ar: "الإجمالي", tr: "Toplam" },
+            required: true,
+          },
+        ],
+      },
+    ],
+    logic: [],
+    calculations: [
+      {
+        id: "subtotal_calculation",
+        targetFieldId: "subtotal",
+        operator: "sum",
+        operands: [
+          { type: "field", fieldId: "tuition" },
+          { type: "field", fieldId: "materials" },
+        ],
+      },
+      {
+        id: "total_calculation",
+        targetFieldId: "total",
+        operator: "multiply",
+        precision: 2,
+        operands: [
+          { type: "calculation", calculationId: "subtotal_calculation" },
+          { type: "constant", value: 1.1 },
+        ],
+      },
+    ],
+  });
+
+  it("validates all seven trilingual v2 initial templates", () => {
     const state = createNileFormsSeedState();
 
     expect(state.definitions).toHaveLength(7);
@@ -21,7 +94,8 @@ describe("Nile Forms schema and answer authority", () => {
     for (const version of state.versions) {
       const result = validateFormVersionContent(version.content);
       expect(result.issues).toEqual([]);
-      expect(version.content.languages).toEqual(["en", "ar"]);
+      expect(version.content.contractVersion).toBe(2);
+      expect(version.content.languages).toEqual(["en", "ar", "tr"]);
     }
   });
 
@@ -191,6 +265,8 @@ describe("Nile Forms schema and answer authority", () => {
   it("omits skipped-page answers and does not require skipped-page fields", () => {
     const content: FormVersionContent = {
       ...structuredClone(nileFormsTemplateContent.support),
+      contractVersion: 1,
+      languages: ["en", "ar"],
       pages: [
         {
           id: "start",
@@ -331,5 +407,108 @@ describe("Nile Forms schema and answer authority", () => {
       eligible: false,
       restrictedFields: ["location"],
     });
+  });
+
+  it("requires complete English, Arabic, and Turkish content for contract v2", () => {
+    const incomplete = calculationContent();
+    delete incomplete.pages[0].fields[0].label.tr;
+
+    const result = validateFormVersionContent(incomplete);
+
+    expect(result.ok).toBe(false);
+    expect(result.issues).toContainEqual({
+      path: "pages.0.fields.0.label.tr",
+      message: "Turkish content is required for contract version 2",
+    });
+  });
+
+  it("keeps field IDs stable while returning Turkish validation messages", () => {
+    const content = calculationContent();
+    const result = normalizeAndValidateFormAnswers(
+      content,
+      { tuition: "not-a-number", materials: 20 },
+      "tr"
+    );
+
+    expect(result.ok).toBe(false);
+    expect(Object.keys(result.errors)).toContain("tuition");
+    expect(result.errors.tuition).toContain("Öğrenim ücreti sayı olmalıdır");
+    expect(result.errorDetails.tuition).toContainEqual({
+      key: "number",
+      params: { label: "Öğrenim ücreti" },
+    });
+  });
+
+  it("calculates deterministic derived values and ignores submitted overrides", () => {
+    const content = calculationContent();
+    expect(validateFormVersionContent(content).issues).toEqual([]);
+
+    const evaluated = evaluateFormCalculations(content, {
+      tuition: 100,
+      materials: 25,
+      subtotal: 9999,
+      total: 9999,
+    });
+    const result = normalizeAndValidateFormAnswers(content, {
+      tuition: 100,
+      materials: 25,
+      subtotal: 9999,
+      total: 9999,
+    });
+
+    expect(evaluated.answers).toMatchObject({ subtotal: 125, total: 137.5 });
+    expect(result.ok).toBe(true);
+    expect(result.answers).toEqual({
+      tuition: 100,
+      materials: 25,
+      subtotal: 125,
+      total: 137.5,
+    });
+  });
+
+  it("rejects unknown and cyclic calculation dependencies", () => {
+    const unknown = calculationContent();
+    unknown.calculations![1].operands[0] = {
+      type: "calculation",
+      calculationId: "missing_calculation",
+    };
+    expect(validateFormVersionContent(unknown).issues).toContainEqual({
+      path: "calculations.1.operands",
+      message: "Unknown calculation: missing_calculation",
+    });
+
+    const cyclic = calculationContent();
+    cyclic.calculations![0].operands[0] = {
+      type: "calculation",
+      calculationId: "total_calculation",
+    };
+    expect(validateFormVersionContent(cyclic).issues).toContainEqual({
+      path: "calculations",
+      message: "Calculations cannot contain cycles",
+    });
+  });
+
+  it("reports division-by-zero as a localized derived-field error", () => {
+    const content = calculationContent();
+    content.calculations = [
+      {
+        id: "total_calculation",
+        targetFieldId: "total",
+        operator: "divide",
+        operands: [
+          { type: "field", fieldId: "tuition" },
+          { type: "field", fieldId: "materials" },
+        ],
+      },
+    ];
+
+    const result = normalizeAndValidateFormAnswers(
+      content,
+      { tuition: 100, materials: 0, subtotal: 0 },
+      "tr"
+    );
+
+    expect(result.ok).toBe(false);
+    expect(result.errors.total).toEqual(["Toplam hesaplanamadı"]);
   });
 });

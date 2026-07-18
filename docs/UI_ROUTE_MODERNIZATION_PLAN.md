@@ -45,13 +45,13 @@ template. Each route family needs a page-type-specific solution.
 - Do not create a new generic `FeaturePage` replacement.
 - Do not add charts merely to fill space. A chart must answer an operational
   question and have text alternatives.
-- Preserve the protected portal QA baseline of 1,598 checks and 0 failures.
+- Preserve the protected portal QA baseline of 1,634 checks and 0 failures.
 - A portal family moves forward only after desktop, tablet/mobile, and
   ultrawide review in the Codex in-app Browser.
 
 ## Rollout Order
 
-### Phase 12A: Super Admin System Workspaces - current slice
+### Phase 12A: Super Admin System Workspaces - accepted
 
 Routes:
 
@@ -75,7 +75,17 @@ Target:
   status visualization and short service rows. Technical internals stay on the
   dedicated Connections page.
 
-### Phase 12B: Student Learning Core
+Acceptance:
+
+- Settings remains a single grouped school-setup form with one save action.
+- Connections remains list-first with a bounded readiness inspector and a
+  mobile-safe two-column status filter.
+- Health remains a concise readiness report with short service rows.
+- Desktop and mobile browser review passed with no horizontal overflow.
+- TypeScript, 856 unit tests, the production build, and the full 1,634/0 portal
+  QA baseline passed on 2026-07-18.
+
+### Phase 12B: Student Learning Core - accepted
 
 Routes:
 
@@ -97,7 +107,19 @@ Target: a course list, one course path, one lesson/player, one live class, and
 one assessment response at a time. Preserve immersive board mode while making
 desktop, tablet, and mobile controls predictable.
 
-### Phase 12C: Teacher Delivery And Assessment
+Acceptance:
+
+- Course discovery, course path, and lesson/player routes remain focused on one
+  learning job each.
+- The live route renders enrolled class/session context instead of falling back
+  to an unrelated practice lesson.
+- Closed assignment and quiz routes render the learner's scoped saved response,
+  result, and teacher feedback when those records exist.
+- Desktop and mobile in-app Browser review passed without horizontal overflow.
+- TypeScript, 856 unit tests, the production build, the three focused student
+  workflows, and the full 1,634/0 portal QA baseline passed on 2026-07-18.
+
+### Phase 12C: Teacher Delivery And Assessment - accepted
 
 Routes:
 
@@ -123,7 +145,20 @@ authoring, calendar creation, and Quran review stay separate route jobs. In
 particular, roster and attendance controls must remain usable in classroom and
 mobile widths.
 
-### Phase 12D: Registrar Operations
+Acceptance:
+
+- Class delivery, attendance, materials, assignment lifecycle, grading, quiz
+  authoring/review, question-bank, calendar, and Quran review remain separate
+  route jobs.
+- Misleading hard-coded assignment and grading workload badges were removed;
+  the sidebar no longer claims counts that are not derived from scoped state.
+- Quran review copy now covers both pending and already-recorded feedback.
+- Desktop and representative mobile in-app Browser review passed without
+  horizontal overflow.
+- TypeScript, 856 unit tests, the production build, 60 focused teacher workflow
+  checks, and the full 1,634/0 portal QA baseline passed on 2026-07-18.
+
+### Phase 12D: Registrar Operations - accepted
 
 Routes:
 
@@ -149,7 +184,22 @@ Target: each admission stage remains a focused desk: find records, inspect one
 record, or complete one handoff. Do not return pipeline, payment, enrollment,
 and activity panels to the same screen.
 
-### Phase 12E: HOD Academic Governance
+Acceptance:
+
+- Leads, applications, placement, students, enrollment, payments, and schedule
+  remain separate route jobs with dedicated list, detail, create, and handoff
+  surfaces.
+- Misleading hard-coded lead and placement sidebar counts were removed; the
+  navigation no longer contradicts scoped server-backed records.
+- The enrollment transfer and status controls use a dedicated responsive form
+  layout instead of the unrelated room form grid.
+- Desktop and representative mobile in-app Browser review passed without
+  horizontal overflow across the registrar route family.
+- TypeScript, 856 unit tests, the production build, 50 focused registrar
+  workflow checks, and the full 1,634/0 portal QA baseline passed on
+  2026-07-18.
+
+### Phase 12E: HOD Academic Governance - accepted
 
 Routes:
 
@@ -171,7 +221,18 @@ Target: academic governance separates catalog, curriculum, delivery, review,
 and certificate approvals by route. The component should be split only where a
 single page currently owns more than one of those jobs.
 
-### Phase 12F: Branch Operations
+Acceptance:
+
+- Catalog, curriculum, class delivery, schedule, assessment creation/review,
+  and certificate decisions remain separate route jobs.
+- The misleading hard-coded certificate badge was removed; navigation no
+  longer claims a queue that is not derived from scoped certificate state.
+- Desktop and representative mobile in-app Browser review passed without
+  horizontal overflow across fourteen list, detail, create, and review routes.
+- TypeScript, 856 unit tests, the production build, 47 focused HOD workflow
+  checks, and the full 1,634/0 portal QA baseline passed on 2026-07-18.
+
+### Phase 12F: Branch Operations - accepted
 
 Routes:
 
@@ -199,7 +260,18 @@ Target: local operations use clear tables, room/schedule context, and one
 branch scope. Long operational rows should become priority-based mobile rows,
 not narrow desktop tables.
 
-### Phase 12G: Remaining Super Admin And Forms Review
+Acceptance:
+
+- Students, teachers, classes, rooms, schedule, attendance, and payments
+  remain separate branch-scoped route jobs.
+- The misleading hard-coded attendance badge was removed; navigation no
+  longer advertises exceptions that are not derived from scoped state.
+- Desktop and representative mobile in-app Browser review passed without
+  horizontal overflow across thirteen list, detail, and create routes.
+- TypeScript, 856 unit tests, the production build, 67 focused branch workflow
+  checks, and the full 1,634/0 portal QA baseline passed on 2026-07-18.
+
+### Phase 12G: Remaining Super Admin And Forms Review - accepted
 
 Routes include courses, departments, programs, certificates, schedule,
 reports, activity, profile, and forms builder/review surfaces that are not
@@ -212,6 +284,19 @@ the Nile Forms page family.
 Target: complete route-specific cleanup only after the preceding portal slices.
 Nile Forms receives separate visual review because its canvas and inspector are
 an authoring environment, not a standard dashboard.
+
+Acceptance:
+
+- Academic directories, course governance, schedule, reports, activity,
+  profile, and Forms remain separate route jobs with distinct semantic
+  headings.
+- The Forms builder remains a purpose-built authoring workspace; assigned,
+  manage, publish, assignment, and review work stay on dedicated routes.
+- Desktop and mobile in-app Browser review passed without horizontal overflow
+  across thirty-two representative Super Admin and Forms routes.
+- TypeScript, 856 unit tests, the production build, 60 focused Super Admin
+  checks, focused Forms submission and assignment checks, and the full
+  1,634/0 portal QA baseline passed on 2026-07-18.
 
 ## Slice Workflow
 

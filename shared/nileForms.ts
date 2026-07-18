@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { NileRequestsState } from "./nileRequests.js";
 
 export const formFieldTypes = [
   "heading",
@@ -19,7 +20,8 @@ export const formFieldTypes = [
 ] as const;
 
 export type FormFieldType = (typeof formFieldTypes)[number];
-export type FormLocale = "en" | "ar";
+export const formLocales = ["en", "ar", "tr"] as const;
+export type FormLocale = (typeof formLocales)[number];
 export type FormOwnerRole =
   | "registrar"
   | "headofdepartment"
@@ -40,6 +42,7 @@ export type FormPermission =
 export type LocalizedText = {
   en: string;
   ar: string;
+  tr?: string;
 };
 
 export type FormChoice = {
@@ -54,6 +57,35 @@ export type FormFieldValidation = {
   max?: number;
   minSelections?: number;
   maxSelections?: number;
+};
+
+export const formValidationMessageKeys = [
+  "required",
+  "text",
+  "min_length",
+  "max_length",
+  "email",
+  "phone",
+  "date",
+  "time",
+  "number",
+  "min",
+  "max",
+  "yes_no",
+  "consent",
+  "choice",
+  "choice_list",
+  "min_selections",
+  "max_selections",
+  "calculation",
+] as const;
+
+export type FormValidationMessageKey =
+  (typeof formValidationMessageKeys)[number];
+
+export type FormValidationMessage = {
+  key: FormValidationMessageKey;
+  params: Record<string, string | number>;
 };
 
 export type FormDataClass =
@@ -135,7 +167,33 @@ export type FormLogicRule = {
   action: FormLogicAction;
 };
 
+export const formCalculationOperators = [
+  "sum",
+  "subtract",
+  "multiply",
+  "divide",
+  "minimum",
+  "maximum",
+  "average",
+] as const;
+
+export type FormCalculationOperator = (typeof formCalculationOperators)[number];
+
+export type FormCalculationOperand =
+  | { type: "field"; fieldId: string }
+  | { type: "constant"; value: number }
+  | { type: "calculation"; calculationId: string };
+
+export type FormCalculation = {
+  id: string;
+  targetFieldId: string;
+  operator: FormCalculationOperator;
+  operands: FormCalculationOperand[];
+  precision?: number;
+};
+
 export type FormVersionContent = {
+  contractVersion?: 1 | 2;
   title: LocalizedText;
   description: LocalizedText;
   defaultLanguage: FormLocale;
@@ -144,6 +202,7 @@ export type FormVersionContent = {
   confirmationMessage: LocalizedText;
   pages: FormPage[];
   logic: FormLogicRule[];
+  calculations?: FormCalculation[];
 };
 
 export type FormDefinitionStatus = "draft" | "active" | "retired";
@@ -416,6 +475,7 @@ export type NileFormsState = {
   syncReceipts: FormSyncReceipt[];
   legacyImportRuns: FormLegacyImportRun[];
   legacyImportRecords: FormLegacyImportRecord[];
+  requests: NileRequestsState;
 };
 
 const identifierSchema = z
@@ -427,10 +487,12 @@ const identifierSchema = z
 const localizedTextSchema = z.object({
   en: z.string().trim().min(1).max(600),
   ar: z.string().trim().min(1).max(600),
+  tr: z.string().trim().min(1).max(600).optional(),
 });
 const optionalLocalizedTextSchema = z.object({
   en: z.string().trim().max(2_000),
   ar: z.string().trim().max(2_000),
+  tr: z.string().trim().max(2_000).optional(),
 });
 const formChoiceSchema = z.object({
   id: identifierSchema,
@@ -530,14 +592,29 @@ const logicRuleSchema = z.object({
   action: logicActionSchema,
 });
 
+const calculationOperandSchema = z.discriminatedUnion("type", [
+  z.object({ type: z.literal("field"), fieldId: identifierSchema }),
+  z.object({ type: z.literal("constant"), value: z.number().finite() }),
+  z.object({
+    type: z.literal("calculation"),
+    calculationId: identifierSchema,
+  }),
+]);
+
+const calculationSchema = z.object({
+  id: identifierSchema,
+  targetFieldId: identifierSchema,
+  operator: z.enum(formCalculationOperators),
+  operands: z.array(calculationOperandSchema).min(1).max(8),
+  precision: z.number().int().min(0).max(6).optional(),
+});
+
 export const formVersionContentSchema = z.object({
+  contractVersion: z.union([z.literal(1), z.literal(2)]).optional(),
   title: localizedTextSchema,
   description: optionalLocalizedTextSchema,
-  defaultLanguage: z.enum(["en", "ar"]),
-  languages: z
-    .array(z.enum(["en", "ar"]))
-    .min(1)
-    .max(2),
+  defaultLanguage: z.enum(formLocales),
+  languages: z.array(z.enum(formLocales)).min(1).max(3),
   submitLabel: localizedTextSchema,
   confirmationMessage: optionalLocalizedTextSchema,
   pages: z
@@ -552,6 +629,7 @@ export const formVersionContentSchema = z.object({
     .min(1)
     .max(20),
   logic: z.array(logicRuleSchema).max(200),
+  calculations: z.array(calculationSchema).max(50).optional(),
 });
 
 export type FormValidationIssue = {
@@ -610,6 +688,75 @@ function findCycle(graph: Map<string, Set<string>>) {
   return Array.from(graph.keys()).some(walk);
 }
 
+function validateLocalizedText(
+  value: LocalizedText | undefined,
+  path: string,
+  required: boolean,
+  issues: FormValidationIssue[]
+) {
+  if (!value) return;
+  const hasContent = [value.en, value.ar, value.tr].some(item => item?.trim());
+  if ((required || hasContent) && !value.tr?.trim()) {
+    issues.push(
+      issue(`${path}.tr`, "Turkish content is required for contract version 2")
+    );
+  }
+}
+
+function validateVersionTwoLocalization(
+  content: FormVersionContent,
+  issues: FormValidationIssue[]
+) {
+  const enabled = new Set(content.languages);
+  if (
+    enabled.size !== formLocales.length ||
+    formLocales.some(locale => !enabled.has(locale))
+  ) {
+    issues.push(
+      issue(
+        "languages",
+        "Contract version 2 requires English, Arabic, and Turkish"
+      )
+    );
+  }
+  validateLocalizedText(content.title, "title", true, issues);
+  validateLocalizedText(content.description, "description", false, issues);
+  validateLocalizedText(content.submitLabel, "submitLabel", true, issues);
+  validateLocalizedText(
+    content.confirmationMessage,
+    "confirmationMessage",
+    false,
+    issues
+  );
+  content.pages.forEach((page, pageIndex) => {
+    validateLocalizedText(page.title, `pages.${pageIndex}.title`, true, issues);
+    validateLocalizedText(
+      page.description,
+      `pages.${pageIndex}.description`,
+      false,
+      issues
+    );
+    page.fields.forEach((field, fieldIndex) => {
+      const fieldPath = `pages.${pageIndex}.fields.${fieldIndex}`;
+      validateLocalizedText(field.label, `${fieldPath}.label`, true, issues);
+      validateLocalizedText(
+        field.description,
+        `${fieldPath}.description`,
+        false,
+        issues
+      );
+      field.options?.forEach((option, optionIndex) =>
+        validateLocalizedText(
+          option.label,
+          `${fieldPath}.options.${optionIndex}.label`,
+          true,
+          issues
+        )
+      );
+    });
+  });
+}
+
 export function validateFormVersionContent(input: unknown): {
   ok: boolean;
   content?: FormVersionContent;
@@ -634,6 +781,9 @@ export function validateFormVersionContent(input: unknown): {
   }
   if (new Set(content.languages).size !== content.languages.length) {
     issues.push(issue("languages", "Languages must be unique"));
+  }
+  if (content.contractVersion === 2) {
+    validateVersionTwoLocalization(content, issues);
   }
 
   const pageById = new Map<string, FormPage>();
@@ -708,6 +858,97 @@ export function validateFormVersionContent(input: unknown): {
     issues.push(
       issue("pages", "A form version may contain at most 200 fields")
     );
+  }
+
+  const calculations = content.calculations ?? [];
+  const calculationById = new Map<string, FormCalculation>();
+  const targetFieldIds = new Set<string>();
+  const calculationGraph = new Map<string, Set<string>>();
+  calculations.forEach((calculation, calculationIndex) => {
+    const path = `calculations.${calculationIndex}`;
+    if (calculationById.has(calculation.id)) {
+      issues.push(issue(`${path}.id`, "Calculation IDs must be unique"));
+    }
+    calculationById.set(calculation.id, calculation);
+    if (targetFieldIds.has(calculation.targetFieldId)) {
+      issues.push(
+        issue(
+          `${path}.targetFieldId`,
+          "A field may be the target of only one calculation"
+        )
+      );
+    }
+    targetFieldIds.add(calculation.targetFieldId);
+  });
+  calculations.forEach((calculation, calculationIndex) => {
+    const path = `calculations.${calculationIndex}`;
+    const target = fieldById.get(calculation.targetFieldId);
+    if (!target || target.type !== "number") {
+      issues.push(
+        issue(
+          `${path}.targetFieldId`,
+          "Calculation targets must be number fields"
+        )
+      );
+    }
+    const requiredOperandCount =
+      calculation.operator === "subtract" || calculation.operator === "divide"
+        ? 2
+        : calculation.operator === "multiply"
+          ? 2
+          : 1;
+    if (
+      (calculation.operator === "subtract" ||
+        calculation.operator === "divide") &&
+      calculation.operands.length !== requiredOperandCount
+    ) {
+      issues.push(
+        issue(`${path}.operands`, `${calculation.operator} requires 2 operands`)
+      );
+    } else if (calculation.operands.length < requiredOperandCount) {
+      issues.push(
+        issue(
+          `${path}.operands`,
+          `${calculation.operator} requires at least ${requiredOperandCount} operands`
+        )
+      );
+    }
+    for (const operand of calculation.operands) {
+      if (operand.type === "constant") continue;
+      if (operand.type === "field") {
+        const source = fieldById.get(operand.fieldId);
+        if (!source || !["number", "rating"].includes(source.type)) {
+          issues.push(
+            issue(
+              `${path}.operands`,
+              `Unknown numeric source field: ${operand.fieldId}`
+            )
+          );
+        } else if (targetFieldIds.has(operand.fieldId)) {
+          issues.push(
+            issue(
+              `${path}.operands`,
+              "Calculated fields must be referenced by calculation ID"
+            )
+          );
+        }
+        continue;
+      }
+      if (!calculationById.has(operand.calculationId)) {
+        issues.push(
+          issue(
+            `${path}.operands`,
+            `Unknown calculation: ${operand.calculationId}`
+          )
+        );
+      }
+      const dependencies = calculationGraph.get(calculation.id) ?? new Set();
+      dependencies.add(operand.calculationId);
+      calculationGraph.set(calculation.id, dependencies);
+    }
+  });
+  if (findCycle(calculationGraph)) {
+    issues.push(issue("calculations", "Calculations cannot contain cycles"));
   }
 
   const dependencyGraph = new Map<string, Set<string>>();
@@ -1091,6 +1332,102 @@ export function evaluateFormLogic(
   return { ...logic, reachablePageIds };
 }
 
+export function getFormCalculationTargetIds(content: FormVersionContent) {
+  return new Set((content.calculations ?? []).map(item => item.targetFieldId));
+}
+
+export type FormCalculationState = {
+  answers: Record<string, unknown>;
+  values: Record<string, number>;
+  errors: Record<string, "cycle" | "invalid" | "division_by_zero">;
+};
+
+export function evaluateFormCalculations(
+  content: FormVersionContent,
+  input: Record<string, unknown>
+): FormCalculationState {
+  const calculations = content.calculations ?? [];
+  const answers = { ...input };
+  const values: Record<string, number> = {};
+  const errors: FormCalculationState["errors"] = {};
+  const byId = new Map(calculations.map(item => [item.id, item]));
+  const visiting = new Set<string>();
+
+  for (const targetId of Array.from(getFormCalculationTargetIds(content))) {
+    delete answers[targetId];
+  }
+
+  const evaluate = (calculationId: string, depth = 0): number | undefined => {
+    if (values[calculationId] !== undefined) return values[calculationId];
+    const calculation = byId.get(calculationId);
+    if (!calculation || depth > 50) return undefined;
+    if (visiting.has(calculationId)) {
+      errors[calculation.targetFieldId] = "cycle";
+      return undefined;
+    }
+    visiting.add(calculationId);
+    const operands = calculation.operands.map(operand => {
+      if (operand.type === "constant") return operand.value;
+      if (operand.type === "calculation") {
+        return evaluate(operand.calculationId, depth + 1);
+      }
+      const value = answers[operand.fieldId];
+      return typeof value === "number" && Number.isFinite(value)
+        ? value
+        : undefined;
+    });
+    visiting.delete(calculationId);
+    if (operands.some(value => value === undefined)) {
+      errors[calculation.targetFieldId] = "invalid";
+      return undefined;
+    }
+    const numbers = operands as number[];
+    let result: number;
+    switch (calculation.operator) {
+      case "sum":
+        result = numbers.reduce((total, value) => total + value, 0);
+        break;
+      case "subtract":
+        result = numbers[0] - numbers[1];
+        break;
+      case "multiply":
+        result = numbers.reduce((total, value) => total * value, 1);
+        break;
+      case "divide":
+        if (numbers[1] === 0) {
+          errors[calculation.targetFieldId] = "division_by_zero";
+          return undefined;
+        }
+        result = numbers[0] / numbers[1];
+        break;
+      case "minimum":
+        result = Math.min(...numbers);
+        break;
+      case "maximum":
+        result = Math.max(...numbers);
+        break;
+      case "average":
+        result =
+          numbers.reduce((total, value) => total + value, 0) / numbers.length;
+        break;
+    }
+    if (!Number.isFinite(result)) {
+      errors[calculation.targetFieldId] = "invalid";
+      return undefined;
+    }
+    const rounded =
+      calculation.precision === undefined
+        ? result
+        : Number(result.toFixed(calculation.precision));
+    values[calculationId] = rounded;
+    answers[calculation.targetFieldId] = rounded;
+    return rounded;
+  };
+
+  calculations.forEach(item => evaluate(item.id));
+  return { answers, values, errors };
+}
+
 function normalizeAnswer(field: FormField, value: unknown) {
   if (isEmpty(value)) return undefined;
   if (field.type === "number" || field.type === "rating") {
@@ -1110,10 +1447,105 @@ function normalizeAnswer(field: FormField, value: unknown) {
   return typeof value === "string" ? value.trim() : value;
 }
 
-function validateAnswer(field: FormField, value: unknown) {
-  const errors: string[] = [];
+const validationMessageFactories: Record<
+  FormLocale,
+  Record<
+    FormValidationMessageKey,
+    (params: Record<string, string | number>) => string
+  >
+> = {
+  en: {
+    required: value => `${value.label} is required`,
+    text: value => `${value.label} must be text`,
+    min_length: value =>
+      `${value.label} must contain at least ${value.min} characters`,
+    max_length: value =>
+      `${value.label} must contain at most ${value.max} characters`,
+    email: value => `${value.label} must be a valid email address`,
+    phone: value => `${value.label} must be a valid phone number`,
+    date: value => `${value.label} must be a valid YYYY-MM-DD date`,
+    time: value => `${value.label} must use 24-hour HH:MM time`,
+    number: value => `${value.label} must be a number`,
+    min: value => `${value.label} must be at least ${value.min}`,
+    max: value => `${value.label} must be at most ${value.max}`,
+    yes_no: value => `${value.label} must be yes or no`,
+    consent: value => `${value.label} must be accepted`,
+    choice: value => `${value.label} contains an unavailable choice`,
+    choice_list: value => `${value.label} must be a list of choices`,
+    min_selections: value =>
+      `${value.label} requires at least ${value.min} choices`,
+    max_selections: value =>
+      `${value.label} allows at most ${value.max} choices`,
+    calculation: value => `${value.label} could not be calculated`,
+  },
+  ar: {
+    required: value => `${value.label} مطلوب`,
+    text: value => `${value.label} يجب أن يكون نصاً`,
+    min_length: value => `${value.label} يجب ألا يقل عن ${value.min} أحرف`,
+    max_length: value => `${value.label} يجب ألا يزيد عن ${value.max} أحرف`,
+    email: value => `${value.label} يجب أن يكون بريداً إلكترونياً صالحاً`,
+    phone: value => `${value.label} يجب أن يكون رقم هاتف صالحاً`,
+    date: value => `${value.label} يجب أن يكون تاريخاً صالحاً بصيغة YYYY-MM-DD`,
+    time: value => `${value.label} يجب أن يستخدم صيغة 24 ساعة HH:MM`,
+    number: value => `${value.label} يجب أن يكون رقماً`,
+    min: value => `${value.label} يجب ألا يقل عن ${value.min}`,
+    max: value => `${value.label} يجب ألا يزيد عن ${value.max}`,
+    yes_no: value => `${value.label} يجب أن يكون نعم أو لا`,
+    consent: value => `${value.label} يجب قبوله`,
+    choice: value => `${value.label} يحتوي على اختيار غير متاح`,
+    choice_list: value => `${value.label} يجب أن يكون قائمة اختيارات`,
+    min_selections: value =>
+      `${value.label} يتطلب ${value.min} اختيارات على الأقل`,
+    max_selections: value =>
+      `${value.label} يسمح بحد أقصى ${value.max} اختيارات`,
+    calculation: value => `تعذر حساب ${value.label}`,
+  },
+  tr: {
+    required: value => `${value.label} zorunludur`,
+    text: value => `${value.label} metin olmalıdır`,
+    min_length: value =>
+      `${value.label} en az ${value.min} karakter içermelidir`,
+    max_length: value =>
+      `${value.label} en fazla ${value.max} karakter içermelidir`,
+    email: value => `${value.label} geçerli bir e-posta adresi olmalıdır`,
+    phone: value => `${value.label} geçerli bir telefon numarası olmalıdır`,
+    date: value =>
+      `${value.label} YYYY-MM-DD biçiminde geçerli bir tarih olmalıdır`,
+    time: value => `${value.label} 24 saatlik HH:MM biçimini kullanmalıdır`,
+    number: value => `${value.label} sayı olmalıdır`,
+    min: value => `${value.label} en az ${value.min} olmalıdır`,
+    max: value => `${value.label} en fazla ${value.max} olmalıdır`,
+    yes_no: value => `${value.label} evet veya hayır olmalıdır`,
+    consent: value => `${value.label} kabul edilmelidir`,
+    choice: value => `${value.label} kullanılamayan bir seçim içeriyor`,
+    choice_list: value => `${value.label} bir seçim listesi olmalıdır`,
+    min_selections: value =>
+      `${value.label} en az ${value.min} seçim gerektirir`,
+    max_selections: value =>
+      `${value.label} en fazla ${value.max} seçime izin verir`,
+    calculation: value => `${value.label} hesaplanamadı`,
+  },
+};
+
+export function formatFormValidationMessage(
+  message: FormValidationMessage,
+  locale: FormLocale
+) {
+  return validationMessageFactories[locale][message.key](message.params);
+}
+
+function validationMessage(
+  key: FormValidationMessageKey,
+  label: string,
+  params: Record<string, string | number> = {}
+): FormValidationMessage {
+  return { key, params: { label, ...params } };
+}
+
+function validateAnswer(field: FormField, value: unknown, locale: FormLocale) {
+  const errors: FormValidationMessage[] = [];
   const validation = field.validation ?? {};
-  const label = field.label.en;
+  const label = getLocalizedText(field.label, locale);
   const stringValue = typeof value === "string" ? value : undefined;
 
   if (
@@ -1129,7 +1561,7 @@ function validateAnswer(field: FormField, value: unknown) {
     ].includes(field.type) &&
     stringValue === undefined
   ) {
-    errors.push(`${label} must be text`);
+    errors.push(validationMessage("text", label));
     return errors;
   }
   if (
@@ -1138,7 +1570,7 @@ function validateAnswer(field: FormField, value: unknown) {
     stringValue.length < validation.minLength
   ) {
     errors.push(
-      `${label} must contain at least ${validation.minLength} characters`
+      validationMessage("min_length", label, { min: validation.minLength })
     );
   }
   if (
@@ -1147,7 +1579,7 @@ function validateAnswer(field: FormField, value: unknown) {
     stringValue.length > validation.maxLength
   ) {
     errors.push(
-      `${label} must contain at most ${validation.maxLength} characters`
+      validationMessage("max_length", label, { max: validation.maxLength })
     );
   }
   if (
@@ -1155,14 +1587,14 @@ function validateAnswer(field: FormField, value: unknown) {
     stringValue !== undefined &&
     !z.string().email().safeParse(stringValue).success
   ) {
-    errors.push(`${label} must be a valid email address`);
+    errors.push(validationMessage("email", label));
   }
   if (
     field.type === "phone" &&
     stringValue !== undefined &&
     !/^\+?[0-9 ()-]{6,30}$/.test(stringValue)
   ) {
-    errors.push(`${label} must be a valid phone number`);
+    errors.push(validationMessage("phone", label));
   }
   if (field.type === "date" && stringValue !== undefined) {
     const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(stringValue);
@@ -1192,7 +1624,7 @@ function validateAnswer(field: FormField, value: unknown) {
       day < 1 ||
       day > daysInMonth[month - 1]
     ) {
-      errors.push(`${label} must be a valid YYYY-MM-DD date`);
+      errors.push(validationMessage("date", label));
     }
   }
   if (
@@ -1200,45 +1632,47 @@ function validateAnswer(field: FormField, value: unknown) {
     stringValue !== undefined &&
     !/^([01]\d|2[0-3]):[0-5]\d$/.test(stringValue)
   ) {
-    errors.push(`${label} must use 24-hour HH:MM time`);
+    errors.push(validationMessage("time", label));
   }
   if (field.type === "number" || field.type === "rating") {
     if (typeof value !== "number" || !Number.isFinite(value)) {
-      errors.push(`${label} must be a number`);
+      errors.push(validationMessage("number", label));
     } else {
       if (validation.min !== undefined && value < validation.min) {
-        errors.push(`${label} must be at least ${validation.min}`);
+        errors.push(validationMessage("min", label, { min: validation.min }));
       }
       if (validation.max !== undefined && value > validation.max) {
-        errors.push(`${label} must be at most ${validation.max}`);
+        errors.push(validationMessage("max", label, { max: validation.max }));
       }
     }
   }
   if (field.type === "yes_no" && typeof value !== "boolean") {
-    errors.push(`${label} must be yes or no`);
+    errors.push(validationMessage("yes_no", label));
   }
   if (field.type === "consent" && value !== true) {
-    errors.push(`${label} must be accepted`);
+    errors.push(validationMessage("consent", label));
   }
   if (field.type === "single_choice" && stringValue !== undefined) {
     if (!field.options?.some(option => option.id === stringValue)) {
-      errors.push(`${label} contains an unavailable choice`);
+      errors.push(validationMessage("choice", label));
     }
   }
   if (field.type === "multiple_choice") {
     if (!Array.isArray(value)) {
-      errors.push(`${label} must be a list of choices`);
+      errors.push(validationMessage("choice_list", label));
     } else {
       const allowed = new Set(field.options?.map(option => option.id) ?? []);
       if (value.some(item => typeof item !== "string" || !allowed.has(item))) {
-        errors.push(`${label} contains an unavailable choice`);
+        errors.push(validationMessage("choice", label));
       }
       if (
         validation.minSelections !== undefined &&
         value.length < validation.minSelections
       ) {
         errors.push(
-          `${label} requires at least ${validation.minSelections} choices`
+          validationMessage("min_selections", label, {
+            min: validation.minSelections,
+          })
         );
       }
       if (
@@ -1246,7 +1680,9 @@ function validateAnswer(field: FormField, value: unknown) {
         value.length > validation.maxSelections
       ) {
         errors.push(
-          `${label} allows at most ${validation.maxSelections} choices`
+          validationMessage("max_selections", label, {
+            max: validation.maxSelections,
+          })
         );
       }
     }
@@ -1256,11 +1692,13 @@ function validateAnswer(field: FormField, value: unknown) {
 
 export function normalizeAndValidateFormAnswers(
   content: FormVersionContent,
-  input: unknown
+  input: unknown,
+  locale: FormLocale = content.defaultLanguage
 ): {
   ok: boolean;
   answers: Record<string, unknown>;
   errors: Record<string, string[]>;
+  errorDetails: Record<string, FormValidationMessage[]>;
   hiddenFieldIds: string[];
 } {
   const rawAnswers =
@@ -1270,12 +1708,16 @@ export function normalizeAndValidateFormAnswers(
   const answerFields = content.pages
     .flatMap(page => page.fields)
     .filter(field => !nonAnswerFieldTypes.has(field.type));
-  const normalized = Object.fromEntries(
+  const calculatedTargetIds = getFormCalculationTargetIds(content);
+  const normalizedInput = Object.fromEntries(
     answerFields.flatMap(field => {
+      if (calculatedTargetIds.has(field.id)) return [];
       const value = normalizeAnswer(field, rawAnswers[field.id]);
       return value === undefined ? [] : [[field.id, value]];
     })
   );
+  const calculationState = evaluateFormCalculations(content, normalizedInput);
+  const normalized = calculationState.answers;
   const logic = evaluateFormLogic(content, normalized);
   const reachableFieldIds = new Set(
     content.pages.flatMap(page =>
@@ -1291,6 +1733,7 @@ export function normalizeAndValidateFormAnswers(
     )
   );
   const errors: Record<string, string[]> = {};
+  const errorDetails: Record<string, FormValidationMessage[]> = {};
 
   for (const field of answerFields) {
     if (
@@ -1300,19 +1743,41 @@ export function normalizeAndValidateFormAnswers(
       continue;
     }
     const value = answers[field.id];
+    if (calculationState.errors[field.id]) {
+      const details = [
+        validationMessage("calculation", getLocalizedText(field.label, locale)),
+      ];
+      errorDetails[field.id] = details;
+      errors[field.id] = details.map(item =>
+        formatFormValidationMessage(item, locale)
+      );
+      continue;
+    }
     if (logic.requiredFieldIds.has(field.id) && isEmpty(value)) {
-      errors[field.id] = [`${field.label.en} is required`];
+      const details = [
+        validationMessage("required", getLocalizedText(field.label, locale)),
+      ];
+      errorDetails[field.id] = details;
+      errors[field.id] = details.map(item =>
+        formatFormValidationMessage(item, locale)
+      );
       continue;
     }
     if (isEmpty(value)) continue;
-    const fieldErrors = validateAnswer(field, value);
-    if (fieldErrors.length) errors[field.id] = fieldErrors;
+    const fieldErrors = validateAnswer(field, value, locale);
+    if (fieldErrors.length) {
+      errorDetails[field.id] = fieldErrors;
+      errors[field.id] = fieldErrors.map(item =>
+        formatFormValidationMessage(item, locale)
+      );
+    }
   }
 
   return {
     ok: Object.keys(errors).length === 0,
     answers,
     errors,
+    errorDetails,
     hiddenFieldIds: Array.from(logic.hiddenFieldIds),
   };
 }

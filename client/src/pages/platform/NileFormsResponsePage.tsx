@@ -16,22 +16,95 @@ import {
 } from "@/lib/forms/api";
 import { formsRoute } from "@/lib/forms/routes";
 import type { Role } from "@/lib/platformData";
-import { getLocalizedText, type FormField } from "@shared/nileForms";
+import {
+  getLocalizedText,
+  type FormField,
+  type FormLocale,
+} from "@shared/nileForms";
 import type { FormResponderSubmissionDetail } from "../../../../server/nileFormsService";
 
-function displayValue(value: unknown, locale: "en" | "ar") {
+const responseCopy = {
+  en: {
+    notProvided: "Not provided",
+    forms: "Forms",
+    description: "View the recorded response and its review status.",
+    submitted: "Response submitted",
+    version: "Version",
+    yourResponse: "Your response",
+    recordedAnswers: "Recorded answers",
+    reviewStatus: "Review status",
+    waiting: "This response is waiting for review.",
+    reviewing: "The team is reviewing this response now.",
+    rejected: "Review the team note below.",
+    completed: "This response has completed review.",
+    teamNote: "Team note",
+    correction: "Need to make a correction?",
+    withdrawHelp: "You can withdraw this response before review begins.",
+    withdrawing: "Withdrawing",
+    withdraw: "Withdraw response",
+    latest: "Latest update",
+  },
+  ar: {
+    notProvided: "غير متاح",
+    forms: "النماذج",
+    description: "عرض الرد المسجل وحالة مراجعته.",
+    submitted: "تم إرسال الرد",
+    version: "الإصدار",
+    yourResponse: "ردك",
+    recordedAnswers: "الإجابات المسجلة",
+    reviewStatus: "حالة المراجعة",
+    waiting: "سيتم إخطارك عند بدء المراجعة.",
+    reviewing: "يقوم الفريق بمراجعة ردك الآن.",
+    rejected: "يرجى مراجعة ملاحظة الفريق أدناه.",
+    completed: "اكتملت مراجعة هذا الرد.",
+    teamNote: "ملاحظة الفريق",
+    correction: "تحتاج إلى تعديل؟",
+    withdrawHelp: "يمكنك سحب الرد قبل أن تبدأ المراجعة.",
+    withdrawing: "جارٍ السحب",
+    withdraw: "سحب الرد",
+    latest: "آخر تحديث",
+  },
+  tr: {
+    notProvided: "Belirtilmedi",
+    forms: "Formlar",
+    description: "Kaydedilen yanıtı ve inceleme durumunu görüntüleyin.",
+    submitted: "Yanıt gönderildi",
+    version: "Sürüm",
+    yourResponse: "Yanıtınız",
+    recordedAnswers: "Kaydedilen yanıtlar",
+    reviewStatus: "İnceleme durumu",
+    waiting: "Bu yanıt incelenmeyi bekliyor.",
+    reviewing: "Ekip bu yanıtı inceliyor.",
+    rejected: "Aşağıdaki ekip notunu inceleyin.",
+    completed: "Bu yanıtın incelemesi tamamlandı.",
+    teamNote: "Ekip notu",
+    correction: "Düzeltme yapmanız mı gerekiyor?",
+    withdrawHelp: "İnceleme başlamadan önce bu yanıtı geri çekebilirsiniz.",
+    withdrawing: "Geri çekiliyor",
+    withdraw: "Yanıtı geri çek",
+    latest: "Son güncelleme",
+  },
+} as const;
+
+function responseText(
+  locale: FormLocale,
+  key: keyof (typeof responseCopy)["en"]
+) {
+  return responseCopy[locale][key];
+}
+
+function displayValue(value: unknown, locale: FormLocale) {
   if (typeof value === "boolean") {
-    return value
-      ? locale === "ar"
-        ? "نعم"
-        : "Yes"
-      : locale === "ar"
-        ? "لا"
-        : "No";
+    const labels: Record<FormLocale, { yes: string; no: string }> = {
+      en: { yes: "Yes", no: "No" },
+      ar: { yes: "نعم", no: "لا" },
+      tr: { yes: "Evet", no: "Hayır" },
+    };
+    return value ? labels[locale].yes : labels[locale].no;
   }
   if (Array.isArray(value)) return value.join(", ");
   if (value === undefined || value === null || value === "") {
-    return locale === "ar" ? "غير متاح" : "Not provided";
+    return responseText(locale, "notProvided");
   }
   return String(value);
 }
@@ -40,7 +113,7 @@ function formattedAnswer(
   field: FormField,
   value: unknown,
   detail: FormResponderSubmissionDetail,
-  locale: "en" | "ar"
+  locale: FormLocale
 ) {
   const options = field.options ?? detail.entityOptions[field.id] ?? [];
   const selected = options
@@ -51,15 +124,27 @@ function formattedAnswer(
   return selected.length ? selected.join(", ") : displayValue(value, locale);
 }
 
-function statusLabel(status: string, locale: "en" | "ar") {
-  const labels: Record<string, { en: string; ar: string }> = {
-    submitted: { en: "Submitted", ar: "تم الإرسال" },
-    under_review: { en: "Under review", ar: "قيد المراجعة" },
-    accepted: { en: "Accepted", ar: "مقبول" },
-    rejected: { en: "Needs changes", ar: "يحتاج تعديلاً" },
-    promoted: { en: "Completed", ar: "مكتمل" },
-    withdrawn: { en: "Withdrawn", ar: "تم السحب" },
-    quarantined: { en: "Needs attention", ar: "يحتاج متابعة" },
+function statusLabel(status: string, locale: FormLocale) {
+  const labels: Record<string, Record<FormLocale, string>> = {
+    submitted: { en: "Submitted", ar: "تم الإرسال", tr: "Gönderildi" },
+    under_review: {
+      en: "Under review",
+      ar: "قيد المراجعة",
+      tr: "İnceleniyor",
+    },
+    accepted: { en: "Accepted", ar: "مقبول", tr: "Kabul edildi" },
+    rejected: {
+      en: "Needs changes",
+      ar: "يحتاج تعديلاً",
+      tr: "Değişiklik gerekli",
+    },
+    promoted: { en: "Completed", ar: "مكتمل", tr: "Tamamlandı" },
+    withdrawn: { en: "Withdrawn", ar: "تم السحب", tr: "Geri çekildi" },
+    quarantined: {
+      en: "Needs attention",
+      ar: "يحتاج متابعة",
+      tr: "İnceleme gerekli",
+    },
   };
   return labels[status]?.[locale] ?? status.replaceAll("_", " ");
 }
@@ -178,7 +263,8 @@ export default function NileFormsResponsePage({
         : latest,
     undefined
   );
-  const dateLocale = locale === "ar" ? "ar-EG" : "en";
+  const dateLocale =
+    locale === "ar" ? "ar-EG" : locale === "tr" ? "tr-TR" : "en";
 
   return (
     <PlatformShell role={role} title="Form response">
@@ -191,14 +277,10 @@ export default function NileFormsResponsePage({
           <div>
             <Link href={formsRoute(role)} className="nile-forms-back-link">
               <ArrowLeft size={15} />
-              {locale === "ar" ? "النماذج" : "Forms"}
+              {responseText(locale, "forms")}
             </Link>
             <h1>{getLocalizedText(detail.version.content.title, locale)}</h1>
-            <p>
-              {locale === "ar"
-                ? "عرض الرد المسجل وحالة مراجعته."
-                : "View the recorded response and its review status."}
-            </p>
+            <p>{responseText(locale, "description")}</p>
           </div>
           <span
             className={`nile-form-status is-${detail.submission.status}`}
@@ -220,9 +302,7 @@ export default function NileFormsResponsePage({
         >
           <CheckCircle2 size={20} />
           <div>
-            <span>
-              {locale === "ar" ? "تم إرسال الرد" : "Response submitted"}
-            </span>
+            <span>{responseText(locale, "submitted")}</span>
             <strong>
               {new Intl.DateTimeFormat(dateLocale, {
                 dateStyle: "medium",
@@ -231,7 +311,7 @@ export default function NileFormsResponsePage({
             </strong>
           </div>
           <div>
-            <span>{locale === "ar" ? "الإصدار" : "Version"}</span>
+            <span>{responseText(locale, "version")}</span>
             <strong>{detail.version.versionNumber}</strong>
           </div>
         </section>
@@ -240,10 +320,8 @@ export default function NileFormsResponsePage({
           <article className="nile-form-review-answers">
             <header>
               <div>
-                <span>{locale === "ar" ? "ردك" : "Your response"}</span>
-                <h2>
-                  {locale === "ar" ? "الإجابات المسجلة" : "Recorded answers"}
-                </h2>
+                <span>{responseText(locale, "yourResponse")}</span>
+                <h2>{responseText(locale, "recordedAnswers")}</h2>
               </div>
             </header>
             <dl>
@@ -270,39 +348,23 @@ export default function NileFormsResponsePage({
           <aside className="nile-form-review-context">
             <section>
               <header>
-                <h2>{locale === "ar" ? "حالة المراجعة" : "Review status"}</h2>
+                <h2>{responseText(locale, "reviewStatus")}</h2>
               </header>
               {detail.submission.status === "submitted" ? (
-                <p>
-                  {locale === "ar"
-                    ? "سيتم إخطارك عند بدء المراجعة."
-                    : "This response is waiting for review."}
-                </p>
+                <p>{responseText(locale, "waiting")}</p>
               ) : detail.submission.status === "under_review" ? (
-                <p>
-                  {locale === "ar"
-                    ? "يقوم الفريق بمراجعة ردك الآن."
-                    : "The team is reviewing this response now."}
-                </p>
+                <p>{responseText(locale, "reviewing")}</p>
               ) : detail.submission.status === "rejected" ? (
-                <p>
-                  {locale === "ar"
-                    ? "يرجى مراجعة ملاحظة الفريق أدناه."
-                    : "Review the team note below."}
-                </p>
+                <p>{responseText(locale, "rejected")}</p>
               ) : (
-                <p>
-                  {locale === "ar"
-                    ? "اكتملت مراجعة هذا الرد."
-                    : "This response has completed review."}
-                </p>
+                <p>{responseText(locale, "completed")}</p>
               )}
             </section>
 
             {latestReview?.comments ? (
               <section className="nile-form-response-review">
                 <header>
-                  <h2>{locale === "ar" ? "ملاحظة الفريق" : "Team note"}</h2>
+                  <h2>{responseText(locale, "teamNote")}</h2>
                 </header>
                 <p>{latestReview.comments}</p>
               </section>
@@ -311,17 +373,9 @@ export default function NileFormsResponsePage({
             {detail.submission.status === "submitted" ? (
               <section className="nile-form-review-actions">
                 <header>
-                  <h2>
-                    {locale === "ar"
-                      ? "تحتاج إلى تعديل؟"
-                      : "Need to make a correction?"}
-                  </h2>
+                  <h2>{responseText(locale, "correction")}</h2>
                 </header>
-                <p>
-                  {locale === "ar"
-                    ? "يمكنك سحب الرد قبل أن تبدأ المراجعة."
-                    : "You can withdraw this response before review begins."}
-                </p>
+                <p>{responseText(locale, "withdrawHelp")}</p>
                 <button
                   type="button"
                   className="platform-secondary-button is-danger"
@@ -330,20 +384,17 @@ export default function NileFormsResponsePage({
                   data-testid="nile-form-withdraw-response"
                 >
                   <RotateCcw size={16} />
-                  {withdrawing
-                    ? locale === "ar"
-                      ? "جارٍ السحب"
-                      : "Withdrawing"
-                    : locale === "ar"
-                      ? "سحب الرد"
-                      : "Withdraw response"}
+                  {responseText(
+                    locale,
+                    withdrawing ? "withdrawing" : "withdraw"
+                  )}
                 </button>
               </section>
             ) : null}
 
             <section className="nile-form-response-activity">
               <header>
-                <h2>{locale === "ar" ? "آخر تحديث" : "Latest update"}</h2>
+                <h2>{responseText(locale, "latest")}</h2>
               </header>
               <p>
                 <Clock3 size={14} />

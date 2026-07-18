@@ -4,6 +4,7 @@ import {
   ArrowLeft,
   ArrowUp,
   Braces,
+  Calculator,
   ChevronDown,
   ChevronRight,
   Eye,
@@ -37,13 +38,17 @@ import {
 import { formsRoute } from "@/lib/forms/routes";
 import type { Role } from "@/lib/platformData";
 import {
+  formCalculationOperators,
   formFieldTypes,
   validateFormVersionContent,
+  type FormCalculation,
+  type FormCalculationOperand,
   type FormField,
   type FormFieldType,
   type FormLogicCondition,
   type FormLogicOperator,
   type FormLogicRule,
+  type FormLocale,
   type FormPage,
   type FormVersion,
   type FormVersionContent,
@@ -53,7 +58,12 @@ import type {
   FormResponderBundle,
 } from "../../../../server/nileFormsService";
 
-type InspectorTab = "field" | "logic" | "language" | "validation";
+type InspectorTab =
+  | "field"
+  | "logic"
+  | "calculations"
+  | "language"
+  | "validation";
 
 const fieldTypeLabels: Record<FormFieldType, string> = {
   heading: "Heading",
@@ -71,6 +81,12 @@ const fieldTypeLabels: Record<FormFieldType, string> = {
   rating: "Rating",
   consent: "Consent",
   entity_reference: "Entity reference",
+};
+
+const formLocaleNames: Record<FormLocale, string> = {
+  en: "English",
+  ar: "Arabic",
+  tr: "Turkish",
 };
 
 function createKey(prefix: string) {
@@ -189,20 +205,128 @@ function LogicConditionValue({
   );
 }
 
+function CalculationOperandEditor({
+  calculationId,
+  operand,
+  fields,
+  calculations,
+  onChange,
+  onRemove,
+}: {
+  calculationId: string;
+  operand: FormCalculationOperand;
+  fields: FormField[];
+  calculations: FormCalculation[];
+  onChange(value: FormCalculationOperand): void;
+  onRemove(): void;
+}) {
+  const dependencyOptions = calculations.filter(
+    item => item.id !== calculationId
+  );
+  const changeType = (type: FormCalculationOperand["type"]) => {
+    if (type === "constant") {
+      onChange({ type: "constant", value: 0 });
+      return;
+    }
+    if (type === "calculation") {
+      onChange({
+        type: "calculation",
+        calculationId: dependencyOptions[0]?.id ?? "",
+      });
+      return;
+    }
+    onChange({ type: "field", fieldId: fields[0]?.id ?? "" });
+  };
+
+  return (
+    <div className="nile-form-rule-condition nile-form-calculation-operand">
+      <select
+        aria-label="Operand type"
+        value={operand.type}
+        onChange={event =>
+          changeType(event.target.value as FormCalculationOperand["type"])
+        }
+      >
+        <option value="field">Field</option>
+        <option value="constant">Number</option>
+        <option value="calculation" disabled={!dependencyOptions.length}>
+          Calculation
+        </option>
+      </select>
+      {operand.type === "field" ? (
+        <select
+          aria-label="Source field"
+          value={operand.fieldId}
+          onChange={event =>
+            onChange({ type: "field", fieldId: event.target.value })
+          }
+        >
+          {fields.map(field => (
+            <option key={field.id} value={field.id}>
+              {field.label.en}
+            </option>
+          ))}
+        </select>
+      ) : operand.type === "calculation" ? (
+        <select
+          aria-label="Source calculation"
+          value={operand.calculationId}
+          onChange={event =>
+            onChange({
+              type: "calculation",
+              calculationId: event.target.value,
+            })
+          }
+        >
+          {dependencyOptions.map(item => (
+            <option key={item.id} value={item.id}>
+              {item.id}
+            </option>
+          ))}
+        </select>
+      ) : (
+        <input
+          aria-label="Constant value"
+          type="number"
+          step="any"
+          value={operand.value}
+          onChange={event =>
+            onChange({ type: "constant", value: Number(event.target.value) })
+          }
+        />
+      )}
+      <button
+        type="button"
+        title="Remove operand"
+        aria-label="Remove operand"
+        onClick={onRemove}
+      >
+        <Trash2 size={13} />
+      </button>
+    </div>
+  );
+}
+
 function newField(type: FormFieldType): FormField {
   const label = fieldTypeLabels[type];
   const choiceOptions =
     type === "single_choice" || type === "multiple_choice"
       ? [
-          { id: "option_1", label: { en: "Option 1", ar: "الخيار 1" } },
-          { id: "option_2", label: { en: "Option 2", ar: "الخيار 2" } },
+          {
+            id: "option_1",
+            label: { en: "Option 1", ar: "الخيار 1", tr: "Seçenek 1" },
+          },
+          {
+            id: "option_2",
+            label: { en: "Option 2", ar: "الخيار 2", tr: "Seçenek 2" },
+          },
         ]
       : undefined;
   return {
     id: createKey("field"),
     type,
-    label: { en: label, ar: label },
-    description: { en: "", ar: "" },
+    label: { en: label, ar: label, tr: label },
+    description: { en: "", ar: "", tr: "" },
     required: type === "consent",
     options: choiceOptions,
     validation:
@@ -382,6 +506,15 @@ export default function NileFormsBuilderPage({
     content?.pages
       .flatMap(page => page.fields)
       .filter(field => !["heading", "instructions"].includes(field.type)) ?? [];
+  const numberFields = answerFields.filter(field =>
+    ["number", "rating"].includes(field.type)
+  );
+  const calculationTargetIds = new Set(
+    (content?.calculations ?? []).map(item => item.targetFieldId)
+  );
+  const calculationSourceFields = numberFields.filter(
+    field => !calculationTargetIds.has(field.id)
+  );
 
   const updateContent = (update: (draft: FormVersionContent) => void) => {
     if (!content) return;
@@ -422,6 +555,37 @@ export default function NileFormsBuilderPage({
           (rule.action.type === "skip_to_page" ||
             rule.action.targetFieldId !== id)
       );
+      const removedCalculationIds = new Set(
+        (draft.calculations ?? [])
+          .filter(
+            calculation =>
+              calculation.targetFieldId === id ||
+              calculation.operands.some(
+                operand => operand.type === "field" && operand.fieldId === id
+              )
+          )
+          .map(calculation => calculation.id)
+      );
+      let changed = true;
+      while (changed) {
+        changed = false;
+        for (const calculation of draft.calculations ?? []) {
+          if (
+            !removedCalculationIds.has(calculation.id) &&
+            calculation.operands.some(
+              operand =>
+                operand.type === "calculation" &&
+                removedCalculationIds.has(operand.calculationId)
+            )
+          ) {
+            removedCalculationIds.add(calculation.id);
+            changed = true;
+          }
+        }
+      }
+      draft.calculations = (draft.calculations ?? []).filter(
+        calculation => !removedCalculationIds.has(calculation.id)
+      );
     });
     setFieldId(currentPage?.fields.find(field => field.id !== id)?.id ?? "");
   };
@@ -433,6 +597,7 @@ export default function NileFormsBuilderPage({
       title: {
         en: `Page ${content.pages.length + 1}`,
         ar: `الصفحة ${content.pages.length + 1}`,
+        tr: `Sayfa ${content.pages.length + 1}`,
       },
       fields: [],
     };
@@ -461,6 +626,36 @@ export default function NileFormsBuilderPage({
     };
     updateContent(draft => draft.logic.push(rule));
     setTab("logic");
+  };
+
+  const addCalculation = () => {
+    const numericFields = answerFields.filter(field =>
+      ["number", "rating"].includes(field.type)
+    );
+    const usedTargets = new Set(
+      (content?.calculations ?? []).map(item => item.targetFieldId)
+    );
+    const target = numericFields.find(
+      field => field.type === "number" && !usedTargets.has(field.id)
+    );
+    const source = numericFields.find(field => field.id !== target?.id);
+    if (!target || !source) {
+      setMessage(
+        "Add one unused number target and one numeric source before creating a calculation."
+      );
+      return;
+    }
+    const calculation: FormCalculation = {
+      id: createKey("calculation"),
+      targetFieldId: target.id,
+      operator: "sum",
+      operands: [{ type: "field", fieldId: source.id }],
+      precision: 2,
+    };
+    updateContent(draft => {
+      draft.calculations = [...(draft.calculations ?? []), calculation];
+    });
+    setTab("calculations");
   };
 
   const save = async () => {
@@ -659,6 +854,7 @@ export default function NileFormsBuilderPage({
                           page.description = page.description ?? {
                             en: "",
                             ar: "",
+                            tr: "",
                           };
                           page.description.en = event.target.value;
                         })
@@ -783,6 +979,11 @@ export default function NileFormsBuilderPage({
                   { id: "field" as const, label: "Field", icon: Settings2 },
                   { id: "logic" as const, label: "Rules", icon: Braces },
                   {
+                    id: "calculations" as const,
+                    label: "Calculate",
+                    icon: Calculator,
+                  },
+                  {
                     id: "language" as const,
                     label: "Language",
                     icon: Languages,
@@ -839,6 +1040,17 @@ export default function NileFormsBuilderPage({
                         />
                       </label>
                       <label>
+                        Turkish label
+                        <input
+                          value={selectedField.label.tr ?? ""}
+                          onChange={event =>
+                            updateField(field => {
+                              field.label.tr = event.target.value;
+                            })
+                          }
+                        />
+                      </label>
+                      <label>
                         English help text
                         <textarea
                           rows={3}
@@ -848,6 +1060,7 @@ export default function NileFormsBuilderPage({
                               field.description = field.description ?? {
                                 en: "",
                                 ar: "",
+                                tr: "",
                               };
                               field.description.en = event.target.value;
                             })
@@ -864,8 +1077,26 @@ export default function NileFormsBuilderPage({
                               field.description = field.description ?? {
                                 en: "",
                                 ar: "",
+                                tr: "",
                               };
                               field.description.ar = event.target.value;
+                            })
+                          }
+                        />
+                      </label>
+                      <label>
+                        Turkish help text
+                        <textarea
+                          rows={3}
+                          value={selectedField.description?.tr ?? ""}
+                          onChange={event =>
+                            updateField(field => {
+                              field.description = field.description ?? {
+                                en: "",
+                                ar: "",
+                                tr: "",
+                              };
+                              field.description.tr = event.target.value;
                             })
                           }
                         />
@@ -964,6 +1195,17 @@ export default function NileFormsBuilderPage({
                                   })
                                 }
                               />
+                              <input
+                                aria-label={`Option ${index + 1} Turkish`}
+                                value={option.label.tr ?? ""}
+                                onChange={event =>
+                                  updateField(field => {
+                                    if (field.options)
+                                      field.options[index].label.tr =
+                                        event.target.value;
+                                  })
+                                }
+                              />
                               <button
                                 type="button"
                                 title="Delete option"
@@ -992,6 +1234,7 @@ export default function NileFormsBuilderPage({
                                     label: {
                                       en: `Option ${(field.options?.length ?? 0) + 1}`,
                                       ar: `الخيار ${(field.options?.length ?? 0) + 1}`,
+                                      tr: `Seçenek ${(field.options?.length ?? 0) + 1}`,
                                     },
                                   },
                                 ];
@@ -1289,25 +1532,228 @@ export default function NileFormsBuilderPage({
                   </div>
                 ) : null}
 
+                {tab === "calculations" ? (
+                  <div className="nile-form-inspector-section">
+                    <header>
+                      <span>Server evaluated</span>
+                      <strong>Calculations</strong>
+                    </header>
+                    {(content.calculations ?? []).map(
+                      (calculation, calculationIndex) => {
+                        const targetOptions = numberFields.filter(
+                          field =>
+                            field.type === "number" &&
+                            (field.id === calculation.targetFieldId ||
+                              !calculationTargetIds.has(field.id))
+                        );
+                        return (
+                          <section
+                            key={calculation.id}
+                            className="nile-form-rule-editor nile-form-calculation-editor"
+                          >
+                            <header>
+                              <strong>
+                                Calculation {calculationIndex + 1}
+                              </strong>
+                              <button
+                                type="button"
+                                title="Delete calculation"
+                                aria-label={`Delete calculation ${calculationIndex + 1}`}
+                                onClick={() =>
+                                  updateContent(draft => {
+                                    draft.calculations = (
+                                      draft.calculations ?? []
+                                    ).filter(
+                                      item => item.id !== calculation.id
+                                    );
+                                  })
+                                }
+                              >
+                                <Trash2 size={14} />
+                              </button>
+                            </header>
+                            <label>
+                              Result field
+                              <select
+                                value={calculation.targetFieldId}
+                                onChange={event =>
+                                  updateContent(draft => {
+                                    const item = draft.calculations?.find(
+                                      value => value.id === calculation.id
+                                    );
+                                    if (item)
+                                      item.targetFieldId = event.target.value;
+                                  })
+                                }
+                              >
+                                {targetOptions.map(field => (
+                                  <option key={field.id} value={field.id}>
+                                    {field.label.en}
+                                  </option>
+                                ))}
+                              </select>
+                            </label>
+                            <label>
+                              Operation
+                              <select
+                                value={calculation.operator}
+                                onChange={event =>
+                                  updateContent(draft => {
+                                    const item = draft.calculations?.find(
+                                      value => value.id === calculation.id
+                                    );
+                                    if (!item) return;
+                                    item.operator = event.target
+                                      .value as FormCalculation["operator"];
+                                    const minimum = [
+                                      "subtract",
+                                      "multiply",
+                                      "divide",
+                                    ].includes(item.operator)
+                                      ? 2
+                                      : 1;
+                                    while (item.operands.length < minimum) {
+                                      item.operands.push({
+                                        type: "constant",
+                                        value:
+                                          item.operator === "multiply" ? 1 : 0,
+                                      });
+                                    }
+                                    if (
+                                      ["subtract", "divide"].includes(
+                                        item.operator
+                                      )
+                                    ) {
+                                      item.operands = item.operands.slice(0, 2);
+                                    }
+                                  })
+                                }
+                              >
+                                {formCalculationOperators.map(operator => (
+                                  <option key={operator} value={operator}>
+                                    {operator}
+                                  </option>
+                                ))}
+                              </select>
+                            </label>
+                            <label>
+                              Decimal places
+                              <input
+                                type="number"
+                                min={0}
+                                max={8}
+                                value={calculation.precision ?? ""}
+                                onChange={event =>
+                                  updateContent(draft => {
+                                    const item = draft.calculations?.find(
+                                      value => value.id === calculation.id
+                                    );
+                                    if (item)
+                                      item.precision = event.target.value
+                                        ? Number(event.target.value)
+                                        : undefined;
+                                  })
+                                }
+                              />
+                            </label>
+                            <strong>Inputs</strong>
+                            {calculation.operands.map(
+                              (operand, operandIndex) => (
+                                <CalculationOperandEditor
+                                  key={`${calculation.id}-${operandIndex}`}
+                                  calculationId={calculation.id}
+                                  operand={operand}
+                                  fields={calculationSourceFields}
+                                  calculations={content.calculations ?? []}
+                                  onChange={next =>
+                                    updateContent(draft => {
+                                      const item = draft.calculations?.find(
+                                        value => value.id === calculation.id
+                                      );
+                                      if (item)
+                                        item.operands[operandIndex] = next;
+                                    })
+                                  }
+                                  onRemove={() =>
+                                    updateContent(draft => {
+                                      const item = draft.calculations?.find(
+                                        value => value.id === calculation.id
+                                      );
+                                      if (item)
+                                        item.operands.splice(operandIndex, 1);
+                                    })
+                                  }
+                                />
+                              )
+                            )}
+                            <button
+                              type="button"
+                              className="nile-form-text-button"
+                              disabled={
+                                calculation.operands.length >= 10 ||
+                                ["subtract", "divide"].includes(
+                                  calculation.operator
+                                )
+                              }
+                              onClick={() =>
+                                updateContent(draft => {
+                                  const item = draft.calculations?.find(
+                                    value => value.id === calculation.id
+                                  );
+                                  if (item)
+                                    item.operands.push({
+                                      type: "constant",
+                                      value: 0,
+                                    });
+                                })
+                              }
+                            >
+                              <Plus size={13} /> Input
+                            </button>
+                          </section>
+                        );
+                      }
+                    )}
+                    {!(content.calculations ?? []).length ? (
+                      <p className="nile-form-inspector-empty">
+                        Calculations derive a number field from numeric inputs.
+                        Respondents cannot overwrite the result.
+                      </p>
+                    ) : null}
+                    <button
+                      type="button"
+                      className="platform-secondary-button"
+                      onClick={addCalculation}
+                    >
+                      <Plus size={14} /> Add calculation
+                    </button>
+                  </div>
+                ) : null}
+
                 {tab === "language" ? (
                   <div className="nile-form-inspector-section">
                     <header>
-                      <span>English / Arabic</span>
+                      <span>English / Arabic / Turkish</span>
                       <strong>Form content</strong>
                     </header>
-                    {(["en", "ar"] as const).map(language => (
+                    {content.languages.map(language => (
                       <section
                         key={language}
                         className="nile-form-language-editor"
                         dir={language === "ar" ? "rtl" : "ltr"}
                       >
                         <strong>
-                          {language === "en" ? "English" : "العربية"}
+                          {language === "en"
+                            ? "English"
+                            : language === "ar"
+                              ? "العربية"
+                              : "Türkçe"}
                         </strong>
                         <label>
                           Title
                           <input
-                            value={content.title[language]}
+                            aria-label={`${formLocaleNames[language]} title`}
+                            value={content.title[language] ?? ""}
                             onChange={event =>
                               updateContent(draft => {
                                 draft.title[language] = event.target.value;
@@ -1318,8 +1764,9 @@ export default function NileFormsBuilderPage({
                         <label>
                           Description
                           <textarea
+                            aria-label={`${formLocaleNames[language]} description`}
                             rows={3}
-                            value={content.description[language]}
+                            value={content.description[language] ?? ""}
                             onChange={event =>
                               updateContent(draft => {
                                 draft.description[language] =
@@ -1331,7 +1778,8 @@ export default function NileFormsBuilderPage({
                         <label>
                           Submit label
                           <input
-                            value={content.submitLabel[language]}
+                            aria-label={`${formLocaleNames[language]} submit label`}
+                            value={content.submitLabel[language] ?? ""}
                             onChange={event =>
                               updateContent(draft => {
                                 draft.submitLabel[language] =
@@ -1343,12 +1791,43 @@ export default function NileFormsBuilderPage({
                         <label>
                           Confirmation
                           <textarea
+                            aria-label={`${formLocaleNames[language]} confirmation message`}
                             rows={3}
-                            value={content.confirmationMessage[language]}
+                            value={content.confirmationMessage[language] ?? ""}
                             onChange={event =>
                               updateContent(draft => {
                                 draft.confirmationMessage[language] =
                                   event.target.value;
+                              })
+                            }
+                          />
+                        </label>
+                        <label>
+                          Current page title
+                          <input
+                            aria-label={`${formLocaleNames[language]} current page title`}
+                            value={currentPage.title[language] ?? ""}
+                            onChange={event =>
+                              updatePage(page => {
+                                page.title[language] = event.target.value;
+                              })
+                            }
+                          />
+                        </label>
+                        <label>
+                          Current page description
+                          <textarea
+                            aria-label={`${formLocaleNames[language]} current page description`}
+                            rows={2}
+                            value={currentPage.description?.[language] ?? ""}
+                            onChange={event =>
+                              updatePage(page => {
+                                page.description = page.description ?? {
+                                  en: "",
+                                  ar: "",
+                                  tr: "",
+                                };
+                                page.description[language] = event.target.value;
                               })
                             }
                           />

@@ -63,6 +63,7 @@ check_required_guides() {
     docs/qa-attestations/moodle-phase4-contract-loops-20260716.json
     docs/qa-attestations/integration-phase6-projection-contract-20260716.json
     docs/qa-attestations/integration-phase6g-assessment-status-observation-20260717.json
+    docs/qa-attestations/nile-forms-phase14a-structured-content-20260718.json
   )
   for guide in "${guides[@]}"; do
     if [[ ! -r "$guide" ]]; then
@@ -147,6 +148,8 @@ run_prettier_check() {
     scripts/validate-nile-forms-schema.mjs
     scripts/validate-nile-forms-pglite.mjs
     scripts/validate-nile-forms-program-contract.mjs
+    scripts/validate-nile-forms-structured-content-contract.mjs
+    scripts/validate-nile-forms-requests-contract.mjs
     .codex/hooks.json
     .codex/prompts/00-discovery.md
     .codex/prompts/01-public-site.md
@@ -167,6 +170,8 @@ run_prettier_check() {
     .codex/prompts/16-modernization-execution.md
     .codex/prompts/17-nile-forms.md
     .codex/prompts/18-nile-forms-production-core.md
+    .codex/prompts/19-nile-forms-structured-content.md
+    .codex/prompts/20-nile-forms-requests.md
   )
 
   if [[ "${FULL_FORMAT_CHECK:-0}" == "1" ]]; then
@@ -546,6 +551,16 @@ fi
 
 if has_script "check:forms-program"; then
   run_step "Nile Forms program contract" run_package_script check:forms-program
+fi
+
+if has_script "check:forms-phase14a"; then
+  run_step "Nile Forms Phase 14A structured content contract" \
+    run_package_script check:forms-phase14a
+fi
+
+if has_script "check:forms-phase14b"; then
+  run_step "Nile Forms Phase 14B typed Requests contract" \
+    run_package_script check:forms-phase14b
 fi
 
 if has_script "check:forms-schema"; then

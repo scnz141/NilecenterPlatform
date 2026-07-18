@@ -80,6 +80,8 @@ export function getRequiredPermissionForPage(
   if (pageId === "reports") return "reports:read";
   if (pageId === "messages" || pageId === "support") return "messages:write";
   if (pageId === "forms") return "forms:read";
+  if (pageId === "requests" || pageId === "request-detail") return "forms:read";
+  if (pageId === "request-create") return "form_submissions:read";
   if (pageId === "forms-manage" || pageId === "form-builder")
     return "forms:write";
   if (pageId === "form-publish") return "forms:publish";

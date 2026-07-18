@@ -4,6 +4,25 @@ This folder contains the current local-only normalized identity/session SQL in
 manual execution order. It is a review and development bundle, not production
 promotion approval.
 
+## Single-File Staging Bootstrap
+
+`000_nile_learn_staging_bootstrap.sql` is the single paste-ready SQL file for a
+fresh, disposable Supabase staging project. It combines the promoted migration
+history, core installation verification, Phase 6I pgcrypto compatibility, and
+all accepted read-only Phase 6 projection packages in their proven order.
+
+It is intentionally not a production installer and is not safe to rerun on a
+database that already contains these migrations. Fake seeds, assertion
+fixtures, rollback drills, credentials, provider writes, and the explicitly
+local-only Phase 13F1 package are excluded.
+
+Regenerate and verify it with:
+
+```bash
+npm run build:supabase-sql-bundle
+npm run check:supabase-sql-bundle
+```
+
 ## Forward Order
 
 Run each file as one complete transaction in this order:

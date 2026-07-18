@@ -826,20 +826,83 @@ shared accessible chart and motion primitives plus one role-specific,
 decision-focused insight panel on each portal dashboard and report route. It
 must not create analytics walls or dashboard card grids.
 
-The first approved route-modernization slice is **Phase 12A: Super Admin
-system workspaces**:
+**Phase 12A: Super Admin system workspaces** is accepted:
 
 1. `/app/admin/settings` owns global school setup only.
 2. `/app/admin/integrations` owns connection readiness and reviewed status
    only.
 3. `/app/admin/system-health` owns concise internal health review only.
 
-Phase 12A may change page composition, concise user-facing copy, responsive
-layout, semantic visualizations, loading/empty/error/success presentation, and
-CSS. It must not change routes, server actions, persistence, auth, RBAC, audit
-behavior, provider activation, or the data each action reads or writes. The
-primary compatibility workstream remains **bounded compatibility workflow
-integrity**, one feature family at a time:
+The accepted slice passed desktop and mobile in-app Browser review, TypeScript,
+856 unit tests, the production build, and the protected 1,634/0 portal QA gate
+on 2026-07-18. It changed no route, server action, persistence, auth, RBAC,
+audit behavior, provider activation, or action data contract.
+
+**Phase 12B: Student Learning Core** is accepted:
+
+1. `/app/student/courses` owns course discovery and continuation.
+2. `/app/student/courses/:courseId` owns one course path and its progress.
+3. `/app/student/courses/:courseId/learn/:lessonId` owns one lesson/player.
+4. `/app/student/courses/:courseId/live` owns one live-class experience.
+5. `/app/student/assignments/:assignmentId` owns one assignment response.
+6. `/app/student/quizzes/:quizId` owns one quiz attempt.
+
+The accepted slice passed desktop and mobile in-app Browser review, TypeScript,
+856 unit tests, the production build, three focused student workflows, and the
+protected 1,634/0 portal QA gate on 2026-07-18. It changed no route, server
+action, persistence, auth, RBAC, audit behavior, provider activation, or action
+data contract.
+
+**Phase 12C: Teacher Delivery And Assessment** is accepted. Class delivery,
+attendance, materials, assignment lifecycle, grading, quiz authoring/review,
+question-bank, calendar, and Quran review remain separate route jobs. The slice
+removed two misleading hard-coded workload badges and clarified Quran review
+copy without changing workflow behavior or data authority. Desktop and mobile
+in-app Browser review, TypeScript, 856 unit tests, the production build, 60
+focused teacher checks, and the protected 1,634/0 portal QA gate passed on
+2026-07-18.
+
+**Phase 12D: Registrar Operations** is accepted. Leads, applications,
+placement, students, enrollment, payments, and schedule remain separate route
+jobs. The slice removed misleading hard-coded lead and placement counts and
+gave enrollment transfer/status controls a dedicated responsive layout without
+changing workflow behavior or data authority. Desktop and mobile in-app
+Browser review, TypeScript, 856 unit tests, the production build, 50 focused
+registrar checks, and the protected 1,634/0 portal QA gate passed on
+2026-07-18.
+
+**Phase 12E: HOD Academic Governance** is accepted. Catalog, curriculum, class
+delivery, schedule, assessment creation/review, and certificate decisions
+remain separate route jobs. The slice removed a misleading hard-coded
+certificate badge without changing workflow behavior or data authority.
+Desktop and mobile in-app Browser review, TypeScript, 856 unit tests, the
+production build, 47 focused HOD checks, and the protected 1,634/0 portal QA
+gate passed on 2026-07-18.
+
+**Phase 12F: Branch Operations** is accepted. Students, teachers, classes,
+rooms, schedule, attendance, and payments remain separate branch-scoped route
+jobs. The slice removed a misleading hard-coded attendance badge without
+changing workflow behavior or data authority. Desktop and mobile in-app
+Browser review, TypeScript, 856 unit tests, the production build, 67 focused
+branch checks, and the protected 1,634/0 portal QA gate passed on 2026-07-18.
+
+**Phase 12G: Remaining Super Admin And Forms Review** is accepted. Academic
+directories, course governance, schedule, reports, activity, profile, and
+Forms remain separate route jobs. The Forms builder remains a purpose-built
+authoring workspace rather than a standard dashboard. Desktop and mobile
+in-app Browser review, TypeScript, 856 unit tests, the production build, 60
+focused Super Admin checks, focused Forms submission and assignment checks,
+and the protected 1,634/0 portal QA gate passed on 2026-07-18.
+
+The Phase 12 route-modernization sequence is complete. Phase 13F1, Phase 14A,
+and Phase 14B are accepted local foundations. No further Nile Forms workflow
+slice is approved at this checkpoint. Any next slice requires an explicit
+product decision and a new bounded prompt.
+It must preserve existing routes, exact user/course/schedule/report/form
+authority, server actions, persistence defaults, auth, RBAC, audit behavior,
+Moodle read-only projection boundaries, and the data each action reads or
+writes. The primary compatibility workstream remains
+**bounded compatibility workflow integrity**, one feature family at a time:
 
 1. Preserve the authenticated session as the server authority for actor, role,
    branch, department, and ownership.
@@ -1032,8 +1095,7 @@ ADR-007 and the authority slice for the full Nile Forms replacement program are
 accepted. This approval establishes the typed processing boundary and sequence;
 it does not approve the program as one broad implementation.
 
-The only approved next Nile Forms implementation slice is **Phase 13F1:
-normalized repository contract foundation**:
+**Phase 13F1: normalized repository contract foundation** is accepted locally:
 
 1. Replace the callback-only repository boundary with explicit query and
    command methods for the already accepted Forms lifecycle.
@@ -1075,17 +1137,114 @@ appointments, surveys, uploads, signatures, broad directories, provider
 delivery, remote SQL application, or a runtime switch. Those remain later
 Phase 14 slices requiring their own checkpoint acceptance.
 
+Acceptance evidence:
+
+- The static contract reports 13 protected queries, 20 protected commands,
+  one public query, two public commands, nine permission mappings, nine
+  additive tables, zero browser policies, and zero pushable migration-history
+  entries.
+- The deterministic memory adapter and disabled-by-default Supabase adapter
+  pass 62 focused repository, request-security, route, and service tests.
+- Portable PostgreSQL applies the reviewed package twice, passes semantic
+  assertions three times, performs one complete rollback/reapply drill,
+  preserves all Phase 13A-E evidence, and proves protected/public replay
+  conflict, sensitive projection grant/revoke, offline tamper denial,
+  revoke-versus-command outcomes, and direct database-role denial.
+- TypeScript, 856 unit tests, the production build, and the complete 1,634/0
+  portal gate passed. Redacted evidence is recorded in
+  `docs/qa-attestations/nile-forms-phase13f1-normalized-repository-20260718.json`.
+- No remote database was targeted. Memory remains the runtime default,
+  normalized activation and every route cutover remain disabled, promotion
+  remains fail-closed, and Phase 13F1 SQL remains manual and local-only.
+
 Phase 13 remains internal alpha: no remote migration was applied, no real
 Jotform credential or historical data was used, and no existing intake route
 was cut over. Actual selective import still requires an approved mapping
 window, temporary key, reconciliation sign-off, Jotform intake shutdown, and
 key revocation.
 
-The Phase 13F1 checkpoint is the only approved next **Nile Forms** slice. The
-separately approved Phase 12 Insight and Moodle sandbox workstreams may proceed
-only with disjoint write sets. Changes to shared session, permission, audit,
-outbox, migration-history, or server-runtime boundaries are serialized through
-the execution contract and must preserve every accepted gate.
+**Phase 14A: structured content and localization parity** is accepted locally:
+
+1. Define a closed, versioned structured-content contract for the field types
+   already approved for Nile Forms; unsupported field kinds fail closed.
+2. Require complete `en | ar | tr` labels, descriptions, option values, and
+   parameterized validation messages. Arabic remains RTL; English and Turkish
+   remain LTR.
+3. Keep validation and deterministic calculations side-effect free, bounded,
+   server-owned, and pinned to the immutable published version. Calculations
+   may derive display or submitted values only; they may not mutate operational
+   records or authorize a workflow.
+4. Keep reusable templates as versioned definition inputs. Instantiating a
+   template creates an independent draft and never mutates the source template
+   or a published version.
+5. Preserve the Phase 13F1 memory default and fail-closed normalized adapter.
+   Do not apply SQL remotely, enable cutover flags, or activate normalized
+   production writes.
+6. Schema closure, localization completeness, deterministic evaluation,
+   malicious and cyclic expression denial, immutable version behavior, scoped
+   authority, and responsive EN/AR/TR rendering are covered by 62 focused
+   tests plus the executable Phase 14A contract.
+7. In-app Browser review verified the template create route, the five-part
+   builder inspector, locale-specific accessible names, Arabic RTL, Turkish
+   LTR, localized Turkish validation, 44-pixel renderer actions, and no
+   horizontal overflow at 390 and 1440 pixels.
+8. TypeScript, 863 unit tests across 59 files, the production build, all local
+   database and integration contracts, and the complete 1,634/0 portal gate
+   passed. Evidence is recorded in
+   `docs/qa-attestations/nile-forms-phase14a-structured-content-20260718.json`.
+9. No remote database, provider, route cutover, normalized activation,
+   operational workflow state, upload, signature, PDF, webhook, or payment was
+   added.
+
+**Phase 14B: typed Requests** is accepted locally. It is limited to branch
+incident and maintenance requests created from an exact reviewed Nile Forms
+submission:
+
+1. Create a closed request aggregate with request number, requester, branch,
+   optional department, category, priority, status, assignee, due date,
+   comments, activity, resolution, and immutable reassignment history.
+2. Keep form answers and submissions immutable evidence. Request status,
+   comments, assignment, resolution, and history belong only to the typed
+   Requests module and never write back into answers.
+3. Derive requester, actor, role grant, branch, department, submission,
+   publication, and assignment authority on the server. Requesters see their
+   own records; scoped staff see only authorized branch or department records;
+   Super Admin retains explicit global authority.
+4. Use closed state transitions, optimistic conflict protection, idempotent
+   commands, atomic request/audit evidence, and bounded notifications. Denied,
+   stale, replay-conflicting, cross-scope, terminal, or malformed commands
+   write nothing.
+5. Keep the module internal and memory-backed in this slice unless a separate
+   local-only repository checkpoint is approved. Do not activate normalized
+   persistence or apply SQL remotely.
+6. Add one-job list, detail, and create-from-submission routes only after the
+   domain and server authority pass focused tests. Preserve EN/AR/TR,
+   responsive behavior, and the complete portal baseline.
+7. The executable Phase 14B contract and 8 focused service/route tests cover
+   exact reviewed-submission lineage, one-to-one creation, all seven commands,
+   replay/conflict behavior, terminal denial, immutable history, and scoped
+   no-write denials.
+8. In-app Browser review verified list, detail, and create-from-submission
+   jobs, typed unavailable/retry states, English LTR, Arabic RTL, 44-pixel
+   actions, and no horizontal overflow at 390 and 1440 pixels.
+9. TypeScript, 871 unit tests across 61 files, the production build, every
+   local database and integration contract, and the complete 1,634/0 portal
+   gate passed. Evidence is recorded in
+   `docs/qa-attestations/nile-forms-phase14b-typed-requests-20260718.json`.
+10. Memory remains the runtime default. No remote database, normalized runtime
+    activation, route cutover, provider call, external delivery, upload,
+    generic workflow, or Moodle/EMS writeback was added.
+
+Phase 14B added no Approvals, Appointments, Surveys, Applications, uploads,
+signatures, PDFs, provider notifications, webhooks, payments, external
+delivery, migration cutover, generic workflow editor, or direct Moodle/EMS
+writeback. No further Nile Forms slice is approved; those capabilities require
+separate checkpoint approvals.
+
+The separately approved Moodle workstream may proceed only with disjoint write
+sets. Changes to shared session, permission, audit, outbox, migration-history,
+or server-runtime boundaries are serialized through the execution contract and
+must preserve every accepted gate.
 
 ### Approved Moodle Sandbox Slice
 

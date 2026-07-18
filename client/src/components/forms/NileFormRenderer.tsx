@@ -11,7 +11,9 @@ import {
 } from "lucide-react";
 
 import {
+  evaluateFormCalculations,
   evaluateFormLogic,
+  getFormCalculationTargetIds,
   getLocalizedText,
   normalizeAndValidateFormAnswers,
   type FormField,
@@ -58,6 +60,85 @@ function draftStorageKey(publicationId: string) {
   return `nile_forms_draft_token:${publicationId}`;
 }
 
+const rendererCopy = {
+  en: {
+    draftRestored: "Draft restored.",
+    draftRestoreFailed: "The draft could not be restored.",
+    correctCurrent: "Correct the required fields before continuing.",
+    draftSaved: "Draft saved.",
+    draftSaveFailed: "Draft could not be saved.",
+    correctAll: "Correct the highlighted fields before submitting.",
+    offlineUnavailable: "Offline storage is not ready for this form.",
+    offlineSaveFailed: "The response could not be saved offline.",
+    submitFailed: "The response could not be submitted.",
+    responseSubmitted: "Response submitted",
+    offlineStored:
+      "The response is encrypted on this device. Sync it when connectivity returns.",
+    draftUnavailable: "Draft unavailable",
+    retry: "Retry",
+    back: "Back",
+    saving: "Saving",
+    saveDraft: "Save draft",
+    next: "Next",
+    submitting: "Submitting",
+    encrypting: "Encrypting",
+    saveForSync: "Save for sync",
+  },
+  ar: {
+    draftRestored: "تم استعادة المسودة.",
+    draftRestoreFailed: "تعذر استعادة المسودة.",
+    correctCurrent: "يرجى تصحيح الحقول المطلوبة.",
+    draftSaved: "تم حفظ المسودة.",
+    draftSaveFailed: "تعذر حفظ المسودة.",
+    correctAll: "يرجى تصحيح الحقول المطلوبة.",
+    offlineUnavailable: "التخزين دون اتصال غير متاح لهذا النموذج.",
+    offlineSaveFailed: "تعذر حفظ الرد دون اتصال.",
+    submitFailed: "تعذر إرسال الرد.",
+    responseSubmitted: "تم إرسال الرد",
+    offlineStored:
+      "تم حفظ الرد بشكل مشفر على هذا الجهاز. قم بالمزامنة عند عودة الاتصال.",
+    draftUnavailable: "تعذر استعادة المسودة",
+    retry: "إعادة المحاولة",
+    back: "السابق",
+    saving: "جارٍ الحفظ",
+    saveDraft: "حفظ المسودة",
+    next: "التالي",
+    submitting: "جارٍ الإرسال",
+    encrypting: "جارٍ التشفير",
+    saveForSync: "حفظ للمزامنة",
+  },
+  tr: {
+    draftRestored: "Taslak geri yüklendi.",
+    draftRestoreFailed: "Taslak geri yüklenemedi.",
+    correctCurrent: "Devam etmeden önce gerekli alanları düzeltin.",
+    draftSaved: "Taslak kaydedildi.",
+    draftSaveFailed: "Taslak kaydedilemedi.",
+    correctAll: "Göndermeden önce işaretli alanları düzeltin.",
+    offlineUnavailable: "Bu form için çevrim dışı depolama hazır değil.",
+    offlineSaveFailed: "Yanıt çevrim dışı kaydedilemedi.",
+    submitFailed: "Yanıt gönderilemedi.",
+    responseSubmitted: "Yanıt gönderildi",
+    offlineStored:
+      "Yanıt bu cihazda şifrelenmiştir. Bağlantı kurulduğunda eşitleyin.",
+    draftUnavailable: "Taslak kullanılamıyor",
+    retry: "Tekrar dene",
+    back: "Geri",
+    saving: "Kaydediliyor",
+    saveDraft: "Taslağı kaydet",
+    next: "İleri",
+    submitting: "Gönderiliyor",
+    encrypting: "Şifreleniyor",
+    saveForSync: "Eşitlemek için kaydet",
+  },
+} as const;
+
+function rendererText(
+  locale: FormLocale,
+  key: keyof (typeof rendererCopy)["en"]
+) {
+  return rendererCopy[locale][key];
+}
+
 function inputValue(value: unknown) {
   return typeof value === "string" || typeof value === "number" ? value : "";
 }
@@ -69,6 +150,7 @@ function FieldControl({
   options,
   required,
   disabled,
+  derived,
   error,
   onChange,
 }: {
@@ -78,6 +160,7 @@ function FieldControl({
   options: FormField["options"];
   required: boolean;
   disabled: boolean;
+  derived: boolean;
   error?: string;
   onChange(value: unknown): void;
 }) {
@@ -114,6 +197,15 @@ function FieldControl({
     <span id={labelId} className="nile-form-field-label">
       {label}
       {required ? <span aria-hidden="true">*</span> : null}
+      {derived ? (
+        <small>
+          {locale === "ar"
+            ? "محسوب"
+            : locale === "tr"
+              ? "Hesaplanan"
+              : "Calculated"}
+        </small>
+      ) : null}
     </span>
   );
   const common = {
@@ -152,7 +244,9 @@ function FieldControl({
         value={inputValue(value)}
         onChange={event => onChange(event.target.value)}
       >
-        <option value="">{locale === "ar" ? "اختر" : "Select"}</option>
+        <option value="">
+          {locale === "ar" ? "اختر" : locale === "tr" ? "Seçin" : "Select"}
+        </option>
         {(options ?? []).map(option => (
           <option key={option.id} value={option.id}>
             {getLocalizedText(option.label, locale)}
@@ -191,8 +285,8 @@ function FieldControl({
     control = (
       <div className="nile-form-segmented" {...groupAccessibility}>
         {[
-          { value: true, en: "Yes", ar: "نعم" },
-          { value: false, en: "No", ar: "لا" },
+          { value: true, en: "Yes", ar: "نعم", tr: "Evet" },
+          { value: false, en: "No", ar: "لا", tr: "Hayır" },
         ].map(option => (
           <button
             key={String(option.value)}
@@ -327,9 +421,18 @@ export default function NileFormRenderer({
   const [submittedId, setSubmittedId] = useState("");
   const rendererRef = useRef<HTMLElement>(null);
   const noticeRef = useRef<HTMLParagraphElement>(null);
-  const logic = useMemo(
-    () => evaluateFormLogic(content, answers),
+  const calculatedTargetIds = useMemo(
+    () => getFormCalculationTargetIds(content),
+    [content]
+  );
+  const calculationState = useMemo(
+    () => evaluateFormCalculations(content, answers),
     [answers, content]
+  );
+  const displayedAnswers = calculationState.answers;
+  const logic = useMemo(
+    () => evaluateFormLogic(content, displayedAnswers),
+    [content, displayedAnswers]
   );
   const page = content.pages[Math.min(pageIndex, content.pages.length - 1)];
   const isLastPage = pageIndex === content.pages.length - 1;
@@ -361,11 +464,7 @@ export default function NileFormRenderer({
         setAnswers(response.data.answers);
         setDraftRevision(response.data.revision);
         setDraftToken(storedToken);
-        setNotice(
-          content.defaultLanguage === "ar"
-            ? "تم استعادة المسودة."
-            : "Draft restored."
-        );
+        setNotice(rendererText(content.defaultLanguage, "draftRestored"));
       } else if (response && response.code === "draft_not_found") {
         if (mode === "public") {
           sessionStorage.removeItem(draftStorageKey(bundle.publication.id));
@@ -374,9 +473,7 @@ export default function NileFormRenderer({
       } else if (response) {
         setRestoreError(
           response.error ??
-            (content.defaultLanguage === "ar"
-              ? "تعذر استعادة المسودة."
-              : "The draft could not be restored.")
+            rendererText(content.defaultLanguage, "draftRestoreFailed")
         );
       }
       setBusy(null);
@@ -414,6 +511,7 @@ export default function NileFormRenderer({
   };
 
   const updateAnswer = (fieldId: string, value: unknown) => {
+    if (calculatedTargetIds.has(fieldId)) return;
     setAnswers(current => ({ ...current, [fieldId]: value }));
     setErrors(current => {
       if (!current[fieldId]) return current;
@@ -425,7 +523,7 @@ export default function NileFormRenderer({
   };
 
   const validate = () => {
-    const result = normalizeAndValidateFormAnswers(content, answers);
+    const result = normalizeAndValidateFormAnswers(content, answers, locale);
     setAnswers(result.answers);
     setErrors(result.errors);
     return result;
@@ -437,11 +535,7 @@ export default function NileFormRenderer({
     if (
       Object.keys(result.errors).some(fieldId => currentFieldIds.has(fieldId))
     ) {
-      setNotice(
-        locale === "ar"
-          ? "يرجى تصحيح الحقول المطلوبة."
-          : "Correct the required fields before continuing."
-      );
+      setNotice(rendererText(locale, "correctCurrent"));
       focusFirstError(result.errors, pageIndex);
       return;
     }
@@ -460,17 +554,22 @@ export default function NileFormRenderer({
     if (mode === "preview" || mode === "offline") return;
     setBusy("saving");
     setNotice("");
-    const result = normalizeAndValidateFormAnswers(content, answers);
+    const result = normalizeAndValidateFormAnswers(content, answers, locale);
     const response =
       mode === "public" && slug
         ? await savePublicFormDraftRequest(
             slug,
-            { answers: result.answers, expectedRevision: draftRevision },
+            {
+              answers: result.answers,
+              expectedRevision: draftRevision,
+              locale,
+            },
             draftToken
           )
         : await saveAssignedFormDraftRequest(bundle.publication.id, {
             answers: result.answers,
             expectedRevision: draftRevision,
+            locale,
           });
     if (response.ok && response.data) {
       setAnswers(response.data.answers);
@@ -480,9 +579,9 @@ export default function NileFormRenderer({
       if (mode === "public" && token) {
         sessionStorage.setItem(draftStorageKey(bundle.publication.id), token);
       }
-      setNotice(locale === "ar" ? "تم حفظ المسودة." : "Draft saved.");
+      setNotice(rendererText(locale, "draftSaved"));
     } else {
-      setNotice(response.error ?? "Draft could not be saved.");
+      setNotice(response.error ?? rendererText(locale, "draftSaveFailed"));
     }
     setBusy(null);
   };
@@ -496,11 +595,7 @@ export default function NileFormRenderer({
         pageItem.fields.some(field => result.errors[field.id])
       );
       if (firstErrorPage >= 0) setPageIndex(firstErrorPage);
-      setNotice(
-        locale === "ar"
-          ? "يرجى تصحيح الحقول المطلوبة."
-          : "Correct the highlighted fields before submitting."
-      );
+      setNotice(rendererText(locale, "correctAll"));
       focusFirstError(
         result.errors,
         firstErrorPage >= 0 ? firstErrorPage : pageIndex
@@ -513,10 +608,11 @@ export default function NileFormRenderer({
       answers: result.answers,
       clientSubmissionId: createClientSubmissionId(),
       clientSubmittedAt: new Date().toISOString(),
+      locale,
     };
     if (mode === "offline") {
       if (!onOfflineQueued) {
-        setNotice("Offline storage is not ready for this form.");
+        setNotice(rendererText(locale, "offlineUnavailable"));
         setBusy(null);
         return;
       }
@@ -525,7 +621,7 @@ export default function NileFormRenderer({
         setSubmittedId(payload.clientSubmissionId);
         onSubmitted?.(payload.clientSubmissionId);
       } else {
-        setNotice(queued.error ?? "The response could not be saved offline.");
+        setNotice(queued.error ?? rendererText(locale, "offlineSaveFailed"));
       }
       setBusy(null);
       return;
@@ -545,7 +641,7 @@ export default function NileFormRenderer({
       if (details && typeof details === "object" && !Array.isArray(details)) {
         setErrors(details as Record<string, string[]>);
       }
-      setNotice(response.error ?? "The response could not be submitted.");
+      setNotice(response.error ?? rendererText(locale, "submitFailed"));
     }
     setBusy(null);
   };
@@ -557,12 +653,10 @@ export default function NileFormRenderer({
           <CheckCircle2 size={24} />
         </span>
         <div>
-          <h2>{locale === "ar" ? "تم إرسال الرد" : "Response submitted"}</h2>
+          <h2>{rendererText(locale, "responseSubmitted")}</h2>
           <p>
             {mode === "offline"
-              ? locale === "ar"
-                ? "تم حفظ الرد بشكل مشفر على هذا الجهاز. قم بالمزامنة عند عودة الاتصال."
-                : "The response is encrypted on this device. Sync it when connectivity returns."
+              ? rendererText(locale, "offlineStored")
               : getLocalizedText(content.confirmationMessage, locale)}
           </p>
           <small>{submittedId}</small>
@@ -580,9 +674,7 @@ export default function NileFormRenderer({
         role="alert"
       >
         <AlertCircle size={24} />
-        <strong>
-          {locale === "ar" ? "تعذر استعادة المسودة" : "Draft unavailable"}
-        </strong>
+        <strong>{rendererText(locale, "draftUnavailable")}</strong>
         <p>{restoreError}</p>
         <button
           type="button"
@@ -590,7 +682,7 @@ export default function NileFormRenderer({
           onClick={() => setDraftLoadAttempt(value => value + 1)}
         >
           <RefreshCw size={15} />
-          {locale === "ar" ? "إعادة المحاولة" : "Retry"}
+          {rendererText(locale, "retry")}
         </button>
       </section>
     );
@@ -608,7 +700,9 @@ export default function NileFormRenderer({
           <span className="nile-form-step">
             {locale === "ar"
               ? `الصفحة ${pageIndex + 1} من ${content.pages.length}`
-              : `Page ${pageIndex + 1} of ${content.pages.length}`}
+              : locale === "tr"
+                ? `${content.pages.length} sayfadan ${pageIndex + 1}. sayfa`
+                : `Page ${pageIndex + 1} of ${content.pages.length}`}
           </span>
           <h1>{getLocalizedText(content.title, locale)}</h1>
           <p>{getLocalizedText(content.description, locale)}</p>
@@ -622,7 +716,7 @@ export default function NileFormRenderer({
               aria-pressed={locale === language}
               onClick={() => setLocale(language)}
             >
-              {language === "en" ? "EN" : "ع"}
+              {language === "en" ? "EN" : language === "ar" ? "ع" : "TR"}
             </button>
           ))}
         </div>
@@ -672,10 +766,15 @@ export default function NileFormRenderer({
                 key={field.id}
                 field={field}
                 locale={locale}
-                value={answers[field.id]}
+                value={displayedAnswers[field.id]}
                 options={field.options ?? bundle.entityOptions[field.id]}
                 required={logic.requiredFieldIds.has(field.id)}
-                disabled={busy !== null || mode === "preview"}
+                disabled={
+                  busy !== null ||
+                  mode === "preview" ||
+                  calculatedTargetIds.has(field.id)
+                }
+                derived={calculatedTargetIds.has(field.id)}
                 error={errors[field.id]?.[0]}
                 onChange={value => updateAnswer(field.id, value)}
               />
@@ -705,7 +804,7 @@ export default function NileFormRenderer({
             ) : (
               <ArrowLeft size={16} />
             )}
-            {locale === "ar" ? "السابق" : "Back"}
+            {rendererText(locale, "back")}
           </button>
           <div>
             {mode !== "preview" &&
@@ -719,12 +818,8 @@ export default function NileFormRenderer({
               >
                 <Save size={16} />
                 {busy === "saving"
-                  ? locale === "ar"
-                    ? "جارٍ الحفظ"
-                    : "Saving"
-                  : locale === "ar"
-                    ? "حفظ المسودة"
-                    : "Save draft"}
+                  ? rendererText(locale, "saving")
+                  : rendererText(locale, "saveDraft")}
               </button>
             ) : null}
             {!isLastPage ? (
@@ -734,7 +829,7 @@ export default function NileFormRenderer({
                 disabled={busy !== null}
                 onClick={nextPage}
               >
-                {locale === "ar" ? "التالي" : "Next"}
+                {rendererText(locale, "next")}
                 {direction === "rtl" ? (
                   <ArrowLeft size={16} />
                 ) : (
@@ -749,15 +844,12 @@ export default function NileFormRenderer({
               >
                 <Send size={16} />
                 {busy === "submitting"
-                  ? locale === "ar"
-                    ? "جارٍ الإرسال"
-                    : mode === "offline"
-                      ? "Encrypting"
-                      : "Submitting"
+                  ? rendererText(
+                      locale,
+                      mode === "offline" ? "encrypting" : "submitting"
+                    )
                   : mode === "offline"
-                    ? locale === "ar"
-                      ? "حفظ للمزامنة"
-                      : "Save for sync"
+                    ? rendererText(locale, "saveForSync")
                     : getLocalizedText(content.submitLabel, locale)}
               </button>
             ) : null}

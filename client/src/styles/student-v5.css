@@ -335,6 +335,116 @@
   box-shadow: none;
 }
 
+.platform-shell[data-role="student"] .student-live-main {
+  width: min(100%, 1080px);
+}
+
+.platform-shell[data-role="student"]
+  :is(.student-live-workspace, .student-live-next-lesson) {
+  border: 1px solid var(--student-line);
+  border-radius: 14px;
+  background: var(--card);
+}
+
+.platform-shell[data-role="student"] .student-live-workspace {
+  overflow: hidden;
+}
+
+.platform-shell[data-role="student"] .student-live-heading {
+  min-height: 126px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 24px;
+}
+
+.platform-shell[data-role="student"]
+  :is(.student-live-heading, .student-live-next-lesson)
+  span {
+  color: var(--muted-foreground);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.platform-shell[data-role="student"]
+  :is(.student-live-heading, .student-live-next-lesson)
+  h2 {
+  margin: 6px 0 0;
+  font-size: 24px;
+  line-height: 1.2;
+}
+
+.platform-shell[data-role="student"]
+  :is(.student-live-heading, .student-live-next-lesson)
+  p {
+  margin: 7px 0 0;
+  color: var(--muted-foreground);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.platform-shell[data-role="student"] .student-live-facts {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin: 0;
+  border-block: 1px solid var(--student-line);
+}
+
+.platform-shell[data-role="student"] .student-live-facts > div {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 4px 10px;
+  padding: 18px 22px;
+}
+
+.platform-shell[data-role="student"] .student-live-facts > div + div {
+  border-inline-start: 1px solid var(--student-line);
+}
+
+.platform-shell[data-role="student"] .student-live-facts svg {
+  grid-row: 1 / 3;
+  color: var(--role-color);
+}
+
+.platform-shell[data-role="student"] .student-live-facts dt {
+  color: var(--muted-foreground);
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.platform-shell[data-role="student"] .student-live-facts dd {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+  font-size: 13px;
+  font-weight: 760;
+}
+
+.platform-shell[data-role="student"] .student-live-actions {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 20px 24px;
+}
+
+.platform-shell[data-role="student"] .student-live-actions p {
+  margin: 0;
+  color: var(--muted-foreground);
+  font-size: 13px;
+}
+
+.platform-shell[data-role="student"] .student-live-next-lesson {
+  min-height: 96px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 20px 24px;
+}
+
 .platform-shell[data-role="student"] .learning-player-top {
   min-height: 56px;
   border-color: var(--student-line);
@@ -376,6 +486,63 @@
 .platform-shell[data-role="student"] .student-assessment-response-head {
   min-height: 68px;
   border-color: var(--student-line);
+}
+
+.platform-shell[data-role="student"] .student-assessment-review-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(240px, 0.8fr);
+  gap: 0;
+  border-top: 0;
+}
+
+.platform-shell[data-role="student"] .student-assessment-review-grid > div {
+  min-width: 0;
+  padding: 20px 0 0;
+}
+
+.platform-shell[data-role="student"]
+  .student-assessment-review-grid
+  > div
+  + div {
+  margin-inline-start: 24px;
+  border-inline-start: 1px solid var(--student-line);
+  padding-inline-start: 24px;
+}
+
+.platform-shell[data-role="student"] .student-assessment-review-grid span {
+  color: var(--muted-foreground);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.platform-shell[data-role="student"] .student-assessment-review-grid p {
+  margin: 8px 0 0;
+  overflow-wrap: anywhere;
+  color: var(--foreground);
+  font-size: 14px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+}
+
+.platform-shell[data-role="student"] .student-assessment-answer-list {
+  display: grid;
+  margin-top: 8px;
+}
+
+.platform-shell[data-role="student"] .student-assessment-answer-list > div {
+  border-top: 1px solid var(--student-line);
+  padding: 12px 0;
+}
+
+.platform-shell[data-role="student"]
+  .student-assessment-answer-list
+  > div:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.platform-shell[data-role="student"] .student-assessment-answer-list strong {
+  font-size: 12px;
 }
 
 .platform-shell[data-role="student"] .student-quiz-question {
@@ -556,6 +723,37 @@
     overflow: visible;
   }
 
+  .platform-shell[data-role="student"] .student-live-heading,
+  .platform-shell[data-role="student"] .student-live-actions,
+  .platform-shell[data-role="student"] .student-live-next-lesson {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 14px;
+    padding: 20px 18px;
+  }
+
+  .platform-shell[data-role="student"] .student-live-facts {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .platform-shell[data-role="student"] .student-live-facts > div {
+    padding: 15px 18px;
+  }
+
+  .platform-shell[data-role="student"] .student-live-facts > div + div {
+    border-block-start: 1px solid var(--student-line);
+    border-inline-start: 0;
+  }
+
+  .platform-shell[data-role="student"]
+    .student-live-actions
+    .platform-primary-button,
+  .platform-shell[data-role="student"]
+    .student-live-next-lesson
+    .platform-secondary-button {
+    width: 100%;
+  }
+
   .platform-shell[data-role="student"] .student-learning-course-select {
     width: 100%;
     border-bottom: 1px solid var(--student-line);
@@ -632,6 +830,20 @@
 
   .platform-shell[data-role="student"] .student-assessment-response-head {
     min-height: 62px;
+  }
+
+  .platform-shell[data-role="student"] .student-assessment-review-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .platform-shell[data-role="student"]
+    .student-assessment-review-grid
+    > div
+    + div {
+    margin-inline-start: 0;
+    border-block-start: 1px solid var(--student-line);
+    border-inline-start: 0;
+    padding-inline-start: 0;
   }
 
   .platform-shell[data-role="student"]

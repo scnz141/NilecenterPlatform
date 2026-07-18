@@ -417,6 +417,73 @@ describe("class delivery integrity", () => {
 
   it.each([
     {
+      label: "missing paired calendar event",
+      mutate: (state: PlatformState) => {
+        state.events = state.events.filter(item => item.id !== "evt_ar_live");
+      },
+      message: "is missing its calendar event",
+    },
+    {
+      label: "cancelled paired calendar event",
+      mutate: (state: PlatformState) => {
+        state.events.find(item => item.id === "evt_ar_live")!.status =
+          "cancelled";
+      },
+      message: "paired calendar event is active or completed",
+    },
+    {
+      label: "session outside the course run",
+      mutate: (state: PlatformState) => {
+        const session = state.classSessions.find(
+          item => item.id === "session_ar_live"
+        )!;
+        const event = state.events.find(item => item.id === "evt_ar_live")!;
+        session.startsAt = event.startsAt = "2026-09-01T09:00:00+03:00";
+        session.endsAt = event.endsAt = "2026-09-01T10:30:00+03:00";
+      },
+      message: "must stay inside the course run date range",
+    },
+    {
+      label: "inactive selected room",
+      mutate: (state: PlatformState) => {
+        state.events.find(item => item.id === "evt_ar_live")!.roomId =
+          "room_online_a";
+        state.rooms.find(item => item.id === "room_online_a")!.status =
+          "paused";
+      },
+      message: "Attendance requires an active room.",
+    },
+    {
+      label: "undersized selected room",
+      mutate: (state: PlatformState) => {
+        state.events.find(item => item.id === "evt_ar_live")!.roomId =
+          "room_online_a";
+        state.rooms.find(item => item.id === "room_online_a")!.capacity = 15;
+      },
+      message: "Attendance room capacity is smaller than the class capacity.",
+    },
+  ])(
+    "rejects attendance with $label without mutation",
+    ({ mutate, message }) => {
+      const state = cloneState();
+      mutate(state);
+
+      expectRejectedWithoutMutation(
+        state,
+        {
+          type: "attendance.save",
+          classGroupId: "class_ar_l3_a",
+          sessionId: "session_ar_live",
+          statuses: { stu_demo: "present" },
+          actorId: "usr_teacher_demo",
+        },
+        message
+      );
+    }
+  );
+
+  it.each([
+    {
       label: "outside the course run dates",
       mutate: (_state: PlatformState) => undefined,
       startsAt: "2026-09-07T09:00:00+03:00",

@@ -2295,6 +2295,7 @@ export const seedPlatformState: PlatformState = {
     {
       id: "inv_demo_1",
       studentId: "stu_demo",
+      enrollmentId: "enr_ar_l3",
       amount: 2400,
       currency: "EGP",
       dueAt: "2026-06-30",
@@ -2303,6 +2304,7 @@ export const seedPlatformState: PlatformState = {
     {
       id: "inv_cairo_demo_1",
       studentId: "stu_cairo_demo",
+      enrollmentId: "enr_ar_l3_cairo",
       amount: 2400,
       currency: "EGP",
       dueAt: "2026-07-05",
@@ -2311,6 +2313,7 @@ export const seedPlatformState: PlatformState = {
     {
       id: "inv_alex_demo_1",
       studentId: "stu_alex_demo",
+      enrollmentId: "enr_ar_l1_alex",
       amount: 1800,
       currency: "EGP",
       dueAt: "2026-07-02",
@@ -2319,6 +2322,7 @@ export const seedPlatformState: PlatformState = {
     {
       id: "inv_ready_demo_1",
       studentId: "stu_ready_demo",
+      enrollmentId: "enr_hifz_ready",
       amount: 1800,
       currency: "EGP",
       dueAt: "2026-06-29",
@@ -2327,6 +2331,7 @@ export const seedPlatformState: PlatformState = {
     {
       id: "inv_paused_demo_1",
       studentId: "stu_paused_demo",
+      enrollmentId: "enr_ar_l3_paused",
       amount: 2400,
       currency: "EGP",
       dueAt: "2026-06-15",
@@ -2335,6 +2340,7 @@ export const seedPlatformState: PlatformState = {
     {
       id: "inv_completed_demo_1",
       studentId: "stu_completed_demo",
+      enrollmentId: "enr_ar_l3_completed",
       amount: 2400,
       currency: "EGP",
       dueAt: "2026-05-01",

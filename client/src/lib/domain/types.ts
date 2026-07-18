@@ -550,6 +550,7 @@ export type EnrollmentWorkflow = {
 export type Invoice = {
   id: string;
   studentId: string;
+  enrollmentId?: string;
   amount: number;
   currency: "EGP" | "USD";
   dueAt: string;

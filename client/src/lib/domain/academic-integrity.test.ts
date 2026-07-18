@@ -526,6 +526,27 @@ describe("academic relationship integrity", () => {
     ).toThrow("is incomplete: enrollment is missing");
   });
 
+  it("does not use targets stored on an unactivated workflow as write inputs", () => {
+    const state = cloneState();
+    const workflow = state.enrollmentWorkflows.find(
+      item => item.id === "ew_demo_1"
+    )!;
+    workflow.courseRunId = "run_ar_l3_2026";
+    workflow.classGroupId = "class_ar_l3_a";
+    const before = JSON.stringify(state);
+
+    expect(() =>
+      applyPlatformWorkflowAction(
+        state,
+        { type: "enrollment.activate", workflowId: workflow.id },
+        createContext()
+      )
+    ).toThrow(
+      "Enrollment activation requires an exact course run and class group."
+    );
+    expect(JSON.stringify(state)).toBe(before);
+  });
+
   it("protects the global Super Admin settings authority", () => {
     const state = cloneState();
     expect(() =>

@@ -161,6 +161,31 @@ describe("server class-session authority", () => {
     expect(repository.recordEvent).not.toHaveBeenCalled();
   });
 
+  it("rejects attendance when the paired calendar event is not deliverable without persistence", async () => {
+    const state = cloneState();
+    state.events.find(item => item.id === "evt_ar_live")!.status = "cancelled";
+    const before = JSON.parse(JSON.stringify(state)) as PlatformState;
+    const repository = install(state);
+
+    await expect(
+      applyPlatformWorkflowAction(
+        {
+          type: "attendance.save",
+          classGroupId: "class_ar_l3_a",
+          sessionId: "session_ar_live",
+          statuses: { stu_demo: "present" },
+        },
+        session("teacher", "usr_teacher_demo")
+      )
+    ).rejects.toThrow(
+      "Attendance can only be saved when the paired calendar event is active or completed."
+    );
+
+    expect(state).toEqual(before);
+    expect(repository.writeSnapshot).not.toHaveBeenCalled();
+    expect(repository.recordEvent).not.toHaveBeenCalled();
+  });
+
   it("parses exact reschedule and cancellation commands only", () => {
     expect(
       parsePlatformWorkflowAction({

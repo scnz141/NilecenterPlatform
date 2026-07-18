@@ -1,0 +1,67 @@
+{
+  "phase": "14B",
+  "status": "accepted-local",
+  "acceptedAt": "2026-07-18",
+  "scope": "Nile Forms typed branch incident and maintenance requests",
+  "contract": {
+    "sourceProfile": "branch_incident@version_form_incident_1",
+    "operations": 7,
+    "statuses": 5,
+    "priorities": 4,
+    "categories": 4,
+    "locales": ["en", "ar", "tr"],
+    "immutableSourceEvidence": true,
+    "serverAuthoritativeScope": true,
+    "optimisticConflictProtection": true,
+    "idempotentCommands": true,
+    "runtimeDefault": "memory",
+    "normalizedActivation": false
+  },
+  "focusedValidation": {
+    "commands": [
+      "npm run check:integration-freeze",
+      "npm run check:integration-ownership",
+      "npm run check:forms-phase14b",
+      "npx vitest run client/src/lib/forms/server-nile-requests-service.test.ts client/src/lib/forms/server-nile-requests-routes.test.ts",
+      "npm run check"
+    ],
+    "result": "passed",
+    "focusedTestFiles": 2,
+    "focusedTests": 8
+  },
+  "manualBrowser": {
+    "surface": "Codex in-app Browser",
+    "widths": [390, 1440],
+    "listRoute": true,
+    "detailRoute": true,
+    "createFromSubmissionRoute": true,
+    "typedUnavailableAndRetryStates": true,
+    "arabicRtl": true,
+    "englishLtr": true,
+    "minimumActionHeight": 44,
+    "horizontalOverflow": false
+  },
+  "fullValidation": {
+    "command": "QA_OUTPUT_DIR=output/playwright/codex-phase14b-acceptance scripts/verify.sh",
+    "completedAt": "2026-07-18T13:40:32Z",
+    "typescript": "passed",
+    "unitTestFiles": 61,
+    "unitTests": 871,
+    "productionBuild": "passed",
+    "portalQaArtifact": "output/playwright/codex-phase14b-acceptance/portal-qa-summary.json",
+    "portalQaArtifactSha256": "f9b1dc6ef971ef13c74d8fe7af913b9075cbece0b4a6e6aecd63c0887a99fc37",
+    "portalChecks": 1634,
+    "portalFailures": 0,
+    "portalElapsedMs": 604712,
+    "interrupted": false
+  },
+  "boundaries": {
+    "productionTouched": false,
+    "remoteDatabaseTargeted": false,
+    "normalizedRuntimeEnabled": false,
+    "routeCutoverEnabled": false,
+    "externalProviderCalled": false,
+    "moodleOrEmsWriteback": false,
+    "genericWorkflowAdded": false
+  }
+}

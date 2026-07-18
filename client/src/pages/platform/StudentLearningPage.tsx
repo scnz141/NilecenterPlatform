@@ -2,11 +2,14 @@ import { useEffect, useMemo, useState } from "react";
 import {
   ArrowRight,
   BookOpen,
+  CalendarDays,
   Captions,
   CheckCircle2,
   ClipboardCheck,
+  Clock3,
   FileText,
   Headphones,
+  MapPin,
   Maximize2,
   Minimize2,
   Pause,
@@ -68,6 +71,31 @@ function formatDate(value?: string) {
     month: "short",
     day: "numeric",
   }).format(date);
+}
+
+function formatLiveDate(value?: string) {
+  if (!value) return "Not scheduled";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat("en", {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+  }).format(date);
+}
+
+function formatLiveTime(startsAt?: string, endsAt?: string) {
+  if (!startsAt) return "Time to be confirmed";
+  const start = new Date(startsAt);
+  const end = endsAt ? new Date(endsAt) : undefined;
+  if (Number.isNaN(start.getTime())) return startsAt;
+  const formatter = new Intl.DateTimeFormat("en", {
+    hour: "numeric",
+    minute: "2-digit",
+  });
+  return end && !Number.isNaN(end.getTime())
+    ? `${formatter.format(start)} - ${formatter.format(end)}`
+    : formatter.format(start);
 }
 
 function readableStatus(value?: string) {
@@ -233,11 +261,25 @@ export default function StudentLearningPage({
   const nextLessonRow =
     lessonRows.find(row => row.progress?.status !== "completed") ??
     lessonRows[0];
+  const liveLessonRow = lessonRows.find(row => row.lesson.type === "live");
   const selectedLessonRow =
     mode === "live"
-      ? (lessonRows.find(row => row.lesson.type === "live") ?? nextLessonRow)
+      ? liveLessonRow
       : (lessonRows.find(row => row.lesson.id === lessonId) ?? nextLessonRow);
   const selectedLesson = selectedLessonRow?.lesson;
+  const classSessions = state.classSessions
+    .filter(
+      item =>
+        item.classGroupId === classGroup?.id && item.status !== "cancelled"
+    )
+    .sort(
+      (a, b) => new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime()
+    );
+  const now = Date.now();
+  const liveSession =
+    classSessions.find(item => new Date(item.endsAt).getTime() >= now) ??
+    [...classSessions].reverse()[0];
+  const room = state.rooms.find(item => item.id === classGroup?.roomId);
   const completeSelectedLesson = () => {
     if (!selectedLesson) return;
     const lesson = platformStore.completeLesson(
@@ -292,8 +334,10 @@ export default function StudentLearningPage({
   }
 
   const courseHref = `/app/student/courses/${course.id}`;
-  const lessonHref = selectedLesson
-    ? `/app/student/courses/${course.id}/learn/${selectedLesson.id}`
+  const lessonNavigationRow =
+    mode === "lesson" ? selectedLessonRow : nextLessonRow;
+  const lessonHref = lessonNavigationRow
+    ? `/app/student/courses/${course.id}/learn/${lessonNavigationRow.lesson.id}`
     : courseHref;
   const liveHref = `/app/student/courses/${course.id}/live`;
   const title =
@@ -404,6 +448,18 @@ export default function StudentLearningPage({
               lessonCompletion={lessonCompletion}
               completedLessons={completedLessons}
             />
+          ) : mode === "live" ? (
+            <LiveClassWorkspace
+              course={course}
+              classGroup={classGroup}
+              branchName={branch?.name}
+              roomName={room?.name}
+              meeting={meeting}
+              session={liveSession}
+              nextLessonRow={nextLessonRow}
+              lessonHref={lessonHref}
+              joinLiveClass={joinLiveClass}
+            />
           ) : (
             <LessonWorkspace
               mode={mode}
@@ -416,6 +472,107 @@ export default function StudentLearningPage({
         }
       />
     </PlatformShell>
+  );
+}
+
+function LiveClassWorkspace({
+  course,
+  classGroup,
+  branchName,
+  roomName,
+  meeting,
+  session,
+  nextLessonRow,
+  lessonHref,
+  joinLiveClass,
+}: {
+  course: PlatformState["courses"][number];
+  classGroup?: PlatformState["classGroups"][number];
+  branchName?: string;
+  roomName?: string;
+  meeting?: PlatformState["meetingLinks"][number];
+  session?: PlatformState["classSessions"][number];
+  nextLessonRow?: LessonRow;
+  lessonHref: string;
+  joinLiveClass: () => void;
+}) {
+  const liveReady = Boolean(meeting?.url && meeting.status === "active");
+
+  return (
+    <div className="student-learning-main student-live-main">
+      <section className="student-live-workspace">
+        <header className="student-live-heading">
+          <div>
+            <span>Next live class</span>
+            <h2>{session?.title ?? classGroup?.name ?? "Live class"}</h2>
+            <p>{course.title}</p>
+          </div>
+          <StatusBadge tone={liveReady ? "green" : "amber"}>
+            {liveReady ? "Link ready" : "Link pending"}
+          </StatusBadge>
+        </header>
+
+        <dl className="student-live-facts">
+          <div>
+            <CalendarDays size={17} aria-hidden="true" />
+            <dt>Date</dt>
+            <dd>{formatLiveDate(session?.startsAt)}</dd>
+          </div>
+          <div>
+            <Clock3 size={17} aria-hidden="true" />
+            <dt>Time</dt>
+            <dd>
+              {session
+                ? formatLiveTime(session.startsAt, session.endsAt)
+                : (classGroup?.schedule ?? "Time to be confirmed")}
+            </dd>
+          </div>
+          <div>
+            <MapPin size={17} aria-hidden="true" />
+            <dt>Location</dt>
+            <dd>
+              {meeting
+                ? `${meeting.provider === "mock" ? "Online classroom" : meeting.provider.replace(/_/g, " ")} · ${branchName ?? "Online"}`
+                : (roomName ?? branchName ?? "To be confirmed")}
+            </dd>
+          </div>
+        </dl>
+
+        <div className="student-live-actions">
+          <button
+            type="button"
+            className="platform-primary-button"
+            onClick={joinLiveClass}
+          >
+            <Radio size={15} />
+            Join live
+          </button>
+          <p>
+            {liveReady
+              ? "The class link is available for this enrolled group."
+              : "The class link will appear after the school confirms the session."}
+          </p>
+        </div>
+      </section>
+
+      <section className="student-live-next-lesson">
+        <div>
+          <span>Course context</span>
+          <h2>{nextLessonRow?.lesson.title ?? "No lesson scheduled"}</h2>
+          <p>
+            {nextLessonRow
+              ? `${nextLessonRow.module.title} · ${nextLessonRow.lesson.durationMinutes} min`
+              : "Your next lesson will appear when the course path is published."}
+          </p>
+        </div>
+        {nextLessonRow ? (
+          <Link className="platform-secondary-button" href={lessonHref}>
+            Open next lesson
+            <ArrowRight size={15} />
+          </Link>
+        ) : null}
+      </section>
+    </div>
   );
 }
 

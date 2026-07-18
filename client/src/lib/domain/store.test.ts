@@ -458,7 +458,11 @@ describe("platformStore workflow guards", () => {
         teacherId?: string;
         source?: string;
       };
-      invoice?: { studentId: string; status: string };
+      invoice?: {
+        studentId: string;
+        enrollmentId?: string;
+        status: string;
+      };
     };
     const classAfter = after.classGroups.find(
       item => item.id === "class_ar_l3_cairo"
@@ -485,6 +489,7 @@ describe("platformStore workflow guards", () => {
     });
     expect(created.invoice).toMatchObject({
       studentId: created.student.id,
+      enrollmentId: created.enrollment.id,
       status: "pending",
     });
     expect(classAfter?.studentIds).toContain(created.student.id);
@@ -574,6 +579,82 @@ describe("platformStore workflow guards", () => {
         actorId: "usr_registrar_demo",
       })
     ).toThrow("already at capacity");
+  });
+
+  it("rejects forged student intake lineage without lifecycle writes", () => {
+    const before = platformStore.getState();
+    const counts = {
+      users: before.users.length,
+      students: before.students.length,
+      enrollments: before.enrollments.length,
+      invoices: before.invoices.length,
+      auditLogs: before.auditLogs.length,
+    };
+    const leadBefore = before.leads.find(item => item.id === "lead_demo_1");
+    const applicationBefore = before.applications.find(
+      item => item.id === "app_demo_1"
+    );
+    const placementBefore = before.placementTests.find(
+      item => item.id === "pt_demo_1"
+    );
+
+    expect(() =>
+      platformStore.applyAction({
+        type: "student.create",
+        fullName: "Forged Direct Student",
+        email: "forged.direct@nilelearn.local",
+        phone: "+20 100 000 0813",
+        branchId: "br_online",
+        preferredLanguage: "English",
+        courseInterest: "Arabic Language",
+        ageGroup: "Adult",
+        currentLevel: "Arabic Level 3",
+        status: "active",
+        courseRunId: "run_ar_l3_2026",
+        classGroupId: "class_ar_l3_a",
+        source: "direct",
+        leadId: "lead_demo_1",
+        applicationId: "app_demo_1",
+        placementTestId: "pt_demo_1",
+        actorId: "usr_registrar_demo",
+      })
+    ).toThrow("Direct student creation cannot use intake record links.");
+
+    expect(() =>
+      platformStore.applyAction({
+        type: "student.create",
+        fullName: "Mismatched Application Student",
+        email: "different.identity@nilelearn.local",
+        phone: "+20 100 000 0814",
+        branchId: "br_online",
+        preferredLanguage: "English",
+        courseInterest: "Arabic Language",
+        ageGroup: "Adult",
+        currentLevel: "Arabic Level 3",
+        status: "active",
+        courseRunId: "run_ar_l3_2026",
+        classGroupId: "class_ar_l3_a",
+        source: "application",
+        applicationId: "app_demo_1",
+        actorId: "usr_registrar_demo",
+      })
+    ).toThrow("Student identity must match the linked intake records.");
+
+    const after = platformStore.getState();
+    expect(after.users).toHaveLength(counts.users);
+    expect(after.students).toHaveLength(counts.students);
+    expect(after.enrollments).toHaveLength(counts.enrollments);
+    expect(after.invoices).toHaveLength(counts.invoices);
+    expect(after.auditLogs).toHaveLength(counts.auditLogs);
+    expect(after.leads.find(item => item.id === "lead_demo_1")).toEqual(
+      leadBefore
+    );
+    expect(after.applications.find(item => item.id === "app_demo_1")).toEqual(
+      applicationBefore
+    );
+    expect(after.placementTests.find(item => item.id === "pt_demo_1")).toEqual(
+      placementBefore
+    );
   });
 
   it("converts an application into an enrollment workflow with level mapping", () => {
@@ -2046,6 +2127,20 @@ describe("platformStore workflow guards", () => {
     platformStore.setState({
       ...state,
       attendance: [],
+      events: [
+        ...state.events,
+        {
+          id: "evt_ar_followup",
+          type: "class_session",
+          title: "Arabic L3 follow up",
+          startsAt: "2026-06-28T09:00:00+03:00",
+          endsAt: "2026-06-28T10:00:00+03:00",
+          ownerId: "usr_teacher_demo",
+          branchId: "br_online",
+          classGroupId: "class_ar_l3_a",
+          status: "active",
+        },
+      ],
       classSessions: [
         ...state.classSessions.map(session =>
           session.id === "session_ar_live"
@@ -2102,6 +2197,20 @@ describe("platformStore workflow guards", () => {
           sessionId: "legacy_unmapped_session",
           status: "absent",
           notes: "Legacy import row without a current session",
+        },
+      ],
+      events: [
+        ...state.events,
+        {
+          id: "evt_ar_followup",
+          type: "class_session",
+          title: "Arabic L3 follow up",
+          startsAt: "2026-06-28T09:00:00+03:00",
+          endsAt: "2026-06-28T10:00:00+03:00",
+          ownerId: "usr_teacher_demo",
+          branchId: "br_online",
+          classGroupId: "class_ar_l3_a",
+          status: "active",
         },
       ],
       classSessions: [
@@ -2445,6 +2554,7 @@ describe("platformStore workflow guards", () => {
     });
     expect(classGroup?.studentIds).toContain(activated?.id);
     expect(invoice).toMatchObject({
+      enrollmentId: enrollment?.id,
       amount: 2400,
       currency: "EGP",
       status: "pending",
@@ -2607,6 +2717,7 @@ describe("platformStore workflow guards", () => {
     });
     expect(classGroup?.studentIds).toContain(activated?.id);
     expect(invoice).toMatchObject({
+      enrollmentId: enrollment?.id,
       amount: 2400,
       currency: "EGP",
       status: "pending",

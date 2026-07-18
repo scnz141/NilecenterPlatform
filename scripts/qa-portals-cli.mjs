@@ -1634,6 +1634,7 @@ async function runFormsRoleDenialChecks() {
           key: "qa-student-denied",
           titleEn: "Denied QA form",
           titleAr: "Denied QA form",
+          titleTr: "Denied QA form",
           category: "student_support"
         })
       }),
@@ -5506,7 +5507,7 @@ const deepWorkflowCases = [
     role: "superadmin",
     route: "/app/admin/system-health",
     source: workflowActionSource(`
-      await waitFor(() => normalize(document.body.textContent).includes("Readiness checks"));
+      await waitFor(() => normalize(document.body.textContent).includes("Health checks"));
       await clickButton("Run check");
       const state = await waitFor(() => {
         const next = readState();
@@ -5534,7 +5535,7 @@ const deepWorkflowCases = [
     role: "superadmin",
     route: "/app/admin/settings",
     source: workflowActionSource(`
-      await waitFor(() => normalize(document.body.textContent).includes("Global platform settings"));
+      await waitFor(() => normalize(document.body.textContent).includes("School setup"));
       const term = "QA Term " + Date.now();
       setByLabel("Organization", "Nile Center QA");
       setByLabel("Academic term", term);

@@ -23,12 +23,22 @@ import type {
 } from "../client/src/lib/domain/types.js";
 import { canSendMessageToUser } from "../client/src/lib/domain/messageScope.js";
 import {
+  assertStudentIntakeLineage,
+  branchIdForInvoice,
+  teacherHasStudentRosterAuthority,
+} from "../client/src/lib/domain/relationships.js";
+import {
   roleOrder,
   rolePermissions,
   type Permission,
   type Role,
 } from "../client/src/lib/platformData.js";
 import type { ServerSession } from "./auth.js";
+import {
+  requiredPermissionForPlatformAction,
+  roleCanRunPlatformAction,
+  SELF_SCOPED_ACTION,
+} from "./platformCapabilities.js";
 import {
   getPlatformStateRepository,
   normalizePlatformState,
@@ -167,13 +177,7 @@ function courseRunForQuiz(state: PlatformState, quizId: string) {
 
 function branchForInvoice(state: PlatformState, invoiceId: string) {
   const invoice = state.invoices.find(item => item.id === invoiceId);
-  const enrollment = state.enrollments.find(
-    item => item.studentId === invoice?.studentId
-  );
-  const run = state.courseRuns.find(
-    item => item.id === enrollment?.courseRunId
-  );
-  return run?.branchId;
+  return invoice ? branchIdForInvoice(state, invoice) : undefined;
 }
 
 function teacherOwnsStudent(
@@ -181,28 +185,10 @@ function teacherOwnsStudent(
   teacherUserId: string,
   studentId: string
 ) {
-  const classGroupIds = teacherClassGroupIds(state, teacherUserId);
-  const student = state.students.find(item => item.id === studentId);
-  const studentUser = student
-    ? state.users.find(item => item.id === student.userId)
-    : undefined;
-  return Boolean(
-    student?.status === "active" &&
-      studentUser?.status === "active" &&
-      state.enrollments.some(item => {
-        if (
-          item.studentId !== studentId ||
-          item.status !== "active" ||
-          !item.classGroupId ||
-          !classGroupIds.has(item.classGroupId)
-        ) {
-          return false;
-        }
-        const group = state.classGroups.find(
-          groupItem => groupItem.id === item.classGroupId
-        );
-        return group?.studentIds.includes(studentId);
-      })
+  return state.courseRuns.some(
+    run =>
+      run.teacherId === teacherUserId &&
+      teacherHasStudentRosterAuthority(state, teacherUserId, run.id, studentId)
   );
 }
 
@@ -455,178 +441,6 @@ function assertStudentScopedAction(
   }
 }
 
-function roleCanRunAction(
-  session: ServerSession,
-  action: PlatformWorkflowAction
-) {
-  const byRole: Record<
-    ServerSession["activeRole"],
-    PlatformWorkflowAction["type"][]
-  > = {
-    student: [
-      "lesson.start",
-      "lesson.complete",
-      "assignment.submit",
-      "quiz.submit",
-      "recitation.submit",
-      "message.send",
-      "message.read",
-      "notification.read",
-      "report.preset.save",
-      "profile.update",
-      "attendance.exception.submit",
-    ],
-    teacher: [
-      "assignment.create",
-      "assignment.update",
-      "assignment.status.update",
-      "quiz.create",
-      "quiz.update",
-      "quiz.status.update",
-      "question.create",
-      "quiz.questions.set",
-      "assignment.grade",
-      "quiz.review",
-      "attendance.save",
-      "calendar.create",
-      "class.session.reschedule",
-      "class.session.cancel",
-      "material.publish.update",
-      "message.send",
-      "message.read",
-      "quran.progress.update",
-      "recitation.review",
-      "notification.read",
-      "report.preset.save",
-      "profile.update",
-    ],
-    registrar: [
-      "lead.create",
-      "application.create",
-      "placement.create",
-      "placement.result.record",
-      "lead.convert",
-      "application.convert",
-      "student.create",
-      "student.status.update",
-      "student.document.add",
-      "enrollment.activate",
-      "enrollment.transfer",
-      "enrollment.status.update",
-      "payment.record",
-      "calendar.create",
-      "message.send",
-      "message.read",
-      "record.save",
-      "notification.read",
-      "report.preset.save",
-      "portal.settings.save",
-      "profile.update",
-    ],
-    headofdepartment: [
-      "assignment.create",
-      "assignment.update",
-      "assignment.status.update",
-      "assignment.grade",
-      "quiz.create",
-      "quiz.update",
-      "quiz.status.update",
-      "question.create",
-      "quiz.questions.set",
-      "quiz.review",
-      "certificate.approve",
-      "certificate.issue",
-      "certificate.reject",
-      "curriculum.module.create",
-      "course.status.update",
-      "message.send",
-      "message.read",
-      "quran.progress.update",
-      "recitation.review",
-      "record.save",
-      "class.create",
-      "course-run.create",
-      "class.update",
-      "class.status.update",
-      "notification.read",
-      "report.preset.save",
-      "portal.settings.save",
-      "profile.update",
-    ],
-    branchadmin: [
-      "attendance.save",
-      "calendar.create",
-      "class.session.reschedule",
-      "class.session.cancel",
-      "message.send",
-      "message.read",
-      "payment.record",
-      "record.save",
-      "room.create",
-      "class.create",
-      "class.update",
-      "class.status.update",
-      "room.status.update",
-      "attendance.exception.review",
-      "notification.read",
-      "report.preset.save",
-      "portal.settings.save",
-      "profile.update",
-    ],
-    superadmin: [
-      "staff.user.create",
-      "lead.create",
-      "application.create",
-      "placement.create",
-      "placement.result.record",
-      "lead.convert",
-      "student.create",
-      "student.status.update",
-      "student.document.add",
-      "application.convert",
-      "enrollment.activate",
-      "enrollment.transfer",
-      "enrollment.status.update",
-      "payment.record",
-      "user.create",
-      "user.update",
-      "permission.update",
-      "branch.update",
-      "integration.status.update",
-      "integration.local_check",
-      "system.health_check",
-      "settings.save",
-      "teacher.assign",
-      "course.status.update",
-      "room.create",
-      "class.create",
-      "course-run.create",
-      "class.update",
-      "class.status.update",
-      "room.status.update",
-      "attendance.exception.review",
-      "class.session.reschedule",
-      "class.session.cancel",
-      "assignment.update",
-      "assignment.status.update",
-      "quiz.create",
-      "quiz.update",
-      "quiz.status.update",
-      "question.create",
-      "quiz.questions.set",
-      "assignment.grade",
-      "quiz.review",
-      "message.send",
-      "message.read",
-      "record.save",
-      "notification.read",
-      "report.preset.save",
-      "profile.update",
-    ],
-  };
-  return byRole[session.activeRole].includes(action.type);
-}
-
 function allowedReportTypesForRole(role: ServerSession["activeRole"]) {
   const byRole: Record<ServerSession["activeRole"], Set<string>> = {
     student: new Set(["enrollments", "attendance"]),
@@ -639,164 +453,16 @@ function allowedReportTypesForRole(role: ServerSession["activeRole"]) {
   return byRole[role];
 }
 
-const SELF_SCOPED_ACTION = "self_scoped" as const;
-const RECORD_MODULE_ACTION = "record_module" as const;
-
-type ActionPermissionRule =
-  | Permission
-  | typeof SELF_SCOPED_ACTION
-  | typeof RECORD_MODULE_ACTION;
-
-const recordSavePermissionByRole: Record<
-  ServerSession["activeRole"],
-  Readonly<Record<string, Permission>>
-> = {
-  student: {},
-  teacher: {},
-  registrar: {
-    Leads: "students:write",
-    Applications: "students:write",
-    Students: "students:write",
-    "Placement tests": "students:write",
-    Enrollments: "students:write",
-    Classes: "classes:write",
-    Schedule: "schedule:write",
-    Payments: "payments:write",
-    Settings: "settings:write",
-  },
-  headofdepartment: {
-    Departments: "courses:write",
-    Programs: "courses:write",
-    Courses: "courses:write",
-    Levels: "courses:write",
-    Curriculum: "courses:write",
-    Teachers: "teachers:write",
-    Classes: "classes:write",
-    Assessments: "assessments:write",
-    Certificates: "certificates:approve",
-  },
-  branchadmin: {
-    Students: "students:write",
-    Teachers: "teachers:write",
-    Classes: "classes:write",
-    Rooms: "rooms:write",
-    Schedule: "schedule:write",
-    Attendance: "attendance:write",
-    Payments: "payments:write",
-    Settings: "settings:write",
-  },
-  superadmin: {
-    Users: "settings:write",
-    "User detail": "settings:write",
-    "Roles & access": "settings:write",
-    "Access rules": "settings:write",
-    Branches: "settings:write",
-    Settings: "settings:write",
-    Connections: "settings:write",
-    Health: "settings:write",
-    Departments: "courses:write",
-    Programs: "courses:write",
-    Courses: "courses:write",
-    Levels: "courses:write",
-    Curriculum: "courses:write",
-    Teachers: "teachers:write",
-    Students: "students:write",
-    Applications: "students:write",
-    Enrollments: "students:write",
-    Classes: "classes:write",
-    Rooms: "rooms:write",
-    Schedule: "schedule:write",
-    Attendance: "attendance:write",
-    Assessments: "assessments:write",
-    Payments: "payments:write",
-    Certificates: "certificates:approve",
-  },
-};
-
-const actionPermissionRuleByType = {
-  "lesson.start": SELF_SCOPED_ACTION,
-  "lesson.complete": SELF_SCOPED_ACTION,
-  "assignment.submit": SELF_SCOPED_ACTION,
-  "quiz.submit": SELF_SCOPED_ACTION,
-  "assignment.create": "assessments:write",
-  "assignment.update": "assessments:write",
-  "assignment.status.update": "assessments:write",
-  "quiz.create": "assessments:write",
-  "quiz.update": "assessments:write",
-  "quiz.status.update": "assessments:write",
-  "question.create": "assessments:write",
-  "quiz.questions.set": "assessments:write",
-  "assignment.grade": "assessments:write",
-  "quiz.review": "assessments:write",
-  "curriculum.module.create": "courses:write",
-  "course.status.update": "courses:write",
-  "material.publish.update": "courses:write",
-  "record.save": RECORD_MODULE_ACTION,
-  "certificate.approve": "certificates:approve",
-  "certificate.issue": "certificates:approve",
-  "certificate.reject": "certificates:approve",
-  "teacher.assign": "teachers:write",
-  "lead.create": "students:write",
-  "application.create": "students:write",
-  "placement.create": "students:write",
-  "placement.result.record": "students:write",
-  "lead.convert": "students:write",
-  "application.convert": "students:write",
-  "student.create": "students:write",
-  "student.status.update": "students:write",
-  "student.document.add": "students:write",
-  "enrollment.activate": "students:write",
-  "enrollment.transfer": "students:write",
-  "enrollment.status.update": "students:write",
-  "calendar.create": "schedule:write",
-  "class.session.reschedule": "schedule:write",
-  "class.session.cancel": "schedule:write",
-  "room.create": "rooms:write",
-  "class.create": "classes:write",
-  "course-run.create": "courses:write",
-  "class.update": "classes:write",
-  "class.status.update": "classes:write",
-  "room.status.update": "rooms:write",
-  "attendance.save": "attendance:write",
-  "attendance.exception.submit": SELF_SCOPED_ACTION,
-  "attendance.exception.review": "attendance:write",
-  "payment.record": "payments:write",
-  "message.send": "messages:write",
-  "message.read": SELF_SCOPED_ACTION,
-  "report.preset.save": "reports:read",
-  "staff.user.create": "settings:write",
-  "user.create": "settings:write",
-  "user.update": "settings:write",
-  "permission.update": "settings:write",
-  "settings.save": "settings:write",
-  "portal.settings.save": "settings:write",
-  "branch.update": "settings:write",
-  "integration.status.update": "settings:write",
-  "integration.local_check": "settings:write",
-  "system.health_check": "settings:write",
-  "quran.progress.update": "assessments:write",
-  "recitation.review": "assessments:write",
-  "recitation.submit": SELF_SCOPED_ACTION,
-  "notification.read": SELF_SCOPED_ACTION,
-  "profile.update": SELF_SCOPED_ACTION,
-} satisfies Record<PlatformWorkflowAction["type"], ActionPermissionRule>;
-
 function assertActionPermission(
   state: PlatformState,
   action: PlatformWorkflowAction,
   session: ServerSession
 ) {
-  const rule = actionPermissionRuleByType[action.type];
-  if (!rule) {
-    throw new Error(`No permission rule is configured for ${action.type}.`);
-  }
-  if (rule === SELF_SCOPED_ACTION) return;
-  const permission =
-    rule === RECORD_MODULE_ACTION
-      ? recordSavePermissionByRole[session.activeRole][
-          action.type === "record.save" ? action.module : ""
-        ]
-      : rule;
+  const permission = requiredPermissionForPlatformAction(
+    session.activeRole,
+    action
+  );
+  if (permission === SELF_SCOPED_ACTION) return;
   if (!permission) {
     const module = action.type === "record.save" ? action.module : action.type;
     throw new Error(
@@ -815,7 +481,7 @@ function assertScopedAction(
   action: PlatformWorkflowAction,
   session: ServerSession
 ) {
-  if (!roleCanRunAction(session, action)) {
+  if (!roleCanRunPlatformAction(session.activeRole, action.type)) {
     throw new Error(`Role ${session.activeRole} cannot run ${action.type}.`);
   }
   assertActionPermission(state, action, session);
@@ -1387,16 +1053,23 @@ function assertScopedAction(
       if (!classGroup || classGroup.courseRunId !== courseRun.id) {
         throw new Error("Registrar can only assign a matching class group.");
       }
-      if (application?.branchId && !branchIds.has(application.branchId)) {
+      if (
+        action.applicationId &&
+        (!application || !branchIds.has(application.branchId))
+      ) {
         throw new Error(
           "Registrar can only use applications inside admissions branches."
         );
       }
-      if (placement?.branchId && !branchIds.has(placement.branchId)) {
+      if (
+        action.placementTestId &&
+        (!placement || !branchIds.has(placement.branchId))
+      ) {
         throw new Error(
           "Registrar can only use placement tests inside admissions branches."
         );
       }
+      assertStudentIntakeLineage(state, action);
     }
     if (action.type === "student.status.update") {
       const student = state.students.find(item => item.id === action.studentId);
@@ -1443,17 +1116,21 @@ function assertScopedAction(
       const workflow = state.enrollmentWorkflows.find(
         item => item.id === action.workflowId
       );
-      const exactCourseRunId = action.courseRunId ?? workflow?.courseRunId;
-      const exactClassGroupId = action.classGroupId ?? workflow?.classGroupId;
+      const isInitialActivation = Boolean(workflow && !workflow.studentId);
       if (
-        workflow &&
-        !workflow.studentId &&
-        (!exactCourseRunId || !exactClassGroupId)
+        isInitialActivation &&
+        (!action.courseRunId || !action.classGroupId)
       ) {
         throw new Error(
           "Enrollment activation requires an exact course run and class group."
         );
       }
+      const exactCourseRunId = isInitialActivation
+        ? action.courseRunId
+        : (action.courseRunId ?? workflow?.courseRunId);
+      const exactClassGroupId = isInitialActivation
+        ? action.classGroupId
+        : (action.classGroupId ?? workflow?.classGroupId);
       const courseRun = exactCourseRunId
         ? state.courseRuns.find(
             item =>
@@ -1501,6 +1178,24 @@ function assertScopedAction(
         if (!targetGroup || !targetRun || !branchIds.has(targetRun.branchId)) {
           throw new Error(
             "Registrar can only transfer enrollments inside admissions branches."
+          );
+        }
+      }
+      if (action.type === "enrollment.status.update") {
+        const studentEnrollmentBranchIds = state.enrollments
+          .filter(item => item.studentId === enrollment.studentId)
+          .map(
+            item =>
+              state.courseRuns.find(run => run.id === item.courseRunId)
+                ?.branchId
+          );
+        if (
+          studentEnrollmentBranchIds.some(
+            branchId => !branchId || !branchIds.has(branchId)
+          )
+        ) {
+          throw new Error(
+            "Registrar cannot update an enrollment when the student has enrollments outside admissions branch scope."
           );
         }
       }

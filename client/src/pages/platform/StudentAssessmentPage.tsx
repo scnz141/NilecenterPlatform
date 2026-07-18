@@ -420,21 +420,20 @@ export default function StudentAssessmentPage({
             {assignment.status === "completed"
               ? "Assignment closed"
               : assignmentGrade
-              ? "Teacher feedback"
-              : latestSubmission
-                ? "Submission received"
-                : "Ready to submit"}
+                ? "Teacher feedback"
+                : latestSubmission
+                  ? "Submission received"
+                  : "Ready to submit"}
           </h2>
           <p>
             {assignment.status === "completed"
               ? latestSubmission
-                ? "This assignment is closed. Your submitted work and feedback remain available here."
+                ? "This assignment is closed. Review your submitted work and feedback below."
                 : "This assignment is closed and no longer accepts submissions."
               : (assignmentGrade?.feedback ??
                 latestSubmission?.feedback ??
                 "Write your response and submit it when you are ready.")}
           </p>
-          <PendingMediaSummary items={latestSubmission?.pendingMedia} />
         </div>
         <div className="student-assessment-status-meta">
           <StatusBadge
@@ -449,8 +448,8 @@ export default function StudentAssessmentPage({
             {assignment.status === "completed"
               ? "Closed"
               : assignmentGrade
-              ? `${assignmentGrade.score}/${assignmentGrade.maxScore}`
-              : readableStatus(latestSubmission?.status)}
+                ? `${assignmentGrade.score}/${assignmentGrade.maxScore}`
+                : readableStatus(latestSubmission?.status)}
           </StatusBadge>
           <dl>
             {renderFact("Due", formatDateTime(assignment.dueAt))}
@@ -464,6 +463,39 @@ export default function StudentAssessmentPage({
           </dl>
         </div>
       </section>
+      {latestSubmission ? (
+        <section
+          className="student-assessment-response student-assessment-review"
+          data-testid="student-assignment-review"
+        >
+          <header className="student-assessment-response-head">
+            <div>
+              <span>Latest submission</span>
+              <h2>Submitted work</h2>
+            </div>
+            <StatusBadge tone={assignmentGrade ? "green" : "amber"}>
+              {assignmentGrade
+                ? `${assignmentGrade.score}/${assignmentGrade.maxScore}`
+                : readableStatus(latestSubmission.status)}
+            </StatusBadge>
+          </header>
+          <div className="student-assessment-review-grid">
+            <div>
+              <span>Your response</span>
+              <p>{latestSubmission.response || "No written response."}</p>
+              <PendingMediaSummary items={latestSubmission.pendingMedia} />
+            </div>
+            <div>
+              <span>Teacher feedback</span>
+              <p>
+                {assignmentGrade?.feedback ??
+                  latestSubmission.feedback ??
+                  "Feedback has not been added yet."}
+              </p>
+            </div>
+          </div>
+        </section>
+      ) : null}
       {assignment.status === "active" ? (
         <section className="student-assessment-response">
           <header className="student-assessment-response-head">
@@ -509,7 +541,7 @@ export default function StudentAssessmentPage({
               : "Submit assignment"}
           </button>
         </section>
-      ) : (
+      ) : !latestSubmission ? (
         <section
           className="student-assessment-response student-assessment-response-closed"
           data-testid="student-assignment-closed"
@@ -520,13 +552,9 @@ export default function StudentAssessmentPage({
               <h2>Submission closed</h2>
             </div>
           </header>
-          <p>
-            {latestSubmission
-              ? "Your submitted work remains available above for review."
-              : "This assignment closed before a response was submitted."}
-          </p>
+          <p>This assignment closed before a response was submitted.</p>
         </section>
-      )}
+      ) : null}
     </div>
   ) : (
     <div className="platform-empty-state">
@@ -557,14 +585,13 @@ export default function StudentAssessmentPage({
           <p>
             {quiz.status === "completed"
               ? latestAttempt
-                ? "This quiz is closed. Your saved attempt and result remain available here."
+                ? "This quiz is closed. Review your saved attempt and result below."
                 : "This quiz is closed and no longer accepts attempts."
               : (quizGrade?.feedback ??
                 (latestAttempt
                   ? "Your attempt is saved for teacher review."
                   : "Answer the questions, then submit one attempt."))}
           </p>
-          <PendingMediaSummary items={latestAttempt?.pendingMedia} />
         </div>
         <div className="student-assessment-status-meta">
           <StatusBadge
@@ -596,6 +623,52 @@ export default function StudentAssessmentPage({
           </dl>
         </div>
       </section>
+
+      {latestAttempt ? (
+        <section
+          className="student-assessment-response student-assessment-review"
+          data-testid="student-quiz-review"
+        >
+          <header className="student-assessment-response-head">
+            <div>
+              <span>Latest attempt</span>
+              <h2>Saved result</h2>
+            </div>
+            <StatusBadge tone={quizGrade ? "green" : "amber"}>
+              {quizGrade
+                ? `${quizGrade.score}/${quizGrade.maxScore}`
+                : `${latestAttempt.score}/${latestAttempt.maxScore}`}
+            </StatusBadge>
+          </header>
+          <div className="student-assessment-review-grid">
+            <div>
+              <span>Your answers</span>
+              <div className="student-assessment-answer-list">
+                {Object.entries(latestAttempt.answers).map(
+                  ([questionId, answer], index) => {
+                    const question = quizQuestionPreviews.find(
+                      item => item.id === questionId
+                    );
+                    return (
+                      <div key={questionId}>
+                        <strong>
+                          {question?.prompt ?? `Answer ${index + 1}`}
+                        </strong>
+                        <p>{answer || "No answer recorded."}</p>
+                      </div>
+                    );
+                  }
+                )}
+              </div>
+              <PendingMediaSummary items={latestAttempt.pendingMedia} />
+            </div>
+            <div>
+              <span>Teacher feedback</span>
+              <p>{quizGrade?.feedback ?? "Feedback has not been added yet."}</p>
+            </div>
+          </div>
+        </section>
+      ) : null}
 
       {quiz.status === "active" ? (
         <section className="student-assessment-response">
@@ -663,7 +736,7 @@ export default function StudentAssessmentPage({
                 : "Submit attempt"}
           </button>
         </section>
-      ) : (
+      ) : !latestAttempt ? (
         <section
           className="student-assessment-response student-assessment-closed"
           data-testid="student-quiz-closed"
@@ -676,12 +749,9 @@ export default function StudentAssessmentPage({
               <h2>Review your result</h2>
             </div>
           </header>
-          <p>
-            This quiz no longer accepts attempts. Any saved attempt and teacher
-            feedback remain available above.
-          </p>
+          <p>This quiz closed before an attempt was submitted.</p>
         </section>
-      )}
+      ) : null}
     </div>
   ) : (
     <div className="platform-empty-state">

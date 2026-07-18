@@ -143,6 +143,30 @@
       }
     },
     {
+      "id": "nile_requests",
+      "name": "Typed branch incident and maintenance requests",
+      "nileLearnAuthority": "canonical_writable",
+      "moodleAuthority": "none",
+      "projectionDirection": "none",
+      "externalId": "none; an immutable reviewed Nile Forms submission is the internal source evidence",
+      "conflictRule": "The typed request aggregate owns status, assignment, comments, resolution, and history; source form answers remain immutable evidence.",
+      "permittedRoles": [
+        "student",
+        "teacher",
+        "registrar",
+        "headofdepartment",
+        "branchadmin",
+        "superadmin"
+      ],
+      "auditOwner": "nile_requests_command_audit",
+      "failureBehavior": "Deny stale, replay-conflicting, terminal, malformed, or out-of-scope commands atomically and preserve the prior request and source submission.",
+      "futureWriteStatus": "memory_backed_internal_alpha",
+      "selectors": {
+        "clientRoutes": ["^expression:.*[/]requests(?:[/].*)?`$"],
+        "serverApiRoutes": ["^(GET|POST) /api/requests(?:/.*)?$"]
+      }
+    },
+    {
       "id": "profiles_preferences",
       "name": "Self profile and safe preferences",
       "nileLearnAuthority": "canonical_writable",

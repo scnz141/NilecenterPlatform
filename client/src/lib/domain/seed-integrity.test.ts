@@ -107,6 +107,30 @@ describe("seedPlatformState relationship integrity", () => {
     expectNoIntegrityErrors(errors);
   });
 
+  it("links every invoice to the exact enrollment for the same student", () => {
+    const errors: string[] = [];
+    const enrollmentsById = indexById(state.enrollments);
+
+    state.invoices.forEach(invoice => {
+      if (!invoice.enrollmentId) {
+        errors.push(`[invoice:${invoice.id}] exact enrollment link is missing`);
+        return;
+      }
+      const enrollment = enrollmentsById.get(invoice.enrollmentId);
+      if (!enrollment) {
+        errors.push(
+          `[invoice:${invoice.id}] enrollment ${invoice.enrollmentId} does not exist`
+        );
+      } else if (enrollment.studentId !== invoice.studentId) {
+        errors.push(
+          `[invoice:${invoice.id}] enrollment ${enrollment.id} belongs to ${enrollment.studentId}, not ${invoice.studentId}`
+        );
+      }
+    });
+
+    expectNoIntegrityErrors(errors);
+  });
+
   it("keeps lesson progress inside its student's enrolled course", () => {
     const errors: string[] = [];
     const enrollmentsById = indexById(state.enrollments);

@@ -56,6 +56,11 @@ import {
   messageConversationId,
   replyMessageSubject,
 } from "./messageThreads.js";
+import {
+  assertStudentIntakeLineage,
+  enrollmentForInvoice,
+  teacherHasStudentRosterAuthority,
+} from "./relationships.js";
 
 export type PlatformLearningAction =
   | {
@@ -1909,20 +1914,11 @@ function teacherOwnsStudentInCourseRun(
   courseRunId: string,
   studentId: string
 ) {
-  if (!teacherOwnsCourseRun(state, teacherUserId, courseRunId)) return false;
-  const courseClassGroups = state.classGroups.filter(
-    group => group.courseRunId === courseRunId
-  );
-  const courseClassGroupIds = new Set(courseClassGroups.map(group => group.id));
-  return (
-    courseClassGroups.some(group => group.studentIds.includes(studentId)) ||
-    state.enrollments.some(
-      enrollment =>
-        enrollment.studentId === studentId &&
-        enrollment.courseRunId === courseRunId &&
-        (!enrollment.classGroupId ||
-          courseClassGroupIds.has(enrollment.classGroupId))
-    )
+  return teacherHasStudentRosterAuthority(
+    state,
+    teacherUserId,
+    courseRunId,
+    studentId
   );
 }
 
@@ -2859,12 +2855,75 @@ function applySaveAttendanceBulk(
       "Attendance can only be saved for active or completed sessions."
     );
   }
+  const event = state.events.find(item => item.id === session.eventId);
+  if (!event) {
+    throw new Error(
+      `Attendance session ${session.id} is missing its calendar event.`
+    );
+  }
+  if (
+    event.classGroupId !== classGroup.id ||
+    !new Set<CalendarEventType>(["class_session", "live_session"]).has(
+      event.type
+    )
+  ) {
+    throw new Error(
+      "Attendance requires a class-session calendar event for the same class group."
+    );
+  }
+  if (!new Set<EntityStatus>(["active", "completed"]).has(event.status)) {
+    throw new Error(
+      "Attendance can only be saved when the paired calendar event is active or completed."
+    );
+  }
+  if (
+    event.status !== session.status ||
+    event.startsAt !== session.startsAt ||
+    event.endsAt !== session.endsAt
+  ) {
+    throw new Error(
+      "Attendance session and calendar event must have matching lifecycle and schedule data."
+    );
+  }
   const courseRun = state.courseRuns.find(
     item => item.id === classGroup.courseRunId
   );
   if (!courseRun)
     throw new Error(`Course run ${classGroup.courseRunId} was not found.`);
   assertCourseRunReadyForDelivery(state, courseRun, "Attendance");
+  const sessionStarts = new Date(session.startsAt).getTime();
+  const sessionEnds = new Date(session.endsAt).getTime();
+  if (
+    !Number.isFinite(sessionStarts) ||
+    !Number.isFinite(sessionEnds) ||
+    sessionStarts >= sessionEnds ||
+    session.startsAt.slice(0, 10) < courseRun.startsOn ||
+    session.endsAt.slice(0, 10) > courseRun.endsOn
+  ) {
+    throw new Error(
+      "Attendance session must stay inside the course run date range."
+    );
+  }
+  if (event.branchId !== courseRun.branchId) {
+    throw new Error(
+      "Attendance calendar event must belong to the course run branch."
+    );
+  }
+  if (event.roomId) {
+    const room = state.rooms.find(item => item.id === event.roomId);
+    if (!room) throw new Error(`Room ${event.roomId} was not found.`);
+    if (room.status !== "active") {
+      throw new Error("Attendance requires an active room.");
+    }
+    if (room.branchId !== courseRun.branchId) {
+      throw new Error("Attendance room must belong to the course run branch.");
+    }
+    if (room.capacity < classGroup.capacity) {
+      throw new Error(
+        "Attendance room capacity is smaller than the class capacity."
+      );
+    }
+  }
   assertTeacherCanUseCourseRun(
     state,
     input.actorId,
@@ -3866,9 +3925,7 @@ function applyRecordPayment(
   if (!invoice) return undefined;
   const student = state.students.find(item => item.id === invoice.studentId);
   const user = state.users.find(item => item.id === student?.userId);
-  const enrollment = state.enrollments.find(
-    item => item.studentId === invoice.studentId
-  );
+  const enrollment = enrollmentForInvoice(state, invoice);
   const classGroup = state.classGroups.find(
     item => item.id === enrollment?.classGroupId
   );
@@ -4349,13 +4406,18 @@ function applyActivateEnrollmentWorkflow(
       `Course ${targetCourseId} must be active before enrollment activation.`
     );
   }
-  const exactCourseRunId = input.courseRunId ?? workflow.courseRunId;
-  const exactClassGroupId = input.classGroupId ?? workflow.classGroupId;
-  if (!workflow.studentId && (!exactCourseRunId || !exactClassGroupId)) {
+  const isInitialActivation = !workflow.studentId;
+  if (isInitialActivation && (!input.courseRunId || !input.classGroupId)) {
     throw new Error(
       "Enrollment activation requires an exact course run and class group."
     );
   }
+  const exactCourseRunId = isInitialActivation
+    ? input.courseRunId
+    : (input.courseRunId ?? workflow.courseRunId);
+  const exactClassGroupId = isInitialActivation
+    ? input.classGroupId
+    : (input.classGroupId ?? workflow.classGroupId);
   const requestedCourseRun = exactCourseRunId
     ? state.courseRuns.find(run => run.id === exactCourseRunId)
     : undefined;
@@ -4434,7 +4496,9 @@ function applyActivateEnrollmentWorkflow(
         )
       : undefined;
     const existingInvoice = state.invoices.find(
-      invoice => invoice.studentId === existingStudent.id
+      invoice =>
+        invoice.studentId === existingStudent.id &&
+        invoice.enrollmentId === existingEnrollment.id
     );
     if (
       workflow.status !== "active" ||
@@ -4633,6 +4697,7 @@ function applyActivateEnrollmentWorkflow(
     {
       id: invoiceId,
       studentId,
+      enrollmentId,
       amount: packageRow?.amount ?? 0,
       currency: packageRow?.currency ?? "EGP",
       dueAt: ctx.now().slice(0, 10),
@@ -5348,6 +5413,14 @@ function createStudentEnrollmentRecords(
   if (!name || !email || !phone)
     throw new Error("Full name, email, and phone are required.");
   if (!email.includes("@")) throw new Error("Enter a valid email address.");
+  assertStudentIntakeLineage(state, {
+    source: input.source,
+    email,
+    branchId: input.branchId,
+    leadId: input.leadId,
+    applicationId: input.applicationId,
+    placementTestId: input.placementTestId,
+  });
   if (state.users.some(user => user.email.toLowerCase() === email)) {
     throw new Error("This email is already in the identity directory.");
   }
@@ -5436,6 +5509,7 @@ function createStudentEnrollmentRecords(
     ? {
         id: ctx.createId("inv"),
         studentId,
+        enrollmentId,
         amount: packageRow.amount,
         currency: packageRow.currency,
         dueAt: ctx.now().slice(0, 10),

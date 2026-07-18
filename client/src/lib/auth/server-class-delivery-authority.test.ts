@@ -343,6 +343,31 @@ describe("server class-delivery authority", () => {
     }
   );
 
+  it("rejects stored workflow targets when the initial activation request omits them", async () => {
+    const state = cloneState();
+    const workflow = state.enrollmentWorkflows.find(
+      item => item.id === "ew_demo_1"
+    );
+    if (!workflow) throw new Error("Enrollment workflow fixture is required.");
+    workflow.courseRunId = "run_ar_l3_cairo_2026";
+    workflow.classGroupId = "class_ar_l3_cairo";
+    const stateBeforeDenial = cloneState(state);
+    const repository = installRepository(state);
+
+    await expect(
+      applyPlatformWorkflowAction(
+        { type: "enrollment.activate", workflowId: workflow.id },
+        registrarSession()
+      )
+    ).rejects.toThrow(
+      "Enrollment activation requires an exact course run and class group."
+    );
+
+    expect(state).toEqual(stateBeforeDenial);
+    expect(repository.writeSnapshot).not.toHaveBeenCalled();
+    expect(repository.recordEvent).not.toHaveBeenCalled();
+  });
+
   it("authorizes and persists the exact course run and class group selected by the registrar", async () => {
     const state = cloneState();
     const repository = installRepository(state);

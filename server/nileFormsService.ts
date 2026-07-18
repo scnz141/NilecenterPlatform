@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 
 import { seedPlatformState } from "../client/src/lib/domain/seed.js";
+import { enrollmentHasRosterMembership } from "../client/src/lib/domain/relationships.js";
 import type { PlatformState } from "../client/src/lib/domain/types.js";
 import type { ServerSession } from "./auth.js";
 import {
@@ -12,6 +13,7 @@ import {
   normalizePlatformState,
 } from "./platformRepository.js";
 import {
+  formLocales,
   getOfflineEligibility,
   normalizeAndValidateFormAnswers,
   validateFormVersionContent,
@@ -35,6 +37,12 @@ import {
   type FormVersionContent,
   type NileFormsState,
 } from "../shared/nileForms.js";
+import { createNileFormsTemplateContent } from "../shared/nileFormsFixtures.js";
+import {
+  nileFormsTemplateCategories,
+  nileFormsTemplateKeys,
+  type NileFormsTemplateKey,
+} from "../shared/nileFormsTemplateCatalog.js";
 import { executeNileFormPromotion } from "./nileFormsPromotionAdapters.js";
 import {
   projectableNileFormFieldIds,
@@ -172,6 +180,12 @@ function clone<T>(value: T): T {
 
 function clean(value: unknown, max = 4_000) {
   return typeof value === "string" ? value.trim().slice(0, max) : "";
+}
+
+function formLocale(value: unknown, fallback: FormLocale) {
+  return formLocales.includes(value as FormLocale)
+    ? (value as FormLocale)
+    : fallback;
 }
 
 function unique(values: Array<string | undefined>) {
@@ -312,7 +326,7 @@ function requireCompatibilityRuntime(session?: ServerSession | null) {
   }
 }
 
-function requireSession(session: ServerSession | null | undefined) {
+export function requireSession(session: ServerSession | null | undefined) {
   if (!session) {
     throw new NileFormsError("Sign in required.", 401, "sign_in_required");
   }
@@ -363,7 +377,7 @@ function narrowedScope(
   };
 }
 
-function actorHasBranch(actor: NileFormsActor, branchId: string) {
+export function actorHasBranch(actor: NileFormsActor, branchId: string) {
   return (
     actor.role === "superadmin" ||
     actor.allBranches ||
@@ -371,7 +385,10 @@ function actorHasBranch(actor: NileFormsActor, branchId: string) {
   );
 }
 
-function actorHasDepartment(actor: NileFormsActor, departmentId: string) {
+export function actorHasDepartment(
+  actor: NileFormsActor,
+  departmentId: string
+) {
   return (
     actor.role === "superadmin" ||
     actor.allDepartments ||
@@ -379,7 +396,7 @@ function actorHasDepartment(actor: NileFormsActor, departmentId: string) {
   );
 }
 
-function resolveActor(
+export function resolveActor(
   state: PlatformState,
   session: ServerSession
 ): NileFormsActor {
@@ -414,16 +431,16 @@ function resolveActor(
     }
     configuredBranchIds = [profile.branchId];
     configuredDepartmentIds = [profile.departmentId];
-    classIds = unique(profile.assignedClassIds);
-    courseIds = unique(
-      classIds.map(classId => {
-        const group = state.classGroups.find(item => item.id === classId);
-        const run = group
-          ? state.courseRuns.find(item => item.id === group.courseRunId)
-          : undefined;
-        return run?.courseId;
-      })
+    const assignedRuns = state.courseRuns.filter(
+      item => item.teacherId === user.id && item.status === "active"
     );
+    const assignedRunIds = new Set(assignedRuns.map(item => item.id));
+    classIds = state.classGroups
+      .filter(
+        item => item.status === "active" && assignedRunIds.has(item.courseRunId)
+      )
+      .map(item => item.id);
+    courseIds = unique(assignedRuns.map(item => item.courseId));
   } else if (session.activeRole === "student") {
     const student = state.students.find(item => item.userId === user.id);
     if (!student) {
@@ -438,7 +455,11 @@ function resolveActor(
         item.studentId === student.id &&
         !["cancelled", "completed"].includes(item.status)
     );
-    classIds = unique(enrollments.map(item => item.classGroupId));
+    classIds = unique(
+      enrollments
+        .filter(item => enrollmentHasRosterMembership(state, item))
+        .map(item => item.classGroupId)
+    );
     courseIds = unique(
       enrollments.map(
         item =>
@@ -974,25 +995,32 @@ function appendOutbox(
   });
 }
 
-function defaultContent(titleEn: string, titleAr: string): FormVersionContent {
+function defaultContent(
+  titleEn: string,
+  titleAr: string,
+  titleTr: string
+): FormVersionContent {
   return {
-    title: { en: titleEn, ar: titleAr },
-    description: { en: "", ar: "" },
+    contractVersion: 2,
+    title: { en: titleEn, ar: titleAr, tr: titleTr },
+    description: { en: "", ar: "", tr: "" },
     defaultLanguage: "en",
-    languages: ["en", "ar"],
-    submitLabel: { en: "Submit", ar: "إرسال" },
+    languages: ["en", "ar", "tr"],
+    submitLabel: { en: "Submit", ar: "إرسال", tr: "Gönder" },
     confirmationMessage: {
       en: "Your response has been received.",
       ar: "تم استلام ردك.",
+      tr: "Yanıtınız alındı.",
     },
     pages: [
       {
         id: "page_1",
-        title: { en: "Page 1", ar: "الصفحة 1" },
+        title: { en: "Page 1", ar: "الصفحة 1", tr: "Sayfa 1" },
         fields: [],
       },
     ],
     logic: [],
+    calculations: [],
   };
 }
 
@@ -1437,10 +1465,13 @@ export function createNileFormsService(
       const key = clean(input.key, 80).toLowerCase();
       const titleEn = clean(input.titleEn, 200);
       const titleAr = clean(input.titleAr, 200);
+      const titleTr = clean(input.titleTr, 200);
       const category = clean(input.category, 80) as FormDefinition["category"];
-      if (!formKeyPattern.test(key) || !titleEn || !titleAr) {
+      const templateKeyValue = clean(input.templateKey, 80);
+      const templateKey = templateKeyValue as NileFormsTemplateKey;
+      if (!formKeyPattern.test(key) || !titleEn || !titleAr || !titleTr) {
         throw new NileFormsError(
-          "A valid key and English/Arabic titles are required.",
+          "A valid key and English, Arabic, and Turkish titles are required.",
           400,
           "definition_invalid"
         );
@@ -1487,6 +1518,17 @@ export function createNileFormsService(
           "category_scope_denied"
         );
       }
+      if (
+        templateKeyValue &&
+        (!nileFormsTemplateKeys.includes(templateKey) ||
+          nileFormsTemplateCategories[templateKey] !== category)
+      ) {
+        throw new NileFormsError(
+          "Choose a template that matches the form category.",
+          400,
+          "template_invalid"
+        );
+      }
       const scope = validateScopeForNewDefinition(actor, input);
 
       return repository.transaction(state => {
@@ -1500,7 +1542,10 @@ export function createNileFormsService(
         const now = currentIso();
         const definitionId = createId("form");
         const versionId = createId("form_version");
-        const versionContent = defaultContent(titleEn, titleAr);
+        const versionContent = templateKeyValue
+          ? createNileFormsTemplateContent(templateKey)
+          : defaultContent(titleEn, titleAr, titleTr);
+        versionContent.title = { en: titleEn, ar: titleAr, tr: titleTr };
         const definition: FormDefinition = {
           id: definitionId,
           key,
@@ -1538,6 +1583,7 @@ export function createNileFormsService(
             entityId: definition.id,
             metadata: {
               category,
+              templateKey: templateKeyValue || undefined,
               branchId: scope.branchId,
               departmentId: scope.departmentId,
             },
@@ -2679,6 +2725,7 @@ export function createNileFormsService(
     async saveDraft(input: {
       publicationId: string;
       answers: unknown;
+      locale?: unknown;
       expectedRevision?: unknown;
       draftToken?: string;
       session?: ServerSession | null;
@@ -2727,7 +2774,8 @@ export function createNileFormsService(
         const version = requireVersion(state, publication.versionId);
         const sanitized = normalizeAndValidateFormAnswers(
           version.content,
-          input.answers
+          input.answers,
+          formLocale(input.locale, version.content.defaultLanguage)
         );
         const entityErrors = entityReferenceErrors(
           version.content,
@@ -2914,6 +2962,7 @@ export function createNileFormsService(
     async submit(input: {
       publicationId: string;
       answers: unknown;
+      locale?: unknown;
       clientSubmissionId: unknown;
       clientSubmittedAt?: unknown;
       draftToken?: string;
@@ -2950,7 +2999,8 @@ export function createNileFormsService(
         const version = requireVersion(state, publication.versionId);
         const normalized = normalizeAndValidateFormAnswers(
           version.content,
-          input.answers
+          input.answers,
+          formLocale(input.locale, version.content.defaultLanguage)
         );
         const entityErrors = entityReferenceErrors(
           version.content,

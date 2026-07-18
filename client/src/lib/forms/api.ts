@@ -3,6 +3,7 @@ import type {
   FormAssignmentTarget,
   FormDefinition,
   FormField,
+  FormLocale,
   FormLegacyFieldMapping,
   FormManagementOptions,
   FormOfflineDevice,
@@ -14,6 +15,7 @@ import type {
   FormVersion,
   FormVersionContent,
 } from "@shared/nileForms";
+import type { NileFormsTemplateKey } from "@shared/nileFormsTemplateCatalog";
 import type {
   JotformForm,
   JotformQuestion,
@@ -146,6 +148,8 @@ export function createFormDefinitionRequest(input: {
   key: string;
   titleEn: string;
   titleAr: string;
+  titleTr: string;
+  templateKey?: NileFormsTemplateKey;
   category: FormDefinition["category"];
   branchId?: string;
   departmentId?: string;
@@ -394,7 +398,11 @@ export type FormDraftResponse = {
 
 export function saveAssignedFormDraftRequest(
   publicationId: string,
-  input: { answers: Record<string, unknown>; expectedRevision?: number }
+  input: {
+    answers: Record<string, unknown>;
+    expectedRevision?: number;
+    locale?: FormLocale;
+  }
 ) {
   return formsJson<FormDraftResponse>(
     `/api/forms/assigned/${encodeURIComponent(publicationId)}/draft`,
@@ -410,7 +418,11 @@ export function loadAssignedFormDraftRequest(publicationId: string) {
 
 export function savePublicFormDraftRequest(
   slug: string,
-  input: { answers: Record<string, unknown>; expectedRevision?: number },
+  input: {
+    answers: Record<string, unknown>;
+    expectedRevision?: number;
+    locale?: FormLocale;
+  },
   draftToken?: string
 ) {
   return formsJson<FormDraftResponse>(
@@ -439,6 +451,7 @@ export function submitAssignedFormRequest(
     answers: Record<string, unknown>;
     clientSubmissionId: string;
     clientSubmittedAt: string;
+    locale?: FormLocale;
   }
 ) {
   return formsJson<FormSubmissionResponse>(
@@ -453,6 +466,7 @@ export function submitPublicFormRequest(
     answers: Record<string, unknown>;
     clientSubmissionId: string;
     clientSubmittedAt: string;
+    locale?: FormLocale;
   },
   draftToken?: string
 ) {

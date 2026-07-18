@@ -766,6 +766,25 @@ describe("server academic snapshot read scopes", () => {
     expectAcademicClosure(scoped);
   });
 
+  it("derives visible teacher classes from scoped course runs instead of the profile cache", () => {
+    const state = cloneState();
+    state.teachers = state.teachers.map(teacher =>
+      teacher.userId === "usr_teacher_demo"
+        ? { ...teacher, assignedClassIds: ["class_ar_l1_alex"] }
+        : teacher
+    );
+
+    const scoped = scopePlatformStateForSession(state, sessionFor("teacher"));
+    const scopedTeacher = scoped.teachers.find(
+      teacher => teacher.userId === "usr_teacher_demo"
+    );
+
+    expect(scopedTeacher?.assignedClassIds).toEqual(
+      scoped.classGroups.map(group => group.id)
+    );
+    expect(scopedTeacher?.assignedClassIds).not.toContain("class_ar_l1_alex");
+  });
+
   it("redacts private directory fields for teacher-visible users who are not messageable", () => {
     const state = cloneState();
     state.users = state.users.map(user => {

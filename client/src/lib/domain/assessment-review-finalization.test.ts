@@ -223,4 +223,44 @@ describe("assessment review finalization", () => {
       "Quiz attempt attempt_missing was not found."
     );
   });
+
+  it.each([
+    {
+      label: "assignment grading",
+      action: {
+        type: "assignment.grade" as const,
+        submissionId: "sub_ar_grammar_draft",
+        score: 90,
+        feedback: "Roster authority is required.",
+        actorId: "usr_teacher_demo",
+      },
+      message: "Teacher can only grade assigned class submissions.",
+    },
+    {
+      label: "quiz review",
+      action: {
+        type: "quiz.review" as const,
+        attemptId: "attempt_ar_teacher_review",
+        score: 90,
+        feedback: "Roster authority is required.",
+        actorId: "usr_teacher_demo",
+      },
+      message: "Teacher can only review assigned class quiz attempts.",
+    },
+  ])(
+    "rejects $label when the enrollment remains but roster membership is missing",
+    ({ action, message }) => {
+      const state = cloneState();
+      state.classGroups = state.classGroups.map(group =>
+        group.courseRunId === "run_ar_l3_2026"
+          ? {
+              ...group,
+              studentIds: group.studentIds.filter(id => id !== "stu_demo"),
+            }
+          : group
+      );
+
+      expectDeniedWithoutMutation(state, action, createContext(), message);
+    }
+  );
 });

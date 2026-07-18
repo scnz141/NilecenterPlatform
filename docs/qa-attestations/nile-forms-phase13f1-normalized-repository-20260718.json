@@ -1,0 +1,65 @@
+{
+  "phase": "13F1",
+  "status": "accepted-local",
+  "acceptedAt": "2026-07-18",
+  "scope": "Nile Forms normalized repository contract foundation",
+  "repositoryContract": {
+    "protectedQueries": 13,
+    "protectedCommands": 20,
+    "publicQueries": 1,
+    "publicCommands": 2,
+    "permissionMappings": 9,
+    "additiveTables": 9,
+    "browserPolicies": 0,
+    "migrationHistoryEntries": 0,
+    "runtimeDefault": "memory",
+    "normalizedActivation": false,
+    "promotionExecution": false
+  },
+  "portablePostgresEvidence": {
+    "engine": "PGlite PostgreSQL",
+    "forwardApplications": 2,
+    "semanticAssertionPasses": 3,
+    "rollbackPasses": 1,
+    "protectedReplayConflict": true,
+    "publicReplayConflictAndLimiter": true,
+    "sensitiveProjectionGrantCycle": true,
+    "offlineAcceptedQuarantinedTamper": true,
+    "revokeCommandOutcomes": 2,
+    "directRoleDenials": 3,
+    "phase13aThrough13ePreserved": true
+  },
+  "focusedValidation": {
+    "commands": [
+      "npm run check:forms-phase13f1",
+      "npm run check:forms-phase13f1:runtime",
+      "npm test -- --run client/src/lib/forms/server-nile-forms-repository.test.ts client/src/lib/forms/server-nile-forms-request-security.test.ts client/src/lib/forms/server-nile-forms-routes.test.ts client/src/lib/forms/server-nile-forms-service.test.ts"
+    ],
+    "result": "passed",
+    "focusedTestFiles": 4,
+    "focusedTests": 62
+  },
+  "fullValidation": {
+    "command": "QA_OUTPUT_DIR=output/playwright/codex-phase12g-full scripts/verify.sh",
+    "typescript": "passed",
+    "unitTestFiles": 59,
+    "unitTests": 856,
+    "productionBuild": "passed",
+    "portalQaArtifact": "output/playwright/codex-phase12g-full/portal-qa-summary.json",
+    "portalQaArtifactSha256": "fdfbd8e29eb950bb8ae4c9c5a4b8807b2b0d9bb0f44598d39b01afcd1d99885d",
+    "portalChecks": 1634,
+    "portalFailures": 0,
+    "portalElapsedMs": 599295,
+    "interrupted": false
+  },
+  "boundaries": {
+    "productionTouched": false,
+    "remoteDatabaseTargeted": false,
+    "sqlAddedToMigrationHistory": false,
+    "normalizedRuntimeEnabled": false,
+    "routeCutoverEnabled": false,
+    "promotionExecutionEnabled": false,
+    "externalProviderCalled": false,
+    "existingPortalBehaviorChanged": false
+  }
+}

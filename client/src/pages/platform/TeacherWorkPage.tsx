@@ -158,7 +158,11 @@ function buildMonthCells(month: Date) {
 
   for (let index = 0; index < startOffset; index += 1) {
     cells.push({
-      date: new Date(month.getFullYear(), month.getMonth(), 1 - startOffset + index),
+      date: new Date(
+        month.getFullYear(),
+        month.getMonth(),
+        1 - startOffset + index
+      ),
       inMonth: false,
     });
   }
@@ -441,7 +445,8 @@ export default function TeacherWorkPage({
   );
   const routeAssignmentCanCancel = Boolean(
     routeAssignment &&
-      (routeAssignment.status === "draft" || routeAssignment.status === "active") &&
+      (routeAssignment.status === "draft" ||
+        routeAssignment.status === "active") &&
       routeAssignmentSubmissions.length === 0
   );
   const routeAssignmentHasUnsavedDraftChanges = Boolean(
@@ -1050,9 +1055,7 @@ export default function TeacherWorkPage({
                         <div>
                           <span>Draft details</span>
                           <h2>Prepare this assignment</h2>
-                          <p>
-                            Learners will not see it until you publish it.
-                          </p>
+                          <p>Learners will not see it until you publish it.</p>
                         </div>
                         <StatusBadge tone="amber">Draft</StatusBadge>
                       </div>
@@ -1222,7 +1225,9 @@ export default function TeacherWorkPage({
                     >
                       <div className="teacher-assignment-lifecycle-head">
                         <div>
-                          <span>{assignmentStatusLabel(routeAssignment.status)}</span>
+                          <span>
+                            {assignmentStatusLabel(routeAssignment.status)}
+                          </span>
                           <h2>
                             {routeAssignment.status === "completed"
                               ? "Assignment closed"
@@ -1250,7 +1255,9 @@ export default function TeacherWorkPage({
                         Cancellation reason
                         <textarea
                           value={cancelReason}
-                          onChange={event => setCancelReason(event.target.value)}
+                          onChange={event =>
+                            setCancelReason(event.target.value)
+                          }
                           placeholder="Tell learners why this assignment is cancelled."
                         />
                       </label>
@@ -2241,7 +2248,7 @@ export default function TeacherWorkPage({
         className="portal-ia-page teacher-work-page teacher-quran-review-page"
         context={<span>Teacher</span>}
         title="Quran review"
-        description="Review learner recitations waiting for feedback."
+        description="Review learner recitations and recorded feedback."
         main={
           <>
             {actionError ? (

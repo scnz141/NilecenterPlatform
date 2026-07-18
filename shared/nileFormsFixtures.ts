@@ -9,11 +9,98 @@ import type {
   LocalizedText,
   NileFormsState,
 } from "./nileForms.js";
+import { createNileRequestsSeedState } from "./nileRequests.js";
+import type { NileFormsTemplateKey } from "./nileFormsTemplateCatalog.js";
 
 const seededAt = "2026-07-11T12:00:00.000Z";
 
-function text(en: string, ar: string): LocalizedText {
-  return { en, ar };
+const turkishText: Record<string, string> = {
+  Acknowledgment: "Onay",
+  Advanced: "İleri",
+  "Anything else?": "Başka bir şey?",
+  Applicant: "Başvuru sahibi",
+  Arabic: "Arapça",
+  "Ask for review of one absent or late attendance record.":
+    "Bir devamsızlık veya geç kalma kaydının incelenmesini isteyin.",
+  "Attendance exception request": "Devam istisnası talebi",
+  "Attendance record": "Devam kaydı",
+  Beginner: "Başlangıç",
+  "Branch incident or maintenance request": "Şube olay veya bakım talebi",
+  Category: "Kategori",
+  "Consent terms": "Onay koşulları",
+  "Contact and course": "İletişim ve ders",
+  Course: "Ders",
+  "Course access": "Ders erişimi",
+  "Course application": "Ders başvurusu",
+  "Course interest": "İlgilenilen ders",
+  "Current level": "Mevcut seviye",
+  "Date of birth": "Doğum tarihi",
+  Details: "Ayrıntılar",
+  Email: "E-posta",
+  English: "İngilizce",
+  Equipment: "Ekipman",
+  "Free trial enquiry": "Ücretsiz deneme talebi",
+  "Full name": "Ad soyad",
+  "I agree to the consent text above": "Yukarıdaki onay metnini kabul ediyorum",
+  "I confirm this information is accurate":
+    "Bu bilgilerin doğru olduğunu onaylıyorum",
+  "I confirm this request is accurate": "Bu talebin doğru olduğunu onaylıyorum",
+  "I understand the learning, attendance, and communication expectations for this course.":
+    "Bu dersin öğrenim, devam ve iletişim beklentilerini anlıyorum.",
+  Intermediate: "Orta",
+  "Is this blocking your next class?":
+    "Bu durum sonraki dersinize katılmanızı engelliyor mu?",
+  "Islamic studies": "İslami ilimler",
+  Issue: "Sorun",
+  "Issue type": "Sorun türü",
+  "Learning consent acknowledgment": "Öğrenim onayı beyanı",
+  "Learning goals": "Öğrenim hedefleri",
+  Location: "Konum",
+  Maintenance: "Bakım",
+  "Not sure": "Emin değilim",
+  "Online appointment": "Çevrim içi randevu",
+  Other: "Diğer",
+  Phone: "Telefon",
+  "Placement details": "Seviye belirleme ayrıntıları",
+  "Placement request": "Seviye belirleme talebi",
+  "Preferred branch": "Tercih edilen şube",
+  "Preferred contact": "Tercih edilen iletişim yöntemi",
+  "Preferred date": "Tercih edilen tarih",
+  "Preferred time": "Tercih edilen saat",
+  "Provide the information the registrar needs to review your application.":
+    "Kayıt görevlisinin başvurunuzu incelemesi için gereken bilgileri verin.",
+  Quran: "Kur'an",
+  "Read and acknowledge the current consent text.":
+    "Güncel onay metnini okuyun ve kabul edin.",
+  Reason: "Gerekçe",
+  "Record one branch issue for scoped operational review.":
+    "Operasyonel inceleme için bir şube sorununu kaydedin.",
+  Request: "Talep",
+  "Request a placement appointment before enrollment.":
+    "Kayıttan önce seviye belirleme randevusu isteyin.",
+  Safety: "Güvenlik",
+  Schedule: "Program",
+  "Schedule preference": "Program tercihi",
+  "Send one support request to the correct Nile Learn team.":
+    "İlgili Nile Learn ekibine bir destek talebi gönderin.",
+  Severity: "Önem derecesi",
+  "Student support request": "Öğrenci destek talebi",
+  "Study goals": "Eğitim hedefleri",
+  Subject: "Konu",
+  Submit: "Gönder",
+  "Teacher training": "Öğretmen eğitimi",
+  Technical: "Teknik",
+  "Tell the admissions team how to contact you and what you want to study.":
+    "Kabul ekibine size nasıl ulaşacağını ve ne okumak istediğinizi bildirin.",
+  "Type your full name": "Tam adınızı yazın",
+  "What happened?": "Ne oldu?",
+  WhatsApp: "WhatsApp",
+  "Your response has been received.": "Yanıtınız alındı.",
+};
+
+function text(en: string, ar: string, tr = turkishText[en]): LocalizedText {
+  if (!tr) throw new Error(`Missing Turkish Nile Forms text: ${en}`);
+  return { en, ar, tr };
 }
 
 function field(
@@ -35,10 +122,11 @@ function content(
   logic: FormLogicRule[] = []
 ): FormVersionContent {
   return {
+    contractVersion: 2,
     title: text(titleEn, titleAr),
     description: text(descriptionEn, descriptionAr),
     defaultLanguage: "en",
-    languages: ["en", "ar"],
+    languages: ["en", "ar", "tr"],
     submitLabel: text("Submit", "إرسال"),
     confirmationMessage: text(
       "Your response has been received.",
@@ -46,6 +134,7 @@ function content(
     ),
     pages,
     logic,
+    calculations: [],
   };
 }
 
@@ -586,7 +675,9 @@ export function createNileFormsSeedState(): NileFormsState {
     versionNumber: 1,
     status: "published",
     revision: 1,
-    content: templateContent[item.id.replace(/^form_/, "")],
+    content: createNileFormsTemplateContent(
+      item.id.replace(/^form_/, "") as NileFormsTemplateKey
+    ),
     contentHash: `fixture:${item.id}:1`,
     authoredBy: item.ownerUserId,
     publishedBy: item.ownerUserId,
@@ -653,7 +744,12 @@ export function createNileFormsSeedState(): NileFormsState {
     syncReceipts: [],
     legacyImportRuns: [],
     legacyImportRecords: [],
+    requests: createNileRequestsSeedState(),
   };
+}
+
+export function createNileFormsTemplateContent(key: NileFormsTemplateKey) {
+  return structuredClone(templateContent[key]);
 }
 
 export const nileFormsTemplateContent = templateContent;

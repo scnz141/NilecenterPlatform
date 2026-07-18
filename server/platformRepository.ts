@@ -142,6 +142,15 @@ export function normalizePlatformState(value: unknown): PlatformState {
           seed.permissions
         )
       : stored.permissions ?? seed.permissions;
+  const courseRuns = mergeById(seed.courseRuns, stored.courseRuns);
+  const enrollments = (stored.enrollments ?? seed.enrollments).map(
+    enrollment => ({
+      ...enrollment,
+      teacherId:
+        courseRuns.find(item => item.id === enrollment.courseRunId)?.teacherId ??
+        enrollment.teacherId,
+    })
+  );
   return {
     ...seed,
     ...stored,
@@ -152,12 +161,13 @@ export function normalizePlatformState(value: unknown): PlatformState {
     permissions,
     users: mergeById(seed.users, stored.users),
     staffProfiles: mergeById(seed.staffProfiles, stored.staffProfiles),
-    courseRuns: mergeById(seed.courseRuns, stored.courseRuns),
+    courseRuns,
     classGroups: mergeById(seed.classGroups, stored.classGroups).map(group => ({
       ...group,
       status: group.status ?? "active",
     })),
     events: mergeById(seed.events, stored.events),
+    enrollments,
     portalSettings: mergePortalSettings(
       seed.portalSettings,
       stored.portalSettings

@@ -510,6 +510,80 @@
   gap: 18px;
 }
 
+.platform-shell[data-role="registrar"] .registrar-enrollment-transfer-form {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) minmax(260px, 1.15fr) auto;
+  gap: 12px;
+  align-items: end;
+  padding: 0 20px 20px;
+}
+
+.platform-shell[data-role="registrar"]
+  .registrar-enrollment-transfer-form
+  label {
+  min-width: 0;
+  display: grid;
+  gap: 7px;
+  color: var(--foreground);
+  font-size: 12px;
+  font-weight: 760;
+}
+
+.platform-shell[data-role="registrar"]
+  .registrar-enrollment-transfer-form
+  :is(input, select, button) {
+  min-width: 0;
+  min-height: 42px;
+}
+
+.platform-shell[data-role="registrar"]
+  .registrar-enrollment-transfer-form
+  :is(input, select) {
+  width: 100%;
+  border: 1px solid var(--registrar-line);
+  border-radius: 7px;
+  background: var(--registrar-surface);
+  padding-inline: 12px;
+  color: var(--foreground);
+  font: inherit;
+}
+
+.platform-shell[data-role="registrar"]
+  .registrar-enrollment-transfer-form
+  button {
+  white-space: nowrap;
+}
+
+.platform-shell[data-role="registrar"] .registrar-enrollment-status-reason {
+  width: min(calc(100% - 40px), 520px);
+  display: grid;
+  gap: 7px;
+  margin-inline: 20px;
+  color: var(--foreground);
+  font-size: 12px;
+  font-weight: 760;
+}
+
+.platform-shell[data-role="registrar"]
+  .registrar-enrollment-status-reason
+  input {
+  width: 100%;
+  min-height: 42px;
+  border: 1px solid var(--registrar-line);
+  border-radius: 7px;
+  background: var(--registrar-surface);
+  padding-inline: 12px;
+  color: var(--foreground);
+  font: inherit;
+}
+
+.platform-shell[data-role="registrar"]
+  .registrar-enrollment-record-workspace
+  .branch-inline-composer
+  > .platform-page-actions {
+  padding: 12px 20px 20px;
+}
+
 .platform-shell[data-role="registrar"]
   .registrar-student-detail-workspace
   > section,
@@ -538,6 +612,7 @@
     .registrar-student-status-control,
     .registrar-payment-composer-form,
     .registrar-enrollment-form,
+    .registrar-enrollment-transfer-form,
     .branch-room-form,
     .portal-ia-form-grid,
     .portal-simple-form-grid,
@@ -556,6 +631,7 @@
     .registrar-student-status-control,
     .registrar-payment-composer-form,
     .registrar-enrollment-form,
+    .registrar-enrollment-transfer-form,
     .branch-room-form,
     .portal-ia-form-grid,
     .portal-simple-form-grid,
@@ -656,6 +732,29 @@
 
   .platform-shell[data-role="registrar"] .registrar-admissions-toolbar-v3 {
     grid-template-columns: 1fr;
+  }
+
+  .platform-shell[data-role="registrar"] .registrar-enrollment-transfer-form {
+    grid-template-columns: minmax(0, 1fr);
+    padding-inline: 16px;
+  }
+
+  .platform-shell[data-role="registrar"]
+    .registrar-enrollment-transfer-form
+    button {
+    width: 100%;
+  }
+
+  .platform-shell[data-role="registrar"] .registrar-enrollment-status-reason {
+    width: calc(100% - 32px);
+    margin-inline: 16px;
+  }
+
+  .platform-shell[data-role="registrar"]
+    .registrar-enrollment-record-workspace
+    .branch-inline-composer
+    > .platform-page-actions {
+    padding-inline: 16px;
   }
 
   .platform-shell[data-role="registrar"]

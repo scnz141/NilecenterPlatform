@@ -1,0 +1,59 @@
+{
+  "phase": "14A",
+  "status": "accepted-local",
+  "acceptedAt": "2026-07-18",
+  "scope": "Nile Forms structured content and localization parity",
+  "contract": {
+    "locales": ["en", "ar", "tr"],
+    "templateCount": 7,
+    "calculationOperators": 7,
+    "closedFieldCatalog": true,
+    "localizedValidation": true,
+    "serverAuthoritativeCalculations": true,
+    "templateDeepCopy": true,
+    "runtimeDefault": "memory",
+    "normalizedActivation": false
+  },
+  "focusedValidation": {
+    "commands": [
+      "npm run check:forms-phase14a",
+      "npm test -- --run client/src/lib/forms/nileForms.test.ts client/src/lib/forms/server-nile-forms-service.test.ts client/src/lib/forms/server-nile-forms-routes.test.ts"
+    ],
+    "result": "passed",
+    "focusedTestFiles": 3,
+    "focusedTests": 62
+  },
+  "manualBrowser": {
+    "surface": "Codex in-app Browser",
+    "widths": [390, 1440],
+    "createTemplateSelector": true,
+    "builderInspectorTabs": 5,
+    "localeSpecificAccessibleLabels": 18,
+    "arabicRtl": true,
+    "turkishLtr": true,
+    "turkishValidation": true,
+    "minimumRendererActionHeight": 44,
+    "horizontalOverflow": false
+  },
+  "fullValidation": {
+    "command": "QA_OUTPUT_DIR=output/playwright/codex-phase14a-acceptance scripts/verify.sh",
+    "typescript": "passed",
+    "unitTestFiles": 59,
+    "unitTests": 863,
+    "productionBuild": "passed",
+    "portalQaArtifact": "output/playwright/codex-phase14a-acceptance/portal-qa-summary.json",
+    "portalQaArtifactSha256": "63e5f49258086ff3851786130264d456c2573ae4fad1b8c8e2a07384116146ab",
+    "portalChecks": 1634,
+    "portalFailures": 0,
+    "portalElapsedMs": 601810,
+    "interrupted": false
+  },
+  "boundaries": {
+    "productionTouched": false,
+    "remoteDatabaseTargeted": false,
+    "normalizedRuntimeEnabled": false,
+    "routeCutoverEnabled": false,
+    "operationalWorkflowAdded": false,
+    "externalProviderCalled": false
+  }
+}

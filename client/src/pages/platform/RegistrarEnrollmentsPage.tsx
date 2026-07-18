@@ -108,22 +108,22 @@ export default function RegistrarEnrollmentsPage({
   const user = state.users.find(item => item.id === student?.userId);
   const course = state.courses.find(item => item.id === workflow?.targetCourseId);
   const courseRuns = state.courseRuns.filter(
-    item => item.courseId === workflow?.targetCourseId
+    item =>
+      item.courseId === workflow?.targetCourseId && item.status === "active"
   );
-  const defaultCourseRun =
-    courseRuns.find(item => item.status === "active") ?? courseRuns[0];
   const draft = workflow ? assignmentDrafts[workflow.id] : undefined;
-  const selectedCourseRun =
-    courseRuns.find(item => item.id === draft?.courseRunId) ?? defaultCourseRun;
-  const classGroups = state.classGroups.filter(
-    item => item.courseRunId === selectedCourseRun?.id
+  const selectedCourseRun = courseRuns.find(
+    item => item.id === draft?.courseRunId
   );
-  const defaultClassGroup =
-    classGroups.find(item => item.studentIds.length < item.capacity) ??
-    classGroups[0];
-  const selectedClassGroup =
-    classGroups.find(item => item.id === draft?.classGroupId) ??
-    defaultClassGroup;
+  const classGroups = state.classGroups.filter(
+    item =>
+      item.courseRunId === selectedCourseRun?.id &&
+      item.status === "active" &&
+      item.studentIds.length < item.capacity
+  );
+  const selectedClassGroup = classGroups.find(
+    item => item.id === draft?.classGroupId
+  );
   const invoice = state.invoices.find(item => item.studentId === student?.id);
   const isActivated = Boolean(workflow?.studentId && student);
   const canActivate =
@@ -131,10 +131,7 @@ export default function RegistrarEnrollmentsPage({
     !isActivated &&
     workflow?.status === "ready_to_enroll" &&
     Boolean(selectedCourseRun && selectedClassGroup);
-  const assignment = {
-    courseRunId: selectedCourseRun?.id ?? "",
-    classGroupId: selectedClassGroup?.id ?? "",
-  };
+  const assignment = draft ?? { courseRunId: "", classGroupId: "" };
 
   if (workflowId) {
     return (
@@ -222,25 +219,17 @@ export default function RegistrarEnrollmentsPage({
                           disabled={isAnyActionPending || !courseRuns.length}
                           onChange={event => {
                             const nextRunId = event.target.value;
-                            const nextClassGroup =
-                              state.classGroups.find(
-                                item =>
-                                  item.courseRunId === nextRunId &&
-                                  item.studentIds.length < item.capacity
-                              ) ??
-                              state.classGroups.find(
-                                item => item.courseRunId === nextRunId
-                              );
                             setActivationSaved(false);
                             setAssignmentDrafts(current => ({
                               ...current,
                               [workflow.id]: {
                                 courseRunId: nextRunId,
-                                classGroupId: nextClassGroup?.id ?? "",
+                                classGroupId: "",
                               },
                             }));
                           }}
                         >
+                          <option value="">Select a course run</option>
                           {courseRuns.length ? (
                             courseRuns.map(run => {
                               const branch = state.branches.find(
@@ -253,7 +242,9 @@ export default function RegistrarEnrollmentsPage({
                               );
                             })
                           ) : (
-                            <option value="">No course run</option>
+                            <option value="" disabled>
+                              No active course run
+                            </option>
                           )}
                         </select>
                       </label>
@@ -261,7 +252,11 @@ export default function RegistrarEnrollmentsPage({
                         Class
                         <select
                           value={selectedClassGroup?.id ?? ""}
-                          disabled={isAnyActionPending || !classGroups.length}
+                          disabled={
+                            isAnyActionPending ||
+                            !selectedCourseRun ||
+                            !classGroups.length
+                          }
                           onChange={event => {
                             setActivationSaved(false);
                             setAssignmentDrafts(current => ({
@@ -273,6 +268,7 @@ export default function RegistrarEnrollmentsPage({
                             }));
                           }}
                         >
+                          <option value="">Select a class</option>
                           {classGroups.length ? (
                             classGroups.map(group => (
                               <option key={group.id} value={group.id}>
@@ -281,14 +277,20 @@ export default function RegistrarEnrollmentsPage({
                               </option>
                             ))
                           ) : (
-                            <option value="">No class</option>
+                            <option value="" disabled>
+                              {selectedCourseRun
+                                ? "No active class with an open seat"
+                                : "Select a course run first"}
+                            </option>
                           )}
                         </select>
                       </label>
                       <p className="registrar-enrollment-availability">
                         {selectedClassGroup
                           ? `${selectedClassGroup.schedule} · ${Math.max(0, selectedClassGroup.capacity - selectedClassGroup.studentIds.length)} seats available`
-                          : "Create a class before activating this learner."}
+                          : selectedCourseRun
+                            ? "Select an active class with an open seat."
+                            : "Select the exact course run, then choose a class."}
                       </p>
                       <div className="registrar-enrollment-actions">
                         <button

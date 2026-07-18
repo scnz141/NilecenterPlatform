@@ -21,6 +21,10 @@ import {
 import { formsRoute } from "@/lib/forms/routes";
 import type { Role } from "@/lib/platformData";
 import type { FormManagementOptions } from "@shared/nileForms";
+import {
+  nileFormsTemplateCatalog,
+  type NileFormsTemplateKey,
+} from "@shared/nileFormsTemplateCatalog";
 
 export default function NileFormsCreatePage({ role }: { role: Role }) {
   const [, navigate] = useLocation();
@@ -43,6 +47,8 @@ export default function NileFormsCreatePage({ role }: { role: Role }) {
     key: "",
     titleEn: "",
     titleAr: "",
+    titleTr: "",
+    templateKey: "" as "" | NileFormsTemplateKey,
     category: categories[0],
     branchId: "",
     departmentId: "",
@@ -83,6 +89,8 @@ export default function NileFormsCreatePage({ role }: { role: Role }) {
       key: draft.key,
       titleEn: draft.titleEn,
       titleAr: draft.titleAr,
+      titleTr: draft.titleTr,
+      templateKey: draft.templateKey || undefined,
       category: draft.category,
       branchId:
         role === "registrar" || role === "branchadmin"
@@ -142,6 +150,39 @@ export default function NileFormsCreatePage({ role }: { role: Role }) {
           <section className="nile-form-create-panel">
             <form onSubmit={createDefinition} aria-busy={saving}>
               <label>
+                Starting point
+                <select
+                  value={draft.templateKey}
+                  onChange={event => {
+                    const templateKey = event.target.value as
+                      | ""
+                      | NileFormsTemplateKey;
+                    const template = nileFormsTemplateCatalog.find(
+                      item => item.key === templateKey
+                    );
+                    setDraft(current => ({
+                      ...current,
+                      templateKey,
+                      titleEn: template?.title.en ?? current.titleEn,
+                      titleAr: template?.title.ar ?? current.titleAr,
+                      titleTr: template?.title.tr ?? current.titleTr,
+                    }));
+                  }}
+                >
+                  <option value="">Blank form</option>
+                  {nileFormsTemplateCatalog
+                    .filter(template => template.category === draft.category)
+                    .map(template => (
+                      <option key={template.key} value={template.key}>
+                        {template.title.en}
+                      </option>
+                    ))}
+                </select>
+                <small>
+                  Templates are copied into a new independent draft.
+                </small>
+              </label>
+              <label>
                 English title
                 <input
                   autoFocus
@@ -151,6 +192,19 @@ export default function NileFormsCreatePage({ role }: { role: Role }) {
                     setDraft(current => ({
                       ...current,
                       titleEn: event.target.value,
+                    }))
+                  }
+                />
+              </label>
+              <label>
+                Turkish title
+                <input
+                  required
+                  value={draft.titleTr}
+                  onChange={event =>
+                    setDraft(current => ({
+                      ...current,
+                      titleTr: event.target.value,
                     }))
                   }
                 />
@@ -194,6 +248,7 @@ export default function NileFormsCreatePage({ role }: { role: Role }) {
                       ...current,
                       category: event.target
                         .value as (typeof categories)[number],
+                      templateKey: "",
                     }))
                   }
                 >
@@ -258,7 +313,7 @@ export default function NileFormsCreatePage({ role }: { role: Role }) {
               ) : null}
               <footer>
                 <span>
-                  <Languages size={15} /> English and Arabic
+                  <Languages size={15} /> English, Arabic, and Turkish
                 </span>
                 <div>
                   <Link

@@ -549,6 +549,7 @@ export function registerNileFormsRoutes(
         await service.saveDraft({
           publicationId: routeParam(req, "publicationId"),
           answers: body.answers,
+          locale: body.locale,
           expectedRevision: body.expectedRevision,
           session: await readSession(req),
         })
@@ -563,6 +564,7 @@ export function registerNileFormsRoutes(
       const result = await service.submit({
         publicationId: routeParam(req, "publicationId"),
         answers: body.answers,
+        locale: body.locale,
         clientSubmissionId: body.clientSubmissionId,
         clientSubmittedAt: body.clientSubmittedAt,
         session: await readSession(req),
@@ -672,6 +674,7 @@ export function registerNileFormsRoutes(
         await service.saveDraft({
           publicationId: form.publication.id,
           answers: body.answers,
+          locale: body.locale,
           expectedRevision: body.expectedRevision,
           draftToken: req.get("X-Nile-Forms-Draft-Token"),
         })
@@ -694,6 +697,7 @@ export function registerNileFormsRoutes(
       const result = await service.submit({
         publicationId: form.publication.id,
         answers: body.answers,
+        locale: body.locale,
         clientSubmissionId: body.clientSubmissionId,
         clientSubmittedAt: body.clientSubmittedAt,
         draftToken: req.get("X-Nile-Forms-Draft-Token"),

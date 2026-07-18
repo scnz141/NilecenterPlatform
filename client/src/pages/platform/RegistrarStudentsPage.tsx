@@ -215,7 +215,7 @@ export default function RegistrarStudentsPage({
             item.studentIds.includes(enrollment.studentId)
         );
       const teacher = state.users.find(
-        item => item.id === (enrollment.teacherId ?? run?.teacherId)
+        item => item.id === (run?.teacherId ?? enrollment.teacherId)
       );
       return { enrollment, run, course, classGroup, teacher };
     }
@@ -1074,7 +1074,7 @@ export default function RegistrarStudentsPage({
           <div className="registrar-student-enrollment-list">
             {selectedStudentDetailRows.length ? (
               selectedStudentDetailRows.map(
-                ({ enrollment, course, classGroup, teacher }) => (
+                ({ enrollment, run, course, classGroup, teacher }) => (
                   <article key={enrollment.id}>
                     <div>
                       <strong>{course?.title ?? enrollment.courseRunId}</strong>
@@ -1084,6 +1084,7 @@ export default function RegistrarStudentsPage({
                           "Class pending"}{" "}
                         ·{" "}
                         {teacher?.name ??
+                          run?.teacherId ??
                           enrollment.teacherId ??
                           "Teacher pending"}{" "}
                         · {classGroup?.schedule ?? "Schedule pending"}

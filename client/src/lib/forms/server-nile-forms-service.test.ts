@@ -51,6 +51,10 @@ const student = session("student", "usr_student_demo", {
   branchIds: ["br_online"],
   departmentIds: ["dep_arabic"],
 });
+const teacher = session("teacher", "usr_teacher_demo", {
+  branchIds: ["br_online", "br_cairo"],
+  departmentIds: ["dep_arabic"],
+});
 const superAdmin = session("superadmin", "usr_admin_demo");
 
 function createService(
@@ -125,10 +129,66 @@ describe("Nile Forms server authority", () => {
         key: "alex_intake",
         titleEn: "Alex intake",
         titleAr: "طلب الإسكندرية",
+        titleTr: "İskenderiye başvurusu",
         category: "admissions",
         branchId: "br_alex",
       })
     ).rejects.toMatchObject({ statusCode: 403, code: "branch_scope_denied" });
+  });
+
+  it("creates independent trilingual drafts from validated templates", async () => {
+    const service = createService();
+    const first = await service.createDefinition(superAdmin, {
+      key: "application_copy_one",
+      titleEn: "Application copy one",
+      titleAr: "نسخة الطلب الأولى",
+      titleTr: "Birinci başvuru kopyası",
+      category: "admissions",
+      templateKey: "application",
+    });
+    const second = await service.createDefinition(superAdmin, {
+      key: "application_copy_two",
+      titleEn: "Application copy two",
+      titleAr: "نسخة الطلب الثانية",
+      titleTr: "İkinci başvuru kopyası",
+      category: "admissions",
+      templateKey: "application",
+    });
+
+    expect(first.version.content).toMatchObject({
+      contractVersion: 2,
+      languages: ["en", "ar", "tr"],
+      title: {
+        en: "Application copy one",
+        ar: "نسخة الطلب الأولى",
+        tr: "Birinci başvuru kopyası",
+      },
+    });
+    expect(first.version.content.pages).not.toBe(second.version.content.pages);
+    first.version.content.pages[0].fields[0].label.en = "Changed only once";
+    expect(second.version.content.pages[0].fields[0].label.en).toBe(
+      "Full name"
+    );
+
+    const state = await testRepository.read();
+    expect(state.auditEvents).toContainEqual(
+      expect.objectContaining({
+        action: "form.definition_created",
+        entityId: second.definition.id,
+        metadata: expect.objectContaining({ templateKey: "application" }),
+      })
+    );
+
+    await expect(
+      service.createDefinition(superAdmin, {
+        key: "wrong_template_category",
+        titleEn: "Wrong template",
+        titleAr: "قالب غير صحيح",
+        titleTr: "Yanlış şablon",
+        category: "consent",
+        templateKey: "application",
+      })
+    ).rejects.toMatchObject({ statusCode: 400, code: "template_invalid" });
   });
 
   it("returns only server-authorized management and assignment targets", async () => {
@@ -191,6 +251,26 @@ describe("Nile Forms server authority", () => {
     });
   });
 
+  it("returns server validation details in the bounded requested locale", async () => {
+    const service = createService();
+
+    await expect(
+      service.submit({
+        publicationId: "publication_form_enquiry_1",
+        clientSubmissionId: "submission-client-turkish-0001",
+        answers: {},
+        locale: "tr",
+      })
+    ).rejects.toMatchObject({
+      statusCode: 400,
+      code: "answers_invalid",
+      details: expect.objectContaining({
+        full_name: ["Ad soyad zorunludur"],
+        email: ["E-posta zorunludur"],
+      }),
+    });
+  });
+
   it("rejects new assignments for retired or expired publications without evidence writes", async () => {
     const service = createService();
     const incident = await service.getDefinition(superAdmin, "form_incident");
@@ -244,7 +324,11 @@ describe("Nile Forms server authority", () => {
 
     const content: FormVersionContent = {
       ...structuredClone(draft.content),
-      title: { en: "Updated application", ar: "طلب محدّث" },
+      title: {
+        en: "Updated application",
+        ar: "طلب محدّث",
+        tr: "Güncellenmiş başvuru",
+      },
     };
     const saved = await service.updateDraftVersion(
       superAdmin,
@@ -380,6 +464,78 @@ describe("Nile Forms server authority", () => {
     expect(keys).toContain("learning_consent");
     expect(keys).toContain("attendance_exception");
     expect(keys).not.toContain("branch_incident");
+  });
+
+  it("uses active teacher run assignments instead of cached profile class ids", async () => {
+    const authorityState = structuredClone(seedPlatformState);
+    authorityState.teachers = authorityState.teachers.map(profile =>
+      profile.userId === teacher.userId
+        ? { ...profile, assignedClassIds: ["class_ar_l1_alex"] }
+        : profile
+    );
+    await testRepository.transaction(state => {
+      state.assignments.push(
+        {
+          id: "assignment_teacher_current_class",
+          publicationId: "publication_form_support_1",
+          target: { type: "class", classId: "class_ar_l3_a" },
+          assignedBy: "usr_admin_demo",
+          assignedAt: fixedNow.toISOString(),
+        },
+        {
+          id: "assignment_teacher_stale_class",
+          publicationId: "publication_form_attendance_exception_1",
+          target: { type: "class", classId: "class_ar_l1_alex" },
+          assignedBy: "usr_admin_demo",
+          assignedAt: fixedNow.toISOString(),
+        }
+      );
+    });
+    const service = createService({
+      readAuthorityState: async () => authorityState,
+    });
+
+    const assignedKeys = (await service.listAssigned(teacher)).map(
+      item => item.definition.key
+    );
+
+    expect(assignedKeys).toContain("student_support");
+    expect(assignedKeys).not.toContain("attendance_exception");
+  });
+
+  it("requires student roster membership for class-targeted assignments", async () => {
+    const authorityState = structuredClone(seedPlatformState);
+    authorityState.classGroups = authorityState.classGroups.map(group =>
+      group.id === "class_ar_l3_a"
+        ? {
+            ...group,
+            studentIds: group.studentIds.filter(
+              studentId => studentId !== "stu_demo"
+            ),
+          }
+        : group
+    );
+    await testRepository.transaction(state => {
+      state.assignments = state.assignments.filter(
+        assignment => assignment.publicationId !== "publication_form_support_1"
+      );
+      state.assignments.push({
+        id: "assignment_student_roster_sentinel",
+        publicationId: "publication_form_support_1",
+        target: { type: "class", classId: "class_ar_l3_a" },
+        assignedBy: "usr_admin_demo",
+        assignedAt: fixedNow.toISOString(),
+      });
+    });
+    const service = createService({
+      readAuthorityState: async () => authorityState,
+    });
+
+    const assignedKeys = (await service.listAssigned(student)).map(
+      item => item.definition.key
+    );
+
+    expect(assignedKeys).not.toContain("student_support");
   });
 
   it("keeps a single response on an owner-only detail route until it is withdrawn", async () => {
@@ -708,6 +864,7 @@ describe("Nile Forms server authority", () => {
           key: "scope_must_not_create",
           titleEn: "Denied",
           titleAr: "مرفوض",
+          titleTr: "Reddedildi",
           category: "admissions",
           branchId: "br_alex",
         }),
@@ -756,6 +913,7 @@ describe("Nile Forms server authority", () => {
       key: "restricted_staff_form",
       titleEn: "Restricted staff form",
       titleAr: "نموذج موظفين مقيد",
+      titleTr: "Kısıtlı personel formu",
       category: "consent",
     });
     const restricted = structuredClone(nileFormsTemplateContent.incident);

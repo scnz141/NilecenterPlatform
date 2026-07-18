@@ -3,16 +3,234 @@
 Nile Learn is currently in internal alpha stabilization. The protected portal QA baseline is:
 
 - Portal QA: 1,634 checks, 0 failures.
-- Checked at: `2026-07-17T21:30:16.353Z`.
-- Validation command: `QA_OUTPUT_DIR=output/playwright/phase6i-staging-promotion-acceptance-20260717 scripts/verify.sh`.
+- Checked at: `2026-07-18T13:40:32Z`.
+- Validation command: `QA_OUTPUT_DIR=output/playwright/codex-phase14b-acceptance scripts/verify.sh`.
 - QA summary artifact:
-  `output/playwright/phase6i-staging-promotion-acceptance-20260717/portal-qa-summary.json`.
+  `output/playwright/codex-phase14b-acceptance/portal-qa-summary.json`.
 
 `docs/NILE_LEARN_MASTER_PLAN.md` defines the next architecture phases, and
 `docs/MODERNIZATION_EXECUTION_CONTRACT.md` defines how this baseline is
 protected during each slice.
 
 ## Latest Preservation Evidence
+
+Phase 14B is accepted as the typed Requests foundation for branch incidents
+and maintenance requests created from exact reviewed Nile Forms evidence:
+
+- Seven closed commands, five statuses, optimistic version checks, idempotent
+  replay, immutable comments/activity/reassignment history, and no-write
+  denial paths are covered by the executable contract and 8 focused tests.
+- Session-derived requester, branch, department, assignee, and global scope is
+  enforced on the server. Source submissions and answers remain immutable.
+- In-app Browser review verified the one-job list, detail, and
+  create-from-submission surfaces, typed unavailable/retry states, Arabic RTL,
+  44-pixel actions, and no horizontal overflow at 390 and 1440 pixels.
+- Full validation passed 871 unit tests across 61 files, TypeScript, production
+  build, every local database and integration contract, and 1,634 portal checks
+  with 0 failures.
+- Checked at: `2026-07-18T13:40:32Z`.
+- QA summary artifact:
+  `output/playwright/codex-phase14b-acceptance/portal-qa-summary.json`.
+- Artifact SHA-256:
+  `f9b1dc6ef971ef13c74d8fe7af913b9075cbece0b4a6e6aecd63c0887a99fc37`.
+- Result: 1,634 checks, 0 failures in 604,712 ms.
+- Attestation:
+  `docs/qa-attestations/nile-forms-phase14b-typed-requests-20260718.json`.
+- Memory remains the runtime default. Normalized activation, external delivery,
+  uploads, generic workflows, provider calls, and Moodle/EMS writeback remain
+  disabled.
+
+Phase 14A is accepted as the structured content and localization foundation for
+Nile Forms:
+
+- Closed `en | ar | tr` content, localized validation, seven deterministic
+  calculation operators, and seven independently copied templates are covered
+  by the executable contract and 62 focused tests.
+- In-app Browser review verified template creation, the five-part builder
+  inspector, locale-specific accessible names, Arabic RTL, Turkish LTR,
+  localized Turkish validation, 44-pixel renderer actions, and no horizontal
+  overflow at 390 and 1440 pixels.
+- Full validation passed 863 unit tests across 59 files, TypeScript, production
+  build, every local database and integration contract, and 1,634 portal checks
+  with 0 failures.
+- Checked at: `2026-07-18T11:48:22.868Z`.
+- QA summary artifact:
+  `output/playwright/codex-phase14a-acceptance/portal-qa-summary.json`.
+- Artifact SHA-256:
+  `63e5f49258086ff3851786130264d456c2573ae4fad1b8c8e2a07384116146ab`.
+- Result: 1,634 checks, 0 failures in 601,810 ms.
+- Attestation:
+  `docs/qa-attestations/nile-forms-phase14a-structured-content-20260718.json`.
+- Memory remains the runtime default. Requests, Approvals, Appointments,
+  Surveys, uploads, providers, normalized activation, and route cutover were
+  not added.
+
+Phase 13F1 is accepted as a local-only normalized Nile Forms repository
+foundation:
+
+- Static contract: 13 protected queries, 20 protected commands, one public
+  query, two public commands, nine permission mappings, nine additive tables,
+  zero browser policies, and zero migration-history entries.
+- Portable PostgreSQL: two forward applications, three semantic assertion
+  passes, one rollback/reapply drill, Phase 13A-E preservation, protected and
+  public replay/conflict checks, sensitive projection grant/revoke, offline
+  tamper denial, both revoke-versus-command outcomes, and direct role denials.
+- Focused validation: 62 repository, request-security, route, and service tests
+  pass.
+- Integrated validation reuses the behaviorally unchanged Phase 12G artifact:
+  856 unit tests, TypeScript, production build, and 1,634 portal checks with 0
+  failures.
+- Attestation:
+  `docs/qa-attestations/nile-forms-phase13f1-normalized-repository-20260718.json`.
+- Memory remains the runtime default. Normalized activation, route cutover,
+  promotion execution, remote SQL application, and external provider calls
+  remain disabled.
+
+The Phase 12G evidence below remains historical portal-rendering evidence for
+the completed route-modernization phase.
+
+The accepted Phase 12G slice completes the route-modernization sequence for
+remaining Super Admin and Nile Forms surfaces without changing workflow or
+authority boundaries:
+
+- Checked at: `2026-07-18T09:23:01.795Z`.
+- QA summary artifact:
+  `output/playwright/codex-phase12g-full/portal-qa-summary.json`.
+- Artifact SHA-256:
+  `fdfbd8e29eb950bb8ae4c9c5a4b8807b2b0d9bb0f44598d39b01afcd1d99885d`.
+- Result: 1,634 checks, 0 failures in 599,295 ms.
+- Supporting validation: 856 unit tests pass across 59 files; TypeScript, the
+  production build, 60 focused Super Admin workflow checks, focused Forms
+  submission and assignment checks, formatting, QA syntax, and all
+  integration/database contracts pass.
+- Desktop and mobile in-app Browser review found no horizontal overflow across
+  thirty-two representative Super Admin and Forms routes. Every route reached
+  a distinct level-one heading, and the Forms builder inspector remained
+  accessible on mobile.
+- No route, business action, persistence, auth, RBAC, audit, provider, or data
+  ownership contract changed.
+
+The Phase 12F evidence below remains historical evidence for the preceding
+accepted route family.
+
+The accepted Phase 12F branch operations slice keeps students, teachers,
+classes, rooms, schedule, attendance, and payments as focused branch-scoped
+route jobs. It removes a misleading static attendance count without changing a
+workflow or authority boundary:
+
+- Checked at: `2026-07-18T08:35:06.428Z`.
+- QA summary artifact:
+  `output/playwright/codex-phase12f-full/portal-qa-summary.json`.
+- Artifact SHA-256:
+  `77ba045601a10676709b7ce62606bea685532c4bc5161a79e8977c2ad34f9933`.
+- Result: 1,634 checks, 0 failures in 600,372 ms.
+- Supporting validation: 856 unit tests pass across 59 files; TypeScript, the
+  production build, 67 focused branch workflow checks, formatting, QA syntax,
+  and all integration/database contracts pass.
+- Desktop and mobile in-app Browser review found no horizontal overflow across
+  thirteen branch list, detail, and create routes. Fresh isolated QA also
+  confirmed the class-session detail and reschedule/cancel lifecycle.
+- No route, business action, persistence, auth, RBAC, audit, provider, or data
+  ownership contract changed.
+
+The Phase 12E evidence below remains historical evidence for the preceding
+accepted route family.
+
+The accepted Phase 12E HOD academic governance slice keeps catalog,
+curriculum, class delivery, schedule, assessment creation/review, and
+certificate decisions as focused route jobs. It removes a misleading static
+certificate count without changing a workflow or authority boundary:
+
+- Checked at: `2026-07-18T08:04:07.527Z`.
+- QA summary artifact:
+  `output/playwright/codex-phase12e-full/portal-qa-summary.json`.
+- Artifact SHA-256:
+  `17b705ffbf522bf2055147d38bd17f33a56c4af6efd6df9a29e7f8695bde46af`.
+- Result: 1,634 checks, 0 failures in 599,491 ms.
+- Supporting validation: 856 unit tests pass across 59 files; TypeScript, the
+  production build, 47 focused HOD workflow checks, formatting, QA syntax, and
+  all integration/database contracts pass.
+- Desktop and mobile in-app Browser review found no horizontal overflow across
+  fourteen HOD list, detail, create, and review routes. The certificate
+  navigation no longer advertises a queue that is not derived from scoped
+  certificate records.
+- No route, business action, persistence, auth, RBAC, audit, provider, or data
+  ownership contract changed.
+
+The Phase 12D evidence below remains historical evidence for the preceding
+accepted route family.
+
+The accepted Phase 12D registrar operations slice keeps leads, applications,
+placement, students, enrollment, payments, and schedule as focused route jobs.
+It removes misleading static navigation counts and corrects the enrollment
+transfer/status layout without changing a workflow or authority boundary:
+
+- Checked at: `2026-07-18T07:23:41.885Z`.
+- QA summary artifact:
+  `output/playwright/codex-phase12d-full/portal-qa-summary.json`.
+- Artifact SHA-256:
+  `e3159a7dce55dd3febeddfc5147ac8e9da887b4dfed18f65af6cb60549bd8316`.
+- Result: 1,634 checks, 0 failures in 605,447 ms.
+- Supporting validation: 856 unit tests pass across 59 files; TypeScript, the
+  production build, 50 focused registrar workflow checks, formatting, QA
+  syntax, and all integration/database contracts pass.
+- Desktop and mobile in-app Browser review found no horizontal overflow across
+  the registrar route family. Static lead and placement sidebar badges no
+  longer contradict scoped queues, and enrollment transfer/status controls
+  remain usable from desktop through mobile widths.
+- No route, business action, persistence, auth, RBAC, audit, provider, or data
+  ownership contract changed.
+
+The Phase 12C evidence below remains historical evidence for the preceding
+accepted route family.
+
+The accepted Phase 12C teacher delivery and assessment slice keeps class
+delivery, attendance, materials, assignment lifecycle, grading, quiz
+authoring/review, question-bank, calendar, and Quran review as focused route
+jobs. It removes misleading static workload claims and clarifies review copy
+without changing a workflow or authority boundary:
+
+- Checked at: `2026-07-18T06:33:57.958Z`.
+- QA summary artifact:
+  `output/playwright/codex-phase12c-full/portal-qa-summary.json`.
+- Artifact SHA-256:
+  `f52233cd299751c2f1e083ad2cd0e6f02a7f0345b6631abd5300741ede5be846`.
+- Result: 1,634 checks, 0 failures in 606,533 ms.
+- Supporting validation: 856 unit tests pass across 59 files; TypeScript, the
+  production build, 60 focused teacher workflow checks, formatting, QA syntax,
+  and all integration/database contracts pass.
+- Desktop and mobile in-app Browser review found no horizontal overflow across
+  the teacher route family. Static assignment and grading sidebar badges no
+  longer contradict scoped queues, and Quran review copy covers recorded
+  feedback as well as pending work.
+- No route, business action, persistence, auth, RBAC, audit, provider, or data
+  ownership contract changed.
+
+The Phase 12B evidence below remains historical evidence for the preceding
+accepted route family.
+
+The accepted Phase 12B student learning core keeps course discovery, course
+path, lesson/player, live class, assignment detail, and quiz detail as focused
+route jobs. It corrects three presentation/data gaps without changing a
+workflow or authority boundary:
+
+- Checked at: `2026-07-18T05:45:16.264Z`.
+- QA summary artifact:
+  `output/playwright/codex-phase12b-full/portal-qa-summary.json`.
+- Artifact SHA-256:
+  `26305cebca73abf83f811c302e03bcdd3b926b94d818ba3d16b66ff8e11e10e7`.
+- Result: 1,634 checks, 0 failures in 606,676 ms.
+- Supporting validation: 856 unit tests pass across 59 files; TypeScript, the
+  production build, focused learning/assignment/quiz workflows, formatting, QA
+  syntax, and all integration/database contracts pass.
+- Desktop and mobile in-app Browser review found no horizontal overflow across
+  all six routes. The live route shows the enrolled class session, while closed
+  assignment and quiz routes show saved learner work and teacher feedback.
+- No route, business action, persistence, auth, RBAC, audit, provider, or data
+  ownership contract changed.
+
+The Phase 6I evidence below remains historical evidence for the preceding
+accepted persistence slice.
 
 The Phase 6I staging-promotion slice changes no portal route or portal behavior.
 It promotes the nine accepted read-only projection packages only to the pinned

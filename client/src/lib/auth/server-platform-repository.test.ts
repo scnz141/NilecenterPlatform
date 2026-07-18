@@ -105,6 +105,21 @@ describe("platform repository boundary", () => {
     ).toBe("active");
   });
 
+  it("refreshes legacy enrollment teacher caches from the course run", () => {
+    const legacyState = cloneSeed();
+    legacyState.enrollments = legacyState.enrollments.map(enrollment =>
+      enrollment.id === "enr_ar_l3"
+        ? { ...enrollment, teacherId: "usr_teacher_alex_demo" }
+        : enrollment
+    );
+
+    const state = normalizePlatformState(legacyState);
+
+    expect(
+      state.enrollments.find(item => item.id === "enr_ar_l3")?.teacherId
+    ).toBe("usr_teacher_demo");
+  });
+
   it("adds Nile Forms permissions to a legacy cached permission catalog once", () => {
     const legacyState = cloneSeed();
     delete legacyState.permissionCatalogVersion;

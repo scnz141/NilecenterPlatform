@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { ServerRole, ServerSession } from "../../../../server/auth";
 import {
   applyPlatformWorkflowAction,
+  getPlatformStateSnapshot,
   parsePlatformWorkflowAction,
 } from "../../../../server/platformState";
 
@@ -670,6 +671,44 @@ describe("server platform action scope gates", () => {
     );
   });
 
+  it("rejects forged student intake lineage before a snapshot write", async () => {
+    await getPlatformStateSnapshot();
+    const before = JSON.parse(fs.readFileSync(localStateFile, "utf8")) as {
+      state: unknown;
+    };
+
+    await expect(
+      applyPlatformWorkflowAction(
+        {
+          type: "student.create",
+          fullName: "Forged Direct Student",
+          email: "forged.direct@nilelearn.local",
+          phone: "+20 100 000 9091",
+          branchId: "br_online",
+          preferredLanguage: "English",
+          courseInterest: "Arabic Language",
+          ageGroup: "Adult",
+          currentLevel: "Arabic Level 3",
+          courseRunId: "run_ar_l3_2026",
+          classGroupId: "class_ar_l3_a",
+          status: "active",
+          source: "direct",
+          leadId: "lead_demo_1",
+          applicationId: "app_demo_1",
+          placementTestId: "pt_demo_1",
+        },
+        sessionFor("registrar")
+      )
+    ).rejects.toThrow(
+      "Direct student creation cannot use intake record links."
+    );
+
+    const after = JSON.parse(fs.readFileSync(localStateFile, "utf8")) as {
+      state: unknown;
+    };
+    expect(after.state).toEqual(before.state);
+  });
+
   it("enforces role-scoped messaging recipients while preserving server actor ownership", async () => {
     const teacherResult = await applyPlatformWorkflowAction(
       {
@@ -804,7 +843,9 @@ describe("server platform action scope gates", () => {
     });
     expect(
       registrarResult.state.auditLogs.find(
-        item => item.action === "message.sent" && item.entityId === registrarMessage?.id
+        item =>
+          item.action === "message.sent" &&
+          item.entityId === registrarMessage?.id
       )
     ).toMatchObject({ actorId: "usr_registrar_demo" });
   });
@@ -814,7 +855,10 @@ describe("server platform action scope gates", () => {
       type: "message.read",
       messageId: "msg_demo_1",
     });
-    expect(parsedRead).toEqual({ type: "message.read", messageId: "msg_demo_1" });
+    expect(parsedRead).toEqual({
+      type: "message.read",
+      messageId: "msg_demo_1",
+    });
     expect(
       parsePlatformWorkflowAction({
         type: "message.send",

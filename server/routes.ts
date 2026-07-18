@@ -34,8 +34,15 @@ import {
   SessionRepositoryUnavailableError,
 } from "./sessionRepository.js";
 import { getMessageRecipientScope } from "../client/src/lib/domain/messageScope.js";
+import {
+  branchIdForInvoice,
+  enrollmentHasRosterMembership,
+  enrollmentsWithoutInvalidRosterLinks,
+  enrollmentsWithAuthoritativeTeachers,
+} from "../client/src/lib/domain/relationships.js";
 import { seedPlatformState } from "../client/src/lib/domain/seed.js";
 import { registerNileFormsRoutes } from "./nileFormsRoutes.js";
+import { registerNileRequestsRoutes } from "./nileRequestsRoutes.js";
 import { registerMoodleRoutes } from "./moodleRoutes.js";
 
 const certificateVerifyAttempts = new Map<
@@ -204,6 +211,7 @@ export function registerApiRoutes(app: ApiApp) {
   });
 
   registerNileFormsRoutes(app);
+  registerNileRequestsRoutes(app);
   registerMoodleRoutes(app);
 
   app.get("/api/integrations/supabase/status", async (req, res) => {
@@ -1041,9 +1049,7 @@ function teacherProfilesForRuns(
           (primaryRun
             ? courseDepartmentId(state, primaryRun.courseId)
             : undefined) ?? item.departmentId,
-        assignedClassIds: item.assignedClassIds.filter(classId =>
-          assignedClassIds.has(classId)
-        ),
+        assignedClassIds: Array.from(assignedClassIds),
       };
     });
 }
@@ -1545,7 +1551,15 @@ export function scopePlatformStateForSession(
   if (session.activeRole !== "student" && !staffProfile) {
     return safeUnmappedRoleState(state, session);
   }
-  if (session.activeRole === "superadmin") return state;
+  if (session.activeRole === "superadmin") {
+    const enrollments = enrollmentsWithAuthoritativeTeachers(
+      state,
+      state.enrollments
+    );
+    return enrollments === state.enrollments
+      ? state
+      : { ...state, enrollments };
+  }
 
   const base = scopedStateBase(state, true);
   const student = state.students.find(item => item.userId === session.userId);
@@ -1577,7 +1591,8 @@ export function scopePlatformStateForSession(
             studentEnrollments.some(
               enrollment =>
                 enrollment.classGroupId === group.id &&
-                enrollment.courseRunId === group.courseRunId
+                enrollment.courseRunId === group.courseRunId &&
+                group.studentIds.includes(enrollment.studentId)
             )
         )
         .map(item => item.id)
@@ -1648,7 +1663,10 @@ export function scopePlatformStateForSession(
         courseRunIds,
         classGroupIds
       ),
-      enrollments: studentEnrollments,
+      enrollments: enrollmentsWithoutInvalidRosterLinks(
+        state,
+        enrollmentsWithAuthoritativeTeachers(state, studentEnrollments)
+      ),
       lessonProgress: lessonProgressForScope(state, academicScope),
       assignments: state.assignments.filter(
         item =>
@@ -1744,7 +1762,8 @@ export function scopePlatformStateForSession(
       return Boolean(
         group &&
           group.courseRunId === item.courseRunId &&
-          courseRunIds.has(item.courseRunId)
+          courseRunIds.has(item.courseRunId) &&
+          enrollmentHasRosterMembership(state, item)
       );
     });
     const studentIds = new Set(teacherEnrollments.map(item => item.studentId));
@@ -1830,7 +1849,10 @@ export function scopePlatformStateForSession(
         classGroupIds
       ),
       staffProfiles: [staffProfile],
-      enrollments: teacherEnrollments,
+      enrollments: enrollmentsWithAuthoritativeTeachers(
+        state,
+        teacherEnrollments
+      ),
       lessonProgress: lessonProgressForScope(state, academicScope),
       assignments: state.assignments.filter(item =>
         courseRunIds.has(item.courseRunId)
@@ -1941,7 +1963,10 @@ export function scopePlatformStateForSession(
     const quranRows = quranRowsForScope(state, academicScope);
     const invoiceIds = new Set(
       state.invoices
-        .filter(item => studentIds.has(item.studentId))
+        .filter(item => {
+          const branchId = branchIdForInvoice(state, item);
+          return Boolean(branchId && branchIds.has(branchId));
+        })
         .map(item => item.id)
     );
     const paymentIds = new Set(
@@ -2037,7 +2062,10 @@ export function scopePlatformStateForSession(
           catalogDepartmentIds
         ),
       ],
-      enrollments: branchEnrollments,
+      enrollments: enrollmentsWithAuthoritativeTeachers(
+        state,
+        branchEnrollments
+      ),
       lessonProgress: lessonProgressForScope(state, academicScope),
       assignments: state.assignments.filter(item =>
         courseRunIds.has(item.courseRunId)
@@ -2160,7 +2188,10 @@ export function scopePlatformStateForSession(
     );
     const invoiceIds = new Set(
       state.invoices
-        .filter(item => studentIds.has(item.studentId))
+        .filter(item => {
+          const branchId = branchIdForInvoice(state, item);
+          return Boolean(branchId && branchIds.has(branchId));
+        })
         .map(item => item.id)
     );
     const paymentIds = new Set(
@@ -2251,7 +2282,7 @@ export function scopePlatformStateForSession(
           catalogDepartmentIds
         ),
       ],
-      enrollments,
+      enrollments: enrollmentsWithAuthoritativeTeachers(state, enrollments),
       events: state.events.filter(item => eventIds.has(item.id)),
       classSessions: state.classSessions.filter(item =>
         classGroupIds.has(item.classGroupId)
@@ -2440,7 +2471,10 @@ export function scopePlatformStateForSession(
           departmentIds
         ),
       ],
-      enrollments: departmentEnrollments,
+      enrollments: enrollmentsWithAuthoritativeTeachers(
+        state,
+        departmentEnrollments
+      ),
       lessonProgress: lessonProgressForScope(state, academicScope),
       assignments: state.assignments.filter(item =>
         courseRunIds.has(item.courseRunId)

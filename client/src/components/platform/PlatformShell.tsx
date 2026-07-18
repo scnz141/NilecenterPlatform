@@ -148,7 +148,10 @@ const sidebarWorkflowGroups: Record<Role, SidebarSection[]> = {
       ],
     },
     { label: "Progress", items: ["Grades", "Attendance", "Certificates"] },
-    { label: "Help", items: ["Forms", "Messages", "Reports", "Support", "Profile"] },
+    {
+      label: "Help",
+      items: ["Forms", "Requests", "Messages", "Reports", "Support", "Profile"],
+    },
   ],
   teacher: [
     { label: "Today", items: ["Dashboard", "Classes", "Calendar"] },
@@ -163,7 +166,10 @@ const sidebarWorkflowGroups: Record<Role, SidebarSection[]> = {
         "Quran Review",
       ],
     },
-    { label: "More", items: ["Forms", "Messages", "Reports", "Profile"] },
+    {
+      label: "More",
+      items: ["Forms", "Requests", "Messages", "Reports", "Profile"],
+    },
     { label: "Advanced", items: ["Moodle"], collapsible: true },
   ],
   registrar: [
@@ -176,7 +182,17 @@ const sidebarWorkflowGroups: Record<Role, SidebarSection[]> = {
       label: "Students",
       items: ["Students", "Enrollments", "Classes", "Schedule"],
     },
-    { label: "Office", items: ["Forms", "Payments", "Messages", "Reports", "Settings"] },
+    {
+      label: "Office",
+      items: [
+        "Forms",
+        "Requests",
+        "Payments",
+        "Messages",
+        "Reports",
+        "Settings",
+      ],
+    },
   ],
   headofdepartment: [
     { label: "Today", items: ["Dashboard"] },
@@ -187,7 +203,14 @@ const sidebarWorkflowGroups: Record<Role, SidebarSection[]> = {
     { label: "Teachers", items: ["Teachers", "Classes", "Schedule"] },
     {
       label: "Review",
-      items: ["Assessments", "Forms", "Certificates", "Reports", "Messages"],
+      items: [
+        "Assessments",
+        "Forms",
+        "Requests",
+        "Certificates",
+        "Reports",
+        "Messages",
+      ],
     },
     { label: "Advanced", items: ["Moodle"], collapsible: true },
   ],
@@ -195,7 +218,10 @@ const sidebarWorkflowGroups: Record<Role, SidebarSection[]> = {
     { label: "Today", items: ["Dashboard", "Classes", "Rooms", "Schedule"] },
     { label: "People", items: ["Students", "Teachers"] },
     { label: "Operations", items: ["Attendance", "Payments"] },
-    { label: "Office", items: ["Forms", "Reports", "Messages", "Settings"] },
+    {
+      label: "Office",
+      items: ["Forms", "Requests", "Reports", "Messages", "Settings"],
+    },
   ],
   superadmin: [
     { items: ["Dashboard"] },
@@ -209,7 +235,7 @@ const sidebarWorkflowGroups: Record<Role, SidebarSection[]> = {
     },
     {
       label: "Operations",
-      items: ["Branches", "Departments", "Schedule", "Forms"],
+      items: ["Branches", "Departments", "Schedule", "Forms", "Requests"],
     },
     { label: "Business", items: ["Reports"] },
     {
@@ -840,175 +866,178 @@ export default function PlatformShell({ role, children, title }: ShellProps) {
                 </button>
 
                 <div className="platform-language-control">
-                <Languages aria-hidden="true" size={16} />
-                <select
-                  className="platform-language"
-                  value={locale}
-                  aria-label={t(locale, "language")}
-                  onChange={event => {
-                    const nextLocale = event.target.value as Locale;
-                    setLocale(nextLocale);
-                    window.localStorage.setItem("nilelearn.locale", nextLocale);
-                  }}
-                >
-                  {localeOptions.map(option => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
+                  <Languages aria-hidden="true" size={16} />
+                  <select
+                    className="platform-language"
+                    value={locale}
+                    aria-label={t(locale, "language")}
+                    onChange={event => {
+                      const nextLocale = event.target.value as Locale;
+                      setLocale(nextLocale);
+                      window.localStorage.setItem(
+                        "nilelearn.locale",
+                        nextLocale
+                      );
+                    }}
+                  >
+                    {localeOptions.map(option => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
 
-              <button
-                ref={notificationButtonRef}
-                className="platform-icon-button"
-                aria-label={t(locale, "notifications")}
-                aria-expanded={notificationsOpen}
-                aria-controls="platform-notifications-popover"
-                onClick={() => setNotificationsOpen(open => !open)}
-              >
-                <Bell size={17} />
-                {unreadCount ? (
-                  <span
-                    className="platform-notification-dot"
-                    style={{ background: meta.accent }}
-                  />
-                ) : null}
-              </button>
-
-              {notificationsOpen ? (
-                <div
-                  className="platform-notification-popover"
-                  id="platform-notifications-popover"
-                  ref={notificationPopoverRef}
-                  role="menu"
+                <button
+                  ref={notificationButtonRef}
+                  className="platform-icon-button"
                   aria-label={t(locale, "notifications")}
+                  aria-expanded={notificationsOpen}
+                  aria-controls="platform-notifications-popover"
+                  onClick={() => setNotificationsOpen(open => !open)}
                 >
-                  <div className="platform-popover-title">
-                    <strong>{t(locale, "notifications")}</strong>
-                    <button
-                      onClick={() => {
-                        notificationItems.forEach(notification =>
-                          platformStore.markNotificationRead(notification.id)
-                        );
-                        setNotificationVersion(version => version + 1);
-                        toast.success(t(locale, "notificationsMarkedRead"));
-                      }}
-                    >
-                      {t(locale, "markRead")}
-                    </button>
-                  </div>
-                  {notificationItems.map(item => (
-                    <button
-                      key={item.id}
-                      className="platform-notification-item"
-                      role="menuitem"
-                      onClick={() => {
-                        platformStore.markNotificationRead(item.id);
-                        setNotificationVersion(version => version + 1);
-                        setNotificationsOpen(false);
-                        navigate(item.href);
-                      }}
-                    >
-                      <span
-                        style={{
-                          background: roleMeta[role].tint,
-                          color: roleMeta[role].color,
+                  <Bell size={17} />
+                  {unreadCount ? (
+                    <span
+                      className="platform-notification-dot"
+                      style={{ background: meta.accent }}
+                    />
+                  ) : null}
+                </button>
+
+                {notificationsOpen ? (
+                  <div
+                    className="platform-notification-popover"
+                    id="platform-notifications-popover"
+                    ref={notificationPopoverRef}
+                    role="menu"
+                    aria-label={t(locale, "notifications")}
+                  >
+                    <div className="platform-popover-title">
+                      <strong>{t(locale, "notifications")}</strong>
+                      <button
+                        onClick={() => {
+                          notificationItems.forEach(notification =>
+                            platformStore.markNotificationRead(notification.id)
+                          );
+                          setNotificationVersion(version => version + 1);
+                          toast.success(t(locale, "notificationsMarkedRead"));
                         }}
                       >
-                        {item.read ? t(locale, "read") : t(locale, "unread")}
-                      </span>
-                      <strong>{item.title}</strong>
-                      <small>{item.body}</small>
-                    </button>
-                  ))}
-                  {!notificationItems.length ? (
-                    <div className="platform-notification-empty">
-                      {t(locale, "noNotifications")}
+                        {t(locale, "markRead")}
+                      </button>
+                    </div>
+                    {notificationItems.map(item => (
+                      <button
+                        key={item.id}
+                        className="platform-notification-item"
+                        role="menuitem"
+                        onClick={() => {
+                          platformStore.markNotificationRead(item.id);
+                          setNotificationVersion(version => version + 1);
+                          setNotificationsOpen(false);
+                          navigate(item.href);
+                        }}
+                      >
+                        <span
+                          style={{
+                            background: roleMeta[role].tint,
+                            color: roleMeta[role].color,
+                          }}
+                        >
+                          {item.read ? t(locale, "read") : t(locale, "unread")}
+                        </span>
+                        <strong>{item.title}</strong>
+                        <small>{item.body}</small>
+                      </button>
+                    ))}
+                    {!notificationItems.length ? (
+                      <div className="platform-notification-empty">
+                        {t(locale, "noNotifications")}
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
+
+                <div className="platform-account">
+                  <button
+                    ref={accountButtonRef}
+                    type="button"
+                    className="platform-user-pill"
+                    aria-label={`${user.name} ${t(locale, "accountMenu")}`}
+                    aria-expanded={accountOpen}
+                    aria-controls="platform-account-menu"
+                    onClick={() => setAccountOpen(open => !open)}
+                  >
+                    <span
+                      className="platform-user-avatar"
+                      style={
+                        role === "superadmin"
+                          ? { background: meta.tint, color: meta.color }
+                          : { background: meta.color }
+                      }
+                    >
+                      {role === "superadmin" ? (
+                        <ShieldCheck size={16} />
+                      ) : (
+                        user.avatar
+                      )}
+                    </span>
+                    <span className="platform-user-copy">
+                      <strong>{user.name}</strong>
+                      <small>{translateUiLabel(locale, meta.label)}</small>
+                    </span>
+                    <ChevronDown size={14} />
+                  </button>
+
+                  {accountOpen ? (
+                    <div
+                      id="platform-account-menu"
+                      ref={accountMenuRef}
+                      className="platform-account-menu"
+                      role="menu"
+                      aria-label={`${user.name} ${t(locale, "accountActions")}`}
+                    >
+                      <div className="platform-account-menu-head">
+                        <span
+                          className="platform-user-avatar"
+                          style={
+                            role === "superadmin"
+                              ? { background: meta.tint, color: meta.color }
+                              : { background: meta.color }
+                          }
+                        >
+                          {role === "superadmin" ? (
+                            <ShieldCheck size={16} />
+                          ) : (
+                            user.avatar
+                          )}
+                        </span>
+                        <div>
+                          <strong>{user.name}</strong>
+                          <small>{translateUiLabel(locale, meta.label)}</small>
+                        </div>
+                      </div>
+                      <Link
+                        href={profileHref}
+                        className="platform-account-menu-item"
+                        role="menuitem"
+                      >
+                        <UserCircle size={15} />
+                        {t(locale, "profile")}
+                      </Link>
+                      <Link
+                        href="/auth/logout"
+                        className="platform-account-menu-item danger"
+                        role="menuitem"
+                      >
+                        <LogOut size={15} />
+                        {t(locale, "signOut")}
+                      </Link>
                     </div>
                   ) : null}
                 </div>
-              ) : null}
-
-              <div className="platform-account">
-                <button
-                  ref={accountButtonRef}
-                  type="button"
-                  className="platform-user-pill"
-                  aria-label={`${user.name} ${t(locale, "accountMenu")}`}
-                  aria-expanded={accountOpen}
-                  aria-controls="platform-account-menu"
-                  onClick={() => setAccountOpen(open => !open)}
-                >
-                  <span
-                    className="platform-user-avatar"
-                    style={
-                      role === "superadmin"
-                        ? { background: meta.tint, color: meta.color }
-                        : { background: meta.color }
-                    }
-                  >
-                    {role === "superadmin" ? (
-                      <ShieldCheck size={16} />
-                    ) : (
-                      user.avatar
-                    )}
-                  </span>
-                  <span className="platform-user-copy">
-                    <strong>{user.name}</strong>
-                    <small>{translateUiLabel(locale, meta.label)}</small>
-                  </span>
-                  <ChevronDown size={14} />
-                </button>
-
-                {accountOpen ? (
-                  <div
-                    id="platform-account-menu"
-                    ref={accountMenuRef}
-                    className="platform-account-menu"
-                    role="menu"
-                    aria-label={`${user.name} ${t(locale, "accountActions")}`}
-                  >
-                    <div className="platform-account-menu-head">
-                      <span
-                        className="platform-user-avatar"
-                        style={
-                          role === "superadmin"
-                            ? { background: meta.tint, color: meta.color }
-                            : { background: meta.color }
-                        }
-                      >
-                        {role === "superadmin" ? (
-                          <ShieldCheck size={16} />
-                        ) : (
-                          user.avatar
-                        )}
-                      </span>
-                      <div>
-                        <strong>{user.name}</strong>
-                        <small>{translateUiLabel(locale, meta.label)}</small>
-                      </div>
-                    </div>
-                    <Link
-                      href={profileHref}
-                      className="platform-account-menu-item"
-                      role="menuitem"
-                    >
-                      <UserCircle size={15} />
-                      {t(locale, "profile")}
-                    </Link>
-                    <Link
-                      href="/auth/logout"
-                      className="platform-account-menu-item danger"
-                      role="menuitem"
-                    >
-                      <LogOut size={15} />
-                      {t(locale, "signOut")}
-                    </Link>
-                  </div>
-                ) : null}
               </div>
-            </div>
             </div>
           </motion.header>
 

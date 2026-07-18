@@ -28,8 +28,13 @@ function rejectText(source, rejected, label) {
 
 const adrPath = "docs/decisions/ADR-007-nile-forms-processing-boundary.md";
 const promptPath = ".codex/prompts/18-nile-forms-production-core.md";
+const structuredPromptPath =
+  ".codex/prompts/19-nile-forms-structured-content.md";
+const nextPromptPath = ".codex/prompts/20-nile-forms-requests.md";
 const adr = read(adrPath);
 const prompt = read(promptPath);
+const structuredPrompt = read(structuredPromptPath);
+const nextPrompt = read(nextPromptPath);
 const masterPlan = read("docs/NILE_LEARN_MASTER_PLAN.md");
 const decisionIndex = read("docs/decisions/README.md");
 const legacyPrompt = read(".codex/prompts/17-nile-forms.md");
@@ -142,13 +147,18 @@ requireText(legacyPrompt, "`ADR-007`", "Nile Forms collection prompt");
 
 requireText(
   masterPlan,
-  "The only approved next Nile Forms implementation slice is **Phase 13F1:",
-  "current Forms checkpoint"
+  "**Phase 13F1: normalized repository contract foundation** is accepted locally:",
+  "accepted Forms repository checkpoint"
 );
 requireText(
   masterPlan,
-  "normalized repository contract foundation**:",
-  "current Forms checkpoint name"
+  "**Phase 14A: structured content and localization parity** is accepted locally:",
+  "accepted structured content checkpoint"
+);
+requireText(
+  masterPlan,
+  "The only approved next Nile Forms slice is **Phase 14B:",
+  "current Forms checkpoint"
 );
 requireText(
   masterPlan,
@@ -227,8 +237,59 @@ requireText(
 );
 requireText(
   masterPlan,
-  "only approved next **Nile Forms** slice",
+  "The separately approved Moodle workstream may proceed only with disjoint write",
   "parallel workstream boundary"
+);
+requireText(
+  structuredPrompt,
+  "Implement only Phase 14A approved by the current checkpoint",
+  "Phase 14A prompt scope"
+);
+requireText(
+  structuredPrompt,
+  "complete `en | ar | tr` labels",
+  "Phase 14A localization contract"
+);
+requireText(structuredPrompt, "Reject cycles,", "Phase 14A calculation safety");
+requireText(
+  structuredPrompt,
+  "Template instantiation creates an independent draft",
+  "Phase 14A template immutability"
+);
+requireText(
+  structuredPrompt,
+  "Do not apply SQL to a linked, shared, or remote Supabase project",
+  "Phase 14A remote boundary"
+);
+requireText(
+  structuredPrompt,
+  "Phase 14A must not add Requests, Approvals, Appointments, Surveys",
+  "Phase 14A expansion boundary"
+);
+requireText(
+  nextPrompt,
+  "Implement only Phase 14B approved by the current checkpoint",
+  "Phase 14B prompt scope"
+);
+requireText(
+  nextPrompt,
+  "one typed Requests module",
+  "Phase 14B typed module boundary"
+);
+requireText(
+  nextPrompt,
+  "Form answers never become mutable request state",
+  "Phase 14B immutable evidence boundary"
+);
+requireText(
+  nextPrompt,
+  "Memory remains the runtime default in this slice",
+  "Phase 14B runtime boundary"
+);
+requireText(
+  nextPrompt,
+  "Phase 14B must not add Approvals, Appointments, Surveys, Applications",
+  "Phase 14B expansion boundary"
 );
 
 const phase14Start = masterPlan.indexOf(
@@ -464,6 +525,8 @@ for (const [pattern, label] of [
 for (const registeredPath of [
   adrPath,
   promptPath,
+  structuredPromptPath,
+  nextPromptPath,
   "scripts/validate-nile-forms-program-contract.mjs",
 ]) {
   requireText(
@@ -477,7 +540,11 @@ console.log(
   JSON.stringify({
     ok: true,
     authority: ["ADR-006", "ADR-007"],
-    nextSlice: "Phase 13F1 normalized repository contract foundation",
+    acceptedRepositorySlice:
+      "Phase 13F1 normalized repository contract foundation",
+    acceptedStructuredSlice:
+      "Phase 14A structured content and localization parity",
+    nextSlice: "Phase 14B typed Requests",
     processingKinds: 6,
     compatibilityDefault: "disabled",
     cutoverDefault: "disabled",
