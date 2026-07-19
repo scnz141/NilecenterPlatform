@@ -45,6 +45,18 @@ afterEach(() => {
 });
 
 describe("platformStore workflow guards", () => {
+  it("starts without hardcoded entity rows until the server snapshot hydrates it", () => {
+    window.localStorage.clear();
+
+    const state = platformStore.getState();
+
+    expect(state.users).toEqual([]);
+    expect(state.students).toEqual([]);
+    expect(state.courses).toEqual([]);
+    expect(state.classGroups).toEqual([]);
+    expect(state.auditLogs).toEqual([]);
+  });
+
   it("keeps a scoped snapshot authoritative instead of merging global seed rows", () => {
     const scoped = platformStore.getState();
     scoped.users = scoped.users.filter(item => item.id === "usr_student_demo");

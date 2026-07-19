@@ -9,7 +9,9 @@ promotion approval.
 `000_nile_learn_staging_bootstrap.sql` is the single paste-ready SQL file for a
 fresh, disposable Supabase staging project. It combines the promoted migration
 history, core installation verification, Phase 6I pgcrypto compatibility, and
-all accepted read-only Phase 6 projection packages in their proven order.
+all accepted read-only Phase 6 projection packages in their proven order. It
+also installs the disabled transactional email and account invitation schema;
+it does not activate either runtime.
 
 It is intentionally not a production installer and is not safe to rerun on a
 database that already contains these migrations. Fake seeds, assertion
@@ -299,6 +301,63 @@ do not approve a linked, shared, tunneled, staging, or production target.
 Do not combine the files into one editor run. Stop at the first error and keep
 `NILE_SESSION_REPOSITORY=memory` until the verification and server adapter
 acceptance checks are both clean.
+
+## Transactional Email Delivery Package - Unapplied
+
+This additive package provides a server-only transactional email delivery
+boundary. It stores recipient user references and one-way address hashes, not
+raw recipient addresses, credentials, or webhook payloads. It includes leased
+outbox claiming, idempotent delivery records, bounded retry state, dead letters,
+signed-webhook evidence, and bounce/complaint suppressions:
+
+1. `016_transactional_email_delivery.sql`
+2. `216_transactional_email_delivery_assertions.sql`
+3. `916_transactional_email_delivery_rollback.sql`
+
+Validate the package without contacting Supabase or Resend:
+
+```bash
+npm run check:email-delivery
+npm run check:email-delivery:runtime
+```
+
+The portable runtime gate applies the Phase 1 foundation and this package
+twice, runs assertions twice, proves retry and webhook replay behavior,
+suppression handling, browser-role denial, and rollback. The package remains
+manual, unapplied, and runtime-disabled. Keep
+`NILE_EMAIL_DELIVERY_ENABLED=0` and `NILE_EMAIL_REPOSITORY=disabled` until a
+separate staging promotion approves the exact database target, rollback,
+deployment secrets, sender, and signed webhook.
+
+## Account Invitation Lifecycle Package - Unapplied
+
+This additive package lets a normalized Super Admin create a pending scoped
+account, queue an encrypted verification email, and activate the identity only
+after Supabase Auth verifies the recipient and the recipient chooses a
+password. Administrators never set account passwords.
+
+For a project that already ran the main bootstrap, paste and run this single
+incremental file once:
+
+1. `018_transactional_email_account_invitation_bundle.sql`
+
+The bundle contains `016_transactional_email_delivery.sql` followed by
+`017_account_invitation_lifecycle.sql`. It contains no secrets or demo data.
+Do not run it if either package is already installed.
+
+Validate the sources and disposable PostgreSQL lifecycle first:
+
+```bash
+npm run check:email-delivery
+npm run check:email-delivery:runtime
+npm run check:account-invitations
+npm run check:account-invitations:runtime
+```
+
+Keep `NILE_NORMALIZED_INVITATIONS_ENABLED=0` and
+`VITE_NILE_NORMALIZED_INVITATIONS_ENABLED=0` until the incremental SQL,
+normalized Supabase sessions, sender, worker secret, webhook secret, public
+application URL, and invitation envelope key are configured and verified.
 
 ## Rollback Order
 

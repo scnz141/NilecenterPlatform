@@ -39,6 +39,7 @@ import {
 import { platformStore } from "@/lib/domain/store";
 import {
   dashboardByRole,
+  getDemoUser,
   roleMeta,
   type Role,
   type Stat,
@@ -91,7 +92,9 @@ function StudentLearningDashboard() {
   const meta = roleMeta.student;
   const dashboard = dashboardByRole.student;
   const state = useMemo(() => platformStore.getState(), []);
-  const studentUser = state.users.find(user => user.id === "usr_student_demo");
+  const studentUser = state.users.find(
+    user => user.id === getDemoUser("student").id
+  );
   const student = state.students.find(
     profile => profile.userId === studentUser?.id
   );
@@ -555,7 +558,9 @@ function formatStudentDate(value?: string) {
 function RegistrarCommandDashboard() {
   const meta = roleMeta.registrar;
   const state = useMemo(() => platformStore.getState(), []);
-  const actor = state.users.find(user => user.id === "usr_registrar_demo");
+  const actor = state.users.find(
+    user => user.id === getDemoUser("registrar").id
+  );
   const branch = state.branches.find(item => item.id === actor?.branchId);
   const applications = state.applications;
   const pendingApplications = applications.filter(
@@ -922,7 +927,7 @@ function TeacherCommandDashboard() {
   const dashboard = dashboardByRole.teacher;
   const meta = roleMeta.teacher;
   const state = useMemo(() => platformStore.getState(), []);
-  const actorId = "usr_teacher_demo";
+  const actorId = getDemoUser("teacher").id;
   const teacherUser = state.users.find(user => user.id === actorId);
   const teacherProfile = state.teachers.find(
     teacher => teacher.userId === actorId
@@ -1004,7 +1009,14 @@ function TeacherCommandDashboard() {
             ) / enrollments.length
           )
         : 0;
-      return { student, user, lowestAttendance, lowestGrade, progress };
+      return {
+        student,
+        user,
+        lowestAttendance,
+        lowestGrade,
+        progress,
+        classGroupId: enrollments[0]?.classGroupId,
+      };
     })
     .filter(
       row =>
@@ -1082,7 +1094,7 @@ function TeacherCommandDashboard() {
       detail: studentsNeedingAttention.length
         ? `${studentsNeedingAttention.length} learner(s) need review.`
         : "Progress and attendance are stable.",
-      href: "/app/teacher/classes/class_ar_l3_a/students",
+      href: `/app/teacher/classes/${nextClassGroup?.id ?? "class_ar_l3_a"}/students`,
       Icon: Users,
       tone: studentsNeedingAttention.length
         ? ("amber" as const)
@@ -1299,7 +1311,7 @@ function TeacherCommandDashboard() {
             {studentsNeedingAttention.slice(0, 2).map(row => (
               <Link
                 key={row.student.id}
-                href="/app/teacher/classes/class_ar_l3_a/students"
+                href={`/app/teacher/classes/${row.classGroupId ?? nextClassGroup?.id ?? "class_ar_l3_a"}/students`}
                 style={{ "--item-color": toneColor.amber } as CSSProperties}
               >
                 <span>
@@ -1338,7 +1350,7 @@ function BranchAdminOperationsDashboard() {
   const meta = roleMeta.branchadmin;
   const state = useMemo(() => platformStore.getState(), []);
   const actor =
-    state.users.find(user => user.id === "usr_branch_demo") ??
+    state.users.find(user => user.id === getDemoUser("branchadmin").id) ??
     state.users.find(user => user.activeRole === "branchadmin");
   const branch =
     state.branches.find(item => item.id === actor?.branchId) ??
@@ -1738,7 +1750,9 @@ function HeadOfDepartmentDashboard() {
   const meta = roleMeta.headofdepartment;
   const state = platformStore.getState();
   const actorUser =
-    state.users.find(user => user.id === "usr_hod_demo") ??
+    state.users.find(
+      user => user.id === getDemoUser("headofdepartment").id
+    ) ??
     state.users.find(user => user.activeRole === "headofdepartment");
   const departmentIds = new Set(
     state.departments

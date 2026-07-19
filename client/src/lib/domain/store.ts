@@ -151,14 +151,22 @@ function cloneSeed(): PlatformState {
   return JSON.parse(JSON.stringify(seedPlatformState)) as PlatformState;
 }
 
+function createEmptyState(): PlatformState {
+  const state = cloneSeed() as PlatformState & Record<string, unknown>;
+  for (const [key, value] of Object.entries(state)) {
+    if (Array.isArray(value)) state[key] = [];
+  }
+  return state;
+}
+
 function normalizeStoredState(value: unknown): PlatformState {
-  if (!value || typeof value !== "object") return cloneSeed();
-  const seed = cloneSeed();
+  if (!value || typeof value !== "object") return createEmptyState();
+  const empty = createEmptyState();
   const stored = value as Partial<PlatformState>;
   return {
-    ...seed,
+    ...empty,
     ...stored,
-    classGroups: (stored.classGroups ?? seed.classGroups).map(group => ({
+    classGroups: (stored.classGroups ?? empty.classGroups).map(group => ({
       ...group,
       status: group.status ?? "active",
     })),
@@ -202,17 +210,17 @@ class PlatformStore {
   }
 
   getState(): PlatformState {
-    if (typeof window === "undefined") return cloneSeed();
+    if (typeof window === "undefined") return createEmptyState();
     const raw = window.localStorage.getItem(STORAGE_KEY);
     if (!raw) {
-      const state = cloneSeed();
+      const state = createEmptyState();
       this.setState(state);
       return state;
     }
     try {
       return normalizeStoredState(JSON.parse(raw));
     } catch {
-      const state = cloneSeed();
+      const state = createEmptyState();
       this.setState(state);
       return state;
     }
@@ -234,7 +242,11 @@ class PlatformStore {
   }
 
   private syncAction(action: PlatformWorkflowAction) {
-    if (typeof window === "undefined" || typeof window.dispatchEvent !== "function") return;
+    if (
+      typeof window === "undefined" ||
+      typeof window.dispatchEvent !== "function"
+    )
+      return;
     runPlatformWorkflowActionRequest(action).then(result => {
       if (!result.ok || !result.data) return;
       this.setState(result.data.state);
@@ -243,7 +255,10 @@ class PlatformStore {
 
   applyAction(action: PlatformWorkflowAction) {
     const state = this.getState();
-    const result = applyPlatformWorkflowAction(state, action, { createId, now });
+    const result = applyPlatformWorkflowAction(state, action, {
+      createId,
+      now,
+    });
     this.setState(state);
     this.syncAction(action);
     return result;
@@ -273,8 +288,12 @@ class PlatformStore {
     return this.applyAction({ type: "lead.create", ...input }).result as Lead;
   }
 
-  createApplication(input: CreateApplicationInput, actorId = "usr_registrar_demo") {
-    return this.applyAction({ type: "application.create", ...input, actorId }).result as {
+  createApplication(
+    input: CreateApplicationInput,
+    actorId = "usr_registrar_demo"
+  ) {
+    return this.applyAction({ type: "application.create", ...input, actorId })
+      .result as {
       lead: Lead;
       application: PlatformState["applications"][number];
       communicationLog: CommunicationLog;
@@ -282,7 +301,8 @@ class PlatformStore {
   }
 
   createPlacementBooking(input: CreatePlacementInput) {
-    return this.applyAction({ type: "placement.create", ...input }).result as PlacementTestBooking;
+    return this.applyAction({ type: "placement.create", ...input })
+      .result as PlacementTestBooking;
   }
 
   saveOperationalRecord(
@@ -291,7 +311,8 @@ class PlatformStore {
     actorId = "usr_admin_demo"
   ) {
     return (
-      this.applyAction({ type: "record.save", module, payload, actorId }).result as {
+      this.applyAction({ type: "record.save", module, payload, actorId })
+        .result as {
         entityId: string;
       }
     ).entityId;
@@ -303,7 +324,13 @@ class PlatformStore {
     actorId = "usr_student_demo",
     enrollmentId?: string
   ) {
-    return this.applyAction({ type: "lesson.start", lessonId, enrollmentId, studentId, actorId }).result as ReturnType<typeof applyStartLesson>;
+    return this.applyAction({
+      type: "lesson.start",
+      lessonId,
+      enrollmentId,
+      studentId,
+      actorId,
+    }).result as ReturnType<typeof applyStartLesson>;
   }
 
   completeLesson(
@@ -312,7 +339,13 @@ class PlatformStore {
     actorId = "usr_student_demo",
     enrollmentId?: string
   ) {
-    return this.applyAction({ type: "lesson.complete", lessonId, enrollmentId, studentId, actorId }).result as ReturnType<typeof applyCompleteLesson>;
+    return this.applyAction({
+      type: "lesson.complete",
+      lessonId,
+      enrollmentId,
+      studentId,
+      actorId,
+    }).result as ReturnType<typeof applyCompleteLesson>;
   }
 
   submitAssignment(
@@ -322,7 +355,14 @@ class PlatformStore {
     actorId = "usr_student_demo",
     pendingMedia: PendingMediaAttachment[] = []
   ) {
-    return this.applyAction({ type: "assignment.submit", assignmentId, response, pendingMedia, studentId, actorId }).result as ReturnType<typeof applySubmitAssignment>;
+    return this.applyAction({
+      type: "assignment.submit",
+      assignmentId,
+      response,
+      pendingMedia,
+      studentId,
+      actorId,
+    }).result as ReturnType<typeof applySubmitAssignment>;
   }
 
   submitQuizAttempt(
@@ -332,23 +372,45 @@ class PlatformStore {
     actorId = "usr_student_demo",
     pendingMedia: PendingMediaAttachment[] = []
   ) {
-    return this.applyAction({ type: "quiz.submit", quizId, answers, pendingMedia, studentId, actorId }).result as ReturnType<typeof applySubmitQuizAttempt>;
+    return this.applyAction({
+      type: "quiz.submit",
+      quizId,
+      answers,
+      pendingMedia,
+      studentId,
+      actorId,
+    }).result as ReturnType<typeof applySubmitQuizAttempt>;
   }
 
   createAssignment(input: CreateAssignmentInput, actorId = "usr_teacher_demo") {
-    return this.applyAction({ type: "assignment.create", ...input, actorId }).result as PlatformState["assignments"][number];
+    return this.applyAction({ type: "assignment.create", ...input, actorId })
+      .result as PlatformState["assignments"][number];
   }
 
   createQuiz(input: CreateQuizInput, actorId = "usr_teacher_demo") {
-    return this.applyAction({ type: "quiz.create", ...input, actorId }).result as PlatformState["quizzes"][number];
+    return this.applyAction({ type: "quiz.create", ...input, actorId })
+      .result as PlatformState["quizzes"][number];
   }
 
-  createQuestionBankItem(input: CreateQuestionInput, actorId = "usr_teacher_demo") {
-    return this.applyAction({ type: "question.create", ...input, actorId }).result as PlatformState["questionBankItems"][number];
+  createQuestionBankItem(
+    input: CreateQuestionInput,
+    actorId = "usr_teacher_demo"
+  ) {
+    return this.applyAction({ type: "question.create", ...input, actorId })
+      .result as PlatformState["questionBankItems"][number];
   }
 
-  setQuizQuestions(quizId: string, questionIds: string[], actorId = "usr_teacher_demo") {
-    return this.applyAction({ type: "quiz.questions.set", quizId, questionIds, actorId }).result as PlatformState["quizzes"][number];
+  setQuizQuestions(
+    quizId: string,
+    questionIds: string[],
+    actorId = "usr_teacher_demo"
+  ) {
+    return this.applyAction({
+      type: "quiz.questions.set",
+      quizId,
+      questionIds,
+      actorId,
+    }).result as PlatformState["quizzes"][number];
   }
 
   gradeAssignmentSubmission(
@@ -357,9 +419,13 @@ class PlatformStore {
     feedback: string,
     actorId = "usr_teacher_demo"
   ) {
-    return this.applyAction({ type: "assignment.grade", submissionId, score, feedback, actorId }).result as
-      | PlatformState["assignmentSubmissions"][number]
-      | undefined;
+    return this.applyAction({
+      type: "assignment.grade",
+      submissionId,
+      score,
+      feedback,
+      actorId,
+    }).result as PlatformState["assignmentSubmissions"][number] | undefined;
   }
 
   reviewQuizAttempt(
@@ -368,9 +434,13 @@ class PlatformStore {
     feedback: string,
     actorId = "usr_teacher_demo"
   ) {
-    return this.applyAction({ type: "quiz.review", attemptId, score, feedback, actorId }).result as
-      | PlatformState["quizAttempts"][number]
-      | undefined;
+    return this.applyAction({
+      type: "quiz.review",
+      attemptId,
+      score,
+      feedback,
+      actorId,
+    }).result as PlatformState["quizAttempts"][number] | undefined;
   }
 
   saveAttendanceBulk(
@@ -381,8 +451,16 @@ class PlatformStore {
     actorId = "usr_teacher_demo"
   ) {
     const notes = typeof notesOrActorId === "string" ? {} : notesOrActorId;
-    const nextActorId = typeof notesOrActorId === "string" ? notesOrActorId : actorId;
-    return this.applyAction({ type: "attendance.save", classGroupId, sessionId, statuses, notes, actorId: nextActorId }).result as PlatformState["attendance"];
+    const nextActorId =
+      typeof notesOrActorId === "string" ? notesOrActorId : actorId;
+    return this.applyAction({
+      type: "attendance.save",
+      classGroupId,
+      sessionId,
+      statuses,
+      notes,
+      actorId: nextActorId,
+    }).result as PlatformState["attendance"];
   }
 
   createCalendarEvent(
@@ -390,7 +468,12 @@ class PlatformStore {
     actorId = "usr_branch_demo"
   ) {
     const { type: eventType, ...eventInput } = input;
-    return this.applyAction({ type: "calendar.create", ...eventInput, eventType, actorId }).result as {
+    return this.applyAction({
+      type: "calendar.create",
+      ...eventInput,
+      eventType,
+      actorId,
+    }).result as {
       event: CalendarEvent;
       conflicts: CalendarEvent[];
       availabilityGaps: string[];
@@ -398,27 +481,53 @@ class PlatformStore {
   }
 
   sendMessage(input: SendMessageInput) {
-    return this.applyAction({ type: "message.send", ...input, actorId: input.fromUserId }).result as Message;
+    return this.applyAction({
+      type: "message.send",
+      ...input,
+      actorId: input.fromUserId,
+    }).result as Message;
   }
 
   approveCertificate(certificateId: string, actorId: string) {
-    return this.applyAction({ type: "certificate.approve", certificateId, actorId }).result as Certificate | undefined;
+    return this.applyAction({
+      type: "certificate.approve",
+      certificateId,
+      actorId,
+    }).result as Certificate | undefined;
   }
 
   issueCertificate(certificateId: string, actorId: string) {
-    return this.applyAction({ type: "certificate.issue", certificateId, actorId }).result as Certificate | undefined;
+    return this.applyAction({
+      type: "certificate.issue",
+      certificateId,
+      actorId,
+    }).result as Certificate | undefined;
   }
 
   rejectCertificate(certificateId: string, actorId: string, reason: string) {
-    return this.applyAction({ type: "certificate.reject", certificateId, reason, actorId }).result as Certificate | undefined;
+    return this.applyAction({
+      type: "certificate.reject",
+      certificateId,
+      reason,
+      actorId,
+    }).result as Certificate | undefined;
   }
 
   recordPayment(
     invoiceId: string,
     actorId = "usr_registrar_demo",
-    input: { amount?: number; method?: Payment["method"]; reference?: string } = {}
+    input: {
+      amount?: number;
+      method?: Payment["method"];
+      reference?: string;
+    } = {}
   ) {
-    return this.applyAction({ type: "payment.record", invoiceId, actorId, ...input }).result as Payment | undefined;
+    return this.applyAction({
+      type: "payment.record",
+      invoiceId,
+      actorId,
+      ...input,
+    }).result as Payment | undefined;
   }
 
   recordPlacementResult(
@@ -439,24 +548,50 @@ class PlatformStore {
   }
 
   convertLeadToApplication(leadId: string, actorId = "usr_registrar_demo") {
-    return this.applyAction({ type: "lead.convert", leadId, actorId }).result as PlatformState["applications"][number] | undefined;
+    return this.applyAction({ type: "lead.convert", leadId, actorId })
+      .result as PlatformState["applications"][number] | undefined;
   }
 
-  convertApplicationToEnrollment(applicationId: string, actorId = "usr_registrar_demo") {
-    return this.applyAction({ type: "application.convert", applicationId, actorId }).result as PlatformState["enrollmentWorkflows"][number] | undefined;
+  convertApplicationToEnrollment(
+    applicationId: string,
+    actorId = "usr_registrar_demo"
+  ) {
+    return this.applyAction({
+      type: "application.convert",
+      applicationId,
+      actorId,
+    }).result as PlatformState["enrollmentWorkflows"][number] | undefined;
   }
 
-  createStudent(input: Extract<import("./actions").PlatformWorkflowAction, { type: "student.create" }>) {
+  createStudent(
+    input: Extract<
+      import("./actions").PlatformWorkflowAction,
+      { type: "student.create" }
+    >
+  ) {
     return this.applyAction(input).result;
   }
 
-  updateStudentStatus(studentId: string, status: PlatformState["students"][number]["status"], actorId = "usr_registrar_demo") {
-    return this.applyAction({ type: "student.status.update", studentId, status, actorId }).result as PlatformState["students"][number] | undefined;
+  updateStudentStatus(
+    studentId: string,
+    status: PlatformState["students"][number]["status"],
+    actorId = "usr_registrar_demo"
+  ) {
+    return this.applyAction({
+      type: "student.status.update",
+      studentId,
+      status,
+      actorId,
+    }).result as PlatformState["students"][number] | undefined;
   }
 
   activateEnrollmentWorkflow(
     workflowId: string,
-    options: { courseRunId?: string; classGroupId?: string; actorId?: string } = {}
+    options: {
+      courseRunId?: string;
+      classGroupId?: string;
+      actorId?: string;
+    } = {}
   ) {
     return this.applyAction({
       type: "enrollment.activate",
@@ -470,7 +605,10 @@ class PlatformStore {
   assignTeacherToCourseRun(
     userId: string,
     courseRunId: string,
-    options: Omit<AssignTeacherActionInput, "userId" | "courseRunId" | "type"> = {}
+    options: Omit<
+      AssignTeacherActionInput,
+      "userId" | "courseRunId" | "type"
+    > = {}
   ) {
     return this.applyAction({
       type: "teacher.assign",
@@ -498,7 +636,9 @@ class PlatformStore {
     const normalized = code.trim().toLowerCase();
     if (!normalized) return null;
     const certificate = state.certificates.find(
-      item => item.status === "issued" && item.verificationCode.toLowerCase() === normalized
+      item =>
+        item.status === "issued" &&
+        item.verificationCode.toLowerCase() === normalized
     );
     if (!certificate) return null;
     const student = state.students.find(
@@ -515,9 +655,7 @@ class PlatformStore {
     };
   }
 
-  exportReportRows(
-    reportType: ReportType
-  ) {
+  exportReportRows(reportType: ReportType) {
     const state = this.getState();
     if (reportType === "attendance") {
       return state.attendance.map(record => ({
@@ -624,11 +762,17 @@ class PlatformStore {
     feedback: string,
     actorId = "usr_teacher_demo"
   ) {
-    return this.applyAction({ type: "recitation.review", submissionId, feedback, actorId }).result as RecitationSubmission | undefined;
+    return this.applyAction({
+      type: "recitation.review",
+      submissionId,
+      feedback,
+      actorId,
+    }).result as RecitationSubmission | undefined;
   }
 
   submitRecitation(input: SubmitRecitationInput, actorId = "usr_student_demo") {
-    return this.applyAction({ type: "recitation.submit", ...input, actorId }).result as RecitationSubmission;
+    return this.applyAction({ type: "recitation.submit", ...input, actorId })
+      .result as RecitationSubmission;
   }
 
   markNotificationRead(notificationId: string) {

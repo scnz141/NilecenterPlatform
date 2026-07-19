@@ -363,6 +363,19 @@ export default function TeacherWorkPage({
     return group?.name ?? courseLabel(runId);
   };
 
+  const studentClassLabel = (runId?: string, studentId?: string) => {
+    const enrollment = state.enrollments.find(
+      item =>
+        item.courseRunId === runId &&
+        item.studentId === studentId &&
+        item.status === "active"
+    );
+    const group = teacherClassGroups.find(
+      item => item.id === enrollment?.classGroupId
+    );
+    return group?.name ?? classLabel(runId);
+  };
+
   const studentName = (studentId?: string) => {
     const student = state.students.find(item => item.id === studentId);
     const user = state.users.find(item => item.id === student?.userId);
@@ -1416,7 +1429,10 @@ export default function TeacherWorkPage({
                       <h2>{assignment.title}</h2>
                       <p>
                         {studentName(submission.studentId)} ·{" "}
-                        {classLabel(assignment.courseRunId)}
+                        {studentClassLabel(
+                          assignment.courseRunId,
+                          submission.studentId
+                        )}
                       </p>
                     </div>
                     <StatusBadge tone={statusTone(submission.status)}>
@@ -1556,10 +1572,11 @@ export default function TeacherWorkPage({
                           </strong>
                           <small>
                             {studentName(submission.studentId)} ·{" "}
-                            {classLabel(
+                            {studentClassLabel(
                               state.assignments.find(
                                 item => item.id === submission.assignmentId
-                              )?.courseRunId
+                              )?.courseRunId,
+                              submission.studentId
                             )}
                           </small>
                         </div>

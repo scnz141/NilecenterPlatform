@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { ServerSession } from "../../../../server/auth";
 import {
+  createSupabaseCompatibilitySessionRepository,
   createSupabaseSessionRepository,
   getSessionRepository,
   resetDefaultSessionRepository,
@@ -91,6 +92,14 @@ describe("session repository selection", () => {
     ).toThrow("requires SUPABASE_URL and a server-only secret key");
   });
 
+  it("fails closed when Supabase compatibility storage is selected without server credentials", () => {
+    expect(() =>
+      getSessionRepository({
+        NILE_SESSION_REPOSITORY: "supabase_compatibility",
+      } as NodeJS.ProcessEnv)
+    ).toThrow("requires SUPABASE_URL and a server-only secret key");
+  });
+
   it("classifies repository network failures as temporary unavailability", async () => {
     const repository = createSupabaseSessionRepository({
       env: testEnv,
@@ -102,6 +111,137 @@ describe("session repository selection", () => {
 
     await expect(repository.get("opaque-session-token")).rejects.toBeInstanceOf(
       SessionRepositoryUnavailableError
+    );
+  });
+});
+
+describe("Supabase compatibility session repository", () => {
+  function compatibilityRow(overrides: Record<string, unknown> = {}) {
+    return {
+      user_id: "usr_teacher_demo",
+      email: "teacher.demo@nilelearn.local",
+      full_name: "Teacher Demo",
+      roles: ["teacher"],
+      active_role: "teacher",
+      provider: "demo",
+      created_at: "2026-07-10T05:00:00.000Z",
+      expires_at: "2026-07-10T17:00:00.000Z",
+      ...overrides,
+    };
+  }
+
+  function compatibilitySession(): ServerSession {
+    return {
+      id: "opaque-compatibility-token",
+      userId: "usr_teacher_demo",
+      email: "teacher.demo@nilelearn.local",
+      name: "Teacher Demo",
+      roles: ["teacher"],
+      activeRole: "teacher",
+      provider: "demo",
+      authorizationModel: "snapshot",
+      createdAt: "2026-07-10T05:00:00.000Z",
+      expiresAt: "2026-07-10T17:00:00.000Z",
+    };
+  }
+
+  it("persists a hash-only session that another server instance can resolve", async () => {
+    let storedRow: Record<string, unknown> | undefined;
+    const adminFetch = vi.fn(async (_path: string, init: RequestInit) => {
+      if (init.method === "POST") {
+        storedRow = JSON.parse(String(init.body)) as Record<string, unknown>;
+        return new Response(null, { status: 201 });
+      }
+      return jsonResponse([
+        compatibilityRow({
+          user_id: storedRow?.user_id,
+          email: storedRow?.email,
+          full_name: storedRow?.full_name,
+          roles: storedRow?.roles,
+          active_role: storedRow?.active_role,
+          provider: storedRow?.provider,
+          created_at: storedRow?.created_at,
+          expires_at: storedRow?.expires_at,
+        }),
+      ]);
+    });
+    const firstInstance = createSupabaseCompatibilitySessionRepository({
+      env: testEnv,
+      adminFetch,
+      now: () => fixedNow,
+    });
+    const secondInstance = createSupabaseCompatibilitySessionRepository({
+      env: testEnv,
+      adminFetch,
+      now: () => fixedNow,
+    });
+
+    await firstInstance.create(compatibilitySession());
+    await expect(
+      secondInstance.get("opaque-compatibility-token")
+    ).resolves.toEqual(compatibilitySession());
+
+    expect(storedRow?.token_hash).toMatch(/^[0-9a-f]{64}$/);
+    expect(JSON.stringify(storedRow)).not.toContain(
+      "opaque-compatibility-token"
+    );
+    expect(adminFetch.mock.calls[1][0]).not.toContain(
+      "opaque-compatibility-token"
+    );
+  });
+
+  it("rejects expired or malformed compatibility authority", async () => {
+    const expired = createSupabaseCompatibilitySessionRepository({
+      env: testEnv,
+      adminFetch: vi.fn(async () =>
+        jsonResponse([
+          compatibilityRow({ expires_at: "2026-07-10T05:59:59.000Z" }),
+        ])
+      ),
+      now: () => fixedNow,
+    });
+    await expect(expired.get("expired-token")).resolves.toBeNull();
+
+    const malformed = createSupabaseCompatibilitySessionRepository({
+      env: testEnv,
+      adminFetch: vi.fn(async () =>
+        jsonResponse([compatibilityRow({ roles: ["teacher", "unknown"] })])
+      ),
+      now: () => fixedNow,
+    });
+    await expect(malformed.get("malformed-token")).rejects.toBeInstanceOf(
+      SessionRepositoryUnavailableError
+    );
+  });
+
+  it("revokes compatibility sessions by hash without exposing the token", async () => {
+    const adminFetch = vi.fn(async () => new Response(null, { status: 204 }));
+    const repository = createSupabaseCompatibilitySessionRepository({
+      env: testEnv,
+      adminFetch,
+      now: () => fixedNow,
+    });
+
+    await repository.delete("opaque-compatibility-token");
+
+    const [path, init] = adminFetch.mock.calls[0];
+    expect(path).toContain("compatibility_auth_sessions?token_hash=eq.");
+    expect(path).not.toContain("opaque-compatibility-token");
+    expect(init?.method).toBe("PATCH");
+    expect(JSON.parse(String(init?.body))).toEqual({
+      revoked_at: fixedNow.toISOString(),
+    });
+  });
+
+  it("does not accept normalized sessions in the compatibility repository", async () => {
+    const repository = createSupabaseCompatibilitySessionRepository({
+      env: testEnv,
+      adminFetch: vi.fn(),
+      now: () => fixedNow,
+    });
+
+    await expect(repository.create(testSession())).rejects.toBeInstanceOf(
+      SessionAuthorityDeniedError
     );
   });
 });

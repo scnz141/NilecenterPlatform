@@ -23,6 +23,9 @@ const originalEnv = {
   DEMO_AUTH_ENABLED: process.env.DEMO_AUTH_ENABLED,
   VITE_DEMO_AUTH_ENABLED: process.env.VITE_DEMO_AUTH_ENABLED,
   NILE_DEMO_PASSWORD: process.env.NILE_DEMO_PASSWORD,
+  NILE_SESSION_REPOSITORY: process.env.NILE_SESSION_REPOSITORY,
+  NILE_PLATFORM_STATE_LOCAL_ONLY: process.env.NILE_PLATFORM_STATE_LOCAL_ONLY,
+  QA_PLATFORM_STATE_LOCAL_ONLY: process.env.QA_PLATFORM_STATE_LOCAL_ONLY,
   SUPABASE_URL: process.env.SUPABASE_URL,
   VITE_SUPABASE_URL: process.env.VITE_SUPABASE_URL,
   SUPABASE_PUBLISHABLE_KEY: process.env.SUPABASE_PUBLISHABLE_KEY,
@@ -39,6 +42,23 @@ afterEach(() => {
   process.env.DEMO_AUTH_ENABLED = originalEnv.DEMO_AUTH_ENABLED;
   process.env.VITE_DEMO_AUTH_ENABLED = originalEnv.VITE_DEMO_AUTH_ENABLED;
   process.env.NILE_DEMO_PASSWORD = originalEnv.NILE_DEMO_PASSWORD;
+  if (originalEnv.NILE_SESSION_REPOSITORY === undefined) {
+    delete process.env.NILE_SESSION_REPOSITORY;
+  } else {
+    process.env.NILE_SESSION_REPOSITORY = originalEnv.NILE_SESSION_REPOSITORY;
+  }
+  if (originalEnv.NILE_PLATFORM_STATE_LOCAL_ONLY === undefined) {
+    delete process.env.NILE_PLATFORM_STATE_LOCAL_ONLY;
+  } else {
+    process.env.NILE_PLATFORM_STATE_LOCAL_ONLY =
+      originalEnv.NILE_PLATFORM_STATE_LOCAL_ONLY;
+  }
+  if (originalEnv.QA_PLATFORM_STATE_LOCAL_ONLY === undefined) {
+    delete process.env.QA_PLATFORM_STATE_LOCAL_ONLY;
+  } else {
+    process.env.QA_PLATFORM_STATE_LOCAL_ONLY =
+      originalEnv.QA_PLATFORM_STATE_LOCAL_ONLY;
+  }
   process.env.SUPABASE_URL = originalEnv.SUPABASE_URL;
   process.env.VITE_SUPABASE_URL = originalEnv.VITE_SUPABASE_URL;
   process.env.SUPABASE_PUBLISHABLE_KEY = originalEnv.SUPABASE_PUBLISHABLE_KEY;
@@ -122,6 +142,35 @@ describe("server demo auth", () => {
     );
 
     process.env.NILE_DEMO_PASSWORD = "production-demo-password";
+    process.env.NILE_SESSION_REPOSITORY = "supabase_compatibility";
+    expect(() => validateAuthConfiguration()).not.toThrow();
+  });
+
+  it("rejects process-memory sessions for production demo authentication", () => {
+    useDemoOnlyAuth();
+    process.env.NODE_ENV = "production";
+    process.env.DEMO_AUTH_ENABLED = "true";
+    process.env.NILE_DEMO_PASSWORD = "production-demo-password";
+    process.env.NILE_SESSION_REPOSITORY = "memory";
+    delete process.env.NILE_PLATFORM_STATE_LOCAL_ONLY;
+    delete process.env.QA_PLATFORM_STATE_LOCAL_ONLY;
+
+    expect(() => validateAuthConfiguration()).toThrow(
+      "requires NILE_SESSION_REPOSITORY=supabase_compatibility"
+    );
+
+    process.env.NILE_SESSION_REPOSITORY = "supabase_compatibility";
+    expect(() => validateAuthConfiguration()).not.toThrow();
+  });
+
+  it("allows process-memory sessions only for an explicit local-only QA runtime", () => {
+    useDemoOnlyAuth();
+    process.env.NODE_ENV = "production";
+    process.env.DEMO_AUTH_ENABLED = "true";
+    process.env.NILE_DEMO_PASSWORD = "production-demo-password";
+    process.env.NILE_SESSION_REPOSITORY = "memory";
+    process.env.NILE_PLATFORM_STATE_LOCAL_ONLY = "1";
+
     expect(() => validateAuthConfiguration()).not.toThrow();
   });
 

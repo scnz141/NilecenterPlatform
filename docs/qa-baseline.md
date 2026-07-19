@@ -1,5 +1,11 @@
 # QA Baseline
 
+The disabled normalized account-invitation foundation was regression-checked
+on 2026-07-19. TypeScript, 910 unit tests, production build, disposable
+PostgreSQL invitation/email lifecycles, and the full portal suite passed. The
+portal baseline remains 1,634 checks with 0 failures; no Supabase or Resend
+endpoint was contacted.
+
 Nile Learn is currently in internal alpha stabilization. The protected portal QA baseline is:
 
 - Portal QA: 1,634 checks, 0 failures.

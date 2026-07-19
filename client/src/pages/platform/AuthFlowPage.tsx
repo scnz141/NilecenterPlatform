@@ -13,13 +13,18 @@ import {
 import { Link } from "wouter";
 import { AuthExperience } from "@/components/auth/AuthExperience";
 import { clearStoredSession, setStoredRole } from "@/lib/auth/session";
-import { confirmPasswordReset, requestPasswordReset } from "@/lib/backend/api";
+import {
+  acceptUserInvitationRequest,
+  confirmPasswordReset,
+  requestPasswordReset,
+} from "@/lib/backend/api";
 import { isSupportedLocale, translateUiLabel, type Locale } from "@/lib/i18n";
 import type { Role } from "@/lib/platformData";
 
 type AuthFlowMode =
   | "forgot-password"
   | "reset-password"
+  | "accept-invitation"
   | "select-role"
   | "logout";
 
@@ -65,6 +70,14 @@ export default function AuthFlowPage({ mode }: { mode: AuthFlowMode }) {
   const queryRole = query.get("role");
   const queryEmail = query.get("email") ?? "";
   const token = query.get("token") ?? "";
+  const invitationId = query.get("invitation") ?? "";
+  const initialHash =
+    typeof window === "undefined"
+      ? new URLSearchParams()
+      : new URLSearchParams(window.location.hash.replace(/^#/, ""));
+  const [invitationAccessToken] = useState(
+    initialHash.get("access_token") ?? ""
+  );
   const [locale, setLocale] = useState<Locale>(initialLocale);
   const [email, setEmail] = useState(queryEmail);
   const [role, setRole] = useState<Role>(
@@ -72,6 +85,8 @@ export default function AuthFlowPage({ mode }: { mode: AuthFlowMode }) {
   );
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [verificationCode, setVerificationCode] = useState("");
+  const [acceptedRole, setAcceptedRole] = useState<Role | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
@@ -109,6 +124,15 @@ export default function AuthFlowPage({ mode }: { mode: AuthFlowMode }) {
     setError("");
   }, [mode, queryEmail, token]);
 
+  useEffect(() => {
+    if (mode !== "accept-invitation" || !window.location.hash) return;
+    window.history.replaceState(
+      null,
+      "",
+      `${window.location.pathname}${window.location.search}`
+    );
+  }, [mode]);
+
   const changeLocale = (nextLocale: Locale) => {
     setLocale(nextLocale);
     window.localStorage.setItem("nilelearn.locale", nextLocale);
@@ -126,6 +150,12 @@ export default function AuthFlowPage({ mode }: { mode: AuthFlowMode }) {
       description: "Create a secure password for your Nile Learn account.",
       action: "Update password",
       icon: KeyRound,
+    },
+    "accept-invitation": {
+      title: "Activate your account",
+      description: "Verify your invitation and choose your own password.",
+      action: "Activate account",
+      icon: ShieldCheck,
     },
     "select-role": {
       title: "Choose your workspace",
@@ -205,6 +235,45 @@ export default function AuthFlowPage({ mode }: { mode: AuthFlowMode }) {
       return;
     }
     setMessage(ui("Password updated. You can sign in now."));
+  };
+
+  const acceptInvitation = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setError("");
+    setMessage("");
+    if (!invitationId) {
+      setError(ui("Open this page from a valid invitation link."));
+      return;
+    }
+    if (!invitationAccessToken && (!email.trim() || !verificationCode.trim())) {
+      setError(ui("Enter your email and verification code."));
+      return;
+    }
+    if (password.length < 12) {
+      setError(ui("Use at least 12 characters."));
+      return;
+    }
+    if (password !== confirmPassword) {
+      setError(ui("Passwords do not match."));
+      return;
+    }
+    setSubmitting(true);
+    const response = await acceptUserInvitationRequest({
+      invitationId,
+      email: email.trim() || undefined,
+      otp: verificationCode.trim() || undefined,
+      accessToken: invitationAccessToken || undefined,
+      password,
+    });
+    setSubmitting(false);
+    if (!response.ok || !response.data) {
+      setError(response.error ?? ui("Account activation failed."));
+      return;
+    }
+    setAcceptedRole(response.data.account.role);
+    setMessage(ui("Account activated. You can sign in now."));
+    setPassword("");
+    setConfirmPassword("");
   };
 
   return (
@@ -346,6 +415,93 @@ export default function AuthFlowPage({ mode }: { mode: AuthFlowMode }) {
               {submitting ? (
                 <>
                   <span className="auth-v2-spinner" /> {ui("Updating")}
+                </>
+              ) : (
+                <>
+                  {ui(copy.action)} <ArrowRight size={17} />
+                </>
+              )}
+            </button>
+          </form>
+        ) : mode === "accept-invitation" ? (
+          <form className="auth-v2-form" onSubmit={acceptInvitation}>
+            {!invitationAccessToken ? (
+              <>
+                <label className="auth-v2-field">
+                  <span>{ui("Account email")}</span>
+                  <input
+                    type="email"
+                    autoComplete="email"
+                    value={email}
+                    onChange={event => setEmail(event.target.value)}
+                    required
+                  />
+                </label>
+                <label className="auth-v2-field">
+                  <span>{ui("Verification code")}</span>
+                  <input
+                    inputMode="numeric"
+                    autoComplete="one-time-code"
+                    value={verificationCode}
+                    onChange={event => setVerificationCode(event.target.value)}
+                    required
+                  />
+                </label>
+              </>
+            ) : (
+              <p className="auth-v2-status success" role="status">
+                <CheckCircle2 size={17} /> {ui("Email verified")}
+              </p>
+            )}
+            <label className="auth-v2-field">
+              <span>{ui("New password")}</span>
+              <input
+                type="password"
+                autoComplete="new-password"
+                value={password}
+                onChange={event => setPassword(event.target.value)}
+                minLength={12}
+                required
+              />
+            </label>
+            <label className="auth-v2-field">
+              <span>{ui("Confirm password")}</span>
+              <input
+                type="password"
+                autoComplete="new-password"
+                value={confirmPassword}
+                onChange={event => setConfirmPassword(event.target.value)}
+                minLength={12}
+                required
+              />
+            </label>
+            <p className="auth-v2-field-help">
+              {ui(
+                "Use 12 or more characters. Your administrator cannot see this password."
+              )}
+            </p>
+            <AuthStatus error={error} message={message} />
+            {message ? (
+              <Link
+                href={
+                  acceptedRole === "student"
+                    ? "/auth/student-login"
+                    : "/auth/administration-login"
+                }
+                className="auth-v2-secondary-action"
+              >
+                {ui("Continue to sign in")}
+                <ArrowRight size={16} />
+              </Link>
+            ) : null}
+            <button
+              className="auth-v2-submit"
+              type="submit"
+              disabled={submitting || Boolean(message)}
+            >
+              {submitting ? (
+                <>
+                  <span className="auth-v2-spinner" /> {ui("Activating")}
                 </>
               ) : (
                 <>

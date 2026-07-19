@@ -41,7 +41,6 @@ import {
 } from "./platformCapabilities.js";
 import {
   getPlatformStateRepository,
-  normalizePlatformState,
   type PlatformStatePayload,
 } from "./platformRepository.js";
 
@@ -2814,7 +2813,7 @@ export async function applyPlatformWorkflowAction(
     );
   }
   const snapshot = await getPlatformStateSnapshot();
-  const nextState = normalizePlatformState(snapshot.state);
+  const nextState = snapshot.state;
   assertSnapshotSessionAuthority(nextState, session);
   const serverAction = applyServerActor(action, session, nextState);
   assertScopedAction(nextState, serverAction, session);

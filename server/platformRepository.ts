@@ -75,6 +75,10 @@ function useLocalPlatformStateOnly() {
   );
 }
 
+function requireSupabasePlatformState() {
+  return process.env.NILE_PLATFORM_STATE_REQUIRE_SUPABASE === "1";
+}
+
 function cloneSeed(): PlatformState {
   return JSON.parse(JSON.stringify(seedPlatformState)) as PlatformState;
 }
@@ -114,8 +118,10 @@ function migrateNileFormsPermissionDefaults(
   current: PlatformState["permissions"],
   defaults: PlatformState["permissions"]
 ): PlatformState["permissions"] {
-  return (Object.keys(defaults) as Array<keyof PlatformState["permissions"]>)
-    .reduce<PlatformState["permissions"]>((next, role) => {
+  return (
+    Object.keys(defaults) as Array<keyof PlatformState["permissions"]>
+  ).reduce<PlatformState["permissions"]>(
+    (next, role) => {
       next[role] = Array.from(
         new Set([
           ...(current[role] ?? []),
@@ -123,7 +129,9 @@ function migrateNileFormsPermissionDefaults(
         ])
       );
       return next;
-    }, {} as PlatformState["permissions"]);
+    },
+    {} as PlatformState["permissions"]
+  );
 }
 
 export function normalizePlatformState(value: unknown): PlatformState {
@@ -141,14 +149,14 @@ export function normalizePlatformState(value: unknown): PlatformState {
           stored.permissions ?? seed.permissions,
           seed.permissions
         )
-      : stored.permissions ?? seed.permissions;
+      : (stored.permissions ?? seed.permissions);
   const courseRuns = mergeById(seed.courseRuns, stored.courseRuns);
   const enrollments = (stored.enrollments ?? seed.enrollments).map(
     enrollment => ({
       ...enrollment,
       teacherId:
-        courseRuns.find(item => item.id === enrollment.courseRunId)?.teacherId ??
-        enrollment.teacherId,
+        courseRuns.find(item => item.id === enrollment.courseRunId)
+          ?.teacherId ?? enrollment.teacherId,
     })
   );
   return {
@@ -176,6 +184,86 @@ export function normalizePlatformState(value: unknown): PlatformState {
   };
 }
 
+export function normalizePersistedPlatformState(value: unknown): PlatformState {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("The persisted platform snapshot is not an object.");
+  }
+
+  const stored = value as Record<string, unknown>;
+  const requiredEntries = Object.entries(seedPlatformState);
+  const missingKeys = requiredEntries
+    .filter(([key]) => !(key in stored))
+    .map(([key]) => key);
+  if (missingKeys.length > 0) {
+    throw new Error(
+      `The persisted platform snapshot is incomplete. Missing: ${missingKeys.join(", ")}.`
+    );
+  }
+
+  const invalidKeys = requiredEntries
+    .filter(([key, expected]) => {
+      const actual = stored[key];
+      if (Array.isArray(expected)) return !Array.isArray(actual);
+      if (expected && typeof expected === "object") {
+        return !actual || typeof actual !== "object" || Array.isArray(actual);
+      }
+      return typeof actual !== typeof expected;
+    })
+    .map(([key]) => key);
+  if (invalidKeys.length > 0) {
+    throw new Error(
+      `The persisted platform snapshot has invalid fields: ${invalidKeys.join(", ")}.`
+    );
+  }
+
+  const state = JSON.parse(JSON.stringify(value)) as PlatformState;
+  if (
+    !Number.isInteger(state.permissionCatalogVersion) ||
+    (state.permissionCatalogVersion ?? 0) <
+      NILE_FORMS_PERMISSION_CATALOG_VERSION
+  ) {
+    throw new Error(
+      `The persisted platform snapshot permission catalog must be version ${NILE_FORMS_PERMISSION_CATALOG_VERSION} or newer.`
+    );
+  }
+
+  return {
+    ...state,
+    classGroups: state.classGroups.map(group => ({
+      ...group,
+      status: group.status ?? "active",
+    })),
+    enrollments: state.enrollments.map(enrollment => ({
+      ...enrollment,
+      teacherId:
+        state.courseRuns.find(item => item.id === enrollment.courseRunId)
+          ?.teacherId ?? enrollment.teacherId,
+    })),
+  };
+}
+
+export class PlatformRepositoryUnavailableError extends Error {
+  constructor(message: string, options?: { cause?: unknown }) {
+    super(message, options);
+    this.name = "PlatformRepositoryUnavailableError";
+  }
+}
+
+export function validatePlatformRepositoryConfiguration() {
+  const usesCompatibilitySessions =
+    process.env.NILE_SESSION_REPOSITORY?.trim().toLowerCase() ===
+    "supabase_compatibility";
+  if (
+    process.env.NODE_ENV === "production" &&
+    usesCompatibilitySessions &&
+    !requireSupabasePlatformState()
+  ) {
+    throw new Error(
+      "Production compatibility workflows require NILE_PLATFORM_STATE_REQUIRE_SUPABASE=1 so the database remains authoritative."
+    );
+  }
+}
+
 class SnapshotPlatformRepository implements PlatformRepository {
   async readSnapshot(): Promise<PlatformStatePayload> {
     if (useLocalPlatformStateOnly()) {
@@ -183,6 +271,7 @@ class SnapshotPlatformRepository implements PlatformRepository {
       this.writeLocalState(localState);
       return { state: localState, persistence: "local", syncedAt: now() };
     }
+    const strictSupabase = requireSupabasePlatformState();
     try {
       const supabaseState = await this.readSupabaseState();
       if (supabaseState) {
@@ -194,10 +283,24 @@ class SnapshotPlatformRepository implements PlatformRepository {
         };
       }
 
+      if (strictSupabase) {
+        throw new Error(
+          `No platform snapshot exists for ${snapshotId()}. Seed the approved fake dataset before starting the application.`
+        );
+      }
+
       const seededState = this.readLocalState() ?? cloneSeed();
       const persistence = await this.writeSnapshot(seededState);
       return { state: seededState, persistence, syncedAt: now() };
-    } catch {
+    } catch (error) {
+      if (strictSupabase) {
+        throw new PlatformRepositoryUnavailableError(
+          error instanceof Error
+            ? error.message
+            : "The authoritative platform snapshot is unavailable.",
+          { cause: error }
+        );
+      }
       const localState = this.readLocalState() ?? cloneSeed();
       this.writeLocalState(localState);
       return { state: localState, persistence: "local", syncedAt: now() };
@@ -209,11 +312,20 @@ class SnapshotPlatformRepository implements PlatformRepository {
       this.writeLocalState(state);
       return "local";
     }
+    const strictSupabase = requireSupabasePlatformState();
     try {
       await this.writeSupabaseState(state);
       this.writeLocalState(state);
       return "supabase";
-    } catch {
+    } catch (error) {
+      if (strictSupabase) {
+        throw new PlatformRepositoryUnavailableError(
+          error instanceof Error
+            ? error.message
+            : "The authoritative platform snapshot could not be saved.",
+          { cause: error }
+        );
+      }
       this.writeLocalState(state);
       return "local";
     }
@@ -279,7 +391,10 @@ class SnapshotPlatformRepository implements PlatformRepository {
         `Supabase platform state read failed with ${response.status}`
       );
     const rows = (await response.json()) as { state?: unknown }[];
-    return rows[0]?.state ? normalizePlatformState(rows[0].state) : null;
+    if (!rows[0]?.state) return null;
+    return requireSupabasePlatformState()
+      ? normalizePersistedPlatformState(rows[0].state)
+      : normalizePlatformState(rows[0].state);
   }
 
   private async writeSupabaseState(state: PlatformState) {
@@ -308,6 +423,10 @@ let platformRepository: PlatformRepository = defaultPlatformRepository;
 
 export function getPlatformStateRepository() {
   return platformRepository;
+}
+
+export function createSnapshotPlatformRepository(): PlatformRepository {
+  return new SnapshotPlatformRepository();
 }
 
 export function setPlatformStateRepository(repository: PlatformRepository) {

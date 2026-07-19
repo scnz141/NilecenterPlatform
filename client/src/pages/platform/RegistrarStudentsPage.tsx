@@ -152,8 +152,13 @@ export default function RegistrarStudentsPage({
     setCreateStep(step => Math.min(3, step + 1) as StudentCreateStep);
   };
 
+  const selectedStudentCreateBranchId = state.branches.some(
+    branch => branch.id === studentDraft.branchId
+  )
+    ? studentDraft.branchId
+    : (state.branches[0]?.id ?? "");
   const studentCreateCourseRuns = state.courseRuns.filter(
-    run => run.branchId === studentDraft.branchId
+    run => run.branchId === selectedStudentCreateBranchId
   );
   const selectedStudentCreateRun =
     studentCreateCourseRuns.find(run => run.id === studentDraft.courseRunId) ??
@@ -361,7 +366,7 @@ export default function RegistrarStudentsPage({
       );
       return;
     }
-    if (selectedStudentCreateRun?.branchId !== studentDraft.branchId) {
+    if (selectedStudentCreateRun?.branchId !== selectedStudentCreateBranchId) {
       toast.error("Student branch must match the selected course run");
       return;
     }
@@ -389,7 +394,7 @@ export default function RegistrarStudentsPage({
         fullName,
         email,
         phone,
-        branchId: studentDraft.branchId,
+        branchId: selectedStudentCreateBranchId,
         preferredLanguage: studentDraft.preferredLanguage,
         courseInterest,
         ageGroup: studentDraft.ageGroup,
@@ -407,6 +412,9 @@ export default function RegistrarStudentsPage({
       "Identity, enrollment, class roster, teacher link, lesson path, and invoice were created."
     );
     if (result) {
+      const studentId = (
+        result as { student?: { id?: string }; id?: string }
+      ).student?.id ?? (result as { id?: string }).id;
       setStudentDraft(value => ({
         ...value,
         fullName: "",
@@ -417,7 +425,7 @@ export default function RegistrarStudentsPage({
         notes: "",
       }));
       setCreateResult({
-        studentId: (result as { id?: string } | undefined)?.id,
+        studentId,
         message:
           "The student is enrolled and ready for the next admissions step.",
       });
@@ -551,7 +559,7 @@ export default function RegistrarStudentsPage({
             <label>
               Branch
               <select
-                value={studentDraft.branchId}
+                value={selectedStudentCreateBranchId}
                 onChange={event => {
                   const branchId = event.target.value;
                   const run =

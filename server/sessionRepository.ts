@@ -31,7 +31,7 @@ export type PersistedSessionTiming = {
 };
 
 export type SessionRepository = {
-  readonly kind: "memory" | "supabase";
+  readonly kind: "memory" | "supabase" | "supabase_compatibility";
   create(session: ServerSession): Awaitable<void | PersistedSessionTiming>;
   get(sessionToken: string): Awaitable<ServerSession | null>;
   delete(sessionToken: string): Awaitable<void>;
@@ -77,6 +77,17 @@ type SupabaseSessionRepositoryOptions = {
   now?: () => Date;
 };
 
+type CompatibilitySessionRow = {
+  user_id: unknown;
+  email: unknown;
+  full_name: unknown;
+  roles: unknown;
+  active_role: unknown;
+  provider: unknown;
+  created_at: unknown;
+  expires_at: unknown;
+};
+
 type AuthorityRow = {
   user_id: string;
   auth_user_id: string;
@@ -114,6 +125,18 @@ function clean(value: unknown) {
 
 function sessionRepositoryMode(env: NodeJS.ProcessEnv) {
   return clean(env.NILE_SESSION_REPOSITORY).toLowerCase() || "memory";
+}
+
+function compatibilitySessionTable(env: NodeJS.ProcessEnv) {
+  const table =
+    clean(env.NILE_COMPATIBILITY_SESSION_TABLE) ||
+    "compatibility_auth_sessions";
+  if (!/^[a-zA-Z][a-zA-Z0-9_]*$/.test(table)) {
+    throw new SessionRepositoryUnavailableError(
+      "The compatibility session table name is invalid."
+    );
+  }
+  return table;
 }
 
 function sessionTokenHash(sessionToken: string) {
@@ -218,6 +241,159 @@ export function createMemorySessionRepository(): SessionRepository {
     },
     clear() {
       sessions.clear();
+    },
+  };
+}
+
+export function createSupabaseCompatibilitySessionRepository(
+  options: SupabaseSessionRepositoryOptions = {}
+): SessionRepository {
+  const env = options.env ?? process.env;
+  const adminFetch = options.adminFetch ?? supabaseAdminRestFetch;
+  const now = options.now ?? (() => new Date());
+  const table = compatibilitySessionTable(env);
+
+  if (!getSupabaseServerStatus(env).adminAvailable) {
+    throw new SessionRepositoryUnavailableError(
+      "The Supabase compatibility session repository requires SUPABASE_URL and a server-only secret key."
+    );
+  }
+
+  async function repositoryFetch(path: string, init: RequestInit) {
+    try {
+      return await adminFetch(path, init, env);
+    } catch (error) {
+      if (error instanceof SessionRepositoryUnavailableError) throw error;
+      throw new SessionRepositoryUnavailableError();
+    }
+  }
+
+  function sessionFromRow(
+    sessionToken: string,
+    row: CompatibilitySessionRow
+  ): ServerSession {
+    const activeRole = clean(row.active_role);
+    const roles = Array.isArray(row.roles)
+      ? row.roles.filter((role): role is ServerRole =>
+          serverRoles.has(role as ServerRole)
+        )
+      : [];
+    const provider = clean(row.provider);
+    const createdAt = clean(row.created_at);
+    const expiresAt = clean(row.expires_at);
+    if (
+      !serverRoles.has(activeRole as ServerRole) ||
+      !roles.includes(activeRole as ServerRole) ||
+      !Array.isArray(row.roles) ||
+      roles.length !== row.roles.length ||
+      (provider !== "demo" && provider !== "supabase") ||
+      !clean(row.user_id) ||
+      !clean(row.email) ||
+      !clean(row.full_name) ||
+      !Number.isFinite(Date.parse(createdAt)) ||
+      !Number.isFinite(Date.parse(expiresAt))
+    ) {
+      throw new SessionRepositoryUnavailableError(
+        "The compatibility session repository returned invalid authority data."
+      );
+    }
+    return {
+      id: sessionToken,
+      userId: clean(row.user_id),
+      email: clean(row.email),
+      name: clean(row.full_name),
+      roles,
+      activeRole: activeRole as ServerRole,
+      provider,
+      authorizationModel: "snapshot",
+      createdAt,
+      expiresAt,
+    };
+  }
+
+  return {
+    kind: "supabase_compatibility",
+    async create(session) {
+      if (session.authorizationModel === "normalized") {
+        throw new SessionAuthorityDeniedError(
+          "Normalized sessions must use the normalized Supabase repository."
+        );
+      }
+      const response = await repositoryFetch(table, {
+        method: "POST",
+        headers: { Prefer: "return=minimal" },
+        body: JSON.stringify({
+          token_hash: sessionTokenHash(session.id),
+          user_id: session.userId,
+          email: session.email,
+          full_name: session.name,
+          roles: session.roles,
+          active_role: session.activeRole,
+          provider: session.provider,
+          created_at: session.createdAt,
+          expires_at: session.expiresAt,
+        }),
+      });
+      if (!response.ok) {
+        throw new SessionRepositoryUnavailableError(
+          `Compatibility session creation failed with status ${response.status}.`
+        );
+      }
+    },
+    async get(sessionToken) {
+      const tokenHash = sessionTokenHash(sessionToken);
+      const response = await repositoryFetch(
+        `${table}?token_hash=eq.${tokenHash}&revoked_at=is.null&select=user_id,email,full_name,roles,active_role,provider,created_at,expires_at&limit=1`,
+        { method: "GET" }
+      );
+      if (!response.ok) {
+        throw new SessionRepositoryUnavailableError(
+          `Compatibility session lookup failed with status ${response.status}.`
+        );
+      }
+      let rows: unknown;
+      try {
+        rows = await response.json();
+      } catch {
+        throw new SessionRepositoryUnavailableError(
+          "Compatibility session lookup returned invalid JSON."
+        );
+      }
+      if (!Array.isArray(rows)) {
+        throw new SessionRepositoryUnavailableError(
+          "Compatibility session lookup returned an invalid response."
+        );
+      }
+      if (rows.length === 0) return null;
+      if (rows.length !== 1) {
+        throw new SessionRepositoryUnavailableError(
+          "Compatibility session lookup returned ambiguous authority."
+        );
+      }
+      const session = sessionFromRow(
+        sessionToken,
+        rows[0] as CompatibilitySessionRow
+      );
+      return Date.parse(session.expiresAt) <= now().getTime() ? null : session;
+    },
+    async delete(sessionToken) {
+      const tokenHash = sessionTokenHash(sessionToken);
+      const response = await repositoryFetch(
+        `${table}?token_hash=eq.${tokenHash}&revoked_at=is.null`,
+        {
+          method: "PATCH",
+          headers: { Prefer: "return=minimal" },
+          body: JSON.stringify({ revoked_at: now().toISOString() }),
+        }
+      );
+      if (!response.ok) {
+        throw new SessionRepositoryUnavailableError(
+          `Compatibility session revocation failed with status ${response.status}.`
+        );
+      }
+    },
+    clear() {
+      throw new Error("Compatibility sessions cannot be cleared in bulk.");
     },
   };
 }
@@ -420,6 +596,7 @@ export function createSupabaseSessionRepository(
 const defaultMemoryRepository = createMemorySessionRepository();
 let repositoryOverride: SessionRepository | null = null;
 let defaultSupabaseRepository: SessionRepository | null = null;
+let defaultSupabaseCompatibilityRepository: SessionRepository | null = null;
 
 export function getSessionRepository(env: NodeJS.ProcessEnv = process.env) {
   if (repositoryOverride) return repositoryOverride;
@@ -429,8 +606,13 @@ export function getSessionRepository(env: NodeJS.ProcessEnv = process.env) {
     defaultSupabaseRepository ??= createSupabaseSessionRepository({ env });
     return defaultSupabaseRepository;
   }
+  if (mode === "supabase_compatibility") {
+    defaultSupabaseCompatibilityRepository ??=
+      createSupabaseCompatibilitySessionRepository({ env });
+    return defaultSupabaseCompatibilityRepository;
+  }
   throw new SessionRepositoryUnavailableError(
-    `Unsupported NILE_SESSION_REPOSITORY value: ${mode}. Use memory or supabase.`
+    `Unsupported NILE_SESSION_REPOSITORY value: ${mode}. Use memory, supabase_compatibility, or supabase.`
   );
 }
 
@@ -451,6 +633,7 @@ export function setSessionRepository(repository: SessionRepository) {
 export function resetDefaultSessionRepository() {
   defaultMemoryRepository.clear();
   defaultSupabaseRepository = null;
+  defaultSupabaseCompatibilityRepository = null;
   repositoryOverride = null;
 }
 

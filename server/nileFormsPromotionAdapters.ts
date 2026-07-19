@@ -7,10 +7,7 @@ import {
 } from "../client/src/lib/domain/actions.js";
 import type { PlatformState } from "../client/src/lib/domain/types.js";
 import type { ServerSession } from "./auth.js";
-import {
-  getPlatformStateRepository,
-  normalizePlatformState,
-} from "./platformRepository.js";
+import { getPlatformStateRepository } from "./platformRepository.js";
 import { applyPlatformLearningAction } from "./platformState.js";
 import type { FormPromotion, FormSubmission } from "../shared/nileForms.js";
 
@@ -43,7 +40,7 @@ async function applyInternalCompatibilityCommand<T>(
 ) {
   const repository = getPlatformStateRepository();
   const snapshot = await repository.readSnapshot();
-  const state = normalizePlatformState(snapshot.state);
+  const state = snapshot.state;
   const result = mutate(state);
   await repository.writeSnapshot(state);
   return result;

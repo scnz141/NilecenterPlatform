@@ -779,6 +779,34 @@ Current status:
   write occurred, and `NILE_MOODLE_PROJECTION_REPOSITORY` remains disabled.
   Evidence is in
   `docs/qa-attestations/integration-phase6i-staging-promotion-20260717.json`.
+  Separately, the product owner approved one CLI-only M2C-C synthetic course
+  lifecycle proof on the dedicated practice Moodle on 2026-07-19. A temporary
+  authorised-users-only service exposed exactly five course probe/read/create/
+  update/delete functions. One hidden marker-bound course was created, read
+  back, updated, replayed without duplication, deleted, and verified absent
+  twice. The service and related token were deleted, the retired token failed
+  its final probe, and no portal route, runtime flag, normalized persistence,
+  Supabase write, real identity, or production credential was added. The
+  sandbox administrator acted only as the fixture operator, so underlying
+  minimum-capability role design remains unproven and production writes remain
+  blocked. Evidence is in
+  `docs/moodle-m2cc-course-lifecycle-evidence-20260719.md`.
+  The product owner has also approved transactional email as a future
+  production delivery boundary. Its bounded foundation and first producer are
+  accepted locally: a generic server-only provider interface, versioned
+  templates, Resend adapter, leased worker, idempotent delivery evidence,
+  signed-webhook handling, suppressions, and a normalized Super Admin account
+  invitation lifecycle are implemented but disabled. The invitation creates a
+  pending identity, role grant, audit row, and encrypted email outbox event in
+  one database command. The recipient verifies the Supabase Auth identity and
+  chooses the password; administrators never set or receive it. The packages
+  passed two portable PostgreSQL applications, two assertion passes,
+  rollback/reapply, retry and webhook replay, verified activation, browser-role
+  denials, 910 unit tests, the production build, and the complete 1,634/0
+  portal suite. No Supabase or Resend endpoint was contacted. SQL promotion,
+  complete server-only configuration, and one permitted test-recipient proof
+  remain required before runtime activation. Activation guidance is in
+  `docs/RESEND_TRANSACTIONAL_EMAIL.md`.
   The SQL remains outside migration history and is accepted only on the pinned
   isolated staging target. No further Phase 6 projection family, production
   promotion, live-provider proof, or runtime activation is approved at this

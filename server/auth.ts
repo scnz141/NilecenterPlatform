@@ -131,6 +131,13 @@ function demoAuthEnabled() {
   return process.env.NODE_ENV !== "production";
 }
 
+function localOnlySessionRuntime() {
+  return (
+    process.env.NILE_PLATFORM_STATE_LOCAL_ONLY === "1" ||
+    process.env.QA_PLATFORM_STATE_LOCAL_ONLY === "1"
+  );
+}
+
 export function validateAuthConfiguration() {
   const demoEnabled =
     (process.env.DEMO_AUTH_ENABLED ?? process.env.VITE_DEMO_AUTH_ENABLED) ===
@@ -142,6 +149,17 @@ export function validateAuthConfiguration() {
   ) {
     throw new Error(
       "Production demo authentication requires an explicit NILE_DEMO_PASSWORD with at least 8 characters."
+    );
+  }
+  if (
+    process.env.NODE_ENV === "production" &&
+    demoEnabled &&
+    !localOnlySessionRuntime() &&
+    clean(process.env.NILE_SESSION_REPOSITORY).toLowerCase() !==
+      "supabase_compatibility"
+  ) {
+    throw new Error(
+      "Production demo authentication requires NILE_SESSION_REPOSITORY=supabase_compatibility so sessions survive server restarts and multiple instances."
     );
   }
 }

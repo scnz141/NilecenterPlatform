@@ -124,6 +124,58 @@ export function logoutRequest() {
   return apiJson<{ ok: true }>("/api/auth/logout", { method: "POST" });
 }
 
+export type UserInvitationRole = Role;
+
+export function createUserInvitationRequest(input: {
+  fullName: string;
+  email: string;
+  phone?: string;
+  role: UserInvitationRole;
+  branchRef?: string;
+  departmentRef?: string;
+  title?: string;
+  availabilityStatus?: string;
+  subjects: string[];
+  teachingLevels: string[];
+  locale: string;
+  idempotencyKey: string;
+}) {
+  return apiJson<{
+    ok: true;
+    invitation: {
+      invitationId: string;
+      userId: string;
+      roleGrantId: string;
+      outboxEventId: string;
+      replayed: boolean;
+    };
+  }>("/api/admin/user-invitations", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export function acceptUserInvitationRequest(input: {
+  invitationId: string;
+  email?: string;
+  otp?: string;
+  accessToken?: string;
+  password: string;
+}) {
+  return apiJson<{
+    ok: true;
+    account: {
+      userId: string;
+      role: Role;
+      email: string;
+      acceptedAt: string;
+    };
+  }>("/api/auth/invitations/accept", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
 export function saveBackendRecord(
   type: "lead" | "placement" | "operational",
   payload: Record<string, unknown>,

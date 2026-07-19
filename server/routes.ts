@@ -24,7 +24,8 @@ import {
 } from "./platformState.js";
 import {
   getPlatformStateRepository,
-  normalizePlatformState,
+  PlatformRepositoryUnavailableError,
+  validatePlatformRepositoryConfiguration,
 } from "./platformRepository.js";
 import { getSupabaseServerStatus } from "./supabase.js";
 import {
@@ -44,6 +45,9 @@ import { seedPlatformState } from "../client/src/lib/domain/seed.js";
 import { registerNileFormsRoutes } from "./nileFormsRoutes.js";
 import { registerNileRequestsRoutes } from "./nileRequestsRoutes.js";
 import { registerMoodleRoutes } from "./moodleRoutes.js";
+import { registerEmailRoutes } from "./emailRoutes.js";
+import { getEmailIntegrationStatus } from "./emailDeliveryService.js";
+import { registerUserInvitationRoutes } from "./userInvitationRoutes.js";
 
 const certificateVerifyAttempts = new Map<
   string,
@@ -69,6 +73,7 @@ function canResetPlatformStateForQa(req: ApiRequest) {
 type ApiRequest = {
   method: string;
   body?: Record<string, unknown>;
+  rawBody?: Buffer;
   query: Record<string, unknown>;
   headers: {
     cookie?: string;
@@ -163,7 +168,7 @@ async function recordAuthAudit(
   if (!session) return null;
   const repository = getPlatformStateRepository();
   const snapshot = await repository.readSnapshot();
-  const state = normalizePlatformState(snapshot.state);
+  const state = snapshot.state;
   const audit = {
     id: createServerId("audit"),
     actorId: session.userId,
@@ -196,8 +201,20 @@ async function recordAuthAudit(
 export function registerApiRoutes(app: ApiApp) {
   loadServerEnv();
   validateAuthConfiguration();
+  validatePlatformRepositoryConfiguration();
   initializeSessionRepository();
-  app.use(express.json());
+  app.use(
+    express.json({
+      limit: "1mb",
+      verify(req, _res, buffer) {
+        const request = req as express.Request & { rawBody?: Buffer };
+        if (request.originalUrl === "/api/integrations/resend/webhook") {
+          request.rawBody = Buffer.from(buffer);
+        }
+      },
+    })
+  );
+  registerEmailRoutes(app);
   app.use("/api", (req, res, next) => {
     if (["GET", "HEAD", "OPTIONS"].includes(req.method)) {
       next();
@@ -213,6 +230,7 @@ export function registerApiRoutes(app: ApiApp) {
   registerNileFormsRoutes(app);
   registerNileRequestsRoutes(app);
   registerMoodleRoutes(app);
+  registerUserInvitationRoutes(app);
 
   app.get("/api/integrations/supabase/status", async (req, res) => {
     const session = await getApiRequestSession(req, res);
@@ -226,6 +244,16 @@ export function registerApiRoutes(app: ApiApp) {
       return;
     }
     res.json(status);
+  });
+
+  app.get("/api/integrations/resend/status", async (req, res) => {
+    const session = await getApiRequestSession(req, res);
+    if (session === sessionRepositoryUnavailable) return;
+    if (!session || session.activeRole !== "superadmin") {
+      res.status(403).json({ error: "Super Admin access is required." });
+      return;
+    }
+    res.json(getEmailIntegrationStatus());
   });
 
   app.post("/api/auth/login", async (req, res) => {
@@ -404,11 +432,21 @@ export function registerApiRoutes(app: ApiApp) {
     }
     if (rejectDurableSnapshotWorkflow(session, res)) return;
 
-    const snapshot = await getPlatformStateSnapshot();
-    res.json({
-      ...snapshot,
-      state: scopePlatformStateForSession(snapshot.state, session),
-    });
+    try {
+      const snapshot = await getPlatformStateSnapshot();
+      res.json({
+        ...snapshot,
+        state: scopePlatformStateForSession(snapshot.state, session),
+      });
+    } catch (error) {
+      if (error instanceof PlatformRepositoryUnavailableError) {
+        res
+          .status(503)
+          .json({ error: "Workspace data is temporarily unavailable." });
+        return;
+      }
+      throw error;
+    }
   });
 
   app.post("/api/platform/state/reset", async (req, res) => {
@@ -514,10 +552,16 @@ export function registerApiRoutes(app: ApiApp) {
         state: scopePlatformStateForSession(actionResult.state, session),
       });
     } catch (error) {
-      res.status(400).json({
-        error:
-          error instanceof Error ? error.message : "Platform action failed.",
-      });
+      res
+        .status(error instanceof PlatformRepositoryUnavailableError ? 503 : 400)
+        .json({
+          error:
+            error instanceof PlatformRepositoryUnavailableError
+              ? "Workspace data is temporarily unavailable."
+              : error instanceof Error
+                ? error.message
+                : "Platform action failed.",
+        });
     }
   });
 

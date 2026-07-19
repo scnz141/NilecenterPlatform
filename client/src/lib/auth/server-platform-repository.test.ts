@@ -2,8 +2,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ServerSession } from "../../../../server/auth";
 import type { PlatformRepository } from "../../../../server/platformRepository";
 import {
+  createSnapshotPlatformRepository,
+  normalizePersistedPlatformState,
   normalizePlatformState,
   setPlatformStateRepository,
+  validatePlatformRepositoryConfiguration,
 } from "../../../../server/platformRepository";
 import {
   applyPlatformWorkflowAction,
@@ -31,10 +34,33 @@ function sessionForTeacher(): ServerSession {
 }
 
 let restoreRepository: (() => void) | undefined;
+const originalEnvironment = {
+  NODE_ENV: process.env.NODE_ENV,
+  NILE_SESSION_REPOSITORY: process.env.NILE_SESSION_REPOSITORY,
+  NILE_PLATFORM_STATE_REQUIRE_SUPABASE:
+    process.env.NILE_PLATFORM_STATE_REQUIRE_SUPABASE,
+  NILE_PLATFORM_STATE_LOCAL_ONLY: process.env.NILE_PLATFORM_STATE_LOCAL_ONLY,
+  QA_PLATFORM_STATE_LOCAL_ONLY: process.env.QA_PLATFORM_STATE_LOCAL_ONLY,
+  SUPABASE_URL: process.env.SUPABASE_URL,
+  SUPABASE_SECRET_KEY: process.env.SUPABASE_SECRET_KEY,
+};
+
+function restoreEnvironmentValue(
+  key: keyof typeof originalEnvironment,
+  value: string | undefined
+) {
+  if (value === undefined) delete process.env[key];
+  else process.env[key] = value;
+}
 
 afterEach(() => {
   restoreRepository?.();
   restoreRepository = undefined;
+  for (const [key, value] of Object.entries(originalEnvironment)) {
+    restoreEnvironmentValue(key as keyof typeof originalEnvironment, value);
+  }
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
 });
 
 describe("platform repository boundary", () => {
@@ -87,6 +113,81 @@ describe("platform repository boundary", () => {
     expect(state.reportPresets.length).toBeGreaterThanOrEqual(
       seedPlatformState.reportPresets.length
     );
+  });
+
+  it("keeps a complete persisted snapshot database-authoritative without restoring seed records", () => {
+    const persisted = cloneSeed();
+    persisted.users = persisted.users.filter(
+      user => user.id === "usr_admin_demo"
+    );
+    persisted.courseRuns = [];
+    persisted.classGroups = [];
+    persisted.enrollments = [];
+
+    const state = normalizePersistedPlatformState(persisted);
+
+    expect(state.users).toHaveLength(1);
+    expect(state.users[0]?.id).toBe("usr_admin_demo");
+    expect(state.courseRuns).toEqual([]);
+    expect(state.classGroups).toEqual([]);
+    expect(state.enrollments).toEqual([]);
+  });
+
+  it("rejects incomplete persisted snapshots instead of filling them from code", () => {
+    expect(() => normalizePersistedPlatformState({ users: [] })).toThrow(
+      "persisted platform snapshot is incomplete"
+    );
+  });
+
+  it("requires strict database state with compatibility sessions in production", () => {
+    process.env.NODE_ENV = "production";
+    process.env.NILE_SESSION_REPOSITORY = "supabase_compatibility";
+    delete process.env.NILE_PLATFORM_STATE_REQUIRE_SUPABASE;
+
+    expect(() => validatePlatformRepositoryConfiguration()).toThrow(
+      "require NILE_PLATFORM_STATE_REQUIRE_SUPABASE=1"
+    );
+
+    process.env.NILE_PLATFORM_STATE_REQUIRE_SUPABASE = "1";
+    expect(() => validatePlatformRepositoryConfiguration()).not.toThrow();
+  });
+
+  it("fails closed when the strict Supabase snapshot is missing", async () => {
+    delete process.env.NILE_PLATFORM_STATE_LOCAL_ONLY;
+    delete process.env.QA_PLATFORM_STATE_LOCAL_ONLY;
+    process.env.NILE_PLATFORM_STATE_REQUIRE_SUPABASE = "1";
+    process.env.SUPABASE_URL = "https://strict-state-test.supabase.co";
+    process.env.SUPABASE_SECRET_KEY = "test-only-secret";
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response(JSON.stringify([]), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          })
+      )
+    );
+
+    await expect(
+      createSnapshotPlatformRepository().readSnapshot()
+    ).rejects.toThrow("No platform snapshot exists");
+  });
+
+  it("does not fall back to a local file when strict Supabase writes fail", async () => {
+    delete process.env.NILE_PLATFORM_STATE_LOCAL_ONLY;
+    delete process.env.QA_PLATFORM_STATE_LOCAL_ONLY;
+    process.env.NILE_PLATFORM_STATE_REQUIRE_SUPABASE = "1";
+    process.env.SUPABASE_URL = "https://strict-state-test.supabase.co";
+    process.env.SUPABASE_SECRET_KEY = "test-only-secret";
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response("unavailable", { status: 503 }))
+    );
+
+    await expect(
+      createSnapshotPlatformRepository().writeSnapshot(cloneSeed())
+    ).rejects.toThrow("Supabase platform state write failed with 503");
   });
 
   it("defaults legacy class groups without a status to active", () => {

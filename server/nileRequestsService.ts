@@ -30,10 +30,7 @@ import {
   resolveActor,
   type NileFormsActor,
 } from "./nileFormsService.js";
-import {
-  getPlatformStateRepository,
-  normalizePlatformState,
-} from "./platformRepository.js";
+import { getPlatformStateRepository } from "./platformRepository.js";
 
 type NileRequestsServiceDependencies = {
   repository?: NileFormsCompatibilityRepository;
@@ -177,7 +174,7 @@ function requirePermission(
 
 async function readPlatformState(): Promise<PlatformState> {
   const snapshot = await getPlatformStateRepository().readSnapshot();
-  return normalizePlatformState(snapshot.state);
+  return snapshot.state;
 }
 
 function userName(state: PlatformState, userId: string | undefined) {

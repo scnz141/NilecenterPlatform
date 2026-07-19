@@ -218,7 +218,8 @@
         ],
         "workflowActions": [
           "^(permission[.]update|staff[.]user[.]create|user[.](create|update))$"
-        ]
+        ],
+        "serverApiRoutes": ["^POST /api/admin/user-invitations$"]
       }
     },
     {
@@ -584,7 +585,29 @@
         "workflowActions": [
           "^(integration[.](local_check|status[.]update)|settings[.]save)$"
         ],
-        "serverApiRoutes": ["^GET /api/integrations/(moodle|supabase)/status$"]
+        "serverApiRoutes": [
+          "^GET /api/integrations/(moodle|resend|supabase)/status$"
+        ]
+      }
+    },
+    {
+      "id": "transactional_email_delivery",
+      "name": "Transactional email delivery workers and provider evidence",
+      "nileLearnAuthority": "canonical_writable",
+      "moodleAuthority": "none",
+      "projectionDirection": "none",
+      "externalId": "Resend message and signed webhook identifiers linked to an internal outbox event",
+      "conflictRule": "Nile Learn workflow and in-app state remain authoritative; provider events update delivery evidence and suppressions only.",
+      "permittedRoles": ["superadmin"],
+      "auditOwner": "nile_learn_transactional_email_audit",
+      "failureBehavior": "Fail closed, retain the outbox event for bounded retry or dead letter, and never mutate the originating workflow.",
+      "futureWriteStatus": "manual_unapplied_runtime_disabled",
+      "selectors": {
+        "serverApiRoutes": [
+          "^POST /api/integrations/resend/webhook$",
+          "^GET /api/internal/email-deliveries/process$",
+          "^POST /api/internal/email-deliveries/process$"
+        ]
       }
     },
     {

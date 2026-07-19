@@ -1411,3 +1411,404 @@ export function createMoodleSandboxWriteClientFromEnvironment(
       Number.isFinite(timeoutMs) && timeoutMs > 0 ? timeoutMs : undefined,
   });
 }
+
+export const MOODLE_SANDBOX_COURSE_ACK =
+  "I_ACKNOWLEDGE_NILE_M2CC_SYNTHETIC_COURSE_WRITES_ONLY";
+
+export const MOODLE_SANDBOX_COURSE_FUNCTIONS = [
+  "core_webservice_get_site_info",
+  "core_course_get_courses_by_field",
+  "core_course_create_courses",
+  "core_course_update_courses",
+  "core_course_delete_courses",
+] as const;
+
+export type MoodleSandboxCourseFunction =
+  (typeof MOODLE_SANDBOX_COURSE_FUNCTIONS)[number];
+
+export type MoodleSandboxCourseInput = {
+  marker: string;
+  fullName: string;
+  updatedFullName: string;
+  shortName: string;
+  summary: string;
+};
+
+export type MoodleSandboxCourse = {
+  id: number;
+  marker: string;
+  fullName: string;
+  shortName: string;
+  summary: string;
+  categoryId: number;
+};
+
+export type MoodleSandboxCourseClientOptions = {
+  enabled: boolean;
+  baseUrl: string;
+  service: string;
+  token: string;
+  syntheticAck: string;
+  allowedCategoryId: number;
+  fetchImpl?: typeof fetch;
+  timeoutMs?: number;
+  maxResponseBytes?: number;
+  resolveHostname?: (
+    hostname: string
+  ) => Promise<Array<{ address: string; family: number }>>;
+  now?: () => Date;
+};
+
+const courseFunctionSet = new Set<string>(MOODLE_SANDBOX_COURSE_FUNCTIONS);
+const courseMarkerPattern =
+  /^NILE-M2CC-(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})Z-[0-9a-fA-F]{8}$/;
+
+export function isMoodleSandboxCourseMarker(value: unknown): value is string {
+  const marker = clean(value);
+  const match = courseMarkerPattern.exec(marker);
+  if (!match) return false;
+  const [, year, month, day, hour, minute, second] = match;
+  const date = new Date(
+    `${year}-${month}-${day}T${hour}:${minute}:${second}.000Z`
+  );
+  return (
+    !Number.isNaN(date.getTime()) &&
+    date
+      .toISOString()
+      .startsWith(`${year}-${month}-${day}T${hour}:${minute}:${second}`)
+  );
+}
+
+function requireCourseMarker(value: unknown) {
+  if (!isMoodleSandboxCourseMarker(value)) {
+    invalidInput("Moodle sandbox course marker is invalid.");
+  }
+  return value;
+}
+
+function parseSandboxCourse(
+  value: unknown,
+  marker: string,
+  allowedCategoryId: number
+): MoodleSandboxCourse {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    invalidResponse("course lookup");
+  }
+  const item = value as Record<string, unknown>;
+  const id = Number(item.id);
+  const categoryId = Number(item.categoryid);
+  const foundMarker = clean(item.idnumber);
+  const fullName = clean(item.fullname);
+  const shortName = clean(item.shortname);
+  const summary = clean(item.summary);
+  if (
+    !Number.isSafeInteger(id) ||
+    id <= 0 ||
+    categoryId !== allowedCategoryId ||
+    foundMarker !== marker ||
+    !fullName ||
+    !shortName ||
+    !shortName.toLowerCase().includes(marker.toLowerCase())
+  ) {
+    invalidResponse("course lookup");
+  }
+  return { id, marker, fullName, shortName, summary, categoryId };
+}
+
+export function createMoodleSandboxCourseClient({
+  enabled,
+  baseUrl,
+  service,
+  token,
+  syntheticAck,
+  allowedCategoryId,
+  fetchImpl,
+  timeoutMs = 10_000,
+  maxResponseBytes = MOODLE_SANDBOX_WRITE_LIMITS.responseBytes,
+  resolveHostname = async hostname =>
+    lookupHostname(hostname, { all: true, verbatim: true }),
+  now = () => new Date(),
+}: MoodleSandboxCourseClientOptions) {
+  if (!enabled)
+    configurationError("Moodle sandbox course writes are disabled.");
+  if (syntheticAck !== MOODLE_SANDBOX_COURSE_ACK) {
+    configurationError(
+      "Moodle sandbox synthetic course acknowledgement is missing."
+    );
+  }
+  const safeService = clean(service);
+  const safeToken = clean(token);
+  if (!safeService || !/^[a-z0-9_]+$/.test(safeService)) {
+    configurationError("Moodle sandbox course service is invalid.");
+  }
+  if (!safeToken || safeToken.length > 512) {
+    configurationError("Moodle sandbox course credentials are not configured.");
+  }
+  if (!Number.isSafeInteger(allowedCategoryId) || allowedCategoryId <= 0) {
+    configurationError("Moodle sandbox course category scope is invalid.");
+  }
+
+  const safeBaseUrl = normalizeBaseUrl(baseUrl);
+  const endpoint = new URL("webservice/rest/server.php", safeBaseUrl);
+  const boundedTimeout = Math.min(30_000, Math.max(1_000, timeoutMs));
+  const boundedMaxResponse = Math.min(
+    MOODLE_SANDBOX_WRITE_LIMITS.responseBytes,
+    Math.max(1_024, maxResponseBytes)
+  );
+  let serviceVerified = false;
+  const verifiedCourseIds = new Map<number, string>();
+
+  const call = async <T>(
+    functionName: MoodleSandboxCourseFunction,
+    parameters: Record<string, MoodleParameter> = {}
+  ): Promise<T> => {
+    if (!courseFunctionSet.has(functionName)) {
+      throw new MoodleSandboxWriteError(
+        "Moodle function is not approved for sandbox course writes.",
+        403,
+        "function_not_allowed"
+      );
+    }
+    assertNoReservedProtocolKeys(parameters);
+    if (functionName === "core_webservice_get_site_info") {
+      if (Object.keys(parameters).length)
+        invalidInput("Invalid probe parameters.");
+    } else if (!serviceVerified) {
+      guardError(
+        "Moodle sandbox course service has not passed the exact capability probe."
+      );
+    }
+
+    const body = new URLSearchParams();
+    Object.entries(parameters).forEach(([key, value]) =>
+      appendParameter(body, key, value)
+    );
+    body.set("wstoken", safeToken);
+    body.set("wsfunction", functionName);
+    body.set("moodlewsrestformat", "json");
+    if (
+      Buffer.byteLength(body.toString(), "utf8") >
+      MOODLE_SANDBOX_WRITE_LIMITS.requestBytes
+    ) {
+      invalidInput(
+        "Moodle sandbox course request exceeds the configured limit."
+      );
+    }
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), boundedTimeout);
+    timeout.unref?.();
+    try {
+      const addresses = await resolvePublicDestination(
+        safeBaseUrl.hostname,
+        resolveHostname,
+        controller.signal
+      );
+      const response = fetchImpl
+        ? await fetchImpl(endpoint, {
+            method: "POST",
+            headers: {
+              Accept: "application/json",
+              "Accept-Encoding": "identity",
+              "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8",
+            },
+            body,
+            redirect: "error",
+            signal: controller.signal,
+          })
+        : await postPinnedHttps(endpoint, body, controller.signal, addresses);
+      const raw = await readBoundedResponse(response, boundedMaxResponse);
+      let payload: unknown;
+      try {
+        payload = JSON.parse(raw);
+      } catch {
+        throw new MoodleSandboxWriteError(
+          "Moodle sandbox returned a non-JSON response.",
+          502,
+          "invalid_response"
+        );
+      }
+      if (isMoodleError(payload)) {
+        const classification = classifyMoodleError(clean(payload.errorcode));
+        throw new MoodleSandboxWriteError(
+          safeRemoteMessage(classification.code),
+          classification.statusCode,
+          classification.code
+        );
+      }
+      if (!response.ok) {
+        throw new MoodleSandboxWriteError(
+          `Moodle sandbox returned HTTP ${response.status}.`,
+          502,
+          "remote"
+        );
+      }
+      return payload as T;
+    } catch (error) {
+      if (error instanceof MoodleSandboxWriteError) throw error;
+      if (error instanceof Error && error.name === "AbortError") {
+        throw new MoodleSandboxWriteError(
+          "Moodle sandbox did not respond before the course timeout.",
+          504,
+          "timeout"
+        );
+      }
+      throw new MoodleSandboxWriteError(
+        "Moodle sandbox could not be reached.",
+        502,
+        "remote"
+      );
+    } finally {
+      clearTimeout(timeout);
+    }
+  };
+
+  return {
+    mode: "sandbox_course_write" as const,
+    call,
+    async probe() {
+      serviceVerified = false;
+      const site = parseSiteInfo(
+        await call<unknown>("core_webservice_get_site_info")
+      );
+      const availableSet = new Set(site.functions);
+      const missingApprovedFunctions = MOODLE_SANDBOX_COURSE_FUNCTIONS.filter(
+        name => !availableSet.has(name)
+      );
+      const unexpectedFunctions = Array.from(availableSet).filter(
+        name => !courseFunctionSet.has(name)
+      );
+      const hasDuplicateFunctions = availableSet.size !== site.functions.length;
+      serviceVerified =
+        !missingApprovedFunctions.length &&
+        !unexpectedFunctions.length &&
+        !hasDuplicateFunctions &&
+        site.functions.length === MOODLE_SANDBOX_COURSE_FUNCTIONS.length;
+      return {
+        mode: "sandbox_course_write" as const,
+        verifiedAt: now().toISOString(),
+        service: safeService,
+        site: { name: site.sitename, url: site.siteurl },
+        availableFunctionCount: site.functions.length,
+        approvedFunctionCount: MOODLE_SANDBOX_COURSE_FUNCTIONS.length,
+        missingApprovedFunctions,
+        unexpectedFunctions,
+        hasDuplicateFunctions,
+        minimumPrivilegeVerified: serviceVerified,
+      };
+    },
+    async findCourseByMarker(markerValue: string) {
+      const marker = requireCourseMarker(markerValue);
+      const payload = await call<unknown>("core_course_get_courses_by_field", {
+        field: "idnumber",
+        value: marker,
+      });
+      if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+        invalidResponse("course lookup");
+      }
+      const courses = (payload as { courses?: unknown }).courses;
+      if (!Array.isArray(courses) || courses.length > 1) {
+        invalidResponse("course lookup");
+      }
+      if (!courses.length) return undefined;
+      const course = parseSandboxCourse(courses[0], marker, allowedCategoryId);
+      verifiedCourseIds.set(course.id, marker);
+      return course;
+    },
+    async createCourse(input: MoodleSandboxCourseInput) {
+      const marker = requireCourseMarker(input.marker);
+      if (
+        clean(input.fullName).length < 3 ||
+        clean(input.fullName).length > 254 ||
+        clean(input.shortName).length < 3 ||
+        clean(input.shortName).length > 100 ||
+        !clean(input.shortName).toLowerCase().includes(marker.toLowerCase()) ||
+        clean(input.summary).length > 2_000
+      ) {
+        invalidInput("Moodle sandbox synthetic course input is invalid.");
+      }
+      const payload = await call<unknown[]>("core_course_create_courses", {
+        courses: [
+          {
+            fullname: clean(input.fullName),
+            shortname: clean(input.shortName),
+            categoryid: allowedCategoryId,
+            idnumber: marker,
+            summary: clean(input.summary),
+            summaryformat: 1,
+            visible: 0,
+          },
+        ],
+      });
+      if (!Array.isArray(payload) || payload.length !== 1) {
+        invalidResponse("course creation");
+      }
+      const item = payload[0] as Record<string, unknown>;
+      const id = Number(item?.id);
+      if (
+        !Number.isSafeInteger(id) ||
+        id <= 0 ||
+        clean(item?.shortname) !== clean(input.shortName)
+      ) {
+        invalidResponse("course creation");
+      }
+      verifiedCourseIds.set(id, marker);
+      return { id, shortName: clean(item.shortname) };
+    },
+    async updateCourse(input: MoodleSandboxCourseInput & { courseId: number }) {
+      const marker = requireCourseMarker(input.marker);
+      if (verifiedCourseIds.get(input.courseId) !== marker) {
+        guardError("Moodle sandbox course was not reconciled before update.");
+      }
+      if (
+        clean(input.updatedFullName).length < 3 ||
+        clean(input.updatedFullName).length > 254
+      ) {
+        invalidInput("Moodle sandbox synthetic course update is invalid.");
+      }
+      await call<unknown>("core_course_update_courses", {
+        courses: [
+          {
+            id: input.courseId,
+            fullname: clean(input.updatedFullName),
+            idnumber: marker,
+            summary: clean(input.summary),
+            summaryformat: 1,
+            visible: 0,
+          },
+        ],
+      });
+    },
+    async deleteCourse(input: { marker: string; courseId: number }) {
+      const marker = requireCourseMarker(input.marker);
+      if (verifiedCourseIds.get(input.courseId) !== marker) {
+        guardError("Moodle sandbox course was not reconciled before deletion.");
+      }
+      await call<unknown>("core_course_delete_courses", {
+        courseids: [input.courseId],
+      });
+      verifiedCourseIds.delete(input.courseId);
+    },
+  };
+}
+
+export type MoodleSandboxCourseClient = ReturnType<
+  typeof createMoodleSandboxCourseClient
+>;
+
+export function createMoodleSandboxCourseClientFromEnvironment(
+  env: NodeJS.ProcessEnv = process.env
+) {
+  const timeoutMs = Number(env.MOODLE_SANDBOX_COURSE_TIMEOUT_MS);
+  return createMoodleSandboxCourseClient({
+    enabled: env.MOODLE_SANDBOX_COURSE_ENABLED === "1",
+    baseUrl: env.MOODLE_SANDBOX_COURSE_BASE_URL ?? "",
+    service: clean(env.MOODLE_SANDBOX_COURSE_SERVICE),
+    token: clean(env.MOODLE_SANDBOX_COURSE_TOKEN),
+    syntheticAck: env.MOODLE_SANDBOX_COURSE_SYNTHETIC_ACK ?? "",
+    allowedCategoryId:
+      parseConfiguredId(env.MOODLE_SANDBOX_COURSE_CATEGORY_ID) ?? Number.NaN,
+    timeoutMs:
+      Number.isFinite(timeoutMs) && timeoutMs > 0 ? timeoutMs : undefined,
+  });
+}

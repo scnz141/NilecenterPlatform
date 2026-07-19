@@ -3,6 +3,17 @@
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
   "cleanUrls": true,
+  "env": {
+    "NILE_SESSION_REPOSITORY": "supabase_compatibility",
+    "NILE_COMPATIBILITY_SESSION_TABLE": "compatibility_auth_sessions",
+    "NILE_PLATFORM_STATE_REQUIRE_SUPABASE": "1"
+  },
+  "crons": [
+    {
+      "path": "/api/internal/email-deliveries/process",
+      "schedule": "*/5 * * * *"
+    }
+  ],
   "rewrites": [
     {
       "source": "/api/:path*",

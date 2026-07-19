@@ -17,7 +17,10 @@ import {
   DataTableCard,
   StatusBadge,
 } from "@/components/platform/PlatformPrimitives";
-import { runPlatformWorkflowActionRequest } from "@/lib/backend/api";
+import {
+  createUserInvitationRequest,
+  runPlatformWorkflowActionRequest,
+} from "@/lib/backend/api";
 import { platformStore } from "@/lib/domain/store";
 import type {
   EntityStatus,
@@ -209,6 +212,7 @@ export default function AdminUsersPage({ mode = "list" }: AdminUsersPageProps) {
     id: string;
     name: string;
     role: StaffRole;
+    delivery: "created" | "invited";
   } | null>(null);
   const [creatingAccount, setCreatingAccount] = useState(false);
   const [createAccountError, setCreateAccountError] = useState("");
@@ -230,6 +234,8 @@ export default function AdminUsersPage({ mode = "list" }: AdminUsersPageProps) {
   });
 
   const state = useMemo(() => platformStore.getState(), [version]);
+  const normalizedInvitationsEnabled =
+    import.meta.env.VITE_NILE_NORMALIZED_INVITATIONS_ENABLED === "1";
   const refresh = () => setVersion(value => value + 1);
   const draftRoleMeta = roleMeta[newUser.role];
   const branchOptions = state.branches;
@@ -507,6 +513,42 @@ export default function AdminUsersPage({ mode = "list" }: AdminUsersPageProps) {
       return;
     }
     setCreatingAccount(true);
+    if (normalizedInvitationsEnabled) {
+      const response = await createUserInvitationRequest({
+        fullName: name,
+        email,
+        phone: phone || undefined,
+        role: newUser.role,
+        branchRef: newUser.role === "superadmin" ? undefined : newUser.branchId,
+        departmentRef:
+          newUser.role === "teacher" || newUser.role === "headofdepartment"
+            ? newUser.departmentId
+            : undefined,
+        title: draftRoleMeta.label,
+        availabilityStatus: newUser.availabilityStatus,
+        subjects: splitListInput(newUser.subjects),
+        teachingLevels: splitListInput(newUser.teachingLevels),
+        locale: window.localStorage.getItem("nilelearn.locale") ?? "en",
+        idempotencyKey: `user-invite:${crypto.randomUUID()}`,
+      });
+      setCreatingAccount(false);
+      if (!response.ok || !response.data) {
+        const message = response.error ?? "Invitation could not be queued.";
+        setCreateAccountError(message);
+        toast.error("Invitation failed", { description: message });
+        return;
+      }
+      setCreateSuccess({
+        id: response.data.invitation.userId,
+        name,
+        role: newUser.role,
+        delivery: "invited",
+      });
+      toast.success("Account invitation queued", {
+        description: `${name} will verify the email and choose a password.`,
+      });
+      return;
+    }
     const response = await runPlatformWorkflowActionRequest({
       type: "staff.user.create",
       name,
@@ -546,6 +588,7 @@ export default function AdminUsersPage({ mode = "list" }: AdminUsersPageProps) {
       id,
       name: created?.user?.name ?? name,
       role: created?.user?.activeRole ?? newUser.role,
+      delivery: "created",
     });
     const defaults = staffRoleDefaults.teacher;
     setNewUser({
@@ -936,6 +979,12 @@ export default function AdminUsersPage({ mode = "list" }: AdminUsersPageProps) {
         department => department.id === newUser.departmentId
       )?.name ?? "Global",
     ],
+    [
+      "Account activation",
+      normalizedInvitationsEnabled
+        ? "Email verification and password setup"
+        : "Compatibility mode - no verification email",
+    ],
   ];
 
   const createForm = (
@@ -943,14 +992,29 @@ export default function AdminUsersPage({ mode = "list" }: AdminUsersPageProps) {
       {createSuccess ? (
         <div className="admin-users-create-success">
           <CheckCircle2 size={28} />
-          <strong>{createSuccess.name} was created</strong>
-          <span>Opening the user detail page now.</span>
-          <Link
-            className="platform-primary-button"
-            href={`/app/admin/users/${createSuccess.id}`}
-          >
-            Open user detail
-          </Link>
+          <strong>
+            {createSuccess.name}{" "}
+            {createSuccess.delivery === "invited"
+              ? "was invited"
+              : "was created"}
+          </strong>
+          <span>
+            {createSuccess.delivery === "invited"
+              ? "The account stays pending until the email is verified and its owner chooses a password."
+              : "Opening the user detail page now."}
+          </span>
+          {createSuccess.delivery === "created" ? (
+            <Link
+              className="platform-primary-button"
+              href={`/app/admin/users/${createSuccess.id}`}
+            >
+              Open user detail
+            </Link>
+          ) : (
+            <Link className="platform-primary-button" href="/app/admin/users">
+              Return to users
+            </Link>
+          )}
         </div>
       ) : (
         <div className="admin-users-create-shell">
@@ -1088,6 +1152,26 @@ export default function AdminUsersPage({ mode = "list" }: AdminUsersPageProps) {
                   {draftRoleMeta.label} access will be created with the selected
                   school scope.
                 </p>
+                <div
+                  className="admin-users-create-note"
+                  role="status"
+                  data-mode={
+                    normalizedInvitationsEnabled
+                      ? "invitation"
+                      : "compatibility"
+                  }
+                >
+                  <strong>
+                    {normalizedInvitationsEnabled
+                      ? "Email verification is active"
+                      : "Email verification is not active"}
+                  </strong>
+                  <span>
+                    {normalizedInvitationsEnabled
+                      ? "The user receives a verification link, verifies this email address, and chooses a private password. The account remains pending until that is complete."
+                      : "This environment still uses compatibility account creation. It does not send an OTP or password-setup email. Enable normalized invitations before creating a real account."}
+                  </span>
+                </div>
               </div>
             ) : null}
             {createAccountError ? (
@@ -1111,7 +1195,9 @@ export default function AdminUsersPage({ mode = "list" }: AdminUsersPageProps) {
                   ? "Continue"
                   : creatingAccount
                     ? "Creating..."
-                    : "Create connected account"}
+                    : normalizedInvitationsEnabled
+                      ? "Send verification invitation"
+                      : "Create connected account"}
               </button>
             </div>
           </form>

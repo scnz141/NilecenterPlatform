@@ -1,6 +1,5 @@
 import crypto from "node:crypto";
 
-import { seedPlatformState } from "../client/src/lib/domain/seed.js";
 import { enrollmentHasRosterMembership } from "../client/src/lib/domain/relationships.js";
 import type { PlatformState } from "../client/src/lib/domain/types.js";
 import type { ServerSession } from "./auth.js";
@@ -8,10 +7,7 @@ import {
   getNileFormsCompatibilityRepository,
   type NileFormsCompatibilityRepository,
 } from "./nileFormsCompatibilityRepository.js";
-import {
-  getPlatformStateRepository,
-  normalizePlatformState,
-} from "./platformRepository.js";
+import { getPlatformStateRepository } from "./platformRepository.js";
 import {
   formLocales,
   getOfflineEligibility,
@@ -336,7 +332,7 @@ export function requireSession(session: ServerSession | null | undefined) {
 
 async function readPlatformState(): Promise<PlatformState> {
   const snapshot = await getPlatformStateRepository().readSnapshot();
-  return normalizePlatformState(snapshot.state);
+  return snapshot.state;
 }
 
 function requirePermission(
@@ -747,15 +743,17 @@ function entityOptionsForContent(
   content: FormVersionContent,
   actor: NileFormsActor | null,
   definition?: FormDefinition,
-  authorityState: PlatformState = actor?.platformState ?? seedPlatformState
+  authorityState?: PlatformState
 ) {
   const result: Record<string, FormChoice[]> = {};
+  const scopedAuthority = authorityState ?? actor?.platformState;
+  if (!scopedAuthority) return result;
   const fields = content.pages
     .flatMap(page => page.fields)
     .filter(field => field.type === "entity_reference" && field.entityType);
   for (const field of fields) {
     if (field.entityType === "branch") {
-      result[field.id] = authorityState.branches
+      result[field.id] = scopedAuthority.branches
         .filter(branch => branch.status === "active")
         .filter(
           branch => !definition?.branchId || branch.id === definition.branchId
@@ -773,7 +771,7 @@ function entityOptionsForContent(
       continue;
     }
     if (field.entityType === "department") {
-      result[field.id] = authorityState.departments
+      result[field.id] = scopedAuthority.departments
         .filter(department => department.status === "active")
         .filter(
           department =>
@@ -793,7 +791,7 @@ function entityOptionsForContent(
       continue;
     }
     if (field.entityType === "course") {
-      result[field.id] = authorityState.courses
+      result[field.id] = scopedAuthority.courses
         .filter(course => course.status === "active")
         .map(course => ({
           id: course.id,
@@ -802,9 +800,9 @@ function entityOptionsForContent(
       continue;
     }
     if (field.entityType === "class" && actor) {
-      result[field.id] = authorityState.classGroups
+      result[field.id] = scopedAuthority.classGroups
         .filter(group => {
-          const run = authorityState.courseRuns.find(
+          const run = scopedAuthority.courseRuns.find(
             item => item.id === group.courseRunId
           );
           return (
@@ -820,20 +818,20 @@ function entityOptionsForContent(
       continue;
     }
     if (field.entityType === "attendance_record" && actor) {
-      const student = authorityState.students.find(
+      const student = scopedAuthority.students.find(
         item => item.userId === actor.userId
       );
-      result[field.id] = authorityState.attendance
+      result[field.id] = scopedAuthority.attendance
         .filter(
           record =>
             record.studentId === student?.id &&
             (record.status === "absent" || record.status === "late")
         )
         .map(record => {
-          const group = authorityState.classGroups.find(
+          const group = scopedAuthority.classGroups.find(
             item => item.id === record.classGroupId
           );
-          const session = authorityState.classSessions.find(
+          const session = scopedAuthority.classSessions.find(
             item => item.id === record.sessionId
           );
           const label = `${group?.name ?? "Class"} - ${session?.title ?? record.sessionId} - ${record.status}`;

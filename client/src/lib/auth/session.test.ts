@@ -10,7 +10,7 @@ vi.mock("@/lib/backend/api", () => ({
   signInRequest: vi.fn(),
 }));
 
-import { clearStoredSession } from "@/lib/auth/session";
+import { clearStoredSession, getActiveUser } from "@/lib/auth/session";
 
 const AUTH_SESSION_KEY = "nilelearn.auth.session";
 const ACTIVE_ROLE_KEY = "nilelearn.activeRole";
@@ -109,5 +109,36 @@ describe("clearStoredSession", () => {
     expect(storage.getItem(AUTH_SESSION_KEY)).not.toBeNull();
     expect(storage.getItem(ACTIVE_ROLE_KEY)).toBe("student");
     expect(window.dispatchEvent).not.toHaveBeenCalled();
+  });
+});
+
+describe("getActiveUser", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("uses the authenticated session identity instead of the role demo user", () => {
+    const storage = installWindow();
+    storage.setItem(
+      AUTH_SESSION_KEY,
+      JSON.stringify({
+        userId: "usr_teacher_e2e",
+        email: "teacher.e2e@nilelearn.local",
+        name: "E2E Teacher",
+        roles: ["teacher"],
+        activeRole: "teacher",
+        provider: "supabase",
+        expiresAt: "2099-01-01T00:00:00.000Z",
+      })
+    );
+
+    expect(getActiveUser()).toMatchObject({
+      id: "usr_teacher_e2e",
+      email: "teacher.e2e@nilelearn.local",
+      name: "E2E Teacher",
+      roles: ["teacher"],
+      activeRole: "teacher",
+      avatar: "ET",
+    });
   });
 });

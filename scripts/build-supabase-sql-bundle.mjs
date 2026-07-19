@@ -6,7 +6,11 @@ import { fileURLToPath } from "node:url";
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const outputPath = resolve(
   repositoryRoot,
-  "supabase/manual/000_nile_learn_staging_bootstrap.sql",
+  "supabase/manual/000_nile_learn_staging_bootstrap.sql"
+);
+const invitationOutputPath = resolve(
+  repositoryRoot,
+  "supabase/manual/018_transactional_email_account_invitation_bundle.sql"
 );
 
 const sections = [
@@ -25,6 +29,10 @@ const sections = [
   {
     title: "Phase 2B atomic session lifecycle",
     path: "supabase/migrations/20260710132000_phase2b_atomic_session_lifecycle.sql",
+  },
+  {
+    title: "Compatibility cross-instance sessions",
+    path: "supabase/migrations/20260718193000_compatibility_auth_sessions.sql",
   },
   {
     title: "Nile Forms foundation",
@@ -78,16 +86,26 @@ const sections = [
     title: "Phase 6H4 Moodle activity outcome observations",
     path: "supabase/manual/014_phase6h4_moodle_activity_outcome_observation.sql",
   },
+  {
+    title: "Transactional email delivery",
+    path: "supabase/manual/016_transactional_email_delivery.sql",
+  },
+  {
+    title: "Account invitation lifecycle",
+    path: "supabase/manual/017_account_invitation_lifecycle.sql",
+  },
 ];
+
+const invitationSections = sections.slice(-2);
 
 function sha256(value) {
   return createHash("sha256").update(value).digest("hex");
 }
 
-async function buildBundle() {
+async function renderSections(sourceSections) {
   const renderedSections = [];
 
-  for (const [index, section] of sections.entries()) {
+  for (const [index, section] of sourceSections.entries()) {
     const sourcePath = resolve(repositoryRoot, section.path);
     const source = (await readFile(sourcePath, "utf8")).trimEnd();
     const number = String(index + 1).padStart(2, "0");
@@ -101,9 +119,15 @@ async function buildBundle() {
         "-- ============================================================================",
         "",
         source,
-      ].join("\n"),
+      ].join("\n")
     );
   }
+
+  return renderedSections.join("\n\n");
+}
+
+async function buildBundle() {
+  const renderedSections = await renderSections(sections);
 
   const header = `-- Nile Learn single-file Supabase staging bootstrap
 --
@@ -116,16 +140,16 @@ async function buildBundle() {
 -- intentionally not idempotent and each section preserves its own transaction.
 -- A later section failure does not roll back sections already committed.
 --
--- INCLUDED: promoted migration-history SQL, core read-only verification, and
--- the accepted Phase 6 read-only Moodle projection packages in their proven
--- Supabase application order.
+-- INCLUDED: promoted migration-history SQL, core read-only verification,
+-- accepted Phase 6 read-only Moodle projection packages, and the disabled
+-- transactional-email/account-invitation foundation in dependency order.
 --
 -- EXCLUDED: fake/demo seeds, semantic assertion fixtures, rollback drills,
 -- provider credentials, Moodle writes, and Phase 13F1 normalized persistence.
 -- Phase 13F1 is explicitly local-only and is not approved for remote Supabase.
 --
--- This file changes schema only. It does not activate the Moodle repository or
--- change runtime environment variables.
+-- This file changes schema only. It does not activate Moodle, email delivery,
+-- account invitations, or any runtime environment variable.
 --
 -- Generated from ${sections.length} reviewed SQL sources.
 `;
@@ -140,10 +164,35 @@ select
   current_timestamp as completed_at;
 `;
 
-  return `${header}\n${renderedSections.join("\n\n")}\n\n${footer}`;
+  return `${header}\n${renderedSections}\n\n${footer}`;
+}
+
+async function buildInvitationBundle() {
+  const renderedSections = await renderSections(invitationSections);
+  const header = `-- Nile Learn transactional email and account invitation bundle
+--
+-- GENERATED FILE. Use this once after the main staging bootstrap has already
+-- been applied. It contains no credentials, demo users, or provider calls.
+-- Run both local static and portable-runtime invitation gates before applying.
+--
+-- The two included packages are rerunnable. Existing tables are preserved while
+-- functions, triggers, grants, and constraints are reconciled to this version.
+`;
+  const footer = `-- ============================================================================
+-- Account invitation bundle completion marker
+-- ============================================================================
+
+select
+  'Nile Learn transactional email and account invitations installed' as result,
+  current_database() as database_name,
+  current_timestamp as completed_at;
+`;
+
+  return `${header}\n${renderedSections}\n\n${footer}`;
 }
 
 const expected = await buildBundle();
+const expectedInvitation = await buildInvitationBundle();
 const checkOnly = process.argv.includes("--check");
 
 if (checkOnly) {
@@ -152,18 +201,37 @@ if (checkOnly) {
     current = await readFile(outputPath, "utf8");
   } catch {
     throw new Error(
-      "Supabase SQL bundle is missing. Run npm run build:supabase-sql-bundle.",
+      "Supabase SQL bundle is missing. Run npm run build:supabase-sql-bundle."
     );
   }
 
   if (current !== expected) {
     throw new Error(
-      "Supabase SQL bundle is stale. Run npm run build:supabase-sql-bundle.",
+      "Supabase SQL bundle is stale. Run npm run build:supabase-sql-bundle."
     );
   }
 
-  console.log(`Supabase SQL bundle is current (${sections.length} sources).`);
+  let currentInvitation;
+  try {
+    currentInvitation = await readFile(invitationOutputPath, "utf8");
+  } catch {
+    throw new Error(
+      "Account invitation SQL bundle is missing. Run npm run build:supabase-sql-bundle."
+    );
+  }
+  if (currentInvitation !== expectedInvitation) {
+    throw new Error(
+      "Account invitation SQL bundle is stale. Run npm run build:supabase-sql-bundle."
+    );
+  }
+
+  console.log(
+    `Supabase SQL bundles are current (${sections.length} bootstrap sources).`
+  );
 } else {
   await writeFile(outputPath, expected, "utf8");
-  console.log(`Wrote ${outputPath} from ${sections.length} sources.`);
+  await writeFile(invitationOutputPath, expectedInvitation, "utf8");
+  console.log(
+    `Wrote Supabase bootstrap and invitation bundles from ${sections.length} sources.`
+  );
 }

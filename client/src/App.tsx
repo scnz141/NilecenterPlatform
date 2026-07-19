@@ -261,6 +261,9 @@ function Router() {
         <Route path="/auth/reset-password">
           <AuthFlowPage mode="reset-password" />
         </Route>
+        <Route path="/auth/accept-invitation">
+          <AuthFlowPage mode="accept-invitation" />
+        </Route>
         <Route path="/auth/select-role">
           <AuthFlowPage mode="select-role" />
         </Route>

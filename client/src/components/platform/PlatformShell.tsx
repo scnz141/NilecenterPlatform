@@ -393,16 +393,34 @@ export default function PlatformShell({ role, children, title }: ShellProps) {
   const user = getDemoUser(role);
   const meta = roleMeta[role];
   const inspiration = roleInspirations[role];
+  const userScopeLabel = useMemo(() => {
+    const state = platformStore.getState();
+    const platformUser = state.users.find(item => item.id === user.id);
+    if (!platformUser) return meta.branchLabel;
+
+    const branch = state.branches.find(
+      item => item.id === platformUser.branchId
+    );
+    const department = state.departments.find(
+      item => item.id === platformUser.departmentId
+    );
+
+    if (role === "headofdepartment") {
+      return department?.name ?? branch?.name ?? meta.branchLabel;
+    }
+    if (role === "superadmin") return meta.branchLabel;
+    return branch?.name ?? department?.name ?? meta.branchLabel;
+  }, [meta.branchLabel, role, user.id]);
   const [locale, setLocale] = useState<Locale>(() => {
     if (typeof window === "undefined") return "en";
     const saved = window.localStorage.getItem("nilelearn.locale");
     return isSupportedLocale(saved) ? saved : "en";
   });
   const scopeConfig = useMemo(
-    () => getScopeConfig(role, meta.branchLabel),
-    [meta.branchLabel, role]
+    () => getScopeConfig(role, userScopeLabel),
+    [role, userScopeLabel]
   );
-  const scopeValue = scopeConfig.options[0] ?? meta.branchLabel;
+  const scopeValue = scopeConfig.options[0] ?? userScopeLabel;
   const sidebar = getSidebarForRole(role);
   const sidebarSections = useMemo(
     () => groupSidebarItems(role, sidebar),

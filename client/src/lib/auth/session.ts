@@ -1,5 +1,5 @@
 import {
-  demoUsers,
+  getDemoUser,
   roleMeta,
   type DemoUser,
   type Role,
@@ -118,7 +118,7 @@ export async function refreshServerSession() {
 export function getActiveUser(): DemoUser | null {
   const role = getStoredRole();
   if (!role) return null;
-  return demoUsers.find(user => user.activeRole === role) ?? null;
+  return getDemoUser(role);
 }
 
 export function canAccessRole(requiredRole: Role) {

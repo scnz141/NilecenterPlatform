@@ -511,6 +511,26 @@ if has_script "check:phase6h4-moodle-activity-outcome:runtime"; then
     run_package_script check:phase6h4-moodle-activity-outcome:runtime
 fi
 
+if has_script "check:email-delivery"; then
+  run_step "Transactional email schema contract" \
+    run_package_script check:email-delivery
+fi
+
+if has_script "check:email-delivery:runtime"; then
+  run_step "Transactional email PostgreSQL runtime" \
+    run_package_script check:email-delivery:runtime
+fi
+
+if has_script "check:account-invitations"; then
+  run_step "Account invitation schema contract" \
+    run_package_script check:account-invitations
+fi
+
+if has_script "check:account-invitations:runtime"; then
+  run_step "Account invitation PostgreSQL runtime" \
+    run_package_script check:account-invitations:runtime
+fi
+
 if has_script "check:phase5-staging-db:static"; then
   run_step "Phase 5 staging database preflight" \
     run_package_script check:phase5-staging-db:static

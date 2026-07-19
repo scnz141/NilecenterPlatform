@@ -85,6 +85,8 @@ const contractCommands = [
     "Phase 6H4 activity outcome schema",
     ["run", "check:phase6h4-moodle-activity-outcome"],
   ],
+  ["Transactional email schema", ["run", "check:email-delivery"]],
+  ["Account invitation schema", ["run", "check:account-invitations"]],
 ];
 const sharedImplementationCommands = [
   [
@@ -123,6 +125,8 @@ const sharedImplementationCommands = [
     "Phase 6H4 activity outcome runtime",
     ["run", "check:phase6h4-moodle-activity-outcome:runtime"],
   ],
+  ["Transactional email runtime", ["run", "check:email-delivery:runtime"]],
+  ["Account invitation runtime", ["run", "check:account-invitations:runtime"]],
   ["TypeScript", ["run", "check"]],
 ];
 const completeImplementationCommands = [
