@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { ArrowRight, Plus, Search } from "lucide-react";
 import { Link } from "wouter";
+import OperationalDirectoryTable from "@/components/platform/OperationalDirectoryTable";
 import PlatformShell from "@/components/platform/PlatformShell";
 import { WorkspaceLayout } from "@/components/platform/PlatformLayouts";
 import {
@@ -118,23 +119,27 @@ export default function HodDirectoryPage({ view }: { view: HodDirectoryView }) {
   );
   const scopedRunIds = new Set(scopedRuns.map(run => run.id));
   const copy = viewCopy[view];
-  const primaryAction = view === "classes" ? (
-    <div className="platform-page-actions">
-      <Link className="platform-secondary-button" href="/app/hod/schedule">
-        Open schedule
+  const primaryAction =
+    view === "classes" ? (
+      <div className="platform-page-actions">
+        <Link className="platform-secondary-button" href="/app/hod/schedule">
+          Open schedule
+          <ArrowRight size={15} />
+        </Link>
+        <Link
+          className="platform-primary-button"
+          href="/app/hod/classes/runs/new"
+        >
+          <Plus size={15} />
+          New course run
+        </Link>
+      </div>
+    ) : copy.action ? (
+      <Link className="platform-primary-button" href={actionHref(view)}>
+        {copy.action}
         <ArrowRight size={15} />
       </Link>
-      <Link className="platform-primary-button" href="/app/hod/classes/runs/new">
-        <Plus size={15} />
-        New course run
-      </Link>
-    </div>
-  ) : copy.action ? (
-    <Link className="platform-primary-button" href={actionHref(view)}>
-      {copy.action}
-      <ArrowRight size={15} />
-    </Link>
-  ) : null;
+    ) : null;
 
   const rows = useMemo<DirectoryRow[]>(() => {
     const departmentName = (departmentId?: string) =>
@@ -310,37 +315,62 @@ export default function HodDirectoryPage({ view }: { view: HodDirectoryView }) {
           <DataTableCard
             title={copy.title}
             subtitle={`${filteredRows.length} records`}
+            className="platform-directory-card hod-directory-card-v2"
           >
             <div
-              className="hod-directory-list"
+              className="platform-directory-table-wrap"
               data-testid={`hod-${view}-list`}
             >
               {filteredRows.length ? (
-                filteredRows.map(row => (
-                  <article key={row.id}>
-                    <div className="hod-directory-list-copy">
-                      <span>{row.detail}</span>
-                      <strong>{row.name}</strong>
-                      <p>{row.scope}</p>
-                    </div>
-                    <div className="hod-directory-list-meta">
-                      <StatusBadge tone={statusTone(row.status)}>
-                        {humanize(row.status)}
-                      </StatusBadge>
-                      {row.href ? (
-                        <Link
-                          className="simple-portal-row-action"
-                          href={row.href}
-                        >
-                          {row.metric}
-                          <ArrowRight size={14} />
-                        </Link>
-                      ) : (
-                        <small>{row.metric}</small>
-                      )}
-                    </div>
-                  </article>
-                ))
+                <OperationalDirectoryTable
+                  rows={filteredRows}
+                  rowKey={row => row.id}
+                  columns={[
+                    {
+                      key: "name",
+                      label: "Name",
+                      className: "platform-directory-col-name",
+                      render: row => (
+                        <div className="platform-directory-primary">
+                          <strong>{row.name}</strong>
+                        </div>
+                      ),
+                    },
+                    {
+                      key: "detail",
+                      label: "Details",
+                      className: "platform-directory-col-detail",
+                      render: row => row.detail,
+                    },
+                    {
+                      key: "scope",
+                      label: "Scope",
+                      className: "platform-directory-col-scope",
+                      render: row => row.scope,
+                    },
+                    {
+                      key: "status",
+                      label: "Status",
+                      className: "platform-directory-col-status",
+                      render: row => (
+                        <StatusBadge tone={statusTone(row.status)}>
+                          {humanize(row.status)}
+                        </StatusBadge>
+                      ),
+                    },
+                    {
+                      key: "metric",
+                      label: "Summary",
+                      className: "platform-directory-col-metric",
+                      render: row => row.metric,
+                    },
+                  ]}
+                  action={{
+                    href: row => row.href,
+                    label: row => row.name,
+                    title: row => row.metric,
+                  }}
+                />
               ) : (
                 <div className="platform-empty-state">
                   <strong>{copy.empty}</strong>

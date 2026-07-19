@@ -1,0 +1,405 @@
+.platform-directory-card {
+  overflow: hidden;
+  border-radius: 8px;
+  background: var(--card);
+  box-shadow: none;
+}
+
+.platform-directory-card:hover {
+  transform: none;
+  border-color: var(--border);
+  box-shadow: none;
+}
+
+.platform-directory-card > .platform-card-title {
+  min-height: 58px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+  background: color-mix(in srgb, var(--card) 96%, var(--muted));
+}
+
+.platform-directory-table-wrap {
+  width: 100%;
+  overflow-x: auto;
+}
+
+.platform-directory-table {
+  min-width: 820px;
+  table-layout: fixed;
+}
+
+.platform-directory-table thead {
+  background: color-mix(in srgb, var(--muted) 58%, var(--card));
+}
+
+.platform-directory-table th {
+  padding-block: 11px;
+  color: color-mix(in srgb, var(--muted-foreground) 88%, var(--foreground));
+  font-size: 10px;
+  letter-spacing: 0;
+  text-align: start;
+}
+
+.platform-directory-table td {
+  height: 62px;
+  padding-block: 10px;
+  overflow: hidden;
+  color: color-mix(in srgb, var(--foreground) 88%, var(--muted-foreground));
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.platform-directory-table tbody tr {
+  transition: background-color 150ms ease;
+}
+
+.platform-directory-table tbody tr:hover {
+  background: color-mix(in srgb, var(--role-tint) 20%, var(--card));
+}
+
+.platform-directory-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.platform-directory-table td:last-child {
+  overflow: visible;
+  text-overflow: clip;
+}
+
+.platform-directory-table .platform-status {
+  text-transform: capitalize;
+}
+
+.platform-directory-col-name {
+  width: 24%;
+}
+
+.platform-directory-col-detail {
+  width: 19%;
+}
+
+.platform-directory-col-scope {
+  width: 25%;
+}
+
+.platform-directory-col-status {
+  width: 12%;
+}
+
+.platform-directory-col-metric {
+  width: 14%;
+}
+
+.platform-directory-col-action {
+  width: 6%;
+}
+
+.platform-directory-primary {
+  min-width: 0;
+}
+
+.platform-directory-primary strong {
+  display: block;
+  overflow: hidden;
+  color: var(--foreground);
+  font-size: 12.5px;
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.platform-directory-person {
+  min-width: 0;
+  color: var(--foreground);
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.platform-directory-person > span:first-child {
+  flex: 0 0 32px;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: var(--role-tint);
+  color: var(--role-color);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: 900;
+}
+
+.platform-directory-person > span:last-child {
+  min-width: 0;
+}
+
+.platform-directory-person strong,
+.platform-directory-person small {
+  display: block;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.platform-directory-person strong {
+  color: var(--foreground);
+  font-size: 12.5px;
+  line-height: 1.2;
+}
+
+.platform-directory-person small {
+  margin-top: 2px;
+  color: var(--muted-foreground);
+  font-size: 10.5px;
+  line-height: 1.3;
+}
+
+.registrar-directory-table-v2 .platform-directory-col-person {
+  width: 27%;
+}
+
+.registrar-directory-table-v2 .platform-directory-col-learning {
+  width: 24%;
+}
+
+.registrar-directory-table-v2 .platform-directory-col-class {
+  width: 16%;
+}
+
+.registrar-directory-table-v2 .platform-directory-col-branch {
+  width: 14%;
+}
+
+.registrar-directory-table-v2 .platform-directory-col-status {
+  width: 12%;
+}
+
+.registrar-directory-table-v2 .platform-directory-col-action {
+  width: 7%;
+}
+
+.platform-directory-open {
+  width: 36px;
+  min-width: 36px;
+  min-height: 36px;
+  margin-inline-start: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--card);
+  color: var(--foreground);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-size: 12px;
+  font-weight: 820;
+  text-decoration: none;
+  transition:
+    border-color 150ms ease,
+    background-color 150ms ease,
+    color 150ms ease;
+}
+
+.platform-directory-open:hover {
+  border-color: color-mix(in srgb, var(--role-color) 28%, var(--border));
+  background: color-mix(in srgb, var(--role-tint) 34%, var(--card));
+  color: var(--role-color);
+}
+
+.platform-directory-open:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--role-color) 28%, transparent);
+  outline-offset: 2px;
+}
+
+.platform-directory-open > span {
+  display: none;
+}
+
+.platform-directory-no-action {
+  width: 36px;
+  min-height: 36px;
+  margin-inline-start: auto;
+  color: var(--muted-foreground);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+[dir="rtl"] .platform-directory-open svg {
+  transform: scaleX(-1);
+}
+
+@media (max-width: 1080px) and (min-width: 901px) {
+  .platform-directory-table {
+    min-width: 700px;
+  }
+
+  :is(.hod-directory-card-v2, .branch-directory-card-v2)
+    .platform-directory-table
+    :is(th:nth-child(3), td:nth-child(3)) {
+    display: none;
+  }
+
+  .platform-directory-col-name {
+    width: 28%;
+  }
+
+  .platform-directory-col-detail {
+    width: 24%;
+  }
+
+  .platform-directory-col-status {
+    width: 15%;
+  }
+
+  .platform-directory-col-metric {
+    width: 24%;
+  }
+
+  .platform-directory-col-action {
+    width: 9%;
+  }
+
+  .registrar-directory-table-v2 {
+    min-width: 700px;
+  }
+
+  .registrar-directory-table-v2 :is(th:nth-child(4), td:nth-child(4)) {
+    display: none;
+  }
+}
+
+@media (max-width: 900px) {
+  .platform-directory-card {
+    overflow: visible;
+    border: 0;
+    background: transparent;
+  }
+
+  .platform-directory-card > .platform-card-title {
+    min-height: 56px;
+    margin-bottom: 8px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--card);
+  }
+
+  .platform-directory-table-wrap {
+    overflow: visible;
+  }
+
+  .platform-directory-table,
+  .platform-directory-table thead,
+  .platform-directory-table tbody,
+  .platform-directory-table tr,
+  .platform-directory-table td {
+    width: 100%;
+    min-width: 0;
+    display: block;
+  }
+
+  .platform-directory-table {
+    min-width: 0;
+  }
+
+  .platform-directory-table thead {
+    display: none;
+  }
+
+  .platform-directory-table tbody {
+    display: grid;
+    gap: 8px;
+  }
+
+  .platform-directory-table tr {
+    overflow: hidden;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--card);
+  }
+
+  .platform-directory-table tbody tr:hover {
+    background: var(--card);
+  }
+
+  .platform-directory-table td {
+    height: auto;
+    min-height: 42px;
+    padding: 9px 12px;
+    border-bottom: 1px solid var(--border);
+    display: grid;
+    grid-template-columns: 88px minmax(0, 1fr);
+    align-items: center;
+    gap: 12px;
+    overflow: visible;
+    text-overflow: clip;
+    white-space: normal;
+  }
+
+  .platform-directory-table td::before {
+    content: attr(data-label);
+    color: var(--muted-foreground);
+    font-size: 10px;
+    font-weight: 850;
+    text-transform: uppercase;
+  }
+
+  .platform-directory-table td:first-child {
+    min-height: 58px;
+    padding-block: 11px;
+    grid-template-columns: 1fr;
+  }
+
+  .platform-directory-table td:first-child::before {
+    display: none;
+  }
+
+  .platform-directory-table td:last-child {
+    border-bottom: 0;
+  }
+
+  .platform-directory-primary strong,
+  .platform-directory-person strong,
+  .platform-directory-person small {
+    overflow: visible;
+    text-overflow: clip;
+    white-space: normal;
+  }
+
+  .platform-directory-open {
+    width: 100%;
+    min-width: 0;
+    margin-inline-start: 0;
+    padding-inline: 11px;
+    justify-content: space-between;
+  }
+
+  .platform-directory-open > span {
+    display: inline;
+  }
+
+  .platform-directory-no-action {
+    width: auto;
+    min-height: 24px;
+    margin-inline-start: 0;
+    justify-content: flex-start;
+  }
+}
+
+@media (max-width: 520px) {
+  .platform-directory-table td {
+    grid-template-columns: 78px minmax(0, 1fr);
+    gap: 10px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .platform-directory-table tbody tr,
+  .platform-directory-open {
+    transition: none;
+  }
+}

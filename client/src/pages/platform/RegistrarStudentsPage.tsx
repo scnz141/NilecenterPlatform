@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { Link } from "wouter";
+import OperationalDirectoryTable from "@/components/platform/OperationalDirectoryTable";
 import PlatformShell from "@/components/platform/PlatformShell";
 import PendingMediaField from "@/components/platform/PendingMediaField";
 import {
@@ -67,6 +68,16 @@ function isMinorAgeGroup(ageGroup: string) {
 function humanize(value?: string) {
   if (!value) return "Not set";
   return value.replaceAll("_", " ").replaceAll("-", " ");
+}
+
+function initials(value: string) {
+  return value
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map(part => part[0])
+    .join("")
+    .toUpperCase();
 }
 
 function statusTone(status: string): "green" | "amber" | "red" | "slate" {
@@ -804,56 +815,78 @@ export default function RegistrarStudentsPage({
     <DataTableCard
       title="Student records"
       subtitle={`${studentRows.length} student(s)`}
-      className="registrar-record-card registrar-students-record-card"
+      className="registrar-record-card registrar-students-record-card platform-directory-card registrar-directory-card-v2"
     >
       <div
-        className="registrar-record-list registrar-students-record-list"
+        className="platform-directory-table-wrap"
         data-testid="registrar-students-list"
       >
-        {studentRows.map(({ student, user, branch, course, classGroup }) => (
-          <article
-            key={student.id}
-            className="registrar-record-row registrar-student-record"
-            data-student-id={student.id}
-          >
-            <div className="registrar-record-primary">
-              <strong>{user?.name ?? student.id}</strong>
-              <span>{user?.email ?? "No email"}</span>
-            </div>
-            <dl className="registrar-record-facts">
-              <div>
-                <dt>Learning</dt>
-                <dd>
-                  {course?.title ?? student.courseInterest ?? "Course pending"}
-                </dd>
-              </div>
-              <div>
-                <dt>Class</dt>
-                <dd>{classGroup?.name ?? "Class pending"}</dd>
-              </div>
-              <div>
-                <dt>Branch</dt>
-                <dd>{branch?.name ?? "No branch"}</dd>
-              </div>
-            </dl>
-            <StatusBadge tone={statusTone(student.status)}>
-              {humanize(student.status)}
-            </StatusBadge>
-            <Link
-              className="platform-row-link"
-              href={`/app/registrar/students/${student.id}`}
-            >
-              Open
-              <ArrowRight size={13} />
-            </Link>
-          </article>
-        ))}
-        {!studentRows.length ? (
+        {studentRows.length ? (
+          <OperationalDirectoryTable
+            rows={studentRows}
+            rowKey={row => row.student.id}
+            className="registrar-directory-table-v2"
+            getRowProps={row => ({
+              "data-student-id": row.student.id,
+            })}
+            columns={[
+              {
+                key: "student",
+                label: "Student",
+                className: "platform-directory-col-person",
+                render: ({ student, user }) => (
+                  <div className="platform-directory-person">
+                    <span aria-hidden="true">
+                      {initials(user?.name ?? student.id)}
+                    </span>
+                    <span>
+                      <strong>{user?.name ?? student.id}</strong>
+                      <small>{user?.email ?? "No email"}</small>
+                    </span>
+                  </div>
+                ),
+              },
+              {
+                key: "learning",
+                label: "Learning",
+                className: "platform-directory-col-learning",
+                render: ({ student, course }) =>
+                  course?.title ?? student.courseInterest ?? "Course pending",
+              },
+              {
+                key: "class",
+                label: "Class",
+                className: "platform-directory-col-class",
+                render: ({ classGroup }) => classGroup?.name ?? "Class pending",
+              },
+              {
+                key: "branch",
+                label: "Branch",
+                className: "platform-directory-col-branch",
+                render: ({ branch }) => branch?.name ?? "No branch",
+              },
+              {
+                key: "status",
+                label: "Status",
+                className: "platform-directory-col-status",
+                render: ({ student }) => (
+                  <StatusBadge tone={statusTone(student.status)}>
+                    {humanize(student.status)}
+                  </StatusBadge>
+                ),
+              },
+            ]}
+            action={{
+              href: ({ student }) => `/app/registrar/students/${student.id}`,
+              label: ({ student, user }) => user?.name ?? student.id,
+            }}
+          />
+        ) : (
           <div className="platform-empty-state">
             <strong>No students found</strong>
             <span>Try a different search term.</span>
           </div>
-        ) : null}
+        )}
       </div>
     </DataTableCard>
   );
