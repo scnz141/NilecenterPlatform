@@ -1,6 +1,7 @@
 import { createRoot } from "react-dom/client";
 import { MotionConfig } from "framer-motion";
 import App from "./App";
+import { installStaleDeploymentRecovery } from "./lib/runtime/deploymentRecovery";
 import "./index.css";
 import "./styles/teacher-delivery-v3.css";
 import "./styles/portal-ui-v3.css";
@@ -24,6 +25,8 @@ import "./styles/student-v5.css";
 import "./styles/directories-v2.css";
 import "./styles/messages-v1.css";
 import "./styles/auth-v2.css";
+
+installStaleDeploymentRecovery();
 
 createRoot(document.getElementById("root")!).render(
   <MotionConfig reducedMotion="user">
