@@ -155,11 +155,12 @@ export function validateAuthConfiguration() {
     process.env.NODE_ENV === "production" &&
     demoEnabled &&
     !localOnlySessionRuntime() &&
-    clean(process.env.NILE_SESSION_REPOSITORY).toLowerCase() !==
-      "supabase_compatibility"
+    !["supabase_compatibility", "supabase_hybrid"].includes(
+      clean(process.env.NILE_SESSION_REPOSITORY).toLowerCase()
+    )
   ) {
     throw new Error(
-      "Production demo authentication requires NILE_SESSION_REPOSITORY=supabase_compatibility so sessions survive server restarts and multiple instances."
+      "Production demo authentication requires a durable compatibility-capable Supabase session repository so sessions survive server restarts and multiple instances."
     );
   }
 }
@@ -247,7 +248,10 @@ async function createSession(
     createdAt,
     expiresAt,
     authorizationModel:
-      repository.kind === "supabase" ? "normalized" : "snapshot",
+      repository.kind === "supabase" ||
+      (repository.kind === "supabase_hybrid" && input.provider === "supabase")
+        ? "normalized"
+        : "snapshot",
     ...input,
   };
   const persistedTiming = await repository.create(session);
@@ -350,7 +354,10 @@ async function signInWithSupabase(
   if (!user) throw new AuthenticationProviderUnavailableError();
 
   const repository = getSessionRepository();
-  if (repository.kind === "supabase") {
+  if (
+    repository.kind === "supabase" ||
+    repository.kind === "supabase_hybrid"
+  ) {
     let identity;
     try {
       identity = await repository.resolveSupabaseIdentity?.(

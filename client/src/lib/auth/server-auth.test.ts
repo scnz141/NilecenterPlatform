@@ -156,10 +156,13 @@ describe("server demo auth", () => {
     delete process.env.QA_PLATFORM_STATE_LOCAL_ONLY;
 
     expect(() => validateAuthConfiguration()).toThrow(
-      "requires NILE_SESSION_REPOSITORY=supabase_compatibility"
+      "requires a durable compatibility-capable Supabase session repository"
     );
 
     process.env.NILE_SESSION_REPOSITORY = "supabase_compatibility";
+    expect(() => validateAuthConfiguration()).not.toThrow();
+
+    process.env.NILE_SESSION_REPOSITORY = "supabase_hybrid";
     expect(() => validateAuthConfiguration()).not.toThrow();
   });
 

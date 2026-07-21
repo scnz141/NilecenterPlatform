@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ServerSession } from "../../../../server/auth";
 import {
   createSupabaseCompatibilitySessionRepository,
+  createSupabaseHybridSessionRepository,
   createSupabaseSessionRepository,
   getSessionRepository,
   resetDefaultSessionRepository,
@@ -98,6 +99,21 @@ describe("session repository selection", () => {
         NILE_SESSION_REPOSITORY: "supabase_compatibility",
       } as NodeJS.ProcessEnv)
     ).toThrow("requires SUPABASE_URL and a server-only secret key");
+  });
+
+  it("selects the hybrid adapter only with complete server credentials", () => {
+    expect(() =>
+      getSessionRepository({
+        NILE_SESSION_REPOSITORY: "supabase_hybrid",
+      } as NodeJS.ProcessEnv)
+    ).toThrow("requires SUPABASE_URL and a server-only secret key");
+
+    expect(
+      getSessionRepository({
+        ...testEnv,
+        NILE_SESSION_REPOSITORY: "supabase_hybrid",
+      }).kind
+    ).toBe("supabase_hybrid");
   });
 
   it("classifies repository network failures as temporary unavailability", async () => {
@@ -475,5 +491,87 @@ describe("Supabase session repository", () => {
     await expect(deniedRepository.create(testSession())).rejects.toBeInstanceOf(
       SessionAuthorityDeniedError
     );
+  });
+});
+
+describe("Supabase hybrid session repository", () => {
+  it("routes normalized and compatibility session writes to their authoritative stores", async () => {
+    const adminFetch = vi.fn(async (path: string) => {
+      if (path === "rpc/create_auth_session_with_evidence") {
+        return jsonResponse([
+          {
+            session_id: "60000000-0000-4000-8000-000000000001",
+            command_id: "70000000-0000-4000-8000-000000000001",
+            session_created_at: fixedNow.toISOString(),
+            session_expires_at: "2026-07-10T18:00:00.000Z",
+            replayed: false,
+          },
+        ]);
+      }
+      return new Response(null, { status: 201 });
+    });
+    const repository = createSupabaseHybridSessionRepository({
+      env: testEnv,
+      adminFetch,
+      now: () => fixedNow,
+    });
+
+    await repository.create(testSession());
+    await repository.create(
+      testSession({
+        id: "opaque-demo-token",
+        userId: "usr_teacher_demo",
+        authUserId: undefined,
+        activeRoleGrantId: undefined,
+        branchIds: undefined,
+        departmentIds: undefined,
+        provider: "demo",
+        authorizationModel: "snapshot",
+      })
+    );
+
+    expect(adminFetch.mock.calls[0][0]).toBe(
+      "rpc/create_auth_session_with_evidence"
+    );
+    expect(adminFetch.mock.calls[1][0]).toBe(
+      "compatibility_auth_sessions"
+    );
+  });
+
+  it("resolves normalized sessions first and falls back only when no normalized token exists", async () => {
+    const adminFetch = vi.fn(async (path: string) => {
+      if (path === "rpc/resolve_auth_session_authority") {
+        return jsonResponse([]);
+      }
+      if (path.startsWith("compatibility_auth_sessions?")) {
+        return jsonResponse([
+          {
+            user_id: "usr_teacher_demo",
+            email: "teacher.demo@nilelearn.local",
+            full_name: "Teacher Demo",
+            roles: ["teacher"],
+            active_role: "teacher",
+            provider: "demo",
+            created_at: "2026-07-10T05:00:00.000Z",
+            expires_at: "2026-07-10T17:00:00.000Z",
+          },
+        ]);
+      }
+      throw new Error(`Unexpected path: ${path}`);
+    });
+    const repository = createSupabaseHybridSessionRepository({
+      env: testEnv,
+      adminFetch,
+      now: () => fixedNow,
+    });
+
+    await expect(repository.get("opaque-demo-token")).resolves.toMatchObject({
+      userId: "usr_teacher_demo",
+      authorizationModel: "snapshot",
+    });
+    expect(adminFetch.mock.calls.map(([path]) => path)).toEqual([
+      "rpc/resolve_auth_session_authority",
+      expect.stringContaining("compatibility_auth_sessions?"),
+    ]);
   });
 });

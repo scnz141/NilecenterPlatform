@@ -31,7 +31,11 @@ export type PersistedSessionTiming = {
 };
 
 export type SessionRepository = {
-  readonly kind: "memory" | "supabase" | "supabase_compatibility";
+  readonly kind:
+    | "memory"
+    | "supabase"
+    | "supabase_compatibility"
+    | "supabase_hybrid";
   create(session: ServerSession): Awaitable<void | PersistedSessionTiming>;
   get(sessionToken: string): Awaitable<ServerSession | null>;
   delete(sessionToken: string): Awaitable<void>;
@@ -593,10 +597,44 @@ export function createSupabaseSessionRepository(
   };
 }
 
+export function createSupabaseHybridSessionRepository(
+  options: SupabaseSessionRepositoryOptions = {}
+): SessionRepository {
+  const normalized = createSupabaseSessionRepository(options);
+  const compatibility = createSupabaseCompatibilitySessionRepository(options);
+
+  return {
+    kind: "supabase_hybrid",
+    resolveSupabaseIdentity(authUserId, requestedRole) {
+      return normalized.resolveSupabaseIdentity!(authUserId, requestedRole);
+    },
+    create(session) {
+      return session.authorizationModel === "normalized"
+        ? normalized.create(session)
+        : compatibility.create(session);
+    },
+    async get(sessionToken) {
+      const normalizedSession = await normalized.get(sessionToken);
+      return normalizedSession ?? compatibility.get(sessionToken);
+    },
+    async delete(sessionToken) {
+      const session = await this.get(sessionToken);
+      if (!session) return;
+      await (session.authorizationModel === "normalized"
+        ? normalized.delete(sessionToken)
+        : compatibility.delete(sessionToken));
+    },
+    clear() {
+      throw new Error("Hybrid sessions cannot be cleared in bulk.");
+    },
+  };
+}
+
 const defaultMemoryRepository = createMemorySessionRepository();
 let repositoryOverride: SessionRepository | null = null;
 let defaultSupabaseRepository: SessionRepository | null = null;
 let defaultSupabaseCompatibilityRepository: SessionRepository | null = null;
+let defaultSupabaseHybridRepository: SessionRepository | null = null;
 
 export function getSessionRepository(env: NodeJS.ProcessEnv = process.env) {
   if (repositoryOverride) return repositoryOverride;
@@ -611,8 +649,13 @@ export function getSessionRepository(env: NodeJS.ProcessEnv = process.env) {
       createSupabaseCompatibilitySessionRepository({ env });
     return defaultSupabaseCompatibilityRepository;
   }
+  if (mode === "supabase_hybrid") {
+    defaultSupabaseHybridRepository ??=
+      createSupabaseHybridSessionRepository({ env });
+    return defaultSupabaseHybridRepository;
+  }
   throw new SessionRepositoryUnavailableError(
-    `Unsupported NILE_SESSION_REPOSITORY value: ${mode}. Use memory, supabase_compatibility, or supabase.`
+    `Unsupported NILE_SESSION_REPOSITORY value: ${mode}. Use memory, supabase_compatibility, supabase_hybrid, or supabase.`
   );
 }
 
@@ -634,6 +677,7 @@ export function resetDefaultSessionRepository() {
   defaultMemoryRepository.clear();
   defaultSupabaseRepository = null;
   defaultSupabaseCompatibilityRepository = null;
+  defaultSupabaseHybridRepository = null;
   repositoryOverride = null;
 }
 

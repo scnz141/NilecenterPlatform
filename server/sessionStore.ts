@@ -1,5 +1,6 @@
 export {
   createMemorySessionRepository,
+  createSupabaseHybridSessionRepository,
   createSupabaseSessionRepository,
   getSessionRepository,
   getSessionStore,

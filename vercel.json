@@ -4,7 +4,7 @@
   "outputDirectory": "dist",
   "cleanUrls": true,
   "env": {
-    "NILE_SESSION_REPOSITORY": "supabase_compatibility",
+    "NILE_SESSION_REPOSITORY": "supabase_hybrid",
     "NILE_COMPATIBILITY_SESSION_TABLE": "compatibility_auth_sessions",
     "NILE_PLATFORM_STATE_REQUIRE_SUPABASE": "1"
   },
