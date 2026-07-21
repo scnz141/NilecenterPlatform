@@ -1,6 +1,6 @@
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { Route, Switch } from "wouter";
+import { Redirect, Route, Switch } from "wouter";
 import { Fragment, lazy, Suspense } from "react";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { ThemeProvider } from "./contexts/ThemeContext";
@@ -899,6 +899,12 @@ function Router() {
           </ProtectedRoute>
         </Route>
 
+        <Route path="/app/admin/settings/profile">
+          <ProtectedRoute role="superadmin" pageId="profile">
+            <ProfileWorkspace role="superadmin" />
+          </ProtectedRoute>
+        </Route>
+
         <Route path="/app/admin/integrations">
           <ProtectedRoute role="superadmin" pageId="integrations">
             <AdminIntegrationsPage />
@@ -1448,6 +1454,12 @@ function Router() {
 
         <Route path="/app/student/profile">
           <ProtectedRoute role="student" pageId="profile">
+            <Redirect to="/app/student/settings" replace />
+          </ProtectedRoute>
+        </Route>
+
+        <Route path="/app/student/settings">
+          <ProtectedRoute role="student" pageId="profile">
             <ProfileWorkspace role="student" />
           </ProtectedRoute>
         </Route>
@@ -1503,11 +1515,23 @@ function Router() {
 
         <Route path="/app/teacher/profile">
           <ProtectedRoute role="teacher" pageId="profile">
+            <Redirect to="/app/teacher/settings" replace />
+          </ProtectedRoute>
+        </Route>
+
+        <Route path="/app/teacher/settings">
+          <ProtectedRoute role="teacher" pageId="profile">
             <ProfileWorkspace role="teacher" />
           </ProtectedRoute>
         </Route>
 
         <Route path="/app/registrar/profile">
+          <ProtectedRoute role="registrar" pageId="profile">
+            <Redirect to="/app/registrar/settings/profile" replace />
+          </ProtectedRoute>
+        </Route>
+
+        <Route path="/app/registrar/settings/profile">
           <ProtectedRoute role="registrar" pageId="profile">
             <ProfileWorkspace role="registrar" />
           </ProtectedRoute>
@@ -1515,11 +1539,23 @@ function Router() {
 
         <Route path="/app/hod/profile">
           <ProtectedRoute role="headofdepartment" pageId="profile">
+            <Redirect to="/app/hod/settings/profile" replace />
+          </ProtectedRoute>
+        </Route>
+
+        <Route path="/app/hod/settings/profile">
+          <ProtectedRoute role="headofdepartment" pageId="profile">
             <ProfileWorkspace role="headofdepartment" />
           </ProtectedRoute>
         </Route>
 
         <Route path="/app/branch/profile">
+          <ProtectedRoute role="branchadmin" pageId="profile">
+            <Redirect to="/app/branch/settings/profile" replace />
+          </ProtectedRoute>
+        </Route>
+
+        <Route path="/app/branch/settings/profile">
           <ProtectedRoute role="branchadmin" pageId="profile">
             <ProfileWorkspace role="branchadmin" />
           </ProtectedRoute>
@@ -1527,7 +1563,7 @@ function Router() {
 
         <Route path="/app/admin/profile">
           <ProtectedRoute role="superadmin" pageId="profile">
-            <ProfileWorkspace role="superadmin" />
+            <Redirect to="/app/admin/settings/profile" replace />
           </ProtectedRoute>
         </Route>
 

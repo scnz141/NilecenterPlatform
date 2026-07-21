@@ -157,7 +157,7 @@ requireText(
 );
 requireText(
   masterPlan,
-  "The only approved next Nile Forms slice is **Phase 14B:",
+  "Phase 14B are accepted local foundations. No further Nile Forms workflow",
   "current Forms checkpoint"
 );
 requireText(

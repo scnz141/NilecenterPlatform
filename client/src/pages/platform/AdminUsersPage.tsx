@@ -544,9 +544,17 @@ export default function AdminUsersPage({ mode = "list" }: AdminUsersPageProps) {
         role: newUser.role,
         delivery: "invited",
       });
-      toast.success("Account invitation queued", {
-        description: `${name} will verify the email and choose a password.`,
-      });
+      toast.success(
+        response.data.delivery === "dispatched"
+          ? "Invitation email sent"
+          : "Account invitation queued",
+        {
+          description:
+            response.data.delivery === "dispatched"
+              ? `${name} can now verify the email and choose a password.`
+              : `${name}'s invitation is stored for automatic email retry.`,
+        }
+      );
       return;
     }
     const response = await runPlatformWorkflowActionRequest({

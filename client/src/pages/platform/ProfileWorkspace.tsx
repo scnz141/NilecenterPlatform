@@ -7,6 +7,7 @@ import {
   UserCircle,
 } from "lucide-react";
 import PlatformShell from "@/components/platform/PlatformShell";
+import SettingsAreaNav from "@/components/platform/SettingsAreaNav";
 import { DetailLayout } from "@/components/platform/PlatformLayouts";
 import { StatusBadge } from "@/components/platform/PlatformPrimitives";
 import {
@@ -244,7 +245,7 @@ export default function ProfileWorkspace({ role }: ProfileWorkspaceProps) {
 
   if (!user) {
     return (
-      <PlatformShell role={role} title="Profile">
+      <PlatformShell role={role} title="Settings">
         <section className="platform-empty-state">
           <strong>Profile unavailable</strong>
           <span>Sign in again to load your Nile Learn profile.</span>
@@ -260,7 +261,7 @@ export default function ProfileWorkspace({ role }: ProfileWorkspaceProps) {
   ] as const;
 
   return (
-    <PlatformShell role={role} title="Profile">
+    <PlatformShell role={role} title="Settings">
       <DetailLayout
         className="profile-workspace portal-simple-page"
         title={titleByRole[role]}
@@ -280,21 +281,24 @@ export default function ProfileWorkspace({ role }: ProfileWorkspaceProps) {
           )
         }
         toolbar={
-          <nav
-            className="portal-simple-tabs profile-section-tabs"
-            aria-label="Profile sections"
-          >
-            {profileSections.map(section => (
-              <button
-                key={section.id}
-                type="button"
-                className={activeSection === section.id ? "active" : ""}
-                onClick={() => setActiveSection(section.id)}
-              >
-                {section.label}
-              </button>
-            ))}
-          </nav>
+          <div className="settings-area-toolbar">
+            <SettingsAreaNav role={role} active="account" />
+            <nav
+              className="portal-simple-tabs profile-section-tabs"
+              aria-label="Profile sections"
+            >
+              {profileSections.map(section => (
+                <button
+                  key={section.id}
+                  type="button"
+                  className={activeSection === section.id ? "active" : ""}
+                  onClick={() => setActiveSection(section.id)}
+                >
+                  {section.label}
+                </button>
+              ))}
+            </nav>
+          </div>
         }
         main={
           <div className="profile-main-stack">

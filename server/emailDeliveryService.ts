@@ -157,7 +157,11 @@ export class EmailDeliveryService {
         providerMessageId: result.providerMessageId,
         recipientHash: sha256(delivery.recipientEmail.toLowerCase()),
       });
-      return { outcome: "sent" as const, deliveryId: delivery.deliveryId };
+      return {
+        outcome: "sent" as const,
+        deliveryId: delivery.deliveryId,
+        outboxEventId: delivery.outboxEventId,
+      };
     } catch (error) {
       const retryable =
         error instanceof EmailProviderSendError && error.retryable;
@@ -173,7 +177,11 @@ export class EmailDeliveryService {
           errorCode,
           retryAfterSeconds: retryDelaySeconds(delivery.attemptNumber),
         });
-        return { outcome: "retry" as const, deliveryId: delivery.deliveryId };
+        return {
+          outcome: "retry" as const,
+          deliveryId: delivery.deliveryId,
+          outboxEventId: delivery.outboxEventId,
+        };
       }
       await this.repository.complete(delivery.deliveryId, workerId, {
         outcome: "dead_letter",
@@ -182,6 +190,7 @@ export class EmailDeliveryService {
       return {
         outcome: "dead_letter" as const,
         deliveryId: delivery.deliveryId,
+        outboxEventId: delivery.outboxEventId,
       };
     }
   }

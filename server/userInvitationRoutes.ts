@@ -1,4 +1,9 @@
+import crypto from "node:crypto";
 import { getRequestSession } from "./auth.js";
+import {
+  createEmailDeliveryService,
+  getEmailIntegrationStatus,
+} from "./emailDeliveryService.js";
 import {
   SupabaseInvitationProviderUnavailableError,
   SupabaseInvitationVerificationError,
@@ -30,6 +35,11 @@ type InvitationApp = {
   ): void;
 };
 
+type InvitationDeliveryServiceFactory = () => Pick<
+  ReturnType<typeof createEmailDeliveryService>,
+  "processBatch"
+>;
+
 function enabled(value: unknown) {
   return ["1", "true", "yes"].includes(String(value ?? "").toLowerCase());
 }
@@ -56,10 +66,38 @@ function respondWithInvitationError(error: unknown, res: InvitationResponse) {
   res.status(500).json({ error: "Account invitation could not be completed." });
 }
 
+export async function dispatchQueuedInvitationEmail(
+  env: NodeJS.ProcessEnv,
+  outboxEventId: string,
+  deliveryServiceFactory: InvitationDeliveryServiceFactory = () =>
+    createEmailDeliveryService(env)
+): Promise<"queued" | "dispatched"> {
+  if (!getEmailIntegrationStatus(env).ready) return "queued";
+
+  try {
+    const deliveries = await deliveryServiceFactory().processBatch(
+      `invitation-${crypto.randomUUID()}`,
+      10
+    );
+    return deliveries.some(
+      item =>
+        item.outcome === "sent" && item.outboxEventId === outboxEventId
+    )
+      ? "dispatched"
+      : "queued";
+  } catch {
+    // Invitation creation already committed the durable outbox event. The
+    // scheduled worker can retry without making account creation fail.
+    return "queued";
+  }
+}
+
 export function registerUserInvitationRoutes(
   app: InvitationApp,
   service = new UserInvitationService(),
-  env: NodeJS.ProcessEnv = process.env
+  env: NodeJS.ProcessEnv = process.env,
+  deliveryServiceFactory: InvitationDeliveryServiceFactory = () =>
+    createEmailDeliveryService(env)
 ) {
   app.post("/api/admin/user-invitations", async (req, res) => {
     if (!enabled(env.NILE_NORMALIZED_INVITATIONS_ENABLED)) {
@@ -96,7 +134,12 @@ export function registerUserInvitationRoutes(
         locale: req.body?.locale,
         idempotencyKey: req.body?.idempotencyKey,
       });
-      res.status(202).json({ ok: true, invitation: result });
+      const delivery = await dispatchQueuedInvitationEmail(
+        env,
+        result.outboxEventId,
+        deliveryServiceFactory
+      );
+      res.status(202).json({ ok: true, invitation: result, delivery });
     } catch (error) {
       respondWithInvitationError(error, res);
     }

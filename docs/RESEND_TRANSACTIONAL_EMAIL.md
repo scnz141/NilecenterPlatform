@@ -11,6 +11,8 @@ No live email is sent until every database and server cutover gate is enabled.
   the account-invitation tables are still pending; the generated bundle is safe
   to rerun and will continue from that state.
 - The runtime requires explicit server-only activation.
+- Running SQL bundle `018` installs the database contract; it does not enable
+  email delivery, switch session authority, or create a normalized Super Admin.
 - No Resend or Supabase endpoint is contacted by the local validation gates.
 - Any previously shared API key remains invalid. Use only a rotated replacement
   supplied through server secret storage; local validation never reads or
@@ -91,8 +93,14 @@ verified Nile Center sending domain and an approved sender such as
 
 ## HTTP Boundaries
 
-- `GET /api/internal/email-deliveries/process` is called every five minutes by
-  Vercel Cron and requires the `CRON_SECRET` bearer token.
+- Account invitation creation attempts immediate delivery after the durable
+  outbox commit. Failure leaves the event queued and does not roll back the
+  pending account.
+- `GET /api/internal/email-deliveries/process` is the retry worker. The checked-in
+  Vercel Hobby schedule runs once daily because Hobby deployments reject more
+  frequent cron expressions. A paid plan or approved external scheduler may
+  invoke the same authenticated endpoint more frequently without changing the
+  delivery contract.
 - `POST /api/internal/email-deliveries/process` requires the worker bearer
   secret and refuses to run unless every activation condition is present.
 - `POST /api/integrations/resend/webhook` verifies the signature against the
@@ -109,13 +117,16 @@ suppressed from later sends.
 1. Rotate the exposed development API key.
 2. Promote the reviewed SQL to an approved isolated staging target using the
    terminal Supabase CLI only.
-3. Re-run assertions, rollback/reapply, and browser-role denial checks.
-4. Add replacement secrets directly to local and deployment secret storage.
-5. Configure the signed webhook URL and confirm replay behavior.
-6. Verify the account-invitation producer and recipient acceptance flow.
-7. Perform one permitted test-recipient proof and confirm webhook delivery.
-8. Run the full protected validation and portal QA gate.
-9. Approve production domain DNS and sender identity separately.
+3. Provision and verify the intended normalized Super Admin identity, role
+   grant, scope, and durable session. Compatibility/demo sessions cannot send
+   real invitations.
+4. Re-run assertions, rollback/reapply, and browser-role denial checks.
+5. Add replacement secrets directly to local and deployment secret storage.
+6. Configure the signed webhook URL and confirm replay behavior.
+7. Verify the account-invitation producer and recipient acceptance flow.
+8. Perform one permitted test-recipient proof and confirm webhook delivery.
+9. Run the full protected validation and portal QA gate.
+10. Approve production domain DNS and sender identity separately.
 
 No marketing campaign, bulk announcement, private document attachment, or
 provider-driven workflow mutation belongs in this boundary.

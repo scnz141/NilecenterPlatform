@@ -6,6 +6,7 @@ import {
 } from "../../../../server/invitationEnvelope";
 import { UserInvitationService } from "../../../../server/userInvitationService";
 import { SupabaseAuthInvitationService } from "../../../../server/supabaseAuthInvitations";
+import { dispatchQueuedInvitationEmail } from "../../../../server/userInvitationRoutes";
 import type {
   UserInvitationAuthPort,
   UserInvitationRepositoryPort,
@@ -79,6 +80,79 @@ describe("account invitation security envelope", () => {
 });
 
 describe("normalized account invitation lifecycle", () => {
+  it("dispatches the durable invitation outbox immediately when Resend is ready", async () => {
+    const processBatch = vi.fn(async () => [
+      {
+        outcome: "sent" as const,
+        deliveryId: "delivery-1",
+        outboxEventId: "outbox-1",
+      },
+    ]);
+
+    await expect(
+      dispatchQueuedInvitationEmail(
+        {
+          EMAIL_PROVIDER: "resend",
+          NILE_EMAIL_DELIVERY_ENABLED: "1",
+          NILE_EMAIL_REPOSITORY: "supabase",
+          NILE_EMAIL_WORKER_SECRET: "test-only-worker-secret",
+          RESEND_API_KEY: "test-only-key",
+          RESEND_FROM_EMAIL: "Nile Learn <onboarding@resend.dev>",
+          RESEND_WEBHOOK_SECRET: "test-only-webhook-secret",
+          SUPABASE_URL: "https://project.example.test",
+          SUPABASE_SECRET_KEY: "test-only-supabase-secret",
+        } as NodeJS.ProcessEnv,
+        "outbox-1",
+        () => ({ processBatch })
+      )
+    ).resolves.toBe("dispatched");
+
+    expect(processBatch).toHaveBeenCalledWith(expect.any(String), 10);
+  });
+
+  it("keeps the invitation queued when email delivery is not configured", async () => {
+    const factory = vi.fn();
+
+    await expect(
+      dispatchQueuedInvitationEmail(
+        {} as NodeJS.ProcessEnv,
+        "outbox-1",
+        factory
+      )
+    ).resolves.toBe("queued");
+
+    expect(factory).not.toHaveBeenCalled();
+  });
+
+  it("does not report dispatch when the worker sent an older outbox event", async () => {
+    const processBatch = vi.fn(async () => [
+      {
+        outcome: "sent" as const,
+        deliveryId: "delivery-older",
+        outboxEventId: "outbox-older",
+      },
+      { outcome: "empty" as const },
+    ]);
+
+    await expect(
+      dispatchQueuedInvitationEmail(
+        {
+          EMAIL_PROVIDER: "resend",
+          NILE_EMAIL_DELIVERY_ENABLED: "1",
+          NILE_EMAIL_REPOSITORY: "supabase",
+          NILE_EMAIL_WORKER_SECRET: "test-only-worker-secret",
+          RESEND_API_KEY: "test-only-key",
+          RESEND_FROM_EMAIL: "Nile Learn <onboarding@resend.dev>",
+          RESEND_WEBHOOK_SECRET: "test-only-webhook-secret",
+          SUPABASE_URL: "https://project.example.test",
+          SUPABASE_SECRET_KEY: "test-only-supabase-secret",
+        } as NodeJS.ProcessEnv,
+        "outbox-current",
+        () => ({ processBatch })
+      )
+    ).resolves.toBe("queued");
+  });
+
   it("queues a scoped pending account without accepting an admin password", async () => {
     const repository = repositoryPort();
     const auth = authPort();

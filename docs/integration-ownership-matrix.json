@@ -187,7 +187,9 @@
       "futureWriteStatus": "nile_learn_writable",
       "selectors": {
         "clientRoutes": [
-          "^/app/(admin|branch|hod|registrar|student|teacher)/profile$"
+          "^/app/(admin|branch|hod|registrar|student|teacher)/profile$",
+          "^/app/(admin|branch|hod|registrar)/settings/profile$",
+          "^/app/(student|teacher)/settings$"
         ],
         "workflowActions": ["^(profile[.]update|portal[.]settings[.]save)$"]
       }

@@ -89,6 +89,8 @@ export function getRequiredPermissionForPage(
   if (pageId === "forms-review" || pageId === "form-submission")
     return "form_submissions:read";
   if (pageId === "profile") return "dashboard:read";
+  if (pageId === "settings" && (role === "student" || role === "teacher"))
+    return "dashboard:read";
   if (
     pageId === "settings" ||
     pageId === "integrations" ||

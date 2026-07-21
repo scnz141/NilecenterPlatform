@@ -69,12 +69,12 @@ const roleAwareTargets: Record<string, Partial<Record<Role, string>>> = {
     branchadmin: "/app/branch/schedule",
   },
   "/profile": {
-    student: "/app/student/profile",
-    teacher: "/app/teacher/profile",
-    registrar: "/app/registrar/profile",
-    headofdepartment: "/app/hod/profile",
-    branchadmin: "/app/branch/profile",
-    superadmin: "/app/admin/profile",
+    student: "/app/student/settings",
+    teacher: "/app/teacher/settings",
+    registrar: "/app/registrar/settings/profile",
+    headofdepartment: "/app/hod/settings/profile",
+    branchadmin: "/app/branch/settings/profile",
+    superadmin: "/app/admin/settings/profile",
   },
   "/notifications": {
     student: "/app/student/messages",
@@ -97,10 +97,17 @@ function resolveLegacyTarget(legacyPath: string) {
   const activeRole = getStoredRole();
   if (!activeRole) return "/auth/select-role";
 
-  return roleAwareTargets[legacyPath]?.[activeRole] ?? roleMeta[activeRole].defaultRoute;
+  return (
+    roleAwareTargets[legacyPath]?.[activeRole] ??
+    roleMeta[activeRole].defaultRoute
+  );
 }
 
-export default function LegacyRouteRedirect({ legacyPath }: { legacyPath: string }) {
+export default function LegacyRouteRedirect({
+  legacyPath,
+}: {
+  legacyPath: string;
+}) {
   const [, navigate] = useLocation();
   const target = useMemo(() => resolveLegacyTarget(legacyPath), [legacyPath]);
 

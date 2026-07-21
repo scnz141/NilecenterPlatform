@@ -504,7 +504,7 @@ export const sidebarByRole: Record<Role, NavItem[]> = {
       href: "/app/student/quran-progress",
       icon: "BookMarked",
     },
-    { label: "Profile", href: "/app/student/profile", icon: "UserCircle" },
+    { label: "Settings", href: "/app/student/settings", icon: "Settings" },
   ],
   teacher: [
     {
@@ -544,7 +544,7 @@ export const sidebarByRole: Record<Role, NavItem[]> = {
       href: "/app/teacher/quran-review",
       icon: "BookMarked",
     },
-    { label: "Profile", href: "/app/teacher/profile", icon: "UserCircle" },
+    { label: "Settings", href: "/app/teacher/settings", icon: "Settings" },
   ],
   registrar: [
     {
@@ -592,7 +592,6 @@ export const sidebarByRole: Record<Role, NavItem[]> = {
       href: "/app/registrar/requests",
       icon: "ClipboardCheck",
     },
-    { label: "Profile", href: "/app/registrar/profile", icon: "UserCircle" },
     { label: "Settings", href: "/app/registrar/settings", icon: "Settings" },
   ],
   headofdepartment: [
@@ -616,7 +615,6 @@ export const sidebarByRole: Record<Role, NavItem[]> = {
     { label: "Forms", href: "/app/hod/forms", icon: "ClipboardList" },
     { label: "Requests", href: "/app/hod/requests", icon: "ClipboardCheck" },
     { label: "Messages", href: "/app/hod/messages", icon: "MessageSquare" },
-    { label: "Profile", href: "/app/hod/profile", icon: "UserCircle" },
     { label: "Settings", href: "/app/hod/settings", icon: "Settings" },
   ],
   branchadmin: [
@@ -640,7 +638,6 @@ export const sidebarByRole: Record<Role, NavItem[]> = {
     { label: "Forms", href: "/app/branch/forms", icon: "ClipboardList" },
     { label: "Requests", href: "/app/branch/requests", icon: "ClipboardCheck" },
     { label: "Messages", href: "/app/branch/messages", icon: "MessageSquare" },
-    { label: "Profile", href: "/app/branch/profile", icon: "UserCircle" },
     { label: "Settings", href: "/app/branch/settings", icon: "Settings" },
   ],
   superadmin: [
@@ -662,7 +659,6 @@ export const sidebarByRole: Record<Role, NavItem[]> = {
     { label: "Programs", href: "/app/admin/programs", icon: "Library" },
     { label: "Courses", href: "/app/admin/courses", icon: "BookOpen" },
     { label: "Messages", href: "/app/admin/messages", icon: "MessageSquare" },
-    { label: "Profile", href: "/app/admin/profile", icon: "UserCircle" },
     { label: "Certificates", href: "/app/admin/certificates", icon: "Award" },
     { label: "Schedule", href: "/app/admin/schedule", icon: "CalendarDays" },
     { label: "Moodle", href: "/app/admin/moodle-source", icon: "PlugZap" },
@@ -1833,8 +1829,8 @@ export function getDemoUser(role: Role): DemoUser {
       id: session.userId,
       email: session.email,
       name: session.name,
-      roles: session.roles.filter((item): item is Role =>
-        typeof item === "string" && item in roleMeta
+      roles: session.roles.filter(
+        (item): item is Role => typeof item === "string" && item in roleMeta
       ),
       activeRole: role,
       avatar:

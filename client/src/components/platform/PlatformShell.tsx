@@ -150,7 +150,14 @@ const sidebarWorkflowGroups: Record<Role, SidebarSection[]> = {
     { label: "Progress", items: ["Grades", "Attendance", "Certificates"] },
     {
       label: "Help",
-      items: ["Forms", "Requests", "Messages", "Reports", "Support", "Profile"],
+      items: [
+        "Forms",
+        "Requests",
+        "Messages",
+        "Reports",
+        "Support",
+        "Settings",
+      ],
     },
   ],
   teacher: [
@@ -168,7 +175,7 @@ const sidebarWorkflowGroups: Record<Role, SidebarSection[]> = {
     },
     {
       label: "More",
-      items: ["Forms", "Requests", "Messages", "Reports", "Profile"],
+      items: ["Forms", "Requests", "Messages", "Reports", "Settings"],
     },
     { label: "Advanced", items: ["Moodle"], collapsible: true },
   ],
@@ -210,6 +217,7 @@ const sidebarWorkflowGroups: Record<Role, SidebarSection[]> = {
         "Certificates",
         "Reports",
         "Messages",
+        "Settings",
       ],
     },
     { label: "Advanced", items: ["Moodle"], collapsible: true },
@@ -240,14 +248,7 @@ const sidebarWorkflowGroups: Record<Role, SidebarSection[]> = {
     { label: "Business", items: ["Reports"] },
     {
       label: "System",
-      items: [
-        "Blueprint",
-        "Connections",
-        "Activity log",
-        "Health",
-        "Settings",
-        "Profile",
-      ],
+      items: ["Blueprint", "Connections", "Activity log", "Health", "Settings"],
       collapsible: true,
     },
   ],
@@ -427,8 +428,12 @@ export default function PlatformShell({ role, children, title }: ShellProps) {
     [role, sidebar]
   );
   const dir = getDirection(locale);
+  const settingsHref =
+    sidebar.find(item => item.label === "Settings")?.href ?? meta.defaultRoute;
   const profileHref =
-    sidebar.find(item => item.label === "Profile")?.href ?? meta.defaultRoute;
+    role === "student" || role === "teacher"
+      ? settingsHref
+      : `${settingsHref}/profile`;
   const hasSearchQuery = Boolean(query.trim());
   const isDashboard = /\/dashboard\/?$/.test(location);
 

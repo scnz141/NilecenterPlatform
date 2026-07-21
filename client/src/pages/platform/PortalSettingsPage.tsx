@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { CheckCircle2, Settings } from "lucide-react";
 import PlatformShell from "@/components/platform/PlatformShell";
+import SettingsAreaNav from "@/components/platform/SettingsAreaNav";
 import { SettingsLayout } from "@/components/platform/PlatformLayouts";
 import { StatusBadge } from "@/components/platform/PlatformPrimitives";
 import { getActiveUser } from "@/lib/auth/session";
@@ -103,6 +104,7 @@ export default function PortalSettingsPage({ role }: PortalSettingsPageProps) {
             {saving ? "Saving" : "Save settings"}
           </button>
         }
+        toolbar={<SettingsAreaNav role={roleToShellRole(role)} active="workspace" />}
         main={
           <div className="portal-simple-stack">
             <section className="portal-simple-form-card">

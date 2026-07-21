@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
 import PlatformShell from "@/components/platform/PlatformShell";
+import SettingsAreaNav from "@/components/platform/SettingsAreaNav";
 import { SettingsLayout } from "@/components/platform/PlatformLayouts";
 import { DataTableCard } from "@/components/platform/PlatformPrimitives";
 import { runPlatformWorkflowActionRequest } from "@/lib/backend/api";
@@ -68,6 +69,7 @@ export default function AdminSettingsPage() {
             {saving ? "Saving settings" : "Save settings"}
           </button>
         }
+        toolbar={<SettingsAreaNav role="superadmin" active="workspace" />}
         main={
           <DataTableCard
             title="School setup"

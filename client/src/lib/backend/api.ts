@@ -142,6 +142,7 @@ export function createUserInvitationRequest(input: {
 }) {
   return apiJson<{
     ok: true;
+    delivery: "queued" | "dispatched";
     invitation: {
       invitationId: string;
       userId: string;
