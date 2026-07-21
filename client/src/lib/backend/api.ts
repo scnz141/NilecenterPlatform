@@ -87,8 +87,9 @@ export function requestPasswordReset(input: { email: string; role?: Role }) {
 }
 
 export function confirmPasswordReset(input: {
-  token: string;
-  email: string;
+  token?: string;
+  email?: string;
+  accessToken?: string;
   password: string;
 }) {
   return apiJson<{ ok: true; role?: Role }>(

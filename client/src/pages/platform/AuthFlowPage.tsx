@@ -78,6 +78,11 @@ export default function AuthFlowPage({ mode }: { mode: AuthFlowMode }) {
   const [invitationAccessToken] = useState(
     initialHash.get("access_token") ?? ""
   );
+  const [recoveryAccessToken] = useState(
+    initialHash.get("type") === "recovery"
+      ? (initialHash.get("access_token") ?? "")
+      : ""
+  );
   const [locale, setLocale] = useState<Locale>(initialLocale);
   const [email, setEmail] = useState(queryEmail);
   const [role, setRole] = useState<Role>(
@@ -125,7 +130,11 @@ export default function AuthFlowPage({ mode }: { mode: AuthFlowMode }) {
   }, [mode, queryEmail, token]);
 
   useEffect(() => {
-    if (mode !== "accept-invitation" || !window.location.hash) return;
+    if (
+      !["accept-invitation", "reset-password"].includes(mode) ||
+      !window.location.hash
+    )
+      return;
     window.history.replaceState(
       null,
       "",
@@ -207,16 +216,17 @@ export default function AuthFlowPage({ mode }: { mode: AuthFlowMode }) {
     event.preventDefault();
     setError("");
     setMessage("");
-    if (!token) {
+    if (!token && !recoveryAccessToken) {
       setError(ui("Open this page from a valid reset link."));
       return;
     }
-    if (!email.trim()) {
+    if (!recoveryAccessToken && !email.trim()) {
       setError(ui("Enter the account email."));
       return;
     }
-    if (password.length < 8) {
-      setError(ui("Use at least 8 characters."));
+    const minimumLength = recoveryAccessToken ? 12 : 8;
+    if (password.length < minimumLength) {
+      setError(ui(`Use at least ${minimumLength} characters.`));
       return;
     }
     if (password !== confirmPassword) {
@@ -225,8 +235,9 @@ export default function AuthFlowPage({ mode }: { mode: AuthFlowMode }) {
     }
     setSubmitting(true);
     const response = await confirmPasswordReset({
-      token,
-      email: email.trim(),
+      token: token || undefined,
+      email: email.trim() || undefined,
+      accessToken: recoveryAccessToken || undefined,
       password,
     });
     setSubmitting(false);
@@ -370,16 +381,22 @@ export default function AuthFlowPage({ mode }: { mode: AuthFlowMode }) {
           </form>
         ) : mode === "reset-password" ? (
           <form className="auth-v2-form" onSubmit={confirmReset}>
-            <label className="auth-v2-field">
-              <span>{ui("Account email")}</span>
-              <input
-                type="email"
-                autoComplete="email"
-                value={email}
-                onChange={event => setEmail(event.target.value)}
-                required
-              />
-            </label>
+            {recoveryAccessToken ? (
+              <p className="auth-v2-status success" role="status">
+                <CheckCircle2 size={17} /> {ui("Recovery link verified")}
+              </p>
+            ) : (
+              <label className="auth-v2-field">
+                <span>{ui("Account email")}</span>
+                <input
+                  type="email"
+                  autoComplete="email"
+                  value={email}
+                  onChange={event => setEmail(event.target.value)}
+                  required
+                />
+              </label>
+            )}
             <label className="auth-v2-field">
               <span>{ui("New password")}</span>
               <input
@@ -387,6 +404,7 @@ export default function AuthFlowPage({ mode }: { mode: AuthFlowMode }) {
                 autoComplete="new-password"
                 value={password}
                 onChange={event => setPassword(event.target.value)}
+                minLength={recoveryAccessToken ? 12 : 8}
                 required
               />
             </label>
@@ -397,6 +415,7 @@ export default function AuthFlowPage({ mode }: { mode: AuthFlowMode }) {
                 autoComplete="new-password"
                 value={confirmPassword}
                 onChange={event => setConfirmPassword(event.target.value)}
+                minLength={recoveryAccessToken ? 12 : 8}
                 required
               />
             </label>

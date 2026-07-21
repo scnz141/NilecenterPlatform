@@ -48,6 +48,11 @@ import { registerMoodleRoutes } from "./moodleRoutes.js";
 import { registerEmailRoutes } from "./emailRoutes.js";
 import { getEmailIntegrationStatus } from "./emailDeliveryService.js";
 import { registerUserInvitationRoutes } from "./userInvitationRoutes.js";
+import {
+  SupabaseAuthInvitationService,
+  SupabaseInvitationProviderUnavailableError,
+  SupabaseInvitationVerificationError,
+} from "./supabaseAuthInvitations.js";
 
 const certificateVerifyAttempts = new Map<
   string,
@@ -312,8 +317,36 @@ export function registerApiRoutes(app: ApiApp) {
     );
   });
 
-  app.post("/api/auth/password-reset/confirm", (req, res) => {
-    const { token, email, password } = req.body ?? {};
+  app.post("/api/auth/password-reset/confirm", async (req, res) => {
+    const { token, email, password, accessToken } = req.body ?? {};
+    if (typeof accessToken === "string" && accessToken.trim()) {
+      if (typeof password !== "string") {
+        res.status(400).json({ error: "New password is required." });
+        return;
+      }
+      try {
+        const result =
+          await new SupabaseAuthInvitationService().completePasswordRecovery({
+            accessToken,
+            password,
+            email: typeof email === "string" ? email : undefined,
+          });
+        res.json({ ok: true, email: result.email });
+      } catch (error) {
+        if (error instanceof SupabaseInvitationVerificationError) {
+          res.status(400).json({ error: error.message });
+          return;
+        }
+        if (error instanceof SupabaseInvitationProviderUnavailableError) {
+          res.status(503).json({ error: error.message });
+          return;
+        }
+        res
+          .status(500)
+          .json({ error: "Password reset could not be completed." });
+      }
+      return;
+    }
     if (
       typeof token !== "string" ||
       typeof email !== "string" ||

@@ -312,6 +312,9 @@ describe("Supabase Auth invitation adapter", () => {
     expect(new Headers(request?.headers).get("Authorization")).toBe(
       "Bearer server-secret-test-key"
     );
+    expect(new Headers(request?.headers).get("apikey")).toBe(
+      "server-secret-test-key"
+    );
   });
 
   it("verifies the invite OTP before allowing the recipient password update", async () => {
@@ -348,5 +351,66 @@ describe("Supabase Auth invitation adapter", () => {
     expect(
       new Headers(fetcher.mock.calls[1]?.[1]?.headers).get("Authorization")
     ).toBe("Bearer recipient-access-token");
+    expect(new Headers(fetcher.mock.calls[0]?.[1]?.headers).get("apikey")).toBe(
+      "publishable-test-key"
+    );
+  });
+
+  it("sets a normalized password only after validating the recovery token", async () => {
+    const fetcher = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            id: "a1000000-0000-4000-8000-000000000001",
+            email: "admin@example.test",
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } }
+        )
+      )
+      .mockResolvedValueOnce(new Response("{}", { status: 200 }));
+    const adapter = new SupabaseAuthInvitationService(
+      providerEnv,
+      fetcher as typeof fetch
+    );
+
+    await expect(
+      adapter.completePasswordRecovery({
+        accessToken: "verified-recovery-token",
+        email: "admin@example.test",
+        password: "Strong recovery password 2026",
+      })
+    ).resolves.toEqual({ email: "admin@example.test" });
+
+    expect(String(fetcher.mock.calls[0]?.[0])).toContain("/auth/v1/user");
+    expect(fetcher.mock.calls[1]?.[1]?.method).toBe("PUT");
+    expect(String(fetcher.mock.calls[1]?.[1]?.body)).toContain(
+      "Strong recovery password 2026"
+    );
+  });
+
+  it("rejects a recovery email mismatch before changing the password", async () => {
+    const fetcher = vi.fn().mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          id: "a1000000-0000-4000-8000-000000000001",
+          email: "admin@example.test",
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      )
+    );
+    const adapter = new SupabaseAuthInvitationService(
+      providerEnv,
+      fetcher as typeof fetch
+    );
+
+    await expect(
+      adapter.completePasswordRecovery({
+        accessToken: "verified-recovery-token",
+        email: "other@example.test",
+        password: "Strong recovery password 2026",
+      })
+    ).rejects.toThrow("does not match");
+    expect(fetcher).toHaveBeenCalledTimes(1);
   });
 });

@@ -247,3 +247,41 @@ describe("API login outcome classification", () => {
     });
   });
 });
+
+describe("API normalized password recovery", () => {
+  it("updates the verified Supabase user through a recovery access token", async () => {
+    vi.stubEnv("SUPABASE_URL", "https://phase2-test.supabase.co");
+    vi.stubEnv("SUPABASE_PUBLISHABLE_KEY", "test-publishable-key");
+    vi.stubEnv("SUPABASE_SECRET_KEY", "test-secret-key");
+    const fetcher = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            id: "a1000000-0000-4000-8000-000000000001",
+            email: "admin@example.test",
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } }
+        )
+      )
+      .mockResolvedValueOnce(new Response("{}", { status: 200 }));
+    vi.stubGlobal("fetch", fetcher);
+    const { postRoutes } = captureRoutes();
+    const { response, result } = responseRecorder();
+
+    await postRoutes.get("/api/auth/password-reset/confirm")?.(
+      request("POST", {
+        accessToken: "verified-recovery-token",
+        password: "Strong recovery password 2026",
+      }),
+      response
+    );
+
+    expect(result).toEqual({
+      status: 200,
+      body: { ok: true, email: "admin@example.test" },
+    });
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    expect(fetcher.mock.calls[1]?.[1]?.method).toBe("PUT");
+  });
+});

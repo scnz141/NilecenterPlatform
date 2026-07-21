@@ -47,7 +47,10 @@ async function authFetch(
 ) {
   const config = authConfig(env);
   const headers = new Headers(init.headers);
-  headers.set("apikey", config.publishableKey);
+  headers.set(
+    "apikey",
+    credential === config.secretKey ? config.secretKey : config.publishableKey
+  );
   headers.set("Authorization", `Bearer ${credential}`);
   headers.set("Content-Type", "application/json");
   try {
@@ -183,5 +186,28 @@ export class SupabaseAuthInvitationService {
       }
       throw new SupabaseInvitationProviderUnavailableError();
     }
+  }
+
+  async completePasswordRecovery(input: {
+    accessToken: string;
+    password: string;
+    email?: string;
+  }) {
+    const accessToken = clean(input.accessToken);
+    const email = clean(input.email).toLowerCase();
+    if (!accessToken) throw new SupabaseInvitationVerificationError();
+    if (input.password.length < 12) {
+      throw new SupabaseInvitationVerificationError(
+        "Use at least 12 characters."
+      );
+    }
+    const user = await this.getVerifiedUser(accessToken);
+    if (email && user.email !== email) {
+      throw new SupabaseInvitationVerificationError(
+        "The verified email does not match this recovery link."
+      );
+    }
+    await this.setPassword(accessToken, input.password);
+    return { email: user.email };
   }
 }
