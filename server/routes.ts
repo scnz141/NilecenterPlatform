@@ -95,9 +95,16 @@ type ApiResponse = {
 
 function rejectDurableSnapshotWorkflow(
   session: Awaited<ReturnType<typeof getRequestSession>>,
-  res: ApiResponse
+  res: ApiResponse,
+  options: { allowNormalizedSuperAdminRead?: boolean } = {}
 ) {
   if (session?.authorizationModel !== "normalized") return false;
+  if (
+    options.allowNormalizedSuperAdminRead &&
+    canReadNormalizedSuperAdminWorkspace(session)
+  ) {
+    return false;
+  }
   res.status(503).json({
     error: "Normalized workflow persistence is not active.",
   });
@@ -463,7 +470,12 @@ export function registerApiRoutes(app: ApiApp) {
       res.status(401).json({ error: "Sign in required." });
       return;
     }
-    if (rejectDurableSnapshotWorkflow(session, res)) return;
+    if (
+      rejectDurableSnapshotWorkflow(session, res, {
+        allowNormalizedSuperAdminRead: true,
+      })
+    )
+      return;
 
     try {
       const snapshot = await getPlatformStateSnapshot();
@@ -647,6 +659,19 @@ type PlatformStatePayload = Awaited<
 type RequestSession = NonNullable<
   Awaited<ReturnType<typeof getRequestSession>>
 >;
+
+function canReadNormalizedSuperAdminWorkspace(session: RequestSession) {
+  return (
+    session.authorizationModel === "normalized" &&
+    session.provider === "supabase" &&
+    session.activeRole === "superadmin" &&
+    session.roles.includes("superadmin") &&
+    Boolean(session.authUserId) &&
+    Boolean(session.activeRoleGrantId) &&
+    (session.branchIds?.length ?? 0) === 0 &&
+    (session.departmentIds?.length ?? 0) === 0
+  );
+}
 
 function quizQuestionPreviewsForRuns(
   state: PlatformStatePayload,
@@ -1608,6 +1633,9 @@ export function scopePlatformStateForSession(
   state: PlatformStatePayload,
   session: RequestSession
 ) {
+  if (canReadNormalizedSuperAdminWorkspace(session)) {
+    return state;
+  }
   const user = state.users.find(item => item.id === session.userId);
   const hasActiveRoleGrant =
     session.roles.includes(session.activeRole) &&

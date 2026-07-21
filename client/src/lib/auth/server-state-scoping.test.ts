@@ -59,7 +59,7 @@ function ids<T extends { id: string }>(items: T[]) {
 }
 
 describe("server platform state read scopes", () => {
-  it("returns a data-minimal fallback for identities not mapped to the snapshot", () => {
+  it("returns the compatibility workspace to a normalized global superadmin", () => {
     const scoped = scopePlatformStateForSession(seedPlatformState, {
       ...sessionFor("superadmin"),
       userId: "40000000-0000-4000-8000-000000000001",
@@ -71,19 +71,9 @@ describe("server platform state read scopes", () => {
       departmentIds: [],
     });
 
-    expect(scoped.users).toEqual([]);
-    expect(scoped.courses).toEqual([]);
-    expect(scoped.messages).toEqual([]);
-    expect(scoped.invoices).toEqual([]);
-    expect(scoped.integrations).toEqual([]);
-    expect(scoped.auditLogs).toEqual([]);
-    expect(scoped.permissions.superadmin).toEqual([]);
-    expect(scoped.settings).toEqual({
-      organization: "Nile Learn",
-      defaultLanguage: "English",
-      academicTerm: "",
-      retentionDays: 0,
-    });
+    expect(scoped).toBe(seedPlatformState);
+    expect(scoped.users.length).toBeGreaterThan(0);
+    expect(scoped.permissions.superadmin.length).toBeGreaterThan(0);
   });
 
   it("keeps memory-backed Supabase Auth sessions on the snapshot compatibility path", () => {

@@ -1311,6 +1311,22 @@ describe("server academic snapshot read scopes", () => {
     );
   });
 
+  it("allows a currently scoped normalized superadmin to read the compatibility workspace", () => {
+    const state = cloneState();
+    const scoped = scopePlatformStateForSession(state, {
+      ...sessionFor("superadmin"),
+      userId: "60000000-0000-4000-8000-000000000001",
+      provider: "supabase",
+      authorizationModel: "normalized",
+      authUserId: "10000000-0000-4000-8000-000000000001",
+      activeRoleGrantId: "50000000-0000-4000-8000-000000000001",
+      branchIds: [],
+      departmentIds: [],
+    });
+
+    expect(scoped).toBe(state);
+  });
+
   it("returns the full unmodified state for a valid superadmin", () => {
     const state = cloneState();
     const scoped = scopePlatformStateForSession(

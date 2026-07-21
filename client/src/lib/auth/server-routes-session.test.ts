@@ -138,6 +138,57 @@ describe("API durable session outage handling", () => {
   });
 });
 
+describe("API normalized Super Admin compatibility workspace", () => {
+  it("allows the scoped workspace read while legacy snapshot mutations remain blocked", async () => {
+    vi.stubEnv("NILE_PLATFORM_STATE_LOCAL_ONLY", "1");
+    const repository: SessionStore = {
+      kind: "supabase",
+      create: async () => undefined,
+      get: async () => ({
+        id: "durable-token",
+        userId: "60000000-0000-4000-8000-000000000001",
+        authUserId: "10000000-0000-4000-8000-000000000001",
+        email: "admin@example.test",
+        name: "Normalized Admin",
+        roles: ["superadmin"],
+        activeRole: "superadmin",
+        activeRoleGrantId: "50000000-0000-4000-8000-000000000001",
+        branchIds: [],
+        departmentIds: [],
+        provider: "supabase",
+        authorizationModel: "normalized",
+        createdAt: "2026-07-22T00:00:00.000Z",
+        expiresAt: "2099-07-22T12:00:00.000Z",
+      }),
+      delete: async () => undefined,
+      clear: async () => undefined,
+    };
+    const restore = setSessionStore(repository);
+    const { getRoutes, postRoutes } = captureRoutes();
+    const read = responseRecorder();
+    const write = responseRecorder();
+
+    await getRoutes.get("/api/platform/state")?.(
+      request("GET"),
+      read.response
+    );
+    await postRoutes.get("/api/platform/state/actions")?.(
+      request("POST", { type: "settings.update", organizationName: "Denied" }),
+      write.response
+    );
+
+    expect(read.result.status).toBe(200);
+    expect(read.result.body).toMatchObject({
+      state: { users: expect.any(Array), branches: expect.any(Array) },
+    });
+    expect(write.result).toEqual({
+      status: 503,
+      body: { error: "Normalized workflow persistence is not active." },
+    });
+    restore();
+  });
+});
+
 describe("API login outcome classification", () => {
   function configureSupabaseAuth() {
     vi.stubEnv("SUPABASE_URL", "https://phase2-test.supabase.co");
