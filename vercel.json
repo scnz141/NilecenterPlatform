@@ -6,6 +6,8 @@
   "env": {
     "NILE_SESSION_REPOSITORY": "supabase_hybrid",
     "NILE_COMPATIBILITY_SESSION_TABLE": "compatibility_auth_sessions",
+    "NILE_NORMALIZED_INVITATIONS_ENABLED": "1",
+    "VITE_NILE_NORMALIZED_INVITATIONS_ENABLED": "1",
     "NILE_PLATFORM_STATE_REQUIRE_SUPABASE": "1"
   },
   "crons": [
