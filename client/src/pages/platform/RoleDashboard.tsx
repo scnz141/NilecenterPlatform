@@ -1,3 +1,4 @@
+import { requireActiveUser } from "@/lib/auth/session";
 import { motion } from "framer-motion";
 import { useMemo, type CSSProperties } from "react";
 import {
@@ -39,8 +40,7 @@ import {
 import { platformStore } from "@/lib/domain/store";
 import {
   dashboardByRole,
-  getDemoUser,
-  roleMeta,
+roleMeta,
   type Role,
   type Stat,
 } from "@/lib/platformData";
@@ -93,20 +93,17 @@ function StudentLearningDashboard() {
   const dashboard = dashboardByRole.student;
   const state = useMemo(() => platformStore.getState(), []);
   const studentUser = state.users.find(
-    user => user.id === getDemoUser("student").id
+    user => user.id === requireActiveUser("student").id
   );
   const student = state.students.find(
     profile => profile.userId === studentUser?.id
   );
-  const studentId = student?.id ?? "stu_demo";
+  const studentId = student?.id ?? "";
   const enrollments = state.enrollments.filter(
     enrollment =>
       enrollment.studentId === studentId && enrollment.status === "active"
   );
-  const primaryEnrollment =
-    enrollments.find(
-      enrollment => enrollment.courseRunId === "run_ar_l3_2026"
-    ) ?? enrollments[0];
+  const primaryEnrollment = enrollments[0];
   const courseRun = state.courseRuns.find(
     run => run.id === primaryEnrollment?.courseRunId
   );
@@ -559,7 +556,7 @@ function RegistrarCommandDashboard() {
   const meta = roleMeta.registrar;
   const state = useMemo(() => platformStore.getState(), []);
   const actor = state.users.find(
-    user => user.id === getDemoUser("registrar").id
+    user => user.id === requireActiveUser("registrar").id
   );
   const branch = state.branches.find(item => item.id === actor?.branchId);
   const applications = state.applications;
@@ -927,7 +924,7 @@ function TeacherCommandDashboard() {
   const dashboard = dashboardByRole.teacher;
   const meta = roleMeta.teacher;
   const state = useMemo(() => platformStore.getState(), []);
-  const actorId = getDemoUser("teacher").id;
+  const actorId = requireActiveUser("teacher").id;
   const teacherUser = state.users.find(user => user.id === actorId);
   const teacherProfile = state.teachers.find(
     teacher => teacher.userId === actorId
@@ -1350,7 +1347,7 @@ function BranchAdminOperationsDashboard() {
   const meta = roleMeta.branchadmin;
   const state = useMemo(() => platformStore.getState(), []);
   const actor =
-    state.users.find(user => user.id === getDemoUser("branchadmin").id) ??
+    state.users.find(user => user.id === requireActiveUser("branchadmin").id) ??
     state.users.find(user => user.activeRole === "branchadmin");
   const branch =
     state.branches.find(item => item.id === actor?.branchId) ??
@@ -1751,7 +1748,7 @@ function HeadOfDepartmentDashboard() {
   const state = platformStore.getState();
   const actorUser =
     state.users.find(
-      user => user.id === getDemoUser("headofdepartment").id
+      user => user.id === requireActiveUser("headofdepartment").id
     ) ??
     state.users.find(user => user.activeRole === "headofdepartment");
   const departmentIds = new Set(

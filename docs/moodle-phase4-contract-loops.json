@@ -35,6 +35,7 @@
     },
     {
       "path": "client/src/lib/moodle/server-moodle-read-models.test.ts",
+      "sourceCommit": "72686798c15b75528ec7f50ed15e867a1b035266",
       "sha256": "f6f2213fc42b5f121a53ec0f46d1e5641898d493c1e0983f425f65e807c47720"
     },
     {

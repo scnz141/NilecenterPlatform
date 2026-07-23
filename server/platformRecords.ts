@@ -78,6 +78,15 @@ function saveLocalRecord(record: PlatformBackendRecord) {
   return localRecord;
 }
 
+export function platformRecordLocalFallbackAllowed(
+  env: NodeJS.ProcessEnv = process.env
+) {
+  return (
+    env.NILE_PLATFORM_RECORDS_LOCAL_ONLY === "1" ||
+    (!env.VERCEL && env.NILE_RUNTIME_PROFILE !== "normalized-staging")
+  );
+}
+
 export async function savePlatformBackendRecord(
   type: PlatformBackendRecord["type"],
   payload: Record<string, unknown>,
@@ -93,7 +102,8 @@ export async function savePlatformBackendRecord(
 
   try {
     return await saveSupabaseRecord(record);
-  } catch {
+  } catch (error) {
+    if (!platformRecordLocalFallbackAllowed()) throw error;
     return saveLocalRecord(record);
   }
 }

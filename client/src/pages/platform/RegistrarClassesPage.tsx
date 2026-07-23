@@ -1,3 +1,4 @@
+import { requireActiveUser } from "@/lib/auth/session";
 import { useMemo, useState } from "react";
 import { ArrowRight, Search } from "lucide-react";
 import { Link } from "wouter";
@@ -9,7 +10,6 @@ import {
 } from "@/components/platform/PlatformPrimitives";
 import { platformStore } from "@/lib/domain/store";
 import type { EntityStatus } from "@/lib/domain/types";
-import { getDemoUser } from "@/lib/platformData";
 
 type ClassRow = {
   id: string;
@@ -44,7 +44,7 @@ export default function RegistrarClassesPage() {
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState<"all" | EntityStatus>("all");
   const state = useMemo(() => platformStore.getState(), []);
-  const actorId = getDemoUser("registrar").id;
+  const actorId = requireActiveUser("registrar").id;
   const actor = state.users.find(user => user.id === actorId);
   const staffProfile = state.staffProfiles.find(
     profile => profile.userId === actorId && profile.role === "registrar"

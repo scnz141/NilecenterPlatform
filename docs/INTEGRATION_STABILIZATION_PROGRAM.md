@@ -134,13 +134,14 @@ Required work:
 Acceptance: staging evidence passes with fake identities, browser roles cannot
 bypass RLS/RPC boundaries, rollback is clean, and secrets remain server-only.
 
-## Phase 6: Start Read-Only Moodle Projections
+## Phase 6: Moodle Projections And CRUD Command Foundation
 
-Main job: expose Moodle-owned learning data through Nile Learn role scope
-without transferring authority.
+Main job: expose Moodle-owned learning data through Nile Learn role scope and
+prepare typed CRUD commands without transferring record authority.
 
-Status: active. This is the only approved next integration implementation
-phase.
+Status: projection packages accepted as historical Phase 6 evidence. ADR-010
+and ADR-011 now authorize Moodle-owned command work and full synthetic sandbox
+CRUD under the current master-plan checkpoint.
 
 Implemented boundary: authenticated server-only read endpoints now project
 Moodle course and course-content data through canonical Nile Learn enrolment,
@@ -196,10 +197,10 @@ Remaining acceptance gates and limitations:
 - Normalized authority and mapping persistence is implemented as an unapplied
   manual SQL and repository contract. Approved staging promotion and real
   PostgREST/RLS acceptance evidence are still pending.
-- No live read-only Moodle service token has been configured or exercised
-  through this boundary.
-- No production Moodle writes are enabled or approved; Phase 6 remains
-  read-only.
+- The accepted projection boundary did not configure a live service token or
+  perform provider writes.
+- Full synthetic sandbox CRUD is now approved by ADR-011. Production portal
+  activation remains disabled until operation-family gates pass.
 - Approved live read evidence and isolated PostgREST/RLS proof are still
   required before runtime activation.
 

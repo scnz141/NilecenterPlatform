@@ -1,3 +1,4 @@
+import { requireActiveUser } from "@/lib/auth/session";
 import { useMemo, useState } from "react";
 import {
   ArrowRight,
@@ -17,7 +18,6 @@ import { WorkspaceLayout } from "@/components/platform/PlatformLayouts";
 import { StatusBadge } from "@/components/platform/PlatformPrimitives";
 import { platformStore } from "@/lib/domain/store";
 import type { CalendarEventType, PlatformState } from "@/lib/domain/types";
-import { getDemoUser } from "@/lib/platformData";
 
 export type StudentWorkspaceView =
   | "courses"
@@ -100,11 +100,9 @@ function statusTone(value?: string): Tone {
 }
 
 function getStudentScope(state: PlatformState) {
-  const user = getDemoUser("student");
-  const student =
-    state.students.find(profile => profile.userId === user.id) ??
-    state.students[0];
-  const studentId = student?.id ?? "stu_demo";
+  const user = requireActiveUser("student");
+  const student = state.students.find(profile => profile.userId === user.id);
+  const studentId = student?.id ?? "";
   const enrollments = state.enrollments.filter(
     enrollment =>
       enrollment.studentId === studentId &&

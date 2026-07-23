@@ -19,7 +19,6 @@ import {
 import { toast } from "sonner";
 import { publicCourses } from "@/lib/platformData";
 import { saveBackendRecord, verifyPublicCertificateRequest, type PublicCertificateVerificationDto } from "@/lib/backend/api";
-import { platformStore } from "@/lib/domain/store";
 import { leadFormSchema, placementFormSchema } from "@/lib/validators/platform";
 
 type PublicMode =
@@ -310,47 +309,34 @@ function BookingForm({ type }: { type: "trial" | "placement" }) {
       return;
     }
     if (type === "trial") {
-      const lead = platformStore.createLead({
-        fullName: result.data.fullName,
-        email: result.data.email,
-        phone: result.data.phone,
-        country: result.data.country,
-        subject: result.data.subject,
+      const backend = await saveBackendRecord("lead", {
+        ...result.data,
         source: "trial_form",
-        notes: [
-          result.data.notes,
-          result.data.preferredLanguage ? `Preferred language: ${result.data.preferredLanguage}` : "",
-          result.data.ageGroup ? `Age group: ${result.data.ageGroup}` : "",
-          result.data.preferredSchedule ? `Preferred schedule: ${result.data.preferredSchedule}` : "",
-        ]
-          .filter(Boolean)
-          .join(" | "),
       });
-      toast.success("Trial lead created", {
-        description: `Registrar queue now includes ${lead.fullName}.`,
+      if (!backend.ok) {
+        setError(backend.error ?? "The trial request could not be saved.");
+        return;
+      }
+      toast.success("Trial request received", {
+        description: "The registrar team can now review your request.",
       });
-      const backend = await saveBackendRecord("lead", { ...result.data, source: "trial_form", localId: lead.id }, "public");
-      if (!backend.ok) toast.warning("Saved locally; backend sync pending", { description: backend.error });
     } else {
       const data = result.data as typeof result.data & {
         branch: string;
         preferredDate: string;
         currentLevel: string;
       };
-      const booking = platformStore.createPlacementBooking({
-        fullName: data.fullName,
-        email: data.email,
-        phone: data.phone,
+      const backend = await saveBackendRecord("placement", {
+        ...data,
         branchId: mapBranchToId(data.branch),
-        subject: data.subject,
-        preferredDate: data.preferredDate,
-        currentLevel: data.currentLevel,
       });
-      toast.success("Placement booking created", {
-        description: `${booking.fullName} is ready for registrar assignment.`,
+      if (!backend.ok) {
+        setError(backend.error ?? "The placement request could not be saved.");
+        return;
+      }
+      toast.success("Placement request received", {
+        description: "The registrar team can now schedule the next step.",
       });
-      const backend = await saveBackendRecord("placement", { ...data, branchId: mapBranchToId(data.branch), localId: booking.id }, "public");
-      if (!backend.ok) toast.warning("Saved locally; backend sync pending", { description: backend.error });
     }
     setError(null);
     setSubmitted(true);

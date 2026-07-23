@@ -1,3 +1,4 @@
+import { requireActiveUser } from "@/lib/auth/session";
 import { useMemo, useState } from "react";
 import { Download, Search } from "lucide-react";
 import { toast } from "sonner";
@@ -8,8 +9,8 @@ import {
   StatusBadge,
 } from "@/components/platform/PlatformPrimitives";
 import { platformStore } from "@/lib/domain/store";
+import { runPlatformWorkflowActionRequest } from "@/lib/backend/api";
 import type { AuditLog } from "@/lib/domain/types";
-import { getDemoUser } from "@/lib/platformData";
 
 function formatDateTime(value: string) {
   const date = new Date(value);
@@ -67,7 +68,7 @@ export default function AdminAuditLogsPage() {
   const [query, setQuery] = useState("");
   const [group, setGroup] = useState("All");
   const state = useMemo(() => platformStore.getState(), [version]);
-  const actorId = getDemoUser("superadmin").id;
+  const actorId = requireActiveUser("superadmin").id;
 
   const groups = useMemo(
     () =>
@@ -82,7 +83,7 @@ export default function AdminAuditLogsPage() {
     matchesAudit(audit, query, group)
   );
 
-  const exportAuditCsv = () => {
+  const exportAuditCsv = async () => {
     const rows = filteredAudits.map(audit => ({
       id: audit.id,
       actorId: audit.actorId,
@@ -97,6 +98,18 @@ export default function AdminAuditLogsPage() {
       toast.error("No activity rows to export");
       return;
     }
+    const result = await runPlatformWorkflowActionRequest({
+      type: "audit.export",
+      rowCount: rows.length,
+      format: "csv",
+    });
+    if (!result.ok || !result.data) {
+      toast.error("Activity export could not be authorized", {
+        description: result.error,
+      });
+      return;
+    }
+    platformStore.setState(result.data.state);
     const url = URL.createObjectURL(
       new Blob([csv], { type: "text/csv;charset=utf-8" })
     );
@@ -105,13 +118,6 @@ export default function AdminAuditLogsPage() {
     link.download = `nile-audit-${new Date().toISOString().slice(0, 10)}.csv`;
     link.click();
     URL.revokeObjectURL(url);
-    platformStore.audit(
-      "audit.exported",
-      "AuditLog",
-      "filtered",
-      `Exported ${rows.length} audit row(s).`,
-      actorId
-    );
     setVersion(value => value + 1);
     toast.success("Activity CSV prepared", {
       description: `${rows.length} row(s) exported from the local activity log.`,

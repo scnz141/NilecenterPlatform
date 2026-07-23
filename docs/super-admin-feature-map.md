@@ -45,5 +45,9 @@
 
 - Auth and backend behavior stay as-is for this phase.
 - Supabase is currently used as a demo/snapshot persistence boundary, not a normalized production LMS schema.
-- Moodle, EMS, email, WhatsApp, payment, meeting, file upload, and PDF generation stay explicit server-side integration boundaries until provider work is scheduled.
+- Moodle is an explicit server-side integration with full synthetic sandbox
+  CRUD approved under ADR-011; Super Admin governs mappings, commands,
+  reconciliation, and health rather than editing provider tables directly.
+  Production Moodle activation and EMS, WhatsApp, payment, meeting, file
+  upload, and PDF providers remain phase-gated.
 - Every UI change must remain responsive for desktop, tablet, and mobile.

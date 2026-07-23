@@ -1,6 +1,6 @@
+import { requireActiveUser } from "@/lib/auth/session";
 import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { motion } from "framer-motion";
-import { z } from "zod";
 import { Link } from "wouter";
 import {
   Activity,
@@ -49,11 +49,9 @@ import {
 import { toast } from "sonner";
 import {
   runPlatformWorkflowActionRequest,
-  saveBackendRecord,
 } from "@/lib/backend/api";
 import {
-  getDemoUser,
-  getPageConfig,
+getPageConfig,
   roleMeta,
   roleOrder,
   rolePermissions,
@@ -573,11 +571,9 @@ function StudentAccountExperience({ pageId }: { pageId: string }) {
   const [version, setVersion] = useState(0);
   const state = useMemo(() => platformStore.getState(), [version]);
   const refresh = () => setVersion(value => value + 1);
-  const student =
-    state.students.find(item => item.id === "stu_demo") ?? state.students[0];
-  const user =
-    state.users.find(item => item.id === student?.userId) ??
-    getDemoUser("student");
+  const actor = requireActiveUser("student");
+  const student = state.students.find(item => item.userId === actor.id);
+  const user = state.users.find(item => item.id === actor.id) ?? actor;
   const [profileDraft, setProfileDraft] = useState({
     name: user.name,
     email: user.email,
@@ -587,6 +583,8 @@ function StudentAccountExperience({ pageId }: { pageId: string }) {
   });
   const [ticketDraft, setTicketDraft] = useState({
     subject: "Need help with class recording",
+    details:
+      "The latest class recording is not available from my learning workspace.",
     priority: "normal" as "low" | "normal" | "high" | "urgent",
   });
   const enrollments = state.enrollments.filter(
@@ -613,74 +611,68 @@ function StudentAccountExperience({ pageId }: { pageId: string }) {
   const focusCopy =
     pageId === "support" ? "Student support" : "Student profile";
 
-  const saveProfile = (event: React.FormEvent) => {
+  const saveProfile = async (event: React.FormEvent) => {
     event.preventDefault();
-    const next = clonePlatformState();
-    next.users = next.users.map(item =>
-      item.id === user.id
-        ? {
-            ...item,
-            name: profileDraft.name.trim() || item.name,
-            email: profileDraft.email.trim() || item.email,
-          }
-        : item
-    );
-    next.students = next.students.map(item =>
-      item.id === student.id
-        ? {
-            ...item,
-            country: profileDraft.country.trim() || item.country,
-            preferredLanguage: profileDraft.preferredLanguage,
-            timezone: profileDraft.timezone.trim() || item.timezone,
-          }
-        : item
-    );
-    platformStore.setState(next);
-    platformStore.audit(
-      "profile.updated",
-      "StudentProfile",
-      student.id,
-      `Updated profile for ${profileDraft.name.trim() || user.name}.`,
-      user.id
-    );
+    if (!student) {
+      toast.error("Student profile is not available");
+      return;
+    }
+    const result = await runPlatformWorkflowActionRequest({
+      type: "profile.update",
+      userId: user.id,
+      name: profileDraft.name,
+      preferredLanguage: profileDraft.preferredLanguage,
+      timezone: profileDraft.timezone,
+      country: profileDraft.country,
+    });
+    if (!result.ok || !result.data) {
+      toast.error("Profile could not be saved", {
+        description: result.error,
+      });
+      return;
+    }
+    platformStore.setState(result.data.state);
     refresh();
-    toast.success("Profile saved locally");
+    toast.success("Profile saved");
   };
 
-  const createTicket = (event: React.FormEvent) => {
+  const createTicket = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!ticketDraft.subject.trim()) {
       toast.error("Ticket subject is required");
       return;
     }
-    const next = clonePlatformState();
-    const id = `ticket_${Date.now().toString(36)}`;
-    next.supportTickets = [
-      {
-        id,
-        requesterId: user.id,
-        subject: ticketDraft.subject.trim(),
-        status: "pending",
-        priority: ticketDraft.priority,
-        lastUpdatedAt: new Date().toISOString(),
-      },
-      ...next.supportTickets,
-    ];
-    platformStore.setState(next);
-    platformStore.audit(
-      "support.ticket_created",
-      "SupportTicket",
-      id,
-      `Created support ticket: ${ticketDraft.subject.trim()}.`,
-      user.id
-    );
-    setTicketDraft({ subject: "", priority: "normal" });
+    const result = await runPlatformWorkflowActionRequest({
+      type: "support.ticket.create",
+      subject: ticketDraft.subject.trim(),
+      details: ticketDraft.details.trim(),
+      category: "learning",
+      priority: ticketDraft.priority,
+    });
+    if (!result.ok || !result.data) {
+      toast.error("Support ticket could not be created", {
+        description: result.error,
+      });
+      return;
+    }
+    platformStore.setState(result.data.state);
+    setTicketDraft({ subject: "", details: "", priority: "normal" });
     refresh();
-    toast.success("Support ticket created", { description: id });
+    toast.success("Support ticket created");
   };
 
-  const markNotificationRead = (notificationId: string) => {
-    platformStore.markNotificationRead(notificationId);
+  const markNotificationRead = async (notificationId: string) => {
+    const result = await runPlatformWorkflowActionRequest({
+      type: "notification.read",
+      notificationId,
+    });
+    if (!result.ok || !result.data) {
+      toast.error("Notification could not be updated", {
+        description: result.error,
+      });
+      return;
+    }
+    platformStore.setState(result.data.state);
     refresh();
   };
 
@@ -743,6 +735,19 @@ function StudentAccountExperience({ pageId }: { pageId: string }) {
                         name: event.target.value,
                       }))
                     }
+                  />
+                </label>
+                <label>
+                  Details
+                  <textarea
+                    value={ticketDraft.details}
+                    onChange={event =>
+                      setTicketDraft(value => ({
+                        ...value,
+                        details: event.target.value,
+                      }))
+                    }
+                    placeholder="Describe the problem"
                   />
                 </label>
                 <label>
@@ -1032,9 +1037,7 @@ function AdminAccessExperience({
   const [version, setVersion] = useState(0);
   const [query, setQuery] = useState("");
   const [selectedRole, setSelectedRole] = useState<Role>("teacher");
-  const [selectedUserId, setSelectedUserId] = useState(
-    params?.userId ?? "usr_teacher_demo"
-  );
+  const [selectedUserId, setSelectedUserId] = useState(params?.userId ?? "");
   const [creatingAccount, setCreatingAccount] = useState(false);
   const [createAccountError, setCreateAccountError] = useState("");
   const [assigningTeacher, setAssigningTeacher] = useState(false);
@@ -1067,7 +1070,7 @@ function AdminAccessExperience({
   });
   const state = useMemo(() => platformStore.getState(), [version]);
   const refresh = () => setVersion(value => value + 1);
-  const actorId = getDemoUser("superadmin").id;
+  const actorId = requireActiveUser("superadmin").id;
   const isRole = (value: unknown): value is Role =>
     typeof value === "string" && value in roleMeta;
   const safeRole = (value: unknown, fallback: Role = "teacher"): Role =>
@@ -2655,7 +2658,7 @@ function AdminSystemExperience({ pageId }: { pageId: string }) {
   const [settingsSaveError, setSettingsSaveError] = useState("");
   const state = useMemo(() => platformStore.getState(), [version]);
   const refresh = () => setVersion(value => value + 1);
-  const actorId = getDemoUser("superadmin").id;
+  const actorId = requireActiveUser("superadmin").id;
   const integrations = state.integrations;
   const selectedIntegration =
     integrations.find(
@@ -2830,7 +2833,7 @@ function AdminSystemExperience({ pageId }: { pageId: string }) {
     });
   };
 
-  const exportAuditCsv = () => {
+  const exportAuditCsv = async () => {
     const rows = filteredAuditLogs.map(audit => ({
       id: audit.id,
       actorId: audit.actorId,
@@ -2845,6 +2848,18 @@ function AdminSystemExperience({ pageId }: { pageId: string }) {
       toast.error("No activity rows to export");
       return;
     }
+    const result = await runPlatformWorkflowActionRequest({
+      type: "audit.export",
+      rowCount: rows.length,
+      format: "csv",
+    });
+    if (!result.ok || !result.data) {
+      toast.error("Activity export could not be authorized", {
+        description: result.error,
+      });
+      return;
+    }
+    platformStore.setState(result.data.state);
     const url = URL.createObjectURL(
       new Blob([csv], { type: "text/csv;charset=utf-8" })
     );
@@ -2853,13 +2868,6 @@ function AdminSystemExperience({ pageId }: { pageId: string }) {
     link.download = `nile-audit-${new Date().toISOString().slice(0, 10)}.csv`;
     link.click();
     URL.revokeObjectURL(url);
-    platformStore.audit(
-      "audit.exported",
-      "AuditLog",
-      "filtered",
-      `Exported ${rows.length} audit row(s).`,
-      actorId
-    );
     refresh();
     toast.success("Activity CSV prepared", {
       description: `${rows.length} row(s) exported from the local activity log.`,
@@ -3341,7 +3349,7 @@ function AcademicGovernanceExperience({
   const state = useMemo(() => platformStore.getState(), [version]);
   const refresh = () => setVersion(value => value + 1);
   const actorRole = scope === "admin" ? "superadmin" : "headofdepartment";
-  const actorId = getDemoUser(actorRole).id;
+  const actorId = requireActiveUser(actorRole).id;
   const actorUser = state.users.find(user => user.id === actorId);
   const academicDepartments =
     scope === "admin"
@@ -5259,13 +5267,13 @@ function BranchOperationsExperience({ pageId }: { pageId: string }) {
   const [paymentSaving, setPaymentSaving] = useState(false);
   const [messageSaving, setMessageSaving] = useState(false);
   const [messageDraft, setMessageDraft] = useState({
-    recipientId: "usr_registrar_demo",
+    recipientId: "",
     subject: "Branch operations update",
     body: "Please review the branch schedule, attendance, and payment queue.",
   });
   const state = useMemo(() => platformStore.getState(), [version]);
   const refresh = () => setVersion(value => value + 1);
-  const actorId = getDemoUser("branchadmin").id;
+  const actorId = requireActiveUser("branchadmin").id;
   const actorUser = state.users.find(user => user.id === actorId);
   const branch =
     state.branches.find(item => item.id === selectedBranchId) ??
@@ -5357,6 +5365,18 @@ function BranchOperationsExperience({ pageId }: { pageId: string }) {
   const branchRecipients = state.users.filter(
     user => user.id !== actorId && branchRecipientIds.has(user.id)
   );
+
+  useEffect(() => {
+    if (
+      branchRecipients.length &&
+      !branchRecipients.some(user => user.id === messageDraft.recipientId)
+    ) {
+      setMessageDraft(value => ({
+        ...value,
+        recipientId: branchRecipients[0].id,
+      }));
+    }
+  }, [branchRecipients, messageDraft.recipientId]);
   const branchMessages = state.messages.filter(
     message =>
       branchRecipientIds.has(message.fromUserId) ||
@@ -6577,7 +6597,7 @@ function RegistrarAdmissionsExperience({
   >(null);
   const state = useMemo(() => platformStore.getState(), [version]);
   const refresh = () => setVersion(value => value + 1);
-  const actorId = getDemoUser("registrar").id;
+  const actorId = requireActiveUser("registrar").id;
   const activePage = pageId.includes("lead")
     ? "leads"
     : pageId.includes("application")
@@ -6992,10 +7012,12 @@ function RegistrarAdmissionsExperience({
       toast.error("Name and phone are required");
       return;
     }
+    const sourceKey = crypto.randomUUID();
     const result = await runRegistrarAction(
       "lead.create",
       {
         type: "lead.create",
+        branchId: state.branches[0]?.id,
         fullName: leadDraft.fullName.trim(),
         email:
           leadDraft.email.trim() ||
@@ -7005,6 +7027,8 @@ function RegistrarAdmissionsExperience({
         subject: leadDraft.subject.trim() || "Arabic Language",
         source: leadDraft.source,
         notes: leadDraft.notes.trim(),
+        sourceKey,
+        idempotencyKey: `lead.create:${sourceKey}`,
         actorId,
       },
       "Lead added to admissions"
@@ -9538,9 +9562,12 @@ function TeacherDeliveryExperience({
   const [attendanceSaving, setAttendanceSaving] = useState(false);
   const [reminderSaving, setReminderSaving] = useState(false);
   const [materialSavingKey, setMaterialSavingKey] = useState("");
+  const [assignmentSaving, setAssignmentSaving] = useState(false);
+  const [quizSaving, setQuizSaving] = useState(false);
+  const [gradingSaving, setGradingSaving] = useState(false);
   const state = useMemo(() => platformStore.getState(), [version]);
   const refresh = () => setVersion(value => value + 1);
-  const actorId = getDemoUser("teacher").id;
+  const actorId = requireActiveUser("teacher").id;
   const teacherRuns = state.courseRuns.filter(run => run.teacherId === actorId);
   const teacherClasses = state.classGroups.filter(classGroup =>
     teacherRuns.some(run => run.id === classGroup.courseRunId)
@@ -9790,70 +9817,91 @@ function TeacherDeliveryExperience({
     );
   };
 
-  const createAssignment = (event: React.FormEvent) => {
+  const createAssignment = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!selectedRun || !assignmentDraft.title.trim()) {
       toast.error("Select a class and enter an assignment title");
       return;
     }
-    const assignment = platformStore.createAssignment(
-      {
-        courseRunId: selectedRun.id,
-        title: assignmentDraft.title.trim(),
-        dueAt: new Date(assignmentDraft.dueAt).toISOString(),
-        submissionType: assignmentDraft.submissionType,
-        rubric: assignmentDraft.rubric
-          .split(",")
-          .map(item => item.trim())
-          .filter(Boolean),
-      },
-      actorId
-    );
+    setAssignmentSaving(true);
+    const result = await runPlatformWorkflowActionRequest({
+      type: "assignment.create",
+      courseRunId: selectedRun.id,
+      title: assignmentDraft.title.trim(),
+      dueAt: new Date(assignmentDraft.dueAt).toISOString(),
+      submissionType: assignmentDraft.submissionType,
+      rubric: assignmentDraft.rubric
+        .split(",")
+        .map(item => item.trim())
+        .filter(Boolean),
+    });
+    setAssignmentSaving(false);
+    if (!result.ok || !result.data) {
+      toast.error("Assignment could not be created", {
+        description: result.error,
+      });
+      return;
+    }
+    platformStore.setState(result.data.state);
     refresh();
-    toast.success("Assignment created", { description: assignment.title });
+    toast.success("Assignment created", {
+      description: assignmentDraft.title.trim(),
+    });
   };
 
-  const createQuiz = (event: React.FormEvent) => {
+  const createQuiz = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!selectedRun || !quizDraft.title.trim()) {
       toast.error("Select a class and enter a quiz title");
       return;
     }
-    const quiz = platformStore.createQuiz(
-      {
-        courseRunId: selectedRun.id,
-        title: quizDraft.title.trim(),
-        dueAt: getDefaultDueAt(2),
-        durationMinutes: Number(quizDraft.durationMinutes) || 20,
-        attemptsAllowed: Math.max(1, Number(quizDraft.attemptsAllowed) || 1),
-        questionTypes: quizDraft.questionTypes
-          .split(",")
-          .map(item => item.trim())
-          .filter(Boolean),
-      },
-      actorId
-    );
+    setQuizSaving(true);
+    const result = await runPlatformWorkflowActionRequest({
+      type: "quiz.create",
+      courseRunId: selectedRun.id,
+      title: quizDraft.title.trim(),
+      dueAt: getDefaultDueAt(2),
+      durationMinutes: Number(quizDraft.durationMinutes) || 20,
+      attemptsAllowed: Math.max(1, Number(quizDraft.attemptsAllowed) || 1),
+      questionTypes: quizDraft.questionTypes
+        .split(",")
+        .map(item => item.trim())
+        .filter(Boolean),
+    });
+    setQuizSaving(false);
+    if (!result.ok || !result.data) {
+      toast.error("Quiz could not be created", { description: result.error });
+      return;
+    }
+    platformStore.setState(result.data.state);
     refresh();
-    toast.success("Quiz created", { description: quiz.title });
+    toast.success("Quiz created", { description: quizDraft.title.trim() });
   };
 
-  const gradeSelectedSubmission = () => {
+  const gradeSelectedSubmission = async () => {
     if (!selectedSubmission) {
       toast.error("No pending submission selected");
       return;
     }
-    const graded = platformStore.gradeAssignmentSubmission(
-      selectedSubmission.id,
-      Math.min(100, Math.max(0, Number(gradeDraft.score) || 0)),
-      gradeDraft.feedback.trim() || "Reviewed by teacher.",
-      actorId
-    );
-    refresh();
-    if (!graded) {
-      toast.error("Submission was not found");
+    setGradingSaving(true);
+    const result = await runPlatformWorkflowActionRequest({
+      type: "assignment.grade",
+      submissionId: selectedSubmission.id,
+      score: Math.min(100, Math.max(0, Number(gradeDraft.score) || 0)),
+      feedback: gradeDraft.feedback.trim() || "Reviewed by teacher.",
+    });
+    setGradingSaving(false);
+    if (!result.ok || !result.data) {
+      toast.error("Submission could not be graded", {
+        description: result.error,
+      });
       return;
     }
-    toast.success("Submission graded", { description: graded.id });
+    platformStore.setState(result.data.state);
+    refresh();
+    toast.success("Submission graded", {
+      description: selectedSubmission.id,
+    });
   };
 
   return (
@@ -10016,9 +10064,9 @@ function TeacherDeliveryExperience({
                   }
                 />
               </label>
-              <button type="submit">
+              <button type="submit" disabled={assignmentSaving}>
                 <Plus size={15} />
-                Create assignment
+                {assignmentSaving ? "Creating assignment" : "Create assignment"}
               </button>
             </form>
 
@@ -10074,9 +10122,9 @@ function TeacherDeliveryExperience({
                   }
                 />
               </label>
-              <button type="submit">
+              <button type="submit" disabled={quizSaving}>
                 <Plus size={15} />
-                Create quiz
+                {quizSaving ? "Creating quiz" : "Create quiz"}
               </button>
             </form>
 
@@ -10119,10 +10167,10 @@ function TeacherDeliveryExperience({
               <button
                 type="button"
                 onClick={gradeSelectedSubmission}
-                disabled={!selectedSubmission}
+                disabled={!selectedSubmission || gradingSaving}
               >
                 <ShieldCheck size={15} />
-                Return feedback
+                {gradingSaving ? "Saving feedback" : "Return feedback"}
               </button>
             </div>
 
@@ -10564,14 +10612,10 @@ function MoodleSourceExperience({
   );
 
   const logSyncReview = () => {
-    const audit = platformStore.audit(
-      "moodle.sync.review",
-      course.shortname,
-      `moodle-course-${course.id}`,
-      `Queued Moodle review for ${course.shortname}.`,
-      getDemoUser(role).id
-    );
-    toast.success("Moodle review queued", { description: audit.id });
+    toast.info("Moodle reconciliation is read-only", {
+      description:
+        "A reviewed reconciliation command will be added after normalized mappings are active.",
+    });
   };
 
   return (
@@ -10940,27 +10984,6 @@ function ListExperience({ config, role }: { config: PageConfig; role: Role }) {
     page * pageSize
   );
 
-  const addSavedRecord = (values: Record<string, string>, recordId: string) => {
-    const record: RecordItem = {
-      id: recordId,
-      title:
-        values.title ||
-        values.fullName ||
-        values.name ||
-        `${config.title} record`,
-      subtitle:
-        values.notes || values.subject || `Saved from ${config.formTitle}`,
-      status: values.status || "Saved",
-      owner: values.owner || roleMeta[role].label,
-      due: values.date || values.dueDate || "Now",
-      metric: "Local",
-      tone: "teal",
-    };
-    setRecords(prev => [record, ...prev]);
-    setSelectedRecord(record);
-    setPage(1);
-  };
-
   return (
     <div className="platform-two-column">
       <div className="platform-stack">
@@ -10994,7 +11017,6 @@ function ListExperience({ config, role }: { config: PageConfig; role: Role }) {
         />
       </div>
       <div className="platform-stack">
-        <QuickForm config={config} role={role} onSaved={addSavedRecord} />
         <RecordInspector
           record={selectedRecord}
           role={role}
@@ -11009,7 +11031,6 @@ function ListExperience({ config, role }: { config: PageConfig; role: Role }) {
 function FormAndPanels({ config, role }: { config: PageConfig; role: Role }) {
   return (
     <div className="platform-two-column">
-      <QuickForm config={config} role={role} wide />
       <div className="platform-stack">
         <Panels config={config} />
         <Timeline records={config.timeline} />
@@ -11228,169 +11249,6 @@ function RecordsTable({
   );
 }
 
-function QuickForm({
-  config,
-  role,
-  wide = false,
-  onSaved,
-}: {
-  config: PageConfig;
-  role: Role;
-  wide?: boolean;
-  onSaved?: (values: Record<string, string>, recordId: string) => void;
-}) {
-  const [values, setValues] = useState<Record<string, string>>({});
-  const [error, setError] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
-  const [lastSaved, setLastSaved] = useState<string | null>(null);
-  const schema = useMemo(() => {
-    return z.object(
-      Object.fromEntries(
-        config.formFields
-          .filter(field => field.type !== "textarea")
-          .map(field => [
-            field.name,
-            z.preprocess(
-              value => (typeof value === "string" ? value : ""),
-              z.string().min(1, `${field.label} is required`)
-            ),
-          ])
-      )
-    );
-  }, [config.formFields]);
-
-  const submit = async (event: React.FormEvent) => {
-    event.preventDefault();
-    const result = schema.safeParse(values);
-    if (!result.success) {
-      setError(result.error.issues[0]?.message ?? "Check the form");
-      return;
-    }
-    setError(null);
-    setSaving(true);
-    await new Promise(resolve => setTimeout(resolve, 450));
-    const recordId = platformStore.saveOperationalRecord(
-      config.title,
-      values,
-      getDemoUser(role).id
-    );
-    const backend = await saveBackendRecord(
-      "operational",
-      {
-        module: config.title,
-        formTitle: config.formTitle,
-        localId: recordId,
-        values,
-      },
-      getDemoUser(role).id
-    );
-    onSaved?.(values, recordId);
-    setValues({});
-    setLastSaved(recordId);
-    setSaving(false);
-    if (!backend.ok) {
-      toast.warning("Saved locally; backend sync pending", {
-        description: backend.error,
-      });
-      return;
-    }
-    toast.success(`${config.primaryAction} saved`, {
-      description: `Activity record ${recordId} was added to system data.`,
-    });
-  };
-
-  return (
-    <form
-      className={`platform-form-card ${wide ? "wide" : ""}`}
-      onSubmit={submit}
-      data-platform-create-form
-    >
-      <div className="platform-card-title">
-        <div>
-          <span>{config.eyebrow}</span>
-          <strong>{config.formTitle}</strong>
-        </div>
-        <ShieldCheck size={17} style={{ color: roleMeta[role].color }} />
-      </div>
-      <div className="platform-form-grid">
-        {config.formFields.map(field => (
-          <label
-            key={field.name}
-            className={field.type === "textarea" ? "full" : ""}
-          >
-            <span>{field.label}</span>
-            {field.type === "select" ? (
-              <select
-                value={values[field.name] ?? ""}
-                onChange={event =>
-                  setValues(prev => ({
-                    ...prev,
-                    [field.name]: event.target.value,
-                  }))
-                }
-              >
-                <option value="">Select...</option>
-                {field.options?.map(option => (
-                  <option key={option} value={option}>
-                    {option}
-                  </option>
-                ))}
-              </select>
-            ) : field.type === "textarea" ? (
-              <textarea
-                value={values[field.name] ?? ""}
-                placeholder={field.placeholder}
-                onChange={event =>
-                  setValues(prev => ({
-                    ...prev,
-                    [field.name]: event.target.value,
-                  }))
-                }
-              />
-            ) : (
-              <input
-                type={field.type}
-                value={values[field.name] ?? ""}
-                placeholder={field.placeholder}
-                onChange={event =>
-                  setValues(prev => ({
-                    ...prev,
-                    [field.name]: event.target.value,
-                  }))
-                }
-              />
-            )}
-          </label>
-        ))}
-      </div>
-      {error ? <p className="platform-form-error">{error}</p> : null}
-      {lastSaved ? (
-        <p className="platform-form-success">Saved locally as {lastSaved}</p>
-      ) : null}
-      <div className="platform-form-actions">
-        <button
-          type="button"
-          className="platform-secondary-button"
-          onClick={() => {
-            setValues({});
-            setError(null);
-          }}
-        >
-          Cancel
-        </button>
-        <button
-          type="submit"
-          className="platform-primary-button"
-          style={{ background: roleMeta[role].color }}
-          disabled={saving}
-        >
-          {saving ? "Saving..." : config.primaryAction}
-        </button>
-      </div>
-    </form>
-  );
-}
-
 function RecordInspector({
   record,
   role,
@@ -11467,18 +11325,10 @@ function RecordInspector({
             color: "white",
             borderColor: roleMeta[role].color,
           }}
-          onClick={() => {
-            const audit = platformStore.audit(
-              "record.reviewed",
-              record.title,
-              record.id,
-              `Reviewed ${record.title}.`,
-              getDemoUser(role).id
-            );
-            toast.success("Review logged", { description: audit.id });
-          }}
+          disabled
+          title="Review logging requires a typed domain record."
         >
-          Log review
+          Review unavailable
         </button>
       </div>
     </article>
@@ -11573,7 +11423,6 @@ function QuranExperience({ config, role }: { config: PageConfig; role: Role }) {
         <RecordsTable records={config.records} />
       </div>
       <div className="platform-stack">
-        <QuickForm config={config} role={role} />
         <Panels config={config} />
       </div>
     </div>
@@ -11619,7 +11468,6 @@ function CalendarExperience({
         </div>
       </div>
       <div className="platform-stack">
-        <QuickForm config={config} role={role} />
         <Panels config={config} />
       </div>
     </div>
@@ -11656,7 +11504,6 @@ function AssessmentExperience({
         <RecordsTable records={config.records} />
       </div>
       <div className="platform-stack">
-        <QuickForm config={config} role={role} />
         <Panels config={config} />
       </div>
     </div>
@@ -11711,7 +11558,6 @@ function AttendanceExperience({
         </div>
       </div>
       <div className="platform-stack">
-        <QuickForm config={config} role={role} />
         <Panels config={config} />
       </div>
     </div>
@@ -11750,7 +11596,6 @@ function CertificateExperience({
         ))}
       </div>
       <div className="platform-stack">
-        <QuickForm config={config} role={role} />
         <Panels config={config} />
       </div>
     </div>
@@ -11840,7 +11685,6 @@ function MessagesExperience({
         ))}
       </div>
       <div className="platform-stack">
-        <QuickForm config={config} role={role} />
         <Panels config={config} />
       </div>
     </div>

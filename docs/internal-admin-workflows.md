@@ -425,7 +425,6 @@ Permissions and actions:
 - `payment.record`
 - `calendar.create`
 - `message.send`
-- `record.save`
 - `notification.read`
 - `report.preset.save` for allowed registrar report types
 
@@ -463,7 +462,6 @@ Audit logs generated:
 - `calendar.created`
 - `calendar.created_with_conflict`
 - `message.sent`
-- `record.saved`
 - `notification.read`
 - `report.preset.saved`
 
@@ -520,7 +518,6 @@ Permissions and actions:
 - `message.send`
 - `quran.progress.update`
 - `recitation.review`
-- `record.save`
 - `notification.read`
 - `report.preset.save` for allowed HOD report types
 
@@ -557,7 +554,6 @@ Audit logs generated:
 - `message.sent`
 - `quran.progress_updated`
 - `recitation.reviewed`
-- `record.saved`
 - `notification.read`
 - `report.preset.saved`
 
@@ -602,7 +598,6 @@ Permissions and actions:
 - `calendar.create`
 - `message.send`
 - `payment.record`
-- `record.save`
 - `room.create`
 - `room.status.update`
 - `notification.read`
@@ -629,7 +624,6 @@ Audit logs generated:
 - `calendar.created_with_conflict`
 - `message.sent`
 - `payment.recorded`
-- `record.saved`
 - `room.created`
 - `room.status_updated`
 - `notification.read`
@@ -689,7 +683,6 @@ Permissions and actions:
 - `room.create`
 - `room.status.update`
 - `message.send`
-- `record.save`
 - `notification.read`
 - `report.preset.save` for allowed super admin report types
 
@@ -734,7 +727,6 @@ Audit logs generated:
 - `room.created`
 - `room.status_updated`
 - `message.sent`
-- `record.saved`
 - `notification.read`
 - `report.preset.saved`
 
@@ -848,7 +840,8 @@ Current implementation:
 Gaps:
 
 - Curriculum coverage and teacher oversight metrics need deeper production definitions.
-- Moodle/source mapping remains a placeholder/status workflow.
+- Moodle/source mapping is a real governance boundary. Full synthetic sandbox
+  CRUD is approved; production command activation remains phase-gated.
 - Certificate document generation and storage are not production-integrated.
 
 ## Branch Admin Lifecycle
@@ -959,11 +952,13 @@ boundary.
 - Payment provider status.
 - Email, WhatsApp, SMS, and meeting provider status.
 - File/media storage for submissions, resources, audio, video, and certificate documents.
-- Some operational records saved through generic `record.save`.
+- Generic operational saves have been retired. Routed workflows must use an
+  explicit typed command that persists a real domain record or fail closed.
 
 ### Future Integration
 
-- Live Moodle sync.
+- Production Moodle CRUD activation; full synthetic sandbox CRUD is approved
+  separately by ADR-011.
 - Finite, reconciled legacy EMS migration and cutover.
 - Payment gateway.
 - Real email/SMS/WhatsApp sending.
@@ -993,8 +988,9 @@ Provider authority:
 - Nile Learn owns identity, role/scope, organization, admissions, enrollment,
   class delivery, schedule, attendance, finance, certificates, messaging, and
   audit.
-- Moodle initially owns Moodle-managed content, activities, completion,
-  attempts, grades, and feedback; Nile Learn displays read-only projections.
+- Moodle owns Moodle-managed content, activities, completion, attempts,
+  grades, and feedback; Nile Learn displays scoped projections and submits
+  edits through audited Moodle CRUD commands or native launches.
 - Legacy EMS is a one-way migration source only. It is not a permanent sync
   partner and receives no writeback.
 
@@ -1031,7 +1027,7 @@ dependencies only; it does not approve a slice:
 4. Course runs, classes, schedules, rooms, and teacher assignment.
 5. Teacher attendance, assessment, grading, feedback, and student progress.
 6. Registrar, HOD, branch, and super-admin governance over normalized records.
-7. Read-only Moodle projection and finite EMS migration in their approved
-   phases.
+7. Moodle projection, full sandbox CRUD, gated production command activation,
+   and finite EMS migration in their approved phases.
 8. Route-by-route Simple UI and responsive completion after each workflow is
    authoritative and stable.

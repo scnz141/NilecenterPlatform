@@ -6,7 +6,7 @@ import { TeacherClassNavigation } from "@/components/platform/TeacherClassNaviga
 import { DetailLayout } from "@/components/platform/PlatformLayouts";
 import { StatusBadge } from "@/components/platform/PlatformPrimitives";
 import { runPlatformWorkflowActionRequest } from "@/lib/backend/api";
-import { getActiveUser } from "@/lib/auth/session";
+import { requireActiveUser } from "@/lib/auth/session";
 import { platformStore } from "@/lib/domain/store";
 import type { EntityStatus } from "@/lib/domain/types";
 
@@ -39,8 +39,7 @@ export default function TeacherClassDetailPage({
 }: TeacherClassDetailPageProps) {
   const [state, setState] = useState(() => platformStore.getState());
   const [reminderSaving, setReminderSaving] = useState(false);
-  const activeUser = getActiveUser();
-  const actorId = activeUser?.id ?? "usr_teacher_demo";
+  const actorId = requireActiveUser("teacher").id;
 
   useEffect(() => {
     const refreshState = () => setState(platformStore.getState());

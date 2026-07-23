@@ -1,3 +1,4 @@
+import { requireActiveUser } from "@/lib/auth/session";
 import { useMemo, useState, type FormEvent } from "react";
 import { ArrowRight, Plus } from "lucide-react";
 import { toast } from "sonner";
@@ -6,7 +7,6 @@ import PlatformShell from "@/components/platform/PlatformShell";
 import { FormFlowLayout } from "@/components/platform/PlatformLayouts";
 import { runPlatformWorkflowActionRequest } from "@/lib/backend/api";
 import { platformStore } from "@/lib/domain/store";
-import { getDemoUser } from "@/lib/platformData";
 
 export default function HodCourseRunCreatePage() {
   const [saving, setSaving] = useState(false);
@@ -20,7 +20,7 @@ export default function HodCourseRunCreatePage() {
     endsOn: "",
   });
   const state = useMemo(() => platformStore.getState(), []);
-  const actorId = getDemoUser("headofdepartment").id;
+  const actorId = requireActiveUser("headofdepartment").id;
   const actor = state.users.find(item => item.id === actorId);
   const departmentIds = new Set(
     state.departments

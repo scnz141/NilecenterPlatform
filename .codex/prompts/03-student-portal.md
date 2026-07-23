@@ -11,12 +11,16 @@ Build `/app/student/*` as a complete learner workspace: dashboard, courses, cust
 
 ## IMPLEMENT
 
-- Use real local platform actions for lessons, assignments, quizzes, support tickets, profile updates, and notifications.
+- Use Moodle projections and authenticated native Moodle launches for lessons,
+  assignment submissions, quiz attempts, completion, grades, and feedback.
+- Use Nile Learn actions only for support, profile, attendance, messages,
+  certificates, and other Nile-owned operations.
 - Make course/player UI classroom-board quality and mobile-safe.
 
 ## VERIFY
 
-- Complete lesson, submit assignment, submit quiz.
+- Complete a projected lesson, submit an assignment, and attempt a quiz through
+  the mapped Moodle sandbox workflow.
 - Save profile, create support ticket, mark notification read.
 - Test desktop, mobile, and lesson deep links.
 - Run `scripts/verify.sh`.

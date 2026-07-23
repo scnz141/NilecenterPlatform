@@ -80,8 +80,7 @@ export async function dispatchQueuedInvitationEmail(
       10
     );
     return deliveries.some(
-      item =>
-        item.outcome === "sent" && item.outboxEventId === outboxEventId
+      item => item.outcome === "sent" && item.outboxEventId === outboxEventId
     )
       ? "dispatched"
       : "queued";
@@ -131,6 +130,59 @@ export function registerUserInvitationRoutes(
         availabilityStatus: req.body?.availabilityStatus,
         subjects: req.body?.subjects,
         teachingLevels: req.body?.teachingLevels,
+        locale: req.body?.locale,
+        idempotencyKey: req.body?.idempotencyKey,
+      });
+      const delivery = await dispatchQueuedInvitationEmail(
+        env,
+        result.outboxEventId,
+        deliveryServiceFactory
+      );
+      res.status(202).json({ ok: true, invitation: result, delivery });
+    } catch (error) {
+      respondWithInvitationError(error, res);
+    }
+  });
+
+  app.post("/api/registrar/student-invitations", async (req, res) => {
+    if (!enabled(env.NILE_NORMALIZED_INVITATIONS_ENABLED)) {
+      res
+        .status(503)
+        .json({ error: "Normalized account invitations are not active." });
+      return;
+    }
+    const session = await getRequestSession(req);
+    if (
+      !session ||
+      session.provider !== "supabase" ||
+      session.authorizationModel !== "normalized" ||
+      !["registrar", "superadmin"].includes(session.activeRole)
+    ) {
+      res.status(403).json({
+        error: "Normalized Registrar or Super Admin access is required.",
+      });
+      return;
+    }
+    try {
+      const result = await service.createStudentEnrollment({
+        sessionToken: session.id,
+        fullName: req.body?.fullName,
+        email: req.body?.email,
+        phone: req.body?.phone,
+        branchRef: req.body?.branchRef,
+        preferredLanguage: req.body?.preferredLanguage,
+        courseInterest: req.body?.courseInterest,
+        ageGroup: req.body?.ageGroup,
+        guardianName: req.body?.guardianName,
+        guardianPhone: req.body?.guardianPhone,
+        currentLevel: req.body?.currentLevel,
+        notes: req.body?.notes,
+        courseRunId: req.body?.courseRunId,
+        classGroupId: req.body?.classGroupId,
+        source: req.body?.source,
+        leadId: req.body?.leadId,
+        applicationId: req.body?.applicationId,
+        placementBookingId: req.body?.placementBookingId,
         locale: req.body?.locale,
         idempotencyKey: req.body?.idempotencyKey,
       });

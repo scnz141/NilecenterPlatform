@@ -4,7 +4,10 @@ import PlatformShell from "@/components/platform/PlatformShell";
 import SettingsAreaNav from "@/components/platform/SettingsAreaNav";
 import { SettingsLayout } from "@/components/platform/PlatformLayouts";
 import { StatusBadge } from "@/components/platform/PlatformPrimitives";
-import { getActiveUser } from "@/lib/auth/session";
+import {
+  getStoredAuthSession,
+  requireActiveUser,
+} from "@/lib/auth/session";
 import { runPlatformWorkflowActionRequest } from "@/lib/backend/api";
 import { platformStore } from "@/lib/domain/store";
 import type { PortalSettingsRole, ScopedPortalSettings } from "@/lib/domain/types";
@@ -41,18 +44,21 @@ function defaultSettings(role: PortalSettingsRole, scopeId: string, label: strin
 export default function PortalSettingsPage({ role }: PortalSettingsPageProps) {
   const [version, setVersion] = useState(0);
   const state = useMemo(() => platformStore.getState(), [version]);
-  const activeUser = getActiveUser();
-  const fallbackUserId =
-    role === "registrar"
-      ? "usr_registrar_demo"
-      : role === "branchadmin"
-        ? "usr_branch_demo"
-        : "usr_hod_demo";
-  const user = state.users.find(item => item.id === activeUser?.id) ?? state.users.find(item => item.id === fallbackUserId);
-  const branch = state.branches.find(item => item.id === user?.branchId);
-  const department = state.departments.find(item => item.id === user?.departmentId);
-  const scopeId = role === "headofdepartment" ? (department?.id ?? "dep_arabic") : (branch?.id ?? "br_cairo");
-  const scopeLabel = role === "headofdepartment" ? (department?.name ?? "Academic department") : (branch?.name ?? "Branch");
+  const activeUser = requireActiveUser(role);
+  const session = getStoredAuthSession();
+  const user = state.users.find(item => item.id === activeUser.id);
+  const branchId = user?.branchId ?? session?.branchIds[0];
+  const departmentId = user?.departmentId ?? session?.departmentIds[0];
+  const branch = state.branches.find(item => item.id === branchId);
+  const department = state.departments.find(item => item.id === departmentId);
+  const scopeId =
+    role === "headofdepartment"
+      ? (department?.id ?? departmentId ?? "")
+      : (branch?.id ?? branchId ?? "");
+  const scopeLabel =
+    role === "headofdepartment"
+      ? (department?.name ?? "No department assigned")
+      : (branch?.name ?? "No branch assigned");
   const savedSettings =
     state.portalSettings.find(item => item.role === role && item.scopeId === scopeId) ??
     defaultSettings(role, scopeId, scopeLabel);

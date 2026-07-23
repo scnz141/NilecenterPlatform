@@ -1438,7 +1438,7 @@
   list-style: none;
 }
 
-.moodle-content-section-v3 li {
+.moodle-content-section-v3 > ul > li {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   min-height: 68px;
@@ -1448,11 +1448,11 @@
   border-top: 1px solid var(--border);
 }
 
-.moodle-content-section-v3 li > div:first-child {
+.moodle-content-section-v3 > ul > li > div:first-child {
   min-width: 0;
 }
 
-.moodle-content-section-v3 li strong {
+.moodle-content-section-v3 > ul > li > div:first-child strong {
   display: block;
   margin-top: 4px;
   color: var(--foreground);
@@ -1469,9 +1469,69 @@
 }
 
 .moodle-content-activity-meta-v3 small {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
   color: var(--muted-foreground);
   font-size: 12px;
   white-space: nowrap;
+}
+
+.moodle-content-dates-v3,
+.moodle-content-resources-v3 {
+  grid-column: 1 / -1;
+}
+
+.moodle-content-dates-v3 {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  color: var(--muted-foreground);
+  font-size: 12px;
+}
+
+.moodle-content-dates-v3 span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.moodle-content-resources-v3 {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 8px;
+}
+
+.moodle-content-resources-v3 > li {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 9px;
+  padding: 9px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--muted) 28%, var(--card));
+}
+
+.moodle-content-resources-v3 > li > span {
+  min-width: 0;
+}
+
+.moodle-content-resources-v3 strong,
+.moodle-content-resources-v3 small {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.moodle-content-resources-v3 strong {
+  color: var(--foreground);
+  font-size: 12px;
+}
+
+.moodle-content-resources-v3 small {
+  margin-top: 2px;
+  color: var(--muted-foreground);
+  font-size: 11px;
 }
 
 .moodle-content-section-empty-v3 {
@@ -1637,7 +1697,7 @@
     padding-inline: 16px;
   }
 
-  .moodle-content-section-v3 li {
+  .moodle-content-section-v3 > ul > li {
     grid-template-columns: minmax(0, 1fr);
     gap: 9px;
     padding-inline: 24px 16px;

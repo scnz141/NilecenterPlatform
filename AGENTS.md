@@ -74,13 +74,13 @@ Current priority:
 3. Normalize identity, role grants, scopes, audit, and external mappings.
 4. Make production sessions durable before normalized workflow writes.
 5. Migrate repositories and workflows in small verified slices.
-6. Add read-only Moodle projections and finite EMS migration only in their
-   approved phases.
+6. Implement full Moodle sandbox CRUD through the approved command contract,
+   while keeping production activation phase-gated.
 7. Improve UI route by route after each workflow is stable.
 
 Do not implement outside an explicitly approved master-plan phase:
 
-- live Moodle sync
+- unreviewed production Moodle activation or direct browser-to-Moodle writes
 - recurring/live EMS sync or EMS writeback
 - payment gateway
 - real email/SMS/WhatsApp sending
@@ -104,8 +104,27 @@ credential reuse.
 - Branch operations and branch finance oversight belong to Branch Admin scope.
 - Global configuration, audit, and controlled finance authority belong to Super
   Admin scope.
-- Legacy EMS is a finite migration source. Moodle is initially the authority for
-  Moodle-managed content and activities.
+- Legacy EMS is a finite migration source. Moodle is the sole writable
+  authority for Moodle-managed content, activities, outcomes, and feedback.
+
+### Moodle Sandbox CRUD Order
+
+The dedicated Moodle practice environment is approved for complete synthetic
+CRUD testing. Agents may create, read, update, archive, restore, and safely
+delete marker-bound synthetic users, enrolments, groups, courses, sections,
+content, files, assignments, submissions, quizzes, questions, attempts,
+grades, feedback, completion records, and supported activities.
+
+- Use synthetic data only and clean it up in dependency order.
+- Preserve Moodle history by archiving records that have attempts,
+  submissions, grades, or completion evidence.
+- Use server-only, least-privilege service identities and exact allowlists.
+- Prove actor capability, idempotency, read-back, reconciliation, repeated
+  cleanup, and credential teardown.
+- Never expose Moodle credentials to browsers or bypass Nile Learn RBAC,
+  audit, outbox, and mapping authority.
+- Production portal writes remain disabled until the matching master-plan
+  phase and sandbox gate are accepted.
 
 Every task must:
 
@@ -291,6 +310,16 @@ Use the commands that exist in `package.json`:
 - `npm run verify:phase6h4-fast` runs the bounded Phase 6H4 contracts, portable
   PostgreSQL lifecycle, TypeScript, and focused projection tests. It
   intentionally omits the full unit suite, build, and portal QA.
+- `npm run check:phase6k-moodle-command-contract` and
+  `npm run check:phase6k-moodle-command-contract:runtime` verify the manual,
+  unapplied `local_nilelearn` manifest and durable command-evidence package.
+  The portable runtime proves atomic command/audit/outbox evidence, exact
+  actor and target mappings, immutable attempts, unknown-outcome
+  reconciliation, rollback/reapply, and runtime-role denial without contacting
+  Moodle or enabling writes.
+- `npm run verify:phase6k-fast` runs the bounded ownership, projection,
+  user-mapping, and Phase 6K contracts with TypeScript and focused command
+  tests. It intentionally omits the full unit suite, build, and portal QA.
 - `npm run check:phase6-staging-db:static` verifies the immutable Phase 6I
   target, ordered SQL package, artifact hashes, and trusted local tooling
   without reading credentials or contacting a remote project.
@@ -404,8 +433,10 @@ DOCUMENT: note auth assumptions and backend boundaries.
 
 <u>SPEC</u>: Student portal must include dashboard, courses, custom player, assignments, quizzes, calendar, attendance, certificates, Quran progress, messages, reports, support, and profile.
 PLAN: inspect `StudentLearningPage`, `StudentAssessmentPage`, `StudentRecordsPage`, `PortalMessagesPage`, `WorkflowExperiences`, domain state, and student routes.
-IMPLEMENT: build stateful learning and account flows, not static cards.
-VERIFY: complete lessons, submit assignments/quizzes, use support/profile, test mobile and classroom-board view.
+IMPLEMENT: use scoped Moodle projections and authenticated native launches for
+learning; keep Nile-owned account and operational flows separate.
+VERIFY: complete a mapped lesson, submit assignments/quizzes through Moodle,
+use support/profile, and test mobile and classroom-board view.
 REVIEW: UI reviewer and QA reviewer.
 FIX: address overflow, action state, and stale selection bugs.
 DOCUMENT: note learning-player behavior and remaining integrations.
@@ -413,9 +444,12 @@ DOCUMENT: note learning-player behavior and remaining integrations.
 ### Teacher Portal
 
 <u>SPEC</u>: Teacher portal must support classes, sessions, attendance, materials, grading, quizzes, question bank, Quran review, messages, calendar, and reports.
-PLAN: map teacher routes to course runs, class groups, lessons, resources, assignments, attendance, and messages.
-IMPLEMENT: create real teacher workflows using domain store actions.
-VERIFY: create sessions, save attendance, publish materials, send reminders, and test responsiveness.
+PLAN: map Nile classes and rosters to exact Moodle delivery courses, content,
+assessments, outcomes, attendance, and messages.
+IMPLEMENT: keep sessions and attendance in Nile Learn; use Moodle projections,
+full allowlisted CRUD commands, and native launches for learning records.
+VERIFY: create a Nile session, save attendance, run synthetic Moodle CRUD for
+materials and assessments, send reminders, and test responsiveness.
 REVIEW: UI reviewer, QA reviewer, and data architect.
 FIX: correct workload, roster, and class-selection issues.
 DOCUMENT: update teacher portal checklist.
@@ -433,9 +467,12 @@ DOCUMENT: document EMS boundaries.
 ### HOD Portal
 
 <u>SPEC</u>: HOD portal must manage departments, programs, courses, Moodle source, levels, curriculum, teachers, classes, assessments, certificates, reports, and messages.
-PLAN: inspect academic governance components and course/curriculum models.
-IMPLEMENT: build academic governance and approval workflows.
-VERIFY: create modules, publish curriculum, review teachers/classes, approve certificates.
+PLAN: inspect Nile academic governance plus Moodle template, delivery-course,
+curriculum, question-bank, and outcome mappings.
+IMPLEMENT: build Nile governance and Moodle-owned curriculum CRUD through
+commands or native launches.
+VERIFY: create/update/archive a synthetic Moodle module, review read-back and
+reconciliation, review teachers/classes, and approve certificates.
 REVIEW: data architect and QA reviewer.
 FIX: resolve academic ownership and curriculum mapping issues.
 DOCUMENT: update academic management notes.
@@ -454,8 +491,10 @@ DOCUMENT: record branch-scope assumptions.
 
 <u>SPEC</u>: Super admin portal must govern users, roles, permissions, branches, integrations, audit logs, reports, system health, settings, and platform blueprint.
 PLAN: inspect RBAC, integration configs, audit logs, and platform shell.
-IMPLEMENT: build access control and system operations workspaces using local platform state.
-VERIFY: create user, update roles/permissions, update connector status, export audit, run health checks.
+IMPLEMENT: build server-authorized access control, Moodle manifest/mapping,
+command, reconciliation, audit, and health workspaces.
+VERIFY: create user, update roles/permissions, verify Moodle CRUD capability,
+reconcile a synthetic command, export audit, and run health checks.
 REVIEW: RBAC reviewer, security reviewer, QA reviewer.
 FIX: close permission, audit, and route-scope gaps.
 DOCUMENT: maintain super-admin operations notes.
@@ -463,9 +502,12 @@ DOCUMENT: maintain super-admin operations notes.
 ### Assessments
 
 <u>SPEC</u>: Assessments must support assignments, quizzes, question bank, grading, attempts, submissions, feedback, and manual review.
-PLAN: inspect assignment, quiz, submission, grade models.
-IMPLEMENT: use domain store actions for submissions and attempts.
-VERIFY: submit assignment, submit quiz, grade/review where supported.
+PLAN: inspect Moodle assignment, quiz, submission, attempt, grade, feedback,
+completion, mapping, command, and launch models.
+IMPLEMENT: use scoped Moodle projections, full synthetic CRUD commands, and
+authenticated native launches; never create parallel Nile learning records.
+VERIFY: create/update/archive synthetic assessments, submit/attempt, grade,
+read back, reconcile, and clean up.
 REVIEW: data architect and QA reviewer.
 FIX: correct attempt counts and grading state.
 DOCUMENT: note remaining external grading/storage integrations.

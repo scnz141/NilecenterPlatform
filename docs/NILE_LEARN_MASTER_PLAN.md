@@ -10,7 +10,7 @@ It is grounded in:
 - the current Nile Learn codebase and protected portal QA baseline;
 - the read-only legacy EMS audit for Registrar, Teacher, HOD, Supervisor, and
   Branch Administrator views;
-- the read-only Moodle teacher and course audit;
+- the Moodle teacher/course audit and full synthetic sandbox CRUD authority;
 - the existing Nile Learn domain, server action, repository, auth, and UI
   architecture.
 
@@ -38,7 +38,7 @@ Move Nile Learn from a broad internal alpha to a production-ready LMS and EMS
 foundation without losing the clean baseline. Make Nile Learn authoritative for
 identity, RBAC, organization, admissions, enrollments, classes, schedules,
 attendance, finance, certificates, messaging, and audit. Treat legacy EMS as a
-finite read-only migration source and Moodle as the initial authority for
+finite read-only migration source and Moodle as the writable authority for
 Moodle-managed content and activities. Implement normalized persistence,
 durable sessions, strict scope enforcement, reconciliation-based integrations,
 and route-by-route Simple UI through small verified slices.
@@ -75,26 +75,28 @@ User
 
 ## Source-Of-Truth Matrix
 
-| Data family                                           | Initial authority                       | Nile Learn behavior                                   |
-| ----------------------------------------------------- | --------------------------------------- | ----------------------------------------------------- |
-| Authentication                                        | Supabase Auth                           | Verify identity and manage durable sessions           |
-| Roles, permissions, active role, scopes               | Nile Learn                              | Canonical, server-authoritative                       |
-| Branches and departments                              | Nile Learn                              | Canonical                                             |
-| Leads, applications, placement                        | Nile Learn                              | Canonical                                             |
-| Students, guardians, enrollments                      | Nile Learn                              | Canonical                                             |
-| Programs, levels, catalog metadata                    | Nile Learn                              | Canonical                                             |
-| Course offerings, classes, teachers, rooms, schedules | Nile Learn                              | Canonical                                             |
-| Class sessions and attendance                         | Nile Learn                              | Canonical; Moodle writeback is a later optional phase |
-| Finance, certificates, messages, audit                | Nile Learn                              | Canonical                                             |
-| Moodle course structure and content                   | Moodle initially                        | Read-only synchronized projection                     |
-| Moodle activities and completion                      | Moodle for provider-managed activities  | Read-only synchronized projection                     |
-| Moodle attempts, grades, and feedback                 | Moodle for provider-managed assessments | Read-only summary in Nile Learn                       |
-| Nile-native assessments                               | Nile Learn                              | Canonical; never dual-owned with a Moodle activity    |
-| Legacy EMS records                                    | Legacy EMS only during migration        | One-way import, reconciliation, then retirement       |
-| Files, audio, and video                               | Future approved storage provider        | Metadata only until storage is approved               |
+| Data family                                                | Initial authority                | Nile Learn behavior                                   |
+| ---------------------------------------------------------- | -------------------------------- | ----------------------------------------------------- |
+| Authentication                                             | Supabase Auth                    | Verify identity and manage durable sessions           |
+| Roles, permissions, active role, scopes                    | Nile Learn                       | Canonical, server-authoritative                       |
+| Branches and departments                                   | Nile Learn                       | Canonical                                             |
+| Leads, applications, placement                             | Nile Learn                       | Canonical                                             |
+| Students, guardians, enrollments                           | Nile Learn                       | Canonical                                             |
+| Programs, levels, catalog metadata                         | Nile Learn                       | Canonical                                             |
+| Course offerings, classes, teachers, rooms, schedules      | Nile Learn                       | Canonical                                             |
+| Class sessions and attendance                              | Nile Learn                       | Canonical; Moodle writeback is a later optional phase |
+| Finance, certificates, messages, audit                     | Nile Learn                       | Canonical                                             |
+| Moodle course structure, content, and media                | Moodle                           | Full CRUD through verified commands or native launch  |
+| Moodle activities, assignments, quizzes, and questions     | Moodle                           | Full CRUD through verified commands or native launch  |
+| Moodle submissions, attempts, completion, grades, feedback | Moodle                           | Scoped CRUD, projection, and native interaction       |
+| Legacy EMS records                                         | Legacy EMS only during migration | One-way import, reconciliation, then retirement       |
+| Moodle course files, audio, and video                      | Moodle                           | Authorized proxy or native Moodle launch              |
+| Private institutional documents and certificates           | Supabase Storage                 | Server-authorized signed access only                  |
 
-No entity field may have two writable authorities. Provider-managed fields must
-be visibly read-only in Nile Learn and rejected by server actions.
+No entity field may have two writable authorities. Nile Learn edits
+provider-managed fields only through typed, audited Moodle commands or an
+authenticated native Moodle launch; it never creates a competing writable
+copy.
 
 ## Accepted Architecture Decisions
 
@@ -102,9 +104,11 @@ The Phase 0 decisions are recorded under `docs/decisions/`:
 
 - ADR-001: system authority boundaries;
 - ADR-002: durable sessions and effective role grants;
-- ADR-003: read-only Moodle projection;
+- ADR-003: historical first Moodle projection boundary;
 - ADR-004: finite legacy EMS migration;
 - ADR-005: atomic domain, audit, and outbox writes.
+- ADR-010: Moodle-owned learning authority and command boundary;
+- ADR-011: full synthetic Moodle sandbox CRUD authorization.
 
 Implementation must follow these records. Any change requires a superseding ADR
 and the approval process defined in `docs/decisions/README.md`.
@@ -117,14 +121,12 @@ The new model must distinguish reusable academic design from delivery:
 Department
   -> Program
   -> Level
-  -> Course template
-  -> Curriculum version
-  -> Modules
-  -> Lessons
+  -> Course catalog mapping
 
-Course template
+Approved Moodle template version
   -> Course offering
   -> Class group
+  -> Isolated Moodle delivery course
   -> Teacher assignment history
   -> Student membership history
   -> Recurring schedule
@@ -134,7 +136,10 @@ Course template
 
 Required corrections to the current snapshot model:
 
-- A course template is not a class.
+- A Moodle course template is not a Nile class or offering.
+- One Nile class maps to one isolated Moodle delivery course.
+- Modules, lessons, resources, assignments, quizzes, questions, completion,
+  grades, and feedback remain Moodle records.
 - A course offering is not a class group.
 - A recurring schedule is not an individual session.
 - Teacher assignment needs effective dates, substitutes, and history.
@@ -244,12 +249,19 @@ quizzes, gradebook, completion, and attendance sessions.
 Moodle rollout order:
 
 1. Capability discovery with a dedicated minimum-privilege service account.
-2. Read-only user, course, section, activity, enrollment, completion, grade,
-   and attendance projections.
+2. Role-scoped user, course, section, activity, enrollment, completion, grade,
+   and outcome projections.
 3. Mapping and reconciliation UI.
 4. Human approval of unmatched or stale records.
-5. Controlled user/course enrollment writes.
-6. Optional attendance writeback only after Nile attendance is canonical.
+5. Delivery-course cloning from an approved, versioned template.
+6. Full synthetic CRUD for users, rosters, enrollment, groups, courses,
+   sections, content, files, assessments, attempts, grades, and completion
+   through durable outbox processing and `local_nilelearn`.
+7. Short-lived authenticated Moodle launches for complex native authoring and
+   attempts.
+
+Attendance remains canonical in Nile Learn and is not part of the learning
+content command lane.
 
 Do not use browser automation or staff credentials as a production connector.
 
@@ -409,14 +421,17 @@ Deliverables:
 
 Gate: teacher, room, branch, and time conflicts are deterministic and audited.
 
-### Phase 6: Read-Only Moodle Projection
+### Phase 6: Moodle Projection, Authority Correction, And Command Foundation
 
 Deliverables:
 
 - Dedicated sandbox connection.
-- Read-only mappings for users, courses, content, activities, enrollments,
+- Role-scoped mappings for users, courses, content, activities, enrollments,
   completion, grades, and attendance.
 - Sync run history and reconciliation queues.
+- Moodle-owned learning authority contract and rejection of normalized native
+  learning writes.
+- Safe resource metadata without provider URLs or tokens in browser payloads.
 
 Gate: repeated sync creates no duplicates and stale mappings are visible.
 
@@ -426,8 +441,7 @@ Deliverables:
 
 - Assigned classes and rosters.
 - Session attendance.
-- Native or Moodle-owned assessment distinction.
-- Grading and feedback within provider authority.
+- Moodle-owned assessment, grading, and feedback projections or launches.
 - Student progress and intervention views.
 
 Gate: teachers cannot read or mutate unrelated classes or students.
@@ -452,13 +466,15 @@ Deliverables:
 
 Gate: every sensitive action has before/after evidence and an actor.
 
-### Phase 10: Controlled Moodle Write Operations
+### Phase 10: Moodle CRUD Activation
 
 Deliverables:
 
 - Approved user provisioning and enrollment synchronization.
 - Idempotent outbox processing and rollback.
-- No broad content writeback until separately approved.
+- Versioned delivery-course cloning and full allowlisted CRUD for Moodle-owned
+  learning records.
+- `local_nilelearn` capability verification and one-time native Moodle launches.
 
 Gate: sandbox proof, threat review, retry proof, and reconciliation approval.
 
@@ -594,6 +610,14 @@ here rather than restating this checkpoint.
 
 Current status:
 
+- On 2026-07-23 the product owner accepted ADR-010 and Phase 6J: Moodle is the
+  sole writable authority for learning content, resources, assignments,
+  submissions, quizzes, questions, attempts, completion, grades, and feedback.
+  Phase 6J is limited to ownership correction, normalized native-write denial,
+  and enriched safe read projections. It does not install the plugin or enable
+  a Moodle write worker. Its focused and full protected gates passed before
+  Phase 6K began.
+
 - The product owner approved the seven-phase integration stabilization program
   on 2026-07-16. Its sequence and acceptance gates are defined in
   `docs/INTEGRATION_STABILIZATION_PROGRAM.md`. Program Phase 1 is accepted: the
@@ -629,8 +653,8 @@ Current status:
   624 unit tests and all 1,598 portal checks with 0 failures. Redacted evidence
   is recorded in
   `docs/qa-attestations/integration-phase5-staging-foundation-20260716.json`.
-  Program Phase 6 is now active and is limited to role-scoped, read-only Moodle
-  projections. Its initial course/content contract is accepted: two GET-only
+  Program Phase 6 began with role-scoped projection-only Moodle access. That
+  historical course/content contract is accepted: two GET-only
   endpoints enforce the four-role catalog ownership contract, canonical active
   identity and relationship scope, exact mappings, hidden learner-content
   filtering, minimum-privilege evidence, deterministic replay, and fail-closed
@@ -807,11 +831,30 @@ Current status:
   complete server-only configuration, and one permitted test-recipient proof
   remain required before runtime activation. Activation guidance is in
   `docs/RESEND_TRANSACTIONAL_EMAIL.md`.
-  The SQL remains outside migration history and is accepted only on the pinned
-  isolated staging target. No further Phase 6 projection family, production
-  promotion, live-provider proof, or runtime activation is approved at this
-  checkpoint. The next implementation slice requires an explicit product
-  decision; Phase 7 remains gated.
+  Phase 6K now establishes the future Moodle write-command contract without
+  activating writes. It adds an exact versioned `local_nilelearn` capability
+  manifest, a closed server command envelope, and manual durable tables for
+  verified manifests, command requests, and immutable provider attempts. The
+  database requires exact actor and target mappings plus atomic command,
+  audit, and outbox evidence. Unknown outcomes require reconciliation and
+  terminal requests cannot be reopened. Two portable PostgreSQL applications,
+  two semantic assertion passes, rollback/reapply, 18 runtime-role denials,
+  one complete durable command lifecycle, and one unknown-outcome
+  reconciliation all passed without any provider call. The focused gates,
+  TypeScript, 961 unit tests, production build, and complete protected portal
+  suite also passed with 1,634 checks and 0 failures. Evidence is recorded in
+  `docs/qa-attestations/integration-phase6k-moodle-command-contract-20260723.json`.
+  The SQL remains manual and
+  unapplied; there is no browser command RPC, worker, plugin installation,
+  credential access, Moodle write, or runtime activation. Plugin source and
+  installation, command APIs, worker execution, authenticated native launches,
+  and provider-write sandbox proofs remain separately gated slices.
+  ADR-011 now approves Phase 6L: implement the versioned `local_nilelearn`
+  plugin and exercise complete marker-bound synthetic CRUD in the dedicated
+  sandbox. Phase 6L covers create, read, update, archive/restore, safe delete,
+  replay, read-back, reconciliation, ordered cleanup, repeated cleanup, and
+  credential teardown for every Moodle-owned operation family. It does not
+  activate production portal writes or permit real student data.
 - Phase 0 is accepted: authority, legacy boundaries, architecture decisions,
   and its then-current 1,317/0 QA baseline are recorded. The current protected
   baseline is 1,634/0.
@@ -928,7 +971,7 @@ slice is approved at this checkpoint. Any next slice requires an explicit
 product decision and a new bounded prompt.
 It must preserve existing routes, exact user/course/schedule/report/form
 authority, server actions, persistence defaults, auth, RBAC, audit behavior,
-Moodle read-only projection boundaries, and the data each action reads or
+Moodle authority and command boundaries, and the data each action reads or
 writes. The primary compatibility workstream remains
 **bounded compatibility workflow integrity**, one feature family at a time:
 
@@ -1274,19 +1317,40 @@ sets. Changes to shared session, permission, audit, outbox, migration-history,
 or server-runtime boundaries are serialized through the execution contract and
 must preserve every accepted gate.
 
-### Approved Moodle Sandbox Slice
+### Approved Moodle Sandbox CRUD Order
 
-The product owner has approved one bounded Moodle sandbox slice against
-`moodle-no-data.enesekremergunesh.com`. This approval is limited to capability
-discovery and a disabled-by-default, server-only, read-only client/probe:
+The product owner has approved full synthetic CRUD against the dedicated
+Moodle sandbox. ADR-011 is the current authority. Earlier read-only and bounded
+write paragraphs below are retained as historical phase evidence; they no
+longer limit the current sandbox campaign.
+
+Current order:
+
+1. Implement the versioned `local_nilelearn` plugin with exact operation and
+   capability manifests.
+2. Exercise create, read, update, archive, restore, and safe delete for users,
+   enrolments, groups, delivery courses, sections, content, files,
+   assignments, submissions, quizzes, questions, attempts, grades, feedback,
+   completion, and supported activities.
+3. Use marker-bound synthetic data only. Archive records with durable learner
+   history instead of destructively deleting them.
+4. Require mapped actor capability, idempotency, read-back, reconciliation,
+   ordered cleanup, repeated cleanup, and credential teardown evidence.
+5. Keep provider credentials server-only and never use browser automation or
+   administrator credentials as the runtime connector.
+6. Keep production portal writes disabled until each operation family passes
+   its sandbox and security gate.
+
+Historical first-slice boundary:
 
 1. Do not store the supplied administrator username or password in the
    repository, environment examples, fixtures, logs, or provider records.
 2. Use a dedicated minimum-privilege Moodle service account and custom REST
    service before any live Nile Learn runtime call. An administrator or mobile
    application token is not an integration credential.
-3. Keep Moodle writes, course creation, enrolment changes, grade changes,
-   messages, attendance writeback, and file transfer disabled.
+3. Moodle writes, course creation, enrolment changes, grade changes, messages,
+   attendance writeback, and file transfer were disabled in that historical
+   first slice.
 4. Keep provider projection persistence disabled until normalized repository
    and reconciliation prerequisites are accepted.
 5. Implement and test only the server client, capability probe, safe status
@@ -1319,10 +1383,10 @@ documents, consent, addresses, and admissions notes remain Nile Learn-only and
 must never be projected to Moodle. The supplied administrator credential must
 never become a Nile Learn runtime credential.
 
-This approval does not activate M3 persistence, a production runtime flag,
-Moodle writes from Nile Learn, or any remote Nile Learn database change. The
-token may be used only from the local command environment for live contract
-verification and must be revoked if the minimum-privilege boundary fails.
+That historical approval did not activate M3 persistence or production
+runtime. ADR-011 now permits complete synthetic Moodle CRUD from the local
+command environment and future reviewed workers; production activation and
+remote Nile database changes remain separately gated.
 
 The product owner's 2026-07-13 instruction separately approves **M2B synthetic
 sandbox write proof**. ADR-008 owns this bounded exception. M2B must use a
@@ -1366,12 +1430,12 @@ authorities even when a similar Moodle API exists. The first M2C implementation
 slice is read-contract closure: add sanitized provider-neutral models for the
 six approved H5P, SCORM, and Resource functions, route every live read-validator
 response through its model, then create the missing disposable fixtures and
-re-run all 31 reads. Broader learner and outcome writes begin only after that
-slice is green and its credential teardown is recorded.
+re-run all 31 reads. That prerequisite is now satisfied; ADR-011 authorizes the
+complete synthetic CRUD campaign.
 
 The 2026-07-13 M2C-R run remains historical partial evidence. The resumed
 2026-07-16 run closed its H5P/SCORM fixture gaps, passed all 31 reads twice,
 restored the disposable sandbox surfaces, and completed credential teardown.
 The accepted closure evidence is
-`docs/moodle-m2c-read-closure-evidence-20260716.md`. Broader M2C loops remain
-gated by Program Phase 3 ownership acceptance.
+`docs/moodle-m2c-read-closure-evidence-20260716.md`. Program Phase 3 ownership
+is accepted, and Phase 6L now owns the broader CRUD loops.

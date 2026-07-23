@@ -20,7 +20,7 @@
 -- This file changes schema only. It does not activate Moodle, email delivery,
 -- account invitations, or any runtime environment variable.
 --
--- Generated from 20 reviewed SQL sources.
+-- Generated from 27 reviewed SQL sources.
 
 -- ============================================================================
 -- 01. Compatibility platform tables
@@ -12940,6 +12940,4138 @@ grant execute on function public.nile_create_user_invitation_with_evidence(
 grant execute on function public.nile_accept_user_invitation(uuid, uuid)
   to service_role;
 grant execute on function public.nile_claim_email_delivery_v2(text, integer)
+  to service_role;
+
+commit;
+
+-- ============================================================================
+-- 21. Normalized self-profile and support foundation
+-- Source: supabase/manual/019_normalized_profile_support_foundation.sql
+-- SHA-256: f2e77f1382d560a4d4d5f33d40666fe5b738c5089f3e5ea37db441753af102ad
+-- ============================================================================
+
+-- Nile Learn normalized self-profile and support foundation.
+-- Manual-only. Apply after Phase 1 identity/session/audit and Phase 6A student profiles.
+-- Browser roles receive no direct table or function access.
+
+begin;
+
+do $$
+declare
+  dependency text;
+begin
+  foreach dependency in array array[
+    'app_users', 'branches', 'departments', 'role_grants',
+    'role_grant_branch_scopes', 'role_grant_department_scopes',
+    'staff_profiles', 'staff_subjects', 'student_profiles', 'auth_sessions',
+    'command_executions', 'audit_logs'
+  ] loop
+    if pg_catalog.to_regclass('public.' || dependency) is null then
+      raise exception 'Normalized profile/support requires public.%', dependency;
+    end if;
+  end loop;
+end;
+$$;
+
+alter table public.app_users
+  add column if not exists profile_version integer not null default 1
+    check (profile_version > 0);
+
+alter table public.student_profiles
+  add column if not exists country text not null default '',
+  add column if not exists age_group text,
+  add column if not exists guardian_name text,
+  add column if not exists guardian_phone text;
+
+create table if not exists public.user_preferences (
+  user_id uuid primary key references public.app_users(id) on delete restrict,
+  preferred_language text not null default 'English'
+    check (preferred_language in (
+      'English', 'Arabic', 'Chinese', 'Russian', 'Urdu', 'Turkish'
+    )),
+  timezone text not null default 'Africa/Cairo',
+  notification_preferences jsonb not null default jsonb_build_object(
+    'messages', true,
+    'schedule', true,
+    'academic', true,
+    'billing', false,
+    'system', false
+  ),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists public.support_tickets (
+  id uuid primary key default gen_random_uuid(),
+  requester_user_id uuid not null references public.app_users(id) on delete restrict,
+  subject text not null,
+  details text not null,
+  category text not null,
+  priority text not null default 'normal'
+    check (priority in ('low', 'normal', 'high', 'urgent')),
+  status text not null default 'pending'
+    check (status in ('pending', 'active', 'resolved', 'closed')),
+  source_key text,
+  version integer not null default 1 check (version > 0),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  check (length(btrim(subject)) between 4 and 160),
+  check (length(btrim(details)) between 20 and 3000),
+  check (length(btrim(category)) between 2 and 80),
+  check (source_key is null or length(source_key) between 8 and 256)
+);
+
+create unique index if not exists support_tickets_requester_source_uidx
+  on public.support_tickets (requester_user_id, source_key)
+  where source_key is not null;
+create index if not exists support_tickets_requester_updated_idx
+  on public.support_tickets (requester_user_id, updated_at desc);
+
+create or replace function nile_private.notification_preferences_are_safe(payload jsonb)
+returns boolean
+language sql
+immutable
+strict
+security invoker
+set search_path = ''
+as $$
+  select pg_catalog.jsonb_typeof(payload) = 'object'
+    and (
+      select pg_catalog.array_agg(key order by key)
+      from pg_catalog.jsonb_object_keys(payload) as key
+    ) = array['academic', 'billing', 'messages', 'schedule', 'system']::text[]
+    and not exists (
+      select 1
+      from pg_catalog.jsonb_each(payload) as item
+      where pg_catalog.jsonb_typeof(item.value) <> 'boolean'
+    );
+$$;
+
+alter table public.user_preferences
+  drop constraint if exists user_preferences_notification_preferences_check;
+alter table public.user_preferences
+  add constraint user_preferences_notification_preferences_check
+  check (nile_private.notification_preferences_are_safe(notification_preferences));
+
+insert into public.user_preferences (user_id)
+select app_user.id
+from public.app_users as app_user
+on conflict (user_id) do nothing;
+
+drop trigger if exists user_preferences_set_updated_at on public.user_preferences;
+create trigger user_preferences_set_updated_at
+before update on public.user_preferences
+for each row execute function nile_private.set_updated_at();
+
+drop trigger if exists support_tickets_set_updated_at on public.support_tickets;
+create trigger support_tickets_set_updated_at
+before update on public.support_tickets
+for each row execute function nile_private.set_updated_at();
+
+alter table public.user_preferences enable row level security;
+alter table public.user_preferences force row level security;
+alter table public.support_tickets enable row level security;
+alter table public.support_tickets force row level security;
+
+revoke all on table public.user_preferences
+  from public, anon, authenticated, service_role;
+revoke all on table public.support_tickets
+  from public, anon, authenticated, service_role;
+grant select, insert, update on table public.user_preferences to service_role;
+grant select, insert, update on table public.support_tickets to service_role;
+
+create or replace function public.nile_read_self_workspace(
+  p_session_token_hash text
+)
+returns table (workspace jsonb)
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  actor_session public.auth_sessions%rowtype;
+  actor_user public.app_users%rowtype;
+  actor_grant public.role_grants%rowtype;
+  preference public.user_preferences%rowtype;
+  student jsonb;
+  staff jsonb;
+  branches jsonb;
+  departments jsonb;
+  tickets jsonb;
+  audits jsonb;
+begin
+  if p_session_token_hash !~ '^[a-f0-9]{64}$' then
+    raise exception 'Session token hash is invalid' using errcode = '22023';
+  end if;
+
+  select session.* into strict actor_session
+  from public.auth_sessions as session
+  where session.token_hash = pg_catalog.decode(p_session_token_hash, 'hex')
+    and session.provider = 'supabase'
+    and session.revoked_at is null
+    and session.expires_at > now();
+
+  select app_user.* into strict actor_user
+  from public.app_users as app_user
+  where app_user.id = actor_session.user_id
+    and app_user.status = 'active';
+
+  select role_grant.* into strict actor_grant
+  from public.role_grants as role_grant
+  where role_grant.id = actor_session.active_role_grant_id
+    and role_grant.user_id = actor_user.id
+    and role_grant.status = 'active'
+    and role_grant.starts_at <= now()
+    and (role_grant.ends_at is null or role_grant.ends_at > now());
+
+  insert into public.user_preferences (user_id)
+  values (actor_user.id)
+  on conflict (user_id) do nothing;
+
+  select item.* into strict preference
+  from public.user_preferences as item
+  where item.user_id = actor_user.id;
+
+  select coalesce(pg_catalog.jsonb_agg(pg_catalog.jsonb_build_object(
+    'id', branch.id,
+    'name', branch.name,
+    'code', branch.code::text,
+    'timezone', branch.timezone,
+    'address', coalesce(branch.address->>'display', ''),
+    'status', branch.status
+  ) order by branch.name), '[]'::jsonb)
+  into branches
+  from public.role_grant_branch_scopes as scope
+  join public.branches as branch on branch.id = scope.branch_id
+  where scope.role_grant_id = actor_grant.id
+    and scope.starts_at <= now()
+    and (scope.ends_at is null or scope.ends_at > now());
+
+  select coalesce(pg_catalog.jsonb_agg(pg_catalog.jsonb_build_object(
+    'id', department.id,
+    'name', department.name,
+    'status', department.status
+  ) order by department.name), '[]'::jsonb)
+  into departments
+  from public.role_grant_department_scopes as scope
+  join public.departments as department on department.id = scope.department_id
+  where scope.role_grant_id = actor_grant.id
+    and scope.starts_at <= now()
+    and (scope.ends_at is null or scope.ends_at > now());
+
+  if actor_grant.role = 'student' then
+    select pg_catalog.jsonb_build_object(
+      'id', profile.id,
+      'status', profile.status,
+      'country', profile.country,
+      'ageGroup', profile.age_group,
+      'guardianName', profile.guardian_name,
+      'guardianPhone', profile.guardian_phone
+    ) into student
+    from public.student_profiles as profile
+    where profile.user_id = actor_user.id;
+  else
+    select pg_catalog.jsonb_build_object(
+      'id', profile.id,
+      'title', profile.title,
+      'availabilityStatus', profile.availability_status,
+      'status', profile.status,
+      'subjects', coalesce((
+        select pg_catalog.jsonb_agg(distinct subject.subject order by subject.subject)
+        from public.staff_subjects as subject
+        where subject.staff_profile_id = profile.id
+      ), '[]'::jsonb),
+      'teachingLevels', coalesce((
+        select pg_catalog.jsonb_agg(distinct subject.teaching_level order by subject.teaching_level)
+        from public.staff_subjects as subject
+        where subject.staff_profile_id = profile.id
+          and subject.teaching_level is not null
+      ), '[]'::jsonb)
+    ) into staff
+    from public.staff_profiles as profile
+    where profile.user_id = actor_user.id;
+  end if;
+
+  select coalesce(pg_catalog.jsonb_agg(pg_catalog.jsonb_build_object(
+    'id', ticket.id,
+    'subject', ticket.subject,
+    'details', ticket.details,
+    'category', ticket.category,
+    'priority', ticket.priority,
+    'status', ticket.status,
+    'sourceKey', ticket.source_key,
+    'version', ticket.version,
+    'updatedAt', ticket.updated_at
+  ) order by ticket.updated_at desc), '[]'::jsonb)
+  into tickets
+  from (
+    select item.*
+    from public.support_tickets as item
+    where item.requester_user_id = actor_user.id
+    order by item.updated_at desc
+    limit 100
+  ) as ticket;
+
+  select coalesce(pg_catalog.jsonb_agg(pg_catalog.jsonb_build_object(
+    'id', audit.id::text,
+    'action', audit.action,
+    'entityType', audit.entity_type,
+    'entityId', audit.entity_id,
+    'summary', audit.metadata->>'summary',
+    'occurredAt', audit.occurred_at
+  ) order by audit.occurred_at desc), '[]'::jsonb)
+  into audits
+  from (
+    select item.*
+    from public.audit_logs as item
+    where item.actor_user_id = actor_user.id
+    order by item.occurred_at desc
+    limit 30
+  ) as audit;
+
+  return query select pg_catalog.jsonb_build_object(
+    'user', pg_catalog.jsonb_build_object(
+      'id', actor_user.id,
+      'fullName', actor_user.full_name,
+      'email', actor_user.email::text,
+      'phone', actor_user.phone,
+      'status', actor_user.status,
+      'profileVersion', actor_user.profile_version,
+      'preferredLanguage', preference.preferred_language,
+      'timezone', preference.timezone,
+      'notificationPreferences', preference.notification_preferences
+    ),
+    'branches', branches,
+    'departments', departments,
+    'student', student,
+    'staff', staff,
+    'supportTickets', tickets,
+    'auditLogs', audits
+  );
+exception
+  when no_data_found then
+    raise exception 'Current normalized session authority is unavailable'
+      using errcode = '42501';
+end;
+$$;
+
+create or replace function public.nile_update_self_profile_with_evidence(
+  p_session_token_hash text,
+  p_full_name text,
+  p_phone text,
+  p_preferred_language text,
+  p_timezone text,
+  p_notification_preferences jsonb,
+  p_country text,
+  p_guardian_name text,
+  p_guardian_phone text,
+  p_title text,
+  p_availability_status text,
+  p_expected_version integer,
+  p_idempotency_key text,
+  p_request_hash text
+)
+returns table (
+  command_id uuid,
+  user_id uuid,
+  profile_version integer,
+  changed_fields jsonb,
+  replayed boolean
+)
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  actor_session public.auth_sessions%rowtype;
+  actor_user public.app_users%rowtype;
+  actor_grant public.role_grants%rowtype;
+  existing_command public.command_executions%rowtype;
+  command_uuid uuid := gen_random_uuid();
+  fields text[] := array[]::text[];
+  next_version integer;
+  student_row public.student_profiles%rowtype;
+  staff_row public.staff_profiles%rowtype;
+begin
+  if p_session_token_hash !~ '^[a-f0-9]{64}$'
+    or p_request_hash !~ '^[a-f0-9]{64}$'
+    or length(p_idempotency_key) not between 12 and 256
+    or p_expected_version < 1
+    or length(btrim(coalesce(p_full_name, ''))) not between 2 and 160
+    or length(btrim(coalesce(p_phone, ''))) > 40
+    or p_preferred_language not in (
+      'English', 'Arabic', 'Chinese', 'Russian', 'Urdu', 'Turkish'
+    )
+    or length(btrim(coalesce(p_timezone, ''))) not between 1 and 80
+    or not nile_private.notification_preferences_are_safe(p_notification_preferences)
+    or length(btrim(coalesce(p_country, ''))) > 80
+    or length(btrim(coalesce(p_guardian_name, ''))) > 120
+    or length(btrim(coalesce(p_guardian_phone, ''))) > 40
+    or length(btrim(coalesce(p_title, ''))) > 80 then
+    raise exception 'Profile update request is invalid' using errcode = '22023';
+  end if;
+
+  select session.* into strict actor_session
+  from public.auth_sessions as session
+  where session.token_hash = pg_catalog.decode(p_session_token_hash, 'hex')
+    and session.provider = 'supabase'
+    and session.revoked_at is null
+    and session.expires_at > now()
+  for update;
+
+  select app_user.* into strict actor_user
+  from public.app_users as app_user
+  where app_user.id = actor_session.user_id
+    and app_user.status = 'active'
+  for update;
+
+  select role_grant.* into strict actor_grant
+  from public.role_grants as role_grant
+  where role_grant.id = actor_session.active_role_grant_id
+    and role_grant.user_id = actor_user.id
+    and role_grant.status = 'active'
+    and role_grant.starts_at <= now()
+    and (role_grant.ends_at is null or role_grant.ends_at > now());
+
+  select command.* into existing_command
+  from public.command_executions as command
+  where command.idempotency_key = p_idempotency_key;
+  if found then
+    if existing_command.request_hash is distinct from pg_catalog.decode(p_request_hash, 'hex')
+      or existing_command.command_type <> 'profile.update'
+      or existing_command.actor_user_id <> actor_user.id
+      or existing_command.status <> 'succeeded' then
+      raise exception 'Profile update idempotency conflict' using errcode = '23505';
+    end if;
+    return query
+      select existing_command.id, actor_user.id, actor_user.profile_version,
+        coalesce(audit.metadata->'changedFields', '[]'::jsonb), true
+      from public.audit_logs as audit
+      where audit.command_id = existing_command.id
+        and audit.action = 'profile.updated';
+    return;
+  end if;
+
+  if actor_user.profile_version <> p_expected_version then
+    raise exception 'Profile version conflict' using errcode = '40001';
+  end if;
+
+  insert into public.command_executions (
+    id, idempotency_key, actor_user_id, actor_role_grant_id, session_id,
+    command_type, target_type, target_id, request_hash, requires_outbox
+  ) values (
+    command_uuid, p_idempotency_key, actor_user.id, actor_grant.id,
+    actor_session.id, 'profile.update', 'User', actor_user.id::text,
+    pg_catalog.decode(p_request_hash, 'hex'), false
+  );
+
+  if actor_user.full_name is distinct from btrim(p_full_name) then
+    fields := pg_catalog.array_append(fields, 'name');
+  end if;
+  if actor_user.phone is distinct from nullif(btrim(p_phone), '') then
+    fields := pg_catalog.array_append(fields, 'phone');
+  end if;
+
+  insert into public.user_preferences (
+    user_id, preferred_language, timezone, notification_preferences
+  ) values (
+    actor_user.id, p_preferred_language, btrim(p_timezone),
+    p_notification_preferences
+  ) on conflict on constraint user_preferences_pkey do update set
+    preferred_language = excluded.preferred_language,
+    timezone = excluded.timezone,
+    notification_preferences = excluded.notification_preferences;
+
+  if actor_grant.role = 'student' then
+    select profile.* into strict student_row
+    from public.student_profiles as profile
+    where profile.user_id = actor_user.id
+    for update;
+    if btrim(coalesce(student_row.age_group, '')) ~* '^(child|minor|teen)' and
+      (nullif(btrim(p_guardian_name), '') is null or
+       nullif(btrim(p_guardian_phone), '') is null) then
+      raise exception 'Guardian name and phone are required for a minor student'
+        using errcode = '22023';
+    end if;
+    update public.student_profiles set
+      country = btrim(p_country),
+      guardian_name = nullif(btrim(p_guardian_name), ''),
+      guardian_phone = nullif(btrim(p_guardian_phone), '')
+    where id = student_row.id;
+  else
+    select profile.* into strict staff_row
+    from public.staff_profiles as profile
+    where profile.user_id = actor_user.id
+    for update;
+    if nullif(btrim(p_title), '') is null then
+      raise exception 'Staff profile title is required' using errcode = '22023';
+    end if;
+    if actor_grant.role = 'teacher' then
+      if p_availability_status not in ('available', 'limited', 'unavailable') then
+        raise exception 'Teacher availability is invalid' using errcode = '22023';
+      end if;
+    elsif p_availability_status is not null and
+      p_availability_status <> 'not_applicable' then
+      raise exception 'Availability can only be updated by teachers'
+        using errcode = '22023';
+    end if;
+    update public.staff_profiles set
+      title = btrim(p_title),
+      availability_status = case
+        when actor_grant.role = 'teacher' then p_availability_status
+        else 'not_applicable'
+      end
+    where id = staff_row.id;
+  end if;
+
+  if fields = array[]::text[] then
+    fields := array['preferences'];
+  else
+    fields := pg_catalog.array_append(fields, 'preferences');
+  end if;
+  next_version := actor_user.profile_version + 1;
+  update public.app_users set
+    full_name = btrim(p_full_name),
+    phone = nullif(btrim(p_phone), ''),
+    profile_version = next_version
+  where id = actor_user.id;
+
+  insert into public.audit_logs (
+    command_id, actor_user_id, actor_role_grant_id, session_id,
+    action, entity_type, entity_id, before_state, after_state, metadata
+  ) values (
+    command_uuid, actor_user.id, actor_grant.id, actor_session.id,
+    'profile.updated', 'User', actor_user.id::text,
+    pg_catalog.jsonb_build_object('version', actor_user.profile_version),
+    pg_catalog.jsonb_build_object('version', next_version),
+    pg_catalog.jsonb_build_object(
+      'changedFields', pg_catalog.to_jsonb(fields),
+      'summary', 'Updated own profile.'
+    )
+  );
+
+  update public.command_executions
+  set status = 'succeeded', completed_at = now()
+  where id = command_uuid;
+
+  return query select command_uuid, actor_user.id, next_version,
+    pg_catalog.to_jsonb(fields), false;
+exception
+  when no_data_found then
+    raise exception 'Current normalized profile authority is unavailable'
+      using errcode = '42501';
+end;
+$$;
+
+create or replace function public.nile_create_support_ticket_with_evidence(
+  p_session_token_hash text,
+  p_subject text,
+  p_details text,
+  p_category text,
+  p_priority text,
+  p_source_key text,
+  p_idempotency_key text,
+  p_request_hash text
+)
+returns table (
+  command_id uuid,
+  ticket_id uuid,
+  ticket_version integer,
+  replayed boolean
+)
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  actor_session public.auth_sessions%rowtype;
+  actor_user public.app_users%rowtype;
+  actor_grant public.role_grants%rowtype;
+  existing_command public.command_executions%rowtype;
+  command_uuid uuid := gen_random_uuid();
+  ticket_uuid uuid := gen_random_uuid();
+begin
+  if p_session_token_hash !~ '^[a-f0-9]{64}$'
+    or p_request_hash !~ '^[a-f0-9]{64}$'
+    or length(p_idempotency_key) not between 12 and 256
+    or length(btrim(coalesce(p_subject, ''))) not between 4 and 160
+    or length(btrim(coalesce(p_details, ''))) not between 20 and 3000
+    or length(btrim(coalesce(p_category, ''))) not between 2 and 80
+    or p_priority not in ('low', 'normal', 'high', 'urgent')
+    or length(coalesce(p_source_key, '')) > 256 then
+    raise exception 'Support ticket request is invalid' using errcode = '22023';
+  end if;
+
+  select session.* into strict actor_session
+  from public.auth_sessions as session
+  where session.token_hash = pg_catalog.decode(p_session_token_hash, 'hex')
+    and session.provider = 'supabase'
+    and session.revoked_at is null
+    and session.expires_at > now()
+  for update;
+
+  select app_user.* into strict actor_user
+  from public.app_users as app_user
+  where app_user.id = actor_session.user_id
+    and app_user.status = 'active';
+
+  select role_grant.* into strict actor_grant
+  from public.role_grants as role_grant
+  where role_grant.id = actor_session.active_role_grant_id
+    and role_grant.user_id = actor_user.id
+    and role_grant.role = 'student'
+    and role_grant.status = 'active'
+    and role_grant.starts_at <= now()
+    and (role_grant.ends_at is null or role_grant.ends_at > now());
+
+  select command.* into existing_command
+  from public.command_executions as command
+  where command.idempotency_key = p_idempotency_key;
+  if found then
+    if existing_command.request_hash is distinct from pg_catalog.decode(p_request_hash, 'hex')
+      or existing_command.command_type <> 'support.ticket.create'
+      or existing_command.actor_user_id <> actor_user.id
+      or existing_command.status <> 'succeeded' then
+      raise exception 'Support ticket idempotency conflict' using errcode = '23505';
+    end if;
+    return query
+      select existing_command.id, ticket.id, ticket.version, true
+      from public.support_tickets as ticket
+      where ticket.id = existing_command.target_id::uuid;
+    return;
+  end if;
+
+  insert into public.command_executions (
+    id, idempotency_key, actor_user_id, actor_role_grant_id, session_id,
+    command_type, target_type, target_id, request_hash, requires_outbox
+  ) values (
+    command_uuid, p_idempotency_key, actor_user.id, actor_grant.id,
+    actor_session.id, 'support.ticket.create', 'SupportTicket',
+    ticket_uuid::text, pg_catalog.decode(p_request_hash, 'hex'), false
+  );
+
+  insert into public.support_tickets (
+    id, requester_user_id, subject, details, category, priority, source_key
+  ) values (
+    ticket_uuid, actor_user.id, btrim(p_subject), btrim(p_details),
+    btrim(p_category), p_priority, nullif(btrim(p_source_key), '')
+  );
+
+  insert into public.audit_logs (
+    command_id, actor_user_id, actor_role_grant_id, session_id,
+    action, entity_type, entity_id, after_state, metadata
+  ) values (
+    command_uuid, actor_user.id, actor_grant.id, actor_session.id,
+    'support.ticket_created', 'SupportTicket', ticket_uuid::text,
+    pg_catalog.jsonb_build_object('status', 'pending', 'version', 1),
+    pg_catalog.jsonb_build_object(
+      'category', btrim(p_category),
+      'priority', p_priority,
+      'summary', 'Created support ticket: ' || btrim(p_subject) || '.'
+    )
+  );
+
+  update public.command_executions
+  set status = 'succeeded', completed_at = now()
+  where id = command_uuid;
+
+  return query select command_uuid, ticket_uuid, 1, false;
+exception
+  when no_data_found then
+    raise exception 'Student support authority is unavailable'
+      using errcode = '42501';
+end;
+$$;
+
+revoke all on function public.nile_read_self_workspace(text)
+  from public, anon, authenticated;
+revoke all on function public.nile_update_self_profile_with_evidence(
+  text, text, text, text, text, jsonb, text, text, text, text, text,
+  integer, text, text
+) from public, anon, authenticated;
+revoke all on function public.nile_create_support_ticket_with_evidence(
+  text, text, text, text, text, text, text, text
+) from public, anon, authenticated;
+
+grant execute on function public.nile_read_self_workspace(text)
+  to service_role;
+grant execute on function public.nile_update_self_profile_with_evidence(
+  text, text, text, text, text, jsonb, text, text, text, text, text,
+  integer, text, text
+) to service_role;
+grant execute on function public.nile_create_support_ticket_with_evidence(
+  text, text, text, text, text, text, text, text
+) to service_role;
+
+commit;
+
+-- ============================================================================
+-- 22. Normalized admissions intake foundation
+-- Source: supabase/manual/020_normalized_admissions_intake_foundation.sql
+-- SHA-256: 8a0d9dc31806c69d0d63430a3f7fc7d614999b2b5453d8b0175aa1e3557a7380
+-- ============================================================================
+
+-- Nile Learn normalized admissions intake foundation.
+-- Manual-only. Apply after Phase 1 identity/session/audit and the normalized
+-- profile foundation. Browser roles receive no direct table or RPC access.
+
+begin;
+
+do $$
+declare
+  dependency text;
+begin
+  foreach dependency in array array[
+    'app_users', 'branches', 'role_grants', 'role_grant_branch_scopes',
+    'auth_sessions', 'command_executions', 'audit_logs'
+  ] loop
+    if pg_catalog.to_regclass('public.' || dependency) is null then
+      raise exception 'Normalized admissions intake requires public.%', dependency;
+    end if;
+  end loop;
+end;
+$$;
+
+create table if not exists public.admission_leads (
+  id uuid primary key default gen_random_uuid(),
+  branch_id uuid not null references public.branches(id) on delete restrict,
+  full_name text not null,
+  email citext not null,
+  phone text not null,
+  country text,
+  subject text not null,
+  source text not null default 'manual'
+    check (source in ('website', 'trial_form', 'placement_form', 'whatsapp', 'manual')),
+  status text not null default 'lead'
+    check (status in (
+      'lead', 'trial_booked', 'placement_booked', 'placement_completed',
+      'ready_to_enroll', 'enrolled', 'active', 'cancelled'
+    )),
+  notes text,
+  source_key text,
+  version integer not null default 1 check (version > 0),
+  created_by uuid not null references public.app_users(id) on delete restrict,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  check (length(btrim(full_name)) between 2 and 160),
+  check (email::text ~* '^[^@[:space:]]+@[^@[:space:]]+\.[^@[:space:]]+$'),
+  check (length(btrim(phone)) between 7 and 40),
+  check (length(btrim(subject)) between 2 and 160),
+  check (country is null or length(btrim(country)) between 2 and 80),
+  check (notes is null or length(notes) <= 3000),
+  check (source_key is null or length(source_key) between 8 and 256)
+);
+
+create unique index if not exists admission_leads_branch_source_uidx
+  on public.admission_leads (branch_id, source_key)
+  where source_key is not null;
+create index if not exists admission_leads_branch_updated_idx
+  on public.admission_leads (branch_id, updated_at desc);
+create index if not exists admission_leads_email_idx
+  on public.admission_leads (email);
+
+drop trigger if exists admission_leads_set_updated_at on public.admission_leads;
+create trigger admission_leads_set_updated_at
+before update on public.admission_leads
+for each row execute function nile_private.set_updated_at();
+
+alter table public.admission_leads enable row level security;
+alter table public.admission_leads force row level security;
+revoke all on table public.admission_leads
+  from public, anon, authenticated, service_role;
+grant select, insert, update on table public.admission_leads to service_role;
+
+create or replace function public.nile_read_admissions_workspace(
+  p_session_token_hash text
+)
+returns table (workspace jsonb)
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  actor_session public.auth_sessions%rowtype;
+  actor_user public.app_users%rowtype;
+  actor_grant public.role_grants%rowtype;
+  leads jsonb;
+begin
+  if p_session_token_hash !~ '^[a-f0-9]{64}$' then
+    raise exception 'Session token hash is invalid' using errcode = '22023';
+  end if;
+
+  select session.* into strict actor_session
+  from public.auth_sessions as session
+  where session.token_hash = pg_catalog.decode(p_session_token_hash, 'hex')
+    and session.provider = 'supabase'
+    and session.revoked_at is null
+    and session.expires_at > now();
+
+  select app_user.* into strict actor_user
+  from public.app_users as app_user
+  where app_user.id = actor_session.user_id
+    and app_user.status = 'active';
+
+  select role_grant.* into strict actor_grant
+  from public.role_grants as role_grant
+  where role_grant.id = actor_session.active_role_grant_id
+    and role_grant.user_id = actor_user.id
+    and role_grant.role in ('registrar', 'superadmin')
+    and role_grant.status = 'active'
+    and role_grant.starts_at <= now()
+    and (role_grant.ends_at is null or role_grant.ends_at > now());
+
+  select coalesce(pg_catalog.jsonb_agg(pg_catalog.jsonb_build_object(
+    'id', lead.id,
+    'branchId', lead.branch_id,
+    'fullName', lead.full_name,
+    'email', lead.email::text,
+    'phone', lead.phone,
+    'country', lead.country,
+    'subject', lead.subject,
+    'source', lead.source,
+    'status', lead.status,
+    'notes', lead.notes,
+    'sourceKey', lead.source_key,
+    'version', lead.version,
+    'createdAt', lead.created_at
+  ) order by lead.updated_at desc), '[]'::jsonb)
+  into leads
+  from public.admission_leads as lead
+  where actor_grant.role = 'superadmin'
+    or exists (
+      select 1
+      from public.role_grant_branch_scopes as scope
+      where scope.role_grant_id = actor_grant.id
+        and scope.branch_id = lead.branch_id
+        and scope.starts_at <= now()
+        and (scope.ends_at is null or scope.ends_at > now())
+    );
+
+  return query select pg_catalog.jsonb_build_object('leads', leads);
+exception
+  when no_data_found then
+    raise exception 'Admissions workspace authority is unavailable'
+      using errcode = '42501';
+end;
+$$;
+
+create or replace function public.nile_create_admission_lead_with_evidence(
+  p_session_token_hash text,
+  p_branch_ref text,
+  p_full_name text,
+  p_email text,
+  p_phone text,
+  p_country text,
+  p_subject text,
+  p_source text,
+  p_notes text,
+  p_source_key text,
+  p_idempotency_key text,
+  p_request_hash text
+)
+returns table (
+  command_id uuid,
+  lead_id uuid,
+  branch_id uuid,
+  lead_version integer,
+  replayed boolean
+)
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  actor_session public.auth_sessions%rowtype;
+  actor_user public.app_users%rowtype;
+  actor_grant public.role_grants%rowtype;
+  existing_command public.command_executions%rowtype;
+  command_uuid uuid := gen_random_uuid();
+  lead_uuid uuid := gen_random_uuid();
+  resolved_branch_id uuid;
+  branch_scope_count integer;
+  normalized_email text := pg_catalog.lower(pg_catalog.btrim(p_email));
+begin
+  if p_session_token_hash !~ '^[a-f0-9]{64}$'
+    or p_request_hash !~ '^[a-f0-9]{64}$'
+    or length(p_idempotency_key) not between 12 and 256
+    or length(pg_catalog.btrim(coalesce(p_full_name, ''))) not between 2 and 160
+    or normalized_email !~ '^[^@[:space:]]+@[^@[:space:]]+\.[^@[:space:]]+$'
+    or length(pg_catalog.btrim(coalesce(p_phone, ''))) not between 7 and 40
+    or length(pg_catalog.btrim(coalesce(p_subject, ''))) not between 2 and 160
+    or length(pg_catalog.btrim(coalesce(p_country, ''))) > 80
+    or length(coalesce(p_notes, '')) > 3000
+    or length(coalesce(p_source_key, '')) > 256
+    or p_source not in ('website', 'trial_form', 'placement_form', 'whatsapp', 'manual') then
+    raise exception 'Admissions lead request is invalid' using errcode = '22023';
+  end if;
+
+  select session.* into strict actor_session
+  from public.auth_sessions as session
+  where session.token_hash = pg_catalog.decode(p_session_token_hash, 'hex')
+    and session.provider = 'supabase'
+    and session.revoked_at is null
+    and session.expires_at > now()
+  for update;
+
+  select app_user.* into strict actor_user
+  from public.app_users as app_user
+  where app_user.id = actor_session.user_id
+    and app_user.status = 'active';
+
+  select role_grant.* into strict actor_grant
+  from public.role_grants as role_grant
+  where role_grant.id = actor_session.active_role_grant_id
+    and role_grant.user_id = actor_user.id
+    and role_grant.role in ('registrar', 'superadmin')
+    and role_grant.status = 'active'
+    and role_grant.starts_at <= now()
+    and (role_grant.ends_at is null or role_grant.ends_at > now());
+
+  select command.* into existing_command
+  from public.command_executions as command
+  where command.idempotency_key = p_idempotency_key;
+  if found then
+    if existing_command.request_hash is distinct from pg_catalog.decode(p_request_hash, 'hex')
+      or existing_command.command_type <> 'lead.create'
+      or existing_command.actor_user_id <> actor_user.id
+      or existing_command.status <> 'succeeded' then
+      raise exception 'Admissions lead idempotency conflict' using errcode = '23505';
+    end if;
+    return query
+      select existing_command.id, lead.id, lead.branch_id, lead.version, true
+      from public.admission_leads as lead
+      where lead.id = existing_command.target_id::uuid;
+    return;
+  end if;
+
+  if nullif(pg_catalog.btrim(p_branch_ref), '') is not null then
+    select branch.id into resolved_branch_id
+    from public.branches as branch
+    where branch.id::text = pg_catalog.btrim(p_branch_ref)
+      or branch.legacy_id = pg_catalog.btrim(p_branch_ref)
+      or branch.code::text = pg_catalog.btrim(p_branch_ref);
+  elsif actor_grant.role = 'registrar' then
+    select (pg_catalog.array_agg(distinct scope.branch_id))[1],
+      count(distinct scope.branch_id)
+    into resolved_branch_id, branch_scope_count
+    from public.role_grant_branch_scopes as scope
+    where scope.role_grant_id = actor_grant.id
+      and scope.starts_at <= now()
+      and (scope.ends_at is null or scope.ends_at > now());
+    if branch_scope_count <> 1 then
+      raise exception 'Choose one admissions branch' using errcode = '22023';
+    end if;
+  end if;
+
+  if resolved_branch_id is null or not exists (
+    select 1 from public.branches as branch
+    where branch.id = resolved_branch_id and branch.status = 'active'
+  ) then
+    raise exception 'Admissions branch is unavailable' using errcode = '23503';
+  end if;
+
+  if actor_grant.role = 'registrar' and not exists (
+    select 1
+    from public.role_grant_branch_scopes as scope
+    where scope.role_grant_id = actor_grant.id
+      and scope.branch_id = resolved_branch_id
+      and scope.starts_at <= now()
+      and (scope.ends_at is null or scope.ends_at > now())
+  ) then
+    raise exception 'Admissions branch is outside the current scope'
+      using errcode = '42501';
+  end if;
+
+  insert into public.command_executions (
+    id, idempotency_key, actor_user_id, actor_role_grant_id, session_id,
+    command_type, target_type, target_id, request_hash, requires_outbox
+  ) values (
+    command_uuid, p_idempotency_key, actor_user.id, actor_grant.id,
+    actor_session.id, 'lead.create', 'Lead', lead_uuid::text,
+    pg_catalog.decode(p_request_hash, 'hex'), false
+  );
+
+  insert into public.admission_leads (
+    id, branch_id, full_name, email, phone, country, subject, source,
+    notes, source_key, created_by
+  ) values (
+    lead_uuid, resolved_branch_id, pg_catalog.btrim(p_full_name),
+    normalized_email, pg_catalog.btrim(p_phone),
+    nullif(pg_catalog.btrim(p_country), ''), pg_catalog.btrim(p_subject),
+    p_source, nullif(pg_catalog.btrim(p_notes), ''),
+    nullif(pg_catalog.btrim(p_source_key), ''), actor_user.id
+  );
+
+  insert into public.audit_logs (
+    command_id, actor_user_id, actor_role_grant_id, session_id,
+    action, entity_type, entity_id, branch_id, after_state, metadata
+  ) values (
+    command_uuid, actor_user.id, actor_grant.id, actor_session.id,
+    'lead.created', 'Lead', lead_uuid::text, resolved_branch_id,
+    pg_catalog.jsonb_build_object('status', 'lead', 'version', 1),
+    pg_catalog.jsonb_build_object(
+      'source', p_source,
+      'summary', 'Created admissions lead for ' || pg_catalog.btrim(p_full_name) || '.'
+    )
+  );
+
+  update public.command_executions
+  set status = 'succeeded', completed_at = now()
+  where id = command_uuid;
+
+  return query select command_uuid, lead_uuid, resolved_branch_id, 1, false;
+exception
+  when no_data_found then
+    raise exception 'Admissions lead authority is unavailable'
+      using errcode = '42501';
+end;
+$$;
+
+revoke all on function public.nile_read_admissions_workspace(text)
+  from public, anon, authenticated;
+revoke all on function public.nile_create_admission_lead_with_evidence(
+  text, text, text, text, text, text, text, text, text, text, text, text
+) from public, anon, authenticated;
+grant execute on function public.nile_read_admissions_workspace(text)
+  to service_role;
+grant execute on function public.nile_create_admission_lead_with_evidence(
+  text, text, text, text, text, text, text, text, text, text, text, text
+) to service_role;
+
+commit;
+
+-- ============================================================================
+-- 23. Normalized application conversion foundation
+-- Source: supabase/manual/021_normalized_application_conversion_foundation.sql
+-- SHA-256: 7903aebe90955710ac5887c94908688bdfb58d2b02989adcdcd660f5bb66223b
+-- ============================================================================
+
+-- Nile Learn normalized admissions application boundary.
+-- Manual-only. Apply after 020_normalized_admissions_intake_foundation.sql.
+-- The service role calls these RPCs after resolving a durable user session;
+-- browser roles receive no direct table or function access.
+
+begin;
+
+do $$
+declare
+  dependency text;
+begin
+  foreach dependency in array array[
+    'app_users', 'branches', 'role_grants', 'role_grant_branch_scopes',
+    'auth_sessions', 'command_executions', 'audit_logs', 'admission_leads'
+  ] loop
+    if pg_catalog.to_regclass('public.' || dependency) is null then
+      raise exception 'Normalized applications require public.%', dependency;
+    end if;
+  end loop;
+end;
+$$;
+
+create table if not exists public.admission_applications (
+  id uuid primary key default gen_random_uuid(),
+  lead_id uuid not null unique
+    references public.admission_leads(id) on delete restrict,
+  branch_id uuid not null references public.branches(id) on delete restrict,
+  course_interest text not null,
+  schedule_preference text not null,
+  source_key text,
+  status text not null default 'pending'
+    check (status in ('pending', 'approved', 'rejected', 'cancelled')),
+  version integer not null default 1 check (version > 0),
+  created_by uuid not null references public.app_users(id) on delete restrict,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  check (length(btrim(course_interest)) between 2 and 160),
+  check (length(btrim(schedule_preference)) between 2 and 240),
+  check (source_key is null or length(source_key) between 8 and 256)
+);
+
+create unique index if not exists admission_applications_branch_source_uidx
+  on public.admission_applications (branch_id, source_key)
+  where source_key is not null;
+create index if not exists admission_applications_branch_updated_idx
+  on public.admission_applications (branch_id, updated_at desc);
+
+drop trigger if exists admission_applications_set_updated_at
+  on public.admission_applications;
+create trigger admission_applications_set_updated_at
+before update on public.admission_applications
+for each row execute function nile_private.set_updated_at();
+
+alter table public.admission_applications enable row level security;
+alter table public.admission_applications force row level security;
+revoke all on table public.admission_applications
+  from public, anon, authenticated, service_role;
+grant select, insert, update on table public.admission_applications
+  to service_role;
+
+create or replace function public.nile_read_admissions_lifecycle_workspace(
+  p_session_token_hash text
+)
+returns table (workspace jsonb)
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  actor_session public.auth_sessions%rowtype;
+  actor_user public.app_users%rowtype;
+  actor_grant public.role_grants%rowtype;
+  leads jsonb;
+  applications jsonb;
+begin
+  if p_session_token_hash !~ '^[a-f0-9]{64}$' then
+    raise exception 'Session token hash is invalid' using errcode = '22023';
+  end if;
+
+  select session.* into strict actor_session
+  from public.auth_sessions as session
+  where session.token_hash = pg_catalog.decode(p_session_token_hash, 'hex')
+    and session.provider = 'supabase'
+    and session.revoked_at is null
+    and session.expires_at > now();
+
+  select app_user.* into strict actor_user
+  from public.app_users as app_user
+  where app_user.id = actor_session.user_id
+    and app_user.status = 'active';
+
+  select role_grant.* into strict actor_grant
+  from public.role_grants as role_grant
+  where role_grant.id = actor_session.active_role_grant_id
+    and role_grant.user_id = actor_user.id
+    and role_grant.role in ('registrar', 'superadmin')
+    and role_grant.status = 'active'
+    and role_grant.starts_at <= now()
+    and (role_grant.ends_at is null or role_grant.ends_at > now());
+
+  select coalesce(pg_catalog.jsonb_agg(pg_catalog.jsonb_build_object(
+    'id', lead.id,
+    'branchId', lead.branch_id,
+    'fullName', lead.full_name,
+    'email', lead.email::text,
+    'phone', lead.phone,
+    'country', lead.country,
+    'subject', lead.subject,
+    'source', lead.source,
+    'status', lead.status,
+    'notes', lead.notes,
+    'sourceKey', lead.source_key,
+    'version', lead.version,
+    'createdAt', lead.created_at
+  ) order by lead.updated_at desc), '[]'::jsonb)
+  into leads
+  from public.admission_leads as lead
+  where actor_grant.role = 'superadmin'
+    or exists (
+      select 1
+      from public.role_grant_branch_scopes as scope
+      where scope.role_grant_id = actor_grant.id
+        and scope.branch_id = lead.branch_id
+        and scope.starts_at <= now()
+        and (scope.ends_at is null or scope.ends_at > now())
+    );
+
+  select coalesce(pg_catalog.jsonb_agg(pg_catalog.jsonb_build_object(
+    'id', application.id,
+    'leadId', application.lead_id,
+    'branchId', application.branch_id,
+    'courseInterest', application.course_interest,
+    'schedulePreference', application.schedule_preference,
+    'sourceKey', application.source_key,
+    'status', application.status,
+    'version', application.version
+  ) order by application.updated_at desc), '[]'::jsonb)
+  into applications
+  from public.admission_applications as application
+  where actor_grant.role = 'superadmin'
+    or exists (
+      select 1
+      from public.role_grant_branch_scopes as scope
+      where scope.role_grant_id = actor_grant.id
+        and scope.branch_id = application.branch_id
+        and scope.starts_at <= now()
+        and (scope.ends_at is null or scope.ends_at > now())
+    );
+
+  return query select pg_catalog.jsonb_build_object(
+    'leads', leads,
+    'applications', applications
+  );
+exception
+  when no_data_found then
+    raise exception 'Admissions lifecycle authority is unavailable'
+      using errcode = '42501';
+end;
+$$;
+
+create or replace function public.nile_create_admission_application_with_evidence(
+  p_session_token_hash text,
+  p_branch_ref text,
+  p_full_name text,
+  p_email text,
+  p_phone text,
+  p_country text,
+  p_course_interest text,
+  p_schedule_preference text,
+  p_source text,
+  p_notes text,
+  p_source_key text,
+  p_idempotency_key text,
+  p_request_hash text
+)
+returns table (
+  command_id uuid,
+  application_id uuid,
+  lead_id uuid,
+  branch_id uuid,
+  application_version integer,
+  lead_version integer,
+  replayed boolean
+)
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  actor_session public.auth_sessions%rowtype;
+  actor_user public.app_users%rowtype;
+  actor_grant public.role_grants%rowtype;
+  existing_command public.command_executions%rowtype;
+  command_uuid uuid := gen_random_uuid();
+  lead_uuid uuid := gen_random_uuid();
+  application_uuid uuid := gen_random_uuid();
+  resolved_branch_id uuid;
+  normalized_email text := pg_catalog.lower(pg_catalog.btrim(p_email));
+begin
+  if p_session_token_hash !~ '^[a-f0-9]{64}$'
+    or p_request_hash !~ '^[a-f0-9]{64}$'
+    or length(p_idempotency_key) not between 12 and 256
+    or length(pg_catalog.btrim(coalesce(p_full_name, ''))) not between 2 and 160
+    or normalized_email !~ '^[^@[:space:]]+@[^@[:space:]]+\.[^@[:space:]]+$'
+    or length(pg_catalog.btrim(coalesce(p_phone, ''))) not between 7 and 40
+    or length(pg_catalog.btrim(coalesce(p_course_interest, ''))) not between 2 and 160
+    or length(pg_catalog.btrim(coalesce(p_schedule_preference, ''))) not between 2 and 240
+    or length(pg_catalog.btrim(coalesce(p_country, ''))) > 80
+    or length(coalesce(p_notes, '')) > 3000
+    or length(coalesce(p_source_key, '')) > 256
+    or p_source not in ('website', 'trial_form', 'placement_form', 'whatsapp', 'manual') then
+    raise exception 'Admissions application request is invalid'
+      using errcode = '22023';
+  end if;
+
+  select session.* into strict actor_session
+  from public.auth_sessions as session
+  where session.token_hash = pg_catalog.decode(p_session_token_hash, 'hex')
+    and session.provider = 'supabase'
+    and session.revoked_at is null
+    and session.expires_at > now()
+  for update;
+
+  select app_user.* into strict actor_user
+  from public.app_users as app_user
+  where app_user.id = actor_session.user_id
+    and app_user.status = 'active';
+
+  select role_grant.* into strict actor_grant
+  from public.role_grants as role_grant
+  where role_grant.id = actor_session.active_role_grant_id
+    and role_grant.user_id = actor_user.id
+    and role_grant.role in ('registrar', 'superadmin')
+    and role_grant.status = 'active'
+    and role_grant.starts_at <= now()
+    and (role_grant.ends_at is null or role_grant.ends_at > now());
+
+  select command.* into existing_command
+  from public.command_executions as command
+  where command.idempotency_key = p_idempotency_key;
+  if found then
+    if existing_command.request_hash is distinct from pg_catalog.decode(p_request_hash, 'hex')
+      or existing_command.command_type <> 'application.create'
+      or existing_command.actor_user_id <> actor_user.id
+      or existing_command.status <> 'succeeded' then
+      raise exception 'Application idempotency conflict' using errcode = '23505';
+    end if;
+    return query
+      select existing_command.id, application.id, application.lead_id,
+        application.branch_id, application.version, lead.version, true
+      from public.admission_applications as application
+      join public.admission_leads as lead on lead.id = application.lead_id
+      where application.id = existing_command.target_id::uuid;
+    return;
+  end if;
+
+  select branch.id into resolved_branch_id
+  from public.branches as branch
+  where (branch.id::text = pg_catalog.btrim(p_branch_ref)
+      or branch.legacy_id = pg_catalog.btrim(p_branch_ref)
+      or branch.code::text = pg_catalog.btrim(p_branch_ref))
+    and branch.status = 'active';
+  if resolved_branch_id is null then
+    raise exception 'Admissions branch is unavailable' using errcode = '23503';
+  end if;
+  if actor_grant.role = 'registrar' and not exists (
+    select 1 from public.role_grant_branch_scopes as scope
+    where scope.role_grant_id = actor_grant.id
+      and scope.branch_id = resolved_branch_id
+      and scope.starts_at <= now()
+      and (scope.ends_at is null or scope.ends_at > now())
+  ) then
+    raise exception 'Admissions branch is outside the current scope'
+      using errcode = '42501';
+  end if;
+  if exists (
+    select 1
+    from public.admission_leads as lead
+    where lead.branch_id = resolved_branch_id
+      and lead.email = normalized_email
+      and lead.status <> 'cancelled'
+  ) then
+    raise exception 'An active admissions record already exists for this email'
+      using errcode = '23505';
+  end if;
+
+  insert into public.command_executions (
+    id, idempotency_key, actor_user_id, actor_role_grant_id, session_id,
+    command_type, target_type, target_id, request_hash, requires_outbox
+  ) values (
+    command_uuid, p_idempotency_key, actor_user.id, actor_grant.id,
+    actor_session.id, 'application.create', 'Application',
+    application_uuid::text, pg_catalog.decode(p_request_hash, 'hex'), false
+  );
+
+  insert into public.admission_leads (
+    id, branch_id, full_name, email, phone, country, subject, source,
+    status, notes, source_key, created_by
+  ) values (
+    lead_uuid, resolved_branch_id, pg_catalog.btrim(p_full_name),
+    normalized_email, pg_catalog.btrim(p_phone),
+    nullif(pg_catalog.btrim(p_country), ''),
+    pg_catalog.btrim(p_course_interest), p_source, 'ready_to_enroll',
+    nullif(pg_catalog.btrim(p_notes), ''),
+    nullif(pg_catalog.btrim(p_source_key), ''), actor_user.id
+  );
+
+  insert into public.admission_applications (
+    id, lead_id, branch_id, course_interest, schedule_preference,
+    source_key, created_by
+  ) values (
+    application_uuid, lead_uuid, resolved_branch_id,
+    pg_catalog.btrim(p_course_interest),
+    pg_catalog.btrim(p_schedule_preference),
+    nullif(pg_catalog.btrim(p_source_key), ''), actor_user.id
+  );
+
+  insert into public.audit_logs (
+    command_id, actor_user_id, actor_role_grant_id, session_id,
+    action, entity_type, entity_id, branch_id, after_state, metadata
+  ) values
+  (
+    command_uuid, actor_user.id, actor_grant.id, actor_session.id,
+    'lead.created', 'Lead', lead_uuid::text, resolved_branch_id,
+    pg_catalog.jsonb_build_object('status', 'ready_to_enroll', 'version', 1),
+    pg_catalog.jsonb_build_object('source', p_source)
+  ),
+  (
+    command_uuid, actor_user.id, actor_grant.id, actor_session.id,
+    'application.created', 'Application', application_uuid::text,
+    resolved_branch_id,
+    pg_catalog.jsonb_build_object('status', 'pending', 'version', 1),
+    pg_catalog.jsonb_build_object(
+      'summary', 'Created application for ' || pg_catalog.btrim(p_full_name) || '.'
+    )
+  );
+
+  update public.command_executions
+  set status = 'succeeded', completed_at = now()
+  where id = command_uuid;
+
+  return query select command_uuid, application_uuid, lead_uuid,
+    resolved_branch_id, 1, 1, false;
+exception
+  when no_data_found then
+    raise exception 'Admissions application authority is unavailable'
+      using errcode = '42501';
+end;
+$$;
+
+create or replace function public.nile_convert_admission_lead_with_evidence(
+  p_session_token_hash text,
+  p_lead_id uuid,
+  p_branch_ref text,
+  p_expected_version integer,
+  p_idempotency_key text,
+  p_request_hash text
+)
+returns table (
+  command_id uuid,
+  application_id uuid,
+  lead_id uuid,
+  branch_id uuid,
+  application_version integer,
+  lead_version integer,
+  replayed boolean
+)
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  actor_session public.auth_sessions%rowtype;
+  actor_user public.app_users%rowtype;
+  actor_grant public.role_grants%rowtype;
+  lead public.admission_leads%rowtype;
+  existing_command public.command_executions%rowtype;
+  command_uuid uuid := gen_random_uuid();
+  application_uuid uuid := gen_random_uuid();
+  requested_branch_id uuid;
+begin
+  if p_session_token_hash !~ '^[a-f0-9]{64}$'
+    or p_request_hash !~ '^[a-f0-9]{64}$'
+    or p_expected_version < 1
+    or length(p_idempotency_key) not between 12 and 256 then
+    raise exception 'Lead conversion request is invalid' using errcode = '22023';
+  end if;
+
+  select session.* into strict actor_session
+  from public.auth_sessions as session
+  where session.token_hash = pg_catalog.decode(p_session_token_hash, 'hex')
+    and session.provider = 'supabase'
+    and session.revoked_at is null
+    and session.expires_at > now()
+  for update;
+  select app_user.* into strict actor_user
+  from public.app_users as app_user
+  where app_user.id = actor_session.user_id and app_user.status = 'active';
+  select role_grant.* into strict actor_grant
+  from public.role_grants as role_grant
+  where role_grant.id = actor_session.active_role_grant_id
+    and role_grant.user_id = actor_user.id
+    and role_grant.role in ('registrar', 'superadmin')
+    and role_grant.status = 'active'
+    and role_grant.starts_at <= now()
+    and (role_grant.ends_at is null or role_grant.ends_at > now());
+
+  select command.* into existing_command
+  from public.command_executions as command
+  where command.idempotency_key = p_idempotency_key;
+  if found then
+    if existing_command.request_hash is distinct from pg_catalog.decode(p_request_hash, 'hex')
+      or existing_command.command_type <> 'lead.convert'
+      or existing_command.actor_user_id <> actor_user.id
+      or existing_command.status <> 'succeeded' then
+      raise exception 'Lead conversion idempotency conflict' using errcode = '23505';
+    end if;
+    return query
+      select existing_command.id, application.id, application.lead_id,
+        application.branch_id, application.version, source_lead.version, true
+      from public.admission_applications as application
+      join public.admission_leads as source_lead
+        on source_lead.id = application.lead_id
+      where application.id = existing_command.target_id::uuid;
+    return;
+  end if;
+
+  select item.* into strict lead
+  from public.admission_leads as item
+  where item.id = p_lead_id
+  for update;
+
+  if actor_grant.role = 'registrar' and not exists (
+    select 1 from public.role_grant_branch_scopes as scope
+    where scope.role_grant_id = actor_grant.id
+      and scope.branch_id = lead.branch_id
+      and scope.starts_at <= now()
+      and (scope.ends_at is null or scope.ends_at > now())
+  ) then
+    raise exception 'Lead is outside the current admissions scope'
+      using errcode = '42501';
+  end if;
+  if nullif(pg_catalog.btrim(p_branch_ref), '') is not null then
+    select branch.id into requested_branch_id
+    from public.branches as branch
+    where branch.id::text = pg_catalog.btrim(p_branch_ref)
+      or branch.legacy_id = pg_catalog.btrim(p_branch_ref)
+      or branch.code::text = pg_catalog.btrim(p_branch_ref);
+    if requested_branch_id is distinct from lead.branch_id then
+      raise exception 'Lead branch changes require an explicit transfer'
+        using errcode = '22023';
+    end if;
+  end if;
+  if lead.version <> p_expected_version then
+    raise exception 'Lead version conflict' using errcode = '40001';
+  end if;
+  if lead.status in ('enrolled', 'active', 'cancelled') then
+    raise exception 'Lead cannot be converted from its current status'
+      using errcode = '22023';
+  end if;
+  if exists (
+    select 1 from public.admission_applications as application
+    where application.lead_id = lead.id
+  ) then
+    raise exception 'Lead already has an application' using errcode = '23505';
+  end if;
+
+  insert into public.command_executions (
+    id, idempotency_key, actor_user_id, actor_role_grant_id, session_id,
+    command_type, target_type, target_id, request_hash, requires_outbox
+  ) values (
+    command_uuid, p_idempotency_key, actor_user.id, actor_grant.id,
+    actor_session.id, 'lead.convert', 'Application', application_uuid::text,
+    pg_catalog.decode(p_request_hash, 'hex'), false
+  );
+
+  insert into public.admission_applications (
+    id, lead_id, branch_id, course_interest, schedule_preference, created_by
+  ) values (
+    application_uuid, lead.id, lead.branch_id, lead.subject, 'To confirm',
+    actor_user.id
+  );
+  update public.admission_leads
+  set status = 'ready_to_enroll', version = version + 1
+  where id = lead.id;
+
+  insert into public.audit_logs (
+    command_id, actor_user_id, actor_role_grant_id, session_id,
+    action, entity_type, entity_id, branch_id, before_state, after_state, metadata
+  ) values (
+    command_uuid, actor_user.id, actor_grant.id, actor_session.id,
+    'lead.converted', 'Application', application_uuid::text, lead.branch_id,
+    pg_catalog.jsonb_build_object(
+      'leadStatus', lead.status,
+      'leadVersion', lead.version
+    ),
+    pg_catalog.jsonb_build_object(
+      'applicationStatus', 'pending',
+      'applicationVersion', 1,
+      'leadStatus', 'ready_to_enroll',
+      'leadVersion', lead.version + 1
+    ),
+    pg_catalog.jsonb_build_object(
+      'summary', 'Converted admissions lead to application.'
+    )
+  );
+
+  update public.command_executions
+  set status = 'succeeded', completed_at = now()
+  where id = command_uuid;
+  return query select command_uuid, application_uuid, lead.id, lead.branch_id,
+    1, lead.version + 1, false;
+exception
+  when no_data_found then
+    raise exception 'Lead conversion authority is unavailable'
+      using errcode = '42501';
+end;
+$$;
+
+revoke all on function public.nile_read_admissions_lifecycle_workspace(text)
+  from public, anon, authenticated;
+revoke all on function public.nile_create_admission_application_with_evidence(
+  text, text, text, text, text, text, text, text, text, text, text, text, text
+) from public, anon, authenticated;
+revoke all on function public.nile_convert_admission_lead_with_evidence(
+  text, uuid, text, integer, text, text
+) from public, anon, authenticated;
+grant execute on function public.nile_read_admissions_lifecycle_workspace(text)
+  to service_role;
+grant execute on function public.nile_create_admission_application_with_evidence(
+  text, text, text, text, text, text, text, text, text, text, text, text, text
+) to service_role;
+grant execute on function public.nile_convert_admission_lead_with_evidence(
+  text, uuid, text, integer, text, text
+) to service_role;
+
+commit;
+
+-- ============================================================================
+-- 24. Normalized placement foundation
+-- Source: supabase/manual/022_normalized_placement_foundation.sql
+-- SHA-256: 93810553368ea88339275b314da560e39d91386abcb7835eee74e3132f352d63
+-- ============================================================================
+
+-- Nile Learn normalized placement booking and result boundary.
+-- Manual-only. Apply after 021_normalized_application_conversion_foundation.sql.
+
+begin;
+
+do $$
+declare
+  dependency text;
+begin
+  foreach dependency in array array[
+    'app_users', 'branches', 'role_grants', 'role_grant_branch_scopes',
+    'auth_sessions', 'command_executions', 'audit_logs', 'admission_leads',
+    'admission_applications'
+  ] loop
+    if pg_catalog.to_regclass('public.' || dependency) is null then
+      raise exception 'Normalized placement requires public.%', dependency;
+    end if;
+  end loop;
+end;
+$$;
+
+create table if not exists public.admission_placement_bookings (
+  id uuid primary key default gen_random_uuid(),
+  lead_id uuid not null references public.admission_leads(id) on delete restrict,
+  branch_id uuid not null references public.branches(id) on delete restrict,
+  full_name text not null,
+  email citext not null,
+  phone text not null,
+  subject text not null,
+  preferred_date date not null,
+  current_level text not null,
+  recommended_level text,
+  source_key text,
+  status text not null default 'pending'
+    check (status in ('pending', 'completed', 'cancelled')),
+  version integer not null default 1 check (version > 0),
+  created_by uuid not null references public.app_users(id) on delete restrict,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  check (length(btrim(full_name)) between 2 and 160),
+  check (email::text ~* '^[^@[:space:]]+@[^@[:space:]]+\.[^@[:space:]]+$'),
+  check (length(btrim(phone)) between 7 and 40),
+  check (length(btrim(subject)) between 2 and 160),
+  check (length(btrim(current_level)) between 2 and 160),
+  check (recommended_level is null or length(btrim(recommended_level)) between 2 and 160),
+  check (source_key is null or length(source_key) between 8 and 256)
+);
+
+create unique index if not exists admission_placement_one_pending_uidx
+  on public.admission_placement_bookings (lead_id)
+  where status = 'pending';
+create unique index if not exists admission_placement_branch_source_uidx
+  on public.admission_placement_bookings (branch_id, source_key)
+  where source_key is not null;
+create index if not exists admission_placement_branch_date_idx
+  on public.admission_placement_bookings (branch_id, preferred_date, updated_at desc);
+
+create table if not exists public.admission_placement_results (
+  id uuid primary key default gen_random_uuid(),
+  booking_id uuid not null unique
+    references public.admission_placement_bookings(id) on delete restrict,
+  examiner_user_id uuid not null references public.app_users(id) on delete restrict,
+  score numeric(5, 2) not null check (score between 0 and 100),
+  recommended_level text not null,
+  notes text not null,
+  version integer not null default 1 check (version > 0),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  check (length(btrim(recommended_level)) between 2 and 160),
+  check (length(btrim(notes)) between 4 and 3000)
+);
+
+drop trigger if exists admission_placement_bookings_set_updated_at
+  on public.admission_placement_bookings;
+create trigger admission_placement_bookings_set_updated_at
+before update on public.admission_placement_bookings
+for each row execute function nile_private.set_updated_at();
+drop trigger if exists admission_placement_results_set_updated_at
+  on public.admission_placement_results;
+create trigger admission_placement_results_set_updated_at
+before update on public.admission_placement_results
+for each row execute function nile_private.set_updated_at();
+
+alter table public.admission_placement_bookings enable row level security;
+alter table public.admission_placement_bookings force row level security;
+alter table public.admission_placement_results enable row level security;
+alter table public.admission_placement_results force row level security;
+revoke all on table public.admission_placement_bookings
+  from public, anon, authenticated, service_role;
+revoke all on table public.admission_placement_results
+  from public, anon, authenticated, service_role;
+grant select, insert, update on table public.admission_placement_bookings
+  to service_role;
+grant select, insert, update on table public.admission_placement_results
+  to service_role;
+
+create or replace function public.nile_read_admissions_placement_workspace(
+  p_session_token_hash text
+)
+returns table (workspace jsonb)
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  actor_session public.auth_sessions%rowtype;
+  actor_user public.app_users%rowtype;
+  actor_grant public.role_grants%rowtype;
+  base_workspace jsonb;
+  bookings jsonb;
+  results jsonb;
+begin
+  select lifecycle.workspace into strict base_workspace
+  from public.nile_read_admissions_lifecycle_workspace(
+    p_session_token_hash
+  ) as lifecycle;
+
+  select session.* into strict actor_session
+  from public.auth_sessions as session
+  where session.token_hash = pg_catalog.decode(p_session_token_hash, 'hex')
+    and session.provider = 'supabase'
+    and session.revoked_at is null
+    and session.expires_at > now();
+  select app_user.* into strict actor_user
+  from public.app_users as app_user
+  where app_user.id = actor_session.user_id and app_user.status = 'active';
+  select role_grant.* into strict actor_grant
+  from public.role_grants as role_grant
+  where role_grant.id = actor_session.active_role_grant_id
+    and role_grant.user_id = actor_user.id
+    and role_grant.role in ('registrar', 'superadmin')
+    and role_grant.status = 'active'
+    and role_grant.starts_at <= now()
+    and (role_grant.ends_at is null or role_grant.ends_at > now());
+
+  select coalesce(pg_catalog.jsonb_agg(pg_catalog.jsonb_build_object(
+    'id', booking.id,
+    'leadId', booking.lead_id,
+    'fullName', booking.full_name,
+    'email', booking.email::text,
+    'phone', booking.phone,
+    'branchId', booking.branch_id,
+    'subject', booking.subject,
+    'preferredDate', booking.preferred_date,
+    'currentLevel', booking.current_level,
+    'sourceKey', booking.source_key,
+    'status', booking.status,
+    'recommendedLevel', booking.recommended_level,
+    'version', booking.version
+  ) order by booking.preferred_date, booking.updated_at desc), '[]'::jsonb)
+  into bookings
+  from public.admission_placement_bookings as booking
+  where actor_grant.role = 'superadmin'
+    or exists (
+      select 1 from public.role_grant_branch_scopes as scope
+      where scope.role_grant_id = actor_grant.id
+        and scope.branch_id = booking.branch_id
+        and scope.starts_at <= now()
+        and (scope.ends_at is null or scope.ends_at > now())
+    );
+
+  select coalesce(pg_catalog.jsonb_agg(pg_catalog.jsonb_build_object(
+    'id', result.id,
+    'bookingId', result.booking_id,
+    'examinerId', result.examiner_user_id,
+    'score', result.score,
+    'recommendedLevel', result.recommended_level,
+    'notes', result.notes,
+    'createdAt', result.created_at,
+    'version', result.version
+  ) order by result.created_at desc), '[]'::jsonb)
+  into results
+  from public.admission_placement_results as result
+  join public.admission_placement_bookings as booking
+    on booking.id = result.booking_id
+  where actor_grant.role = 'superadmin'
+    or exists (
+      select 1 from public.role_grant_branch_scopes as scope
+      where scope.role_grant_id = actor_grant.id
+        and scope.branch_id = booking.branch_id
+        and scope.starts_at <= now()
+        and (scope.ends_at is null or scope.ends_at > now())
+    );
+
+  return query select base_workspace || pg_catalog.jsonb_build_object(
+    'placementTests', bookings,
+    'placementResults', results
+  );
+exception
+  when no_data_found then
+    raise exception 'Placement workspace authority is unavailable'
+      using errcode = '42501';
+end;
+$$;
+
+create or replace function public.nile_create_placement_booking_with_evidence(
+  p_session_token_hash text,
+  p_lead_id uuid,
+  p_branch_ref text,
+  p_full_name text,
+  p_email text,
+  p_phone text,
+  p_subject text,
+  p_preferred_date text,
+  p_current_level text,
+  p_source_key text,
+  p_idempotency_key text,
+  p_request_hash text
+)
+returns table (
+  command_id uuid,
+  booking_id uuid,
+  lead_id uuid,
+  branch_id uuid,
+  booking_version integer,
+  lead_version integer,
+  result_id uuid,
+  result_version integer,
+  replayed boolean
+)
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  actor_session public.auth_sessions%rowtype;
+  actor_user public.app_users%rowtype;
+  actor_grant public.role_grants%rowtype;
+  existing_command public.command_executions%rowtype;
+  source_lead public.admission_leads%rowtype;
+  command_uuid uuid := gen_random_uuid();
+  booking_uuid uuid := gen_random_uuid();
+  created_lead_id uuid := gen_random_uuid();
+  resolved_branch_id uuid;
+  normalized_email text := pg_catalog.lower(pg_catalog.btrim(p_email));
+  resulting_lead_version integer;
+begin
+  if p_session_token_hash !~ '^[a-f0-9]{64}$'
+    or p_request_hash !~ '^[a-f0-9]{64}$'
+    or length(p_idempotency_key) not between 12 and 256
+    or p_preferred_date !~ '^\d{4}-\d{2}-\d{2}$'
+    or length(pg_catalog.btrim(coalesce(p_current_level, ''))) not between 2 and 160
+    or length(coalesce(p_source_key, '')) > 256 then
+    raise exception 'Placement booking request is invalid' using errcode = '22023';
+  end if;
+
+  select session.* into strict actor_session
+  from public.auth_sessions as session
+  where session.token_hash = pg_catalog.decode(p_session_token_hash, 'hex')
+    and session.provider = 'supabase'
+    and session.revoked_at is null
+    and session.expires_at > now()
+  for update;
+  select app_user.* into strict actor_user
+  from public.app_users as app_user
+  where app_user.id = actor_session.user_id and app_user.status = 'active';
+  select role_grant.* into strict actor_grant
+  from public.role_grants as role_grant
+  where role_grant.id = actor_session.active_role_grant_id
+    and role_grant.user_id = actor_user.id
+    and role_grant.role in ('registrar', 'superadmin')
+    and role_grant.status = 'active'
+    and role_grant.starts_at <= now()
+    and (role_grant.ends_at is null or role_grant.ends_at > now());
+
+  select command.* into existing_command
+  from public.command_executions as command
+  where command.idempotency_key = p_idempotency_key;
+  if found then
+    if existing_command.request_hash is distinct from pg_catalog.decode(p_request_hash, 'hex')
+      or existing_command.command_type <> 'placement.create'
+      or existing_command.actor_user_id <> actor_user.id
+      or existing_command.status <> 'succeeded' then
+      raise exception 'Placement booking idempotency conflict' using errcode = '23505';
+    end if;
+    return query
+      select existing_command.id, booking.id, booking.lead_id,
+        booking.branch_id, booking.version, lead.version, null::uuid,
+        null::integer, true
+      from public.admission_placement_bookings as booking
+      join public.admission_leads as lead on lead.id = booking.lead_id
+      where booking.id = existing_command.target_id::uuid;
+    return;
+  end if;
+
+  if p_lead_id is not null then
+    select lead.* into strict source_lead
+    from public.admission_leads as lead
+    where lead.id = p_lead_id
+    for update;
+    resolved_branch_id := source_lead.branch_id;
+    if source_lead.status in ('enrolled', 'active', 'cancelled') then
+      raise exception 'Lead cannot book placement from its current status'
+        using errcode = '22023';
+    end if;
+    if nullif(pg_catalog.btrim(p_branch_ref), '') is not null
+      and not exists (
+        select 1 from public.branches as branch
+        where branch.id = source_lead.branch_id
+          and (branch.id::text = pg_catalog.btrim(p_branch_ref)
+            or branch.legacy_id = pg_catalog.btrim(p_branch_ref)
+            or branch.code::text = pg_catalog.btrim(p_branch_ref))
+      ) then
+      raise exception 'Placement branch must match the linked lead'
+        using errcode = '22023';
+    end if;
+  else
+    if length(pg_catalog.btrim(coalesce(p_full_name, ''))) not between 2 and 160
+      or normalized_email !~ '^[^@[:space:]]+@[^@[:space:]]+\.[^@[:space:]]+$'
+      or length(pg_catalog.btrim(coalesce(p_phone, ''))) not between 7 and 40
+      or length(pg_catalog.btrim(coalesce(p_subject, ''))) not between 2 and 160 then
+      raise exception 'Placement learner details are invalid' using errcode = '22023';
+    end if;
+    select branch.id into resolved_branch_id
+    from public.branches as branch
+    where (branch.id::text = pg_catalog.btrim(p_branch_ref)
+        or branch.legacy_id = pg_catalog.btrim(p_branch_ref)
+        or branch.code::text = pg_catalog.btrim(p_branch_ref))
+      and branch.status = 'active';
+    if resolved_branch_id is null then
+      raise exception 'Placement branch is unavailable' using errcode = '23503';
+    end if;
+    if exists (
+      select 1 from public.admission_leads as lead
+      where lead.branch_id = resolved_branch_id
+        and lead.email = normalized_email
+        and lead.status <> 'cancelled'
+    ) then
+      raise exception 'An active admissions record already exists for this email'
+        using errcode = '23505';
+    end if;
+  end if;
+
+  if actor_grant.role = 'registrar' and not exists (
+    select 1 from public.role_grant_branch_scopes as scope
+    where scope.role_grant_id = actor_grant.id
+      and scope.branch_id = resolved_branch_id
+      and scope.starts_at <= now()
+      and (scope.ends_at is null or scope.ends_at > now())
+  ) then
+    raise exception 'Placement branch is outside the current scope'
+      using errcode = '42501';
+  end if;
+
+  if p_lead_id is null then
+    insert into public.admission_leads (
+      id, branch_id, full_name, email, phone, subject, source, status,
+      source_key, created_by
+    ) values (
+      created_lead_id, resolved_branch_id, pg_catalog.btrim(p_full_name),
+      normalized_email, pg_catalog.btrim(p_phone), pg_catalog.btrim(p_subject),
+      'placement_form', 'placement_booked',
+      nullif(pg_catalog.btrim(p_source_key), ''), actor_user.id
+    );
+    source_lead.id := created_lead_id;
+    source_lead.full_name := pg_catalog.btrim(p_full_name);
+    source_lead.email := normalized_email;
+    source_lead.phone := pg_catalog.btrim(p_phone);
+    source_lead.subject := pg_catalog.btrim(p_subject);
+    resulting_lead_version := 1;
+  else
+    update public.admission_leads
+    set status = 'placement_booked', version = version + 1
+    where id = source_lead.id;
+    resulting_lead_version := source_lead.version + 1;
+  end if;
+
+  insert into public.command_executions (
+    id, idempotency_key, actor_user_id, actor_role_grant_id, session_id,
+    command_type, target_type, target_id, request_hash, requires_outbox
+  ) values (
+    command_uuid, p_idempotency_key, actor_user.id, actor_grant.id,
+    actor_session.id, 'placement.create', 'PlacementTestBooking',
+    booking_uuid::text, pg_catalog.decode(p_request_hash, 'hex'), false
+  );
+  insert into public.admission_placement_bookings (
+    id, lead_id, branch_id, full_name, email, phone, subject,
+    preferred_date, current_level, source_key, created_by
+  ) values (
+    booking_uuid, source_lead.id, resolved_branch_id, source_lead.full_name,
+    source_lead.email, source_lead.phone, source_lead.subject,
+    p_preferred_date::date, pg_catalog.btrim(p_current_level),
+    nullif(pg_catalog.btrim(p_source_key), ''), actor_user.id
+  );
+  insert into public.audit_logs (
+    command_id, actor_user_id, actor_role_grant_id, session_id,
+    action, entity_type, entity_id, branch_id, after_state, metadata
+  ) values (
+    command_uuid, actor_user.id, actor_grant.id, actor_session.id,
+    'placement.created', 'PlacementTestBooking', booking_uuid::text,
+    resolved_branch_id,
+    pg_catalog.jsonb_build_object(
+      'status', 'pending', 'version', 1, 'leadVersion', resulting_lead_version
+    ),
+    pg_catalog.jsonb_build_object(
+      'summary', 'Booked placement for ' || source_lead.full_name || '.'
+    )
+  );
+  update public.command_executions
+  set status = 'succeeded', completed_at = now()
+  where id = command_uuid;
+
+  return query select command_uuid, booking_uuid, source_lead.id,
+    resolved_branch_id, 1, resulting_lead_version, null::uuid,
+    null::integer, false;
+exception
+  when no_data_found then
+    raise exception 'Placement booking authority is unavailable'
+      using errcode = '42501';
+end;
+$$;
+
+create or replace function public.nile_record_placement_result_with_evidence(
+  p_session_token_hash text,
+  p_booking_id uuid,
+  p_recommended_level text,
+  p_score numeric,
+  p_notes text,
+  p_expected_version integer,
+  p_idempotency_key text,
+  p_request_hash text
+)
+returns table (
+  command_id uuid,
+  booking_id uuid,
+  lead_id uuid,
+  branch_id uuid,
+  booking_version integer,
+  lead_version integer,
+  result_id uuid,
+  result_version integer,
+  replayed boolean
+)
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  actor_session public.auth_sessions%rowtype;
+  actor_user public.app_users%rowtype;
+  actor_grant public.role_grants%rowtype;
+  booking public.admission_placement_bookings%rowtype;
+  lead public.admission_leads%rowtype;
+  existing_command public.command_executions%rowtype;
+  command_uuid uuid := gen_random_uuid();
+  result_uuid uuid := gen_random_uuid();
+begin
+  if p_session_token_hash !~ '^[a-f0-9]{64}$'
+    or p_request_hash !~ '^[a-f0-9]{64}$'
+    or p_expected_version < 1
+    or p_score not between 0 and 100
+    or length(pg_catalog.btrim(coalesce(p_recommended_level, ''))) not between 2 and 160
+    or length(pg_catalog.btrim(coalesce(p_notes, ''))) not between 4 and 3000
+    or length(p_idempotency_key) not between 12 and 256 then
+    raise exception 'Placement result request is invalid' using errcode = '22023';
+  end if;
+
+  select session.* into strict actor_session
+  from public.auth_sessions as session
+  where session.token_hash = pg_catalog.decode(p_session_token_hash, 'hex')
+    and session.provider = 'supabase'
+    and session.revoked_at is null
+    and session.expires_at > now()
+  for update;
+  select app_user.* into strict actor_user
+  from public.app_users as app_user
+  where app_user.id = actor_session.user_id and app_user.status = 'active';
+  select role_grant.* into strict actor_grant
+  from public.role_grants as role_grant
+  where role_grant.id = actor_session.active_role_grant_id
+    and role_grant.user_id = actor_user.id
+    and role_grant.role in ('registrar', 'superadmin')
+    and role_grant.status = 'active'
+    and role_grant.starts_at <= now()
+    and (role_grant.ends_at is null or role_grant.ends_at > now());
+
+  select command.* into existing_command
+  from public.command_executions as command
+  where command.idempotency_key = p_idempotency_key;
+  if found then
+    if existing_command.request_hash is distinct from pg_catalog.decode(p_request_hash, 'hex')
+      or existing_command.command_type <> 'placement.result.record'
+      or existing_command.actor_user_id <> actor_user.id
+      or existing_command.status <> 'succeeded' then
+      raise exception 'Placement result idempotency conflict' using errcode = '23505';
+    end if;
+    return query
+      select existing_command.id, source_booking.id, source_booking.lead_id,
+        source_booking.branch_id, source_booking.version, source_lead.version,
+        result.id, result.version, true
+      from public.admission_placement_results as result
+      join public.admission_placement_bookings as source_booking
+        on source_booking.id = result.booking_id
+      join public.admission_leads as source_lead
+        on source_lead.id = source_booking.lead_id
+      where result.id = existing_command.target_id::uuid;
+    return;
+  end if;
+
+  select item.* into strict booking
+  from public.admission_placement_bookings as item
+  where item.id = p_booking_id
+  for update;
+  select item.* into strict lead
+  from public.admission_leads as item
+  where item.id = booking.lead_id
+  for update;
+  if actor_grant.role = 'registrar' and not exists (
+    select 1 from public.role_grant_branch_scopes as scope
+    where scope.role_grant_id = actor_grant.id
+      and scope.branch_id = booking.branch_id
+      and scope.starts_at <= now()
+      and (scope.ends_at is null or scope.ends_at > now())
+  ) then
+    raise exception 'Placement booking is outside the current scope'
+      using errcode = '42501';
+  end if;
+  if booking.version <> p_expected_version then
+    raise exception 'Placement booking version conflict' using errcode = '40001';
+  end if;
+  if booking.status <> 'pending' then
+    raise exception 'Placement result can only be recorded once'
+      using errcode = '22023';
+  end if;
+
+  insert into public.command_executions (
+    id, idempotency_key, actor_user_id, actor_role_grant_id, session_id,
+    command_type, target_type, target_id, request_hash, requires_outbox
+  ) values (
+    command_uuid, p_idempotency_key, actor_user.id, actor_grant.id,
+    actor_session.id, 'placement.result.record', 'PlacementTestResult',
+    result_uuid::text, pg_catalog.decode(p_request_hash, 'hex'), false
+  );
+  insert into public.admission_placement_results (
+    id, booking_id, examiner_user_id, score, recommended_level, notes
+  ) values (
+    result_uuid, booking.id, actor_user.id, p_score,
+    pg_catalog.btrim(p_recommended_level), pg_catalog.btrim(p_notes)
+  );
+  update public.admission_placement_bookings
+  set status = 'completed',
+      recommended_level = pg_catalog.btrim(p_recommended_level),
+      version = version + 1
+  where id = booking.id;
+  update public.admission_leads
+  set status = 'placement_completed', version = version + 1
+  where id = lead.id;
+  insert into public.audit_logs (
+    command_id, actor_user_id, actor_role_grant_id, session_id,
+    action, entity_type, entity_id, branch_id, before_state, after_state, metadata
+  ) values (
+    command_uuid, actor_user.id, actor_grant.id, actor_session.id,
+    'placement.result_recorded', 'PlacementTestResult', result_uuid::text,
+    booking.branch_id,
+    pg_catalog.jsonb_build_object(
+      'bookingStatus', booking.status, 'bookingVersion', booking.version
+    ),
+    pg_catalog.jsonb_build_object(
+      'bookingStatus', 'completed', 'bookingVersion', booking.version + 1,
+      'leadStatus', 'placement_completed', 'leadVersion', lead.version + 1,
+      'resultVersion', 1
+    ),
+    pg_catalog.jsonb_build_object(
+      'summary', 'Recorded placement result for ' || booking.full_name || '.'
+    )
+  );
+  update public.command_executions
+  set status = 'succeeded', completed_at = now()
+  where id = command_uuid;
+
+  return query select command_uuid, booking.id, booking.lead_id,
+    booking.branch_id, booking.version + 1, lead.version + 1,
+    result_uuid, 1, false;
+exception
+  when no_data_found then
+    raise exception 'Placement result authority is unavailable'
+      using errcode = '42501';
+end;
+$$;
+
+revoke all on function public.nile_read_admissions_placement_workspace(text)
+  from public, anon, authenticated;
+revoke all on function public.nile_create_placement_booking_with_evidence(
+  text, uuid, text, text, text, text, text, text, text, text, text, text
+) from public, anon, authenticated;
+revoke all on function public.nile_record_placement_result_with_evidence(
+  text, uuid, text, numeric, text, integer, text, text
+) from public, anon, authenticated;
+grant execute on function public.nile_read_admissions_placement_workspace(text)
+  to service_role;
+grant execute on function public.nile_create_placement_booking_with_evidence(
+  text, uuid, text, text, text, text, text, text, text, text, text, text
+) to service_role;
+grant execute on function public.nile_record_placement_result_with_evidence(
+  text, uuid, text, numeric, text, integer, text, text
+) to service_role;
+
+commit;
+
+-- ============================================================================
+-- 25. Normalized admissions delivery read model
+-- Source: supabase/manual/023_normalized_admissions_delivery_read_model.sql
+-- SHA-256: 15697c63458f322e2047c9c50f60958e2cca304ec76d6a16894bb6bd15f3acf7
+-- ============================================================================
+
+-- Nile Learn normalized Registrar course-run and class selection read model.
+-- Manual-only. This exposes only branch-scoped operational choices through a
+-- service-role RPC; it does not make Moodle or browser state authoritative.
+
+begin;
+
+do $$
+declare
+  dependency text;
+begin
+  foreach dependency in array array[
+    'app_users', 'branches', 'role_grants', 'role_grant_branch_scopes',
+    'auth_sessions', 'programs', 'course_levels', 'course_templates',
+    'course_runs', 'class_groups', 'teacher_assignments', 'staff_profiles',
+    'student_profiles', 'enrollments', 'class_memberships',
+    'admission_placement_bookings', 'admission_placement_results'
+  ] loop
+    if pg_catalog.to_regclass('public.' || dependency) is null then
+      raise exception 'Admissions delivery read model requires public.%', dependency;
+    end if;
+  end loop;
+end;
+$$;
+
+create or replace function public.nile_read_admissions_operational_workspace(
+  p_session_token_hash text
+)
+returns table (workspace jsonb)
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  actor_session public.auth_sessions%rowtype;
+  actor_user public.app_users%rowtype;
+  actor_grant public.role_grants%rowtype;
+  base_workspace jsonb;
+  programs jsonb;
+  levels jsonb;
+  courses jsonb;
+  runs jsonb;
+  groups jsonb;
+begin
+  select placement.workspace into strict base_workspace
+  from public.nile_read_admissions_placement_workspace(
+    p_session_token_hash
+  ) as placement;
+
+  select session.* into strict actor_session
+  from public.auth_sessions as session
+  where session.token_hash = pg_catalog.decode(p_session_token_hash, 'hex')
+    and session.provider = 'supabase'
+    and session.revoked_at is null
+    and session.expires_at > now();
+  select app_user.* into strict actor_user
+  from public.app_users as app_user
+  where app_user.id = actor_session.user_id and app_user.status = 'active';
+  select role_grant.* into strict actor_grant
+  from public.role_grants as role_grant
+  where role_grant.id = actor_session.active_role_grant_id
+    and role_grant.user_id = actor_user.id
+    and role_grant.role in ('registrar', 'superadmin')
+    and role_grant.status = 'active'
+    and role_grant.starts_at <= now()
+    and (role_grant.ends_at is null or role_grant.ends_at > now());
+
+  select coalesce(pg_catalog.jsonb_agg(pg_catalog.jsonb_build_object(
+    'id', program.id,
+    'title', program.title,
+    'category', program.code::text,
+    'departmentId', program.department_id,
+    'language', program.language,
+    'status', program.status
+  ) order by program.title), '[]'::jsonb)
+  into programs
+  from public.programs as program
+  where exists (
+    select 1
+    from public.course_templates as course
+    join public.course_runs as run on run.course_template_id = course.id
+    where course.program_id = program.id
+      and (
+        actor_grant.role = 'superadmin'
+        or exists (
+          select 1 from public.role_grant_branch_scopes as scope
+          where scope.role_grant_id = actor_grant.id
+            and scope.branch_id = run.branch_id
+            and scope.starts_at <= now()
+            and (scope.ends_at is null or scope.ends_at > now())
+        )
+      )
+  );
+
+  select coalesce(pg_catalog.jsonb_agg(pg_catalog.jsonb_build_object(
+    'id', level.id,
+    'programId', level.program_id,
+    'title', level.title,
+    'order', level.sort_order
+  ) order by level.program_id, level.sort_order), '[]'::jsonb)
+  into levels
+  from public.course_levels as level
+  where exists (
+    select 1
+    from public.course_templates as course
+    join public.course_runs as run on run.course_template_id = course.id
+    where course.level_id = level.id
+      and (
+        actor_grant.role = 'superadmin'
+        or exists (
+          select 1 from public.role_grant_branch_scopes as scope
+          where scope.role_grant_id = actor_grant.id
+            and scope.branch_id = run.branch_id
+            and scope.starts_at <= now()
+            and (scope.ends_at is null or scope.ends_at > now())
+        )
+      )
+  );
+
+  select coalesce(pg_catalog.jsonb_agg(pg_catalog.jsonb_build_object(
+    'id', course.id,
+    'programId', course.program_id,
+    'levelId', course.level_id,
+    'slug', course.slug,
+    'title', course.title,
+    'description', course.description,
+    'status', course.status
+  ) order by course.title), '[]'::jsonb)
+  into courses
+  from public.course_templates as course
+  where exists (
+    select 1 from public.course_runs as run
+    where run.course_template_id = course.id
+      and (
+        actor_grant.role = 'superadmin'
+        or exists (
+          select 1 from public.role_grant_branch_scopes as scope
+          where scope.role_grant_id = actor_grant.id
+            and scope.branch_id = run.branch_id
+            and scope.starts_at <= now()
+            and (scope.ends_at is null or scope.ends_at > now())
+        )
+      )
+  );
+
+  select coalesce(pg_catalog.jsonb_agg(pg_catalog.jsonb_build_object(
+    'id', run.id,
+    'courseId', run.course_template_id,
+    'branchId', run.branch_id,
+    'teacherId', (
+      select staff.user_id
+      from public.class_groups as assigned_group
+      join public.teacher_assignments as assignment
+        on assignment.class_group_id = assigned_group.id
+      join public.staff_profiles as staff
+        on staff.id = assignment.teacher_profile_id
+      where assigned_group.course_run_id = run.id
+        and assigned_group.status = 'active'
+        and assignment.status = 'active'
+        and assignment.starts_at <= now()
+        and (assignment.ends_at is null or assignment.ends_at > now())
+      order by
+        case assignment.assignment_type
+          when 'primary' then 1 when 'substitute' then 2 else 3
+        end,
+        assignment.starts_at desc
+      limit 1
+    ),
+    'term', run.term,
+    'startsOn', run.starts_on,
+    'endsOn', run.ends_on,
+    'status', run.status
+  ) order by run.starts_on desc, run.code), '[]'::jsonb)
+  into runs
+  from public.course_runs as run
+  where actor_grant.role = 'superadmin'
+    or exists (
+      select 1 from public.role_grant_branch_scopes as scope
+      where scope.role_grant_id = actor_grant.id
+        and scope.branch_id = run.branch_id
+        and scope.starts_at <= now()
+        and (scope.ends_at is null or scope.ends_at > now())
+    );
+
+  select coalesce(pg_catalog.jsonb_agg(pg_catalog.jsonb_build_object(
+    'id', class_group.id,
+    'courseRunId', class_group.course_run_id,
+    'name', class_group.name,
+    'capacity', class_group.capacity,
+    'schedule', 'Schedule not configured',
+    'studentIds', coalesce((
+      select pg_catalog.jsonb_agg(
+        enrollment.student_profile_id order by enrollment.student_profile_id
+      )
+      from public.class_memberships as membership
+      join public.enrollments as enrollment
+        on enrollment.id = membership.enrollment_id
+      where membership.class_group_id = class_group.id
+        and membership.status in ('active', 'paused')
+        and enrollment.status in ('pending', 'active', 'paused')
+    ), '[]'::jsonb),
+    'status', class_group.status
+  ) order by class_group.name), '[]'::jsonb)
+  into groups
+  from public.class_groups as class_group
+  join public.course_runs as run on run.id = class_group.course_run_id
+  where actor_grant.role = 'superadmin'
+    or exists (
+      select 1 from public.role_grant_branch_scopes as scope
+      where scope.role_grant_id = actor_grant.id
+        and scope.branch_id = run.branch_id
+        and scope.starts_at <= now()
+        and (scope.ends_at is null or scope.ends_at > now())
+    );
+
+  return query select base_workspace || pg_catalog.jsonb_build_object(
+    'programs', programs,
+    'levels', levels,
+    'courses', courses,
+    'courseRuns', runs,
+    'classGroups', groups
+  );
+exception
+  when no_data_found then
+    raise exception 'Admissions delivery authority is unavailable'
+      using errcode = '42501';
+end;
+$$;
+
+revoke all on function public.nile_read_admissions_operational_workspace(text)
+  from public, anon, authenticated;
+grant execute on function public.nile_read_admissions_operational_workspace(text)
+  to service_role;
+
+commit;
+
+-- ============================================================================
+-- 26. Normalized student enrollment invitation
+-- Source: supabase/manual/024_normalized_student_enrollment_invitation.sql
+-- SHA-256: fe1727b848c093693e84438fb944afd77c0105f936df76dbf24d452034326eee
+-- ============================================================================
+
+-- Nile Learn normalized student invitation and enrollment lifecycle.
+-- Manual-only. Requires Phase 1, Phase 6A, email/account invitations, and the
+-- normalized admissions packages through 023. Browser roles receive no direct
+-- table or RPC access.
+
+begin;
+
+do $$
+declare
+  dependency text;
+begin
+  foreach dependency in array array[
+    'app_users', 'branches', 'role_grants', 'role_grant_branch_scopes',
+    'auth_sessions', 'command_executions', 'audit_logs', 'outbox_events',
+    'user_invitations', 'identity_lifecycle_events', 'user_preferences',
+    'student_profiles', 'course_templates', 'course_runs', 'class_groups',
+    'teacher_assignments', 'staff_profiles', 'programs', 'enrollments',
+    'class_memberships',
+    'admission_leads', 'admission_applications',
+    'admission_placement_bookings'
+  ] loop
+    if pg_catalog.to_regclass('public.' || dependency) is null then
+      raise exception 'Student enrollment invitation requires public.%', dependency;
+    end if;
+  end loop;
+end;
+$$;
+
+alter table public.student_profiles
+  add column if not exists source text not null default 'direct'
+    check (source in ('direct', 'lead', 'application', 'placement')),
+  add column if not exists current_level text,
+  add column if not exists course_interest text,
+  add column if not exists notes text,
+  add column if not exists lead_id uuid
+    references public.admission_leads(id) on delete restrict,
+  add column if not exists application_id uuid
+    references public.admission_applications(id) on delete restrict,
+  add column if not exists placement_booking_id uuid
+    references public.admission_placement_bookings(id) on delete restrict;
+
+create unique index if not exists student_profiles_lead_uidx
+  on public.student_profiles (lead_id) where lead_id is not null;
+create unique index if not exists student_profiles_application_uidx
+  on public.student_profiles (application_id) where application_id is not null;
+create unique index if not exists student_profiles_placement_uidx
+  on public.student_profiles (placement_booking_id)
+  where placement_booking_id is not null;
+
+create or replace function public.nile_create_student_enrollment_invitation_with_evidence(
+  p_session_token_hash text,
+  p_invitation_id uuid,
+  p_auth_user_id uuid,
+  p_full_name text,
+  p_email text,
+  p_phone text,
+  p_branch_ref text,
+  p_preferred_language text,
+  p_course_interest text,
+  p_age_group text,
+  p_guardian_name text,
+  p_guardian_phone text,
+  p_current_level text,
+  p_notes text,
+  p_course_run_id uuid,
+  p_class_group_id uuid,
+  p_source text,
+  p_lead_id uuid,
+  p_application_id uuid,
+  p_placement_booking_id uuid,
+  p_locale text,
+  p_activation_envelope text,
+  p_expires_at timestamptz,
+  p_idempotency_key text,
+  p_request_hash text
+)
+returns table (
+  invitation_id uuid,
+  user_id uuid,
+  role_grant_id uuid,
+  student_profile_id uuid,
+  enrollment_id uuid,
+  class_group_id uuid,
+  outbox_event_id uuid,
+  replayed boolean
+)
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  actor_session public.auth_sessions%rowtype;
+  actor_user public.app_users%rowtype;
+  actor_grant public.role_grants%rowtype;
+  command_row public.command_executions%rowtype;
+  run_row public.course_runs%rowtype;
+  group_row public.class_groups%rowtype;
+  created_user_id uuid := gen_random_uuid();
+  created_grant_id uuid := gen_random_uuid();
+  created_profile_id uuid := gen_random_uuid();
+  created_enrollment_id uuid := gen_random_uuid();
+  created_membership_id uuid := gen_random_uuid();
+  created_command_id uuid := gen_random_uuid();
+  created_outbox_id uuid := gen_random_uuid();
+  resolved_branch_id uuid;
+  normalized_email text := pg_catalog.lower(pg_catalog.btrim(p_email));
+  active_roster_count integer;
+begin
+  if p_session_token_hash !~ '^[a-f0-9]{64}$'
+    or p_request_hash !~ '^[a-f0-9]{64}$'
+    or length(p_idempotency_key) not between 12 and 256
+    or length(pg_catalog.btrim(coalesce(p_full_name, ''))) not between 2 and 160
+    or normalized_email !~ '^[^@[:space:]]+@[^@[:space:]]+\.[^@[:space:]]+$'
+    or length(pg_catalog.btrim(coalesce(p_phone, ''))) not between 7 and 40
+    or length(pg_catalog.btrim(coalesce(p_course_interest, ''))) not between 2 and 160
+    or length(pg_catalog.btrim(coalesce(p_age_group, ''))) not between 2 and 80
+    or length(pg_catalog.btrim(coalesce(p_current_level, ''))) not between 1 and 160
+    or length(coalesce(p_notes, '')) > 3000
+    or p_preferred_language not in (
+      'English', 'Arabic', 'Chinese', 'Russian', 'Urdu', 'Turkish'
+    )
+    or p_locale not in ('en', 'ar', 'zh', 'ru', 'ur', 'tr')
+    or p_source not in ('direct', 'lead', 'application', 'placement')
+    or p_activation_envelope !~ '^v1\.[A-Za-z0-9_-]+$'
+    or length(p_activation_envelope) not between 44 and 16000
+    or p_expires_at not between now() + interval '15 minutes'
+      and now() + interval '48 hours' then
+    raise exception 'Student enrollment invitation request is invalid'
+      using errcode = '22023';
+  end if;
+  if p_age_group ~* '(minor|child|teen)'
+    and (
+      length(pg_catalog.btrim(coalesce(p_guardian_name, ''))) < 2
+      or length(pg_catalog.btrim(coalesce(p_guardian_phone, ''))) < 7
+    ) then
+    raise exception 'Guardian name and phone are required for a minor student'
+      using errcode = '22023';
+  end if;
+
+  select session.* into strict actor_session
+  from public.auth_sessions as session
+  where session.token_hash = pg_catalog.decode(p_session_token_hash, 'hex')
+    and session.provider = 'supabase'
+    and session.revoked_at is null
+    and session.expires_at > now()
+  for update;
+  select app_user.* into strict actor_user
+  from public.app_users as app_user
+  where app_user.id = actor_session.user_id and app_user.status = 'active';
+  select role_grant.* into strict actor_grant
+  from public.role_grants as role_grant
+  where role_grant.id = actor_session.active_role_grant_id
+    and role_grant.user_id = actor_user.id
+    and role_grant.role in ('registrar', 'superadmin')
+    and role_grant.status = 'active'
+    and role_grant.starts_at <= now()
+    and (role_grant.ends_at is null or role_grant.ends_at > now());
+
+  select command.* into command_row
+  from public.command_executions as command
+  where command.idempotency_key = p_idempotency_key;
+  if found then
+    if command_row.request_hash is distinct from pg_catalog.decode(p_request_hash, 'hex')
+      or command_row.command_type <> 'student.invitation.enrollment.create'
+      or command_row.actor_user_id <> actor_user.id
+      or command_row.status <> 'succeeded' then
+      raise exception 'Student invitation idempotency conflict'
+        using errcode = '23505';
+    end if;
+    return query
+      select invitation.id, invitation.user_id, invitation.role_grant_id,
+        profile.id, enrollment.id, membership.class_group_id,
+        invitation.last_email_outbox_event_id, true
+      from public.user_invitations as invitation
+      join public.student_profiles as profile on profile.user_id = invitation.user_id
+      join public.enrollments as enrollment on enrollment.student_profile_id = profile.id
+      join public.class_memberships as membership on membership.enrollment_id = enrollment.id
+      where invitation.id = command_row.target_id::uuid;
+    return;
+  end if;
+
+  select branch.id into resolved_branch_id
+  from public.branches as branch
+  where (branch.id::text = pg_catalog.btrim(p_branch_ref)
+      or branch.legacy_id = pg_catalog.btrim(p_branch_ref)
+      or branch.code::text = pg_catalog.btrim(p_branch_ref))
+    and branch.status = 'active';
+  if resolved_branch_id is null then
+    raise exception 'Student branch is unavailable' using errcode = '23503';
+  end if;
+  if actor_grant.role = 'registrar' and not exists (
+    select 1 from public.role_grant_branch_scopes as scope
+    where scope.role_grant_id = actor_grant.id
+      and scope.branch_id = resolved_branch_id
+      and scope.starts_at <= now()
+      and (scope.ends_at is null or scope.ends_at > now())
+  ) then
+    raise exception 'Student branch is outside the current admissions scope'
+      using errcode = '42501';
+  end if;
+
+  select run.* into strict run_row
+  from public.course_runs as run
+  join public.course_templates as course on course.id = run.course_template_id
+  where run.id = p_course_run_id
+    and run.branch_id = resolved_branch_id
+    and run.status in ('planned', 'active')
+    and course.status = 'active';
+  select candidate.* into strict group_row
+  from public.class_groups as candidate
+  where candidate.id = p_class_group_id
+    and candidate.course_run_id = run_row.id
+    and candidate.status = 'active'
+  for update;
+
+  select count(*) into active_roster_count
+  from public.class_memberships as membership
+  where membership.class_group_id = group_row.id
+    and membership.status in ('active', 'paused');
+  if active_roster_count >= group_row.capacity then
+    raise exception 'Selected class is at capacity' using errcode = '23514';
+  end if;
+  if not exists (
+    select 1
+    from public.teacher_assignments as assignment
+    join public.staff_profiles as teacher on teacher.id = assignment.teacher_profile_id
+    join public.app_users as teacher_user on teacher_user.id = teacher.user_id
+    where assignment.class_group_id = group_row.id
+      and assignment.assignment_type = 'primary'
+      and assignment.status = 'active'
+      and assignment.starts_at <= now()
+      and (assignment.ends_at is null or assignment.ends_at > now())
+      and teacher.status = 'active'
+      and teacher_user.status = 'active'
+  ) then
+    raise exception 'Selected class requires an active primary teacher'
+      using errcode = '23503';
+  end if;
+
+  if p_source = 'direct' and (
+    p_lead_id is not null or p_application_id is not null
+    or p_placement_booking_id is not null
+  ) then
+    raise exception 'Direct student creation cannot claim intake lineage'
+      using errcode = '22023';
+  elsif p_source = 'lead' and not exists (
+    select 1 from public.admission_leads as lead
+    where lead.id = p_lead_id and lead.branch_id = resolved_branch_id
+      and lead.email = normalized_email and lead.status <> 'cancelled'
+  ) then
+    raise exception 'Lead lineage is invalid' using errcode = '23503';
+  elsif p_source = 'application' and not exists (
+    select 1
+    from public.admission_applications as application
+    join public.admission_leads as lead on lead.id = application.lead_id
+    where application.id = p_application_id
+      and application.branch_id = resolved_branch_id
+      and lead.email = normalized_email
+      and application.status <> 'cancelled'
+  ) then
+    raise exception 'Application lineage is invalid' using errcode = '23503';
+  elsif p_source = 'placement' and not exists (
+    select 1
+    from public.admission_placement_bookings as booking
+    join public.admission_leads as lead on lead.id = booking.lead_id
+    where booking.id = p_placement_booking_id
+      and booking.branch_id = resolved_branch_id
+      and lead.email = normalized_email
+      and booking.status = 'completed'
+  ) then
+    raise exception 'Placement lineage is invalid' using errcode = '23503';
+  end if;
+
+  if exists (select 1 from public.app_users where email = normalized_email)
+    or exists (select 1 from public.app_users where auth_user_id = p_auth_user_id) then
+    raise exception 'This email or Auth identity is already registered'
+      using errcode = '23505';
+  end if;
+
+  insert into public.command_executions (
+    id, idempotency_key, actor_user_id, actor_role_grant_id, session_id,
+    command_type, target_type, target_id, request_hash, requires_outbox
+  ) values (
+    created_command_id, p_idempotency_key, actor_user.id, actor_grant.id,
+    actor_session.id, 'student.invitation.enrollment.create',
+    'UserInvitation', p_invitation_id::text,
+    pg_catalog.decode(p_request_hash, 'hex'), true
+  );
+  insert into public.app_users (
+    id, auth_user_id, full_name, email, phone, status
+  ) values (
+    created_user_id, p_auth_user_id, pg_catalog.btrim(p_full_name),
+    normalized_email, pg_catalog.btrim(p_phone), 'invited'
+  );
+  insert into public.role_grants (
+    id, user_id, role, status, granted_by, granted_reason
+  ) values (
+    created_grant_id, created_user_id, 'student', 'pending', actor_user.id,
+    'Student invitation awaiting verified acceptance'
+  );
+  insert into public.role_grant_branch_scopes (
+    role_grant_id, branch_id, granted_by
+  ) values (created_grant_id, resolved_branch_id, actor_user.id);
+  insert into public.student_profiles (
+    id, user_id, home_branch_id, status, country, age_group,
+    guardian_name, guardian_phone, source, current_level, course_interest,
+    notes, lead_id, application_id, placement_booking_id
+  ) values (
+    created_profile_id, created_user_id, resolved_branch_id, 'active', '',
+    pg_catalog.btrim(p_age_group), nullif(pg_catalog.btrim(p_guardian_name), ''),
+    nullif(pg_catalog.btrim(p_guardian_phone), ''), p_source,
+    pg_catalog.btrim(p_current_level), pg_catalog.btrim(p_course_interest),
+    nullif(pg_catalog.btrim(p_notes), ''), p_lead_id, p_application_id,
+    p_placement_booking_id
+  );
+  insert into public.user_preferences (user_id, preferred_language)
+  values (created_user_id, p_preferred_language);
+  insert into public.enrollments (
+    id, student_profile_id, course_run_id, starts_at, status, source
+  ) values (
+    created_enrollment_id, created_profile_id, run_row.id, now(),
+    'pending', 'nile_learn'
+  );
+  insert into public.class_memberships (
+    id, enrollment_id, course_run_id, class_group_id, starts_at, status
+  ) values (
+    created_membership_id, created_enrollment_id, run_row.id, group_row.id,
+    now(), 'active'
+  );
+  insert into public.user_invitations (
+    id, user_id, role_grant_id, auth_user_id, expires_at, created_by
+  ) values (
+    p_invitation_id, created_user_id, created_grant_id, p_auth_user_id,
+    p_expires_at, actor_user.id
+  );
+
+  if p_lead_id is not null then
+    update public.admission_leads
+    set status = 'ready_to_enroll', version = version + 1
+    where id = p_lead_id and status <> 'cancelled';
+  end if;
+  if p_application_id is not null then
+    update public.admission_applications
+    set status = 'approved', version = version + 1
+    where id = p_application_id and status <> 'cancelled';
+  end if;
+
+  insert into public.audit_logs (
+    command_id, actor_user_id, actor_role_grant_id, session_id,
+    action, entity_type, entity_id, branch_id, after_state, metadata
+  ) values (
+    created_command_id, actor_user.id, actor_grant.id, actor_session.id,
+    'student.invited_and_enrolled', 'StudentProfile', created_profile_id::text,
+    resolved_branch_id,
+    pg_catalog.jsonb_build_object(
+      'accountStatus', 'invited', 'enrollmentStatus', 'pending',
+      'classGroupId', group_row.id
+    ),
+    pg_catalog.jsonb_build_object(
+      'summary', 'Invited and reserved class placement for ' ||
+        pg_catalog.btrim(p_full_name) || '.',
+      'source', p_source, 'courseRunId', run_row.id
+    )
+  );
+  insert into public.outbox_events (
+    id, command_id, event_type, aggregate_type, aggregate_id, payload,
+    idempotency_key
+  ) values (
+    created_outbox_id, created_command_id, 'email.delivery.requested',
+    'UserInvitation', p_invitation_id::text,
+    pg_catalog.jsonb_build_object(
+      'schemaVersion', 1,
+      'recipientUserId', created_user_id,
+      'templateKey', 'account_invitation',
+      'templateVersion', 1,
+      'locale', p_locale,
+      'variables', pg_catalog.jsonb_build_object(
+        'displayName', pg_catalog.btrim(p_full_name),
+        'roleLabel', 'student',
+        'activationEnvelope', p_activation_envelope,
+        'expiresInHours', pg_catalog.ceil(
+          extract(epoch from (p_expires_at - now())) / 3600
+        )::integer
+      )
+    ),
+    'email.delivery:' || created_outbox_id::text
+  );
+  update public.user_invitations
+  set last_email_outbox_event_id = created_outbox_id
+  where id = p_invitation_id;
+  update public.command_executions
+  set status = 'succeeded', completed_at = now()
+  where id = created_command_id;
+
+  return query select p_invitation_id, created_user_id, created_grant_id,
+    created_profile_id, created_enrollment_id, group_row.id,
+    created_outbox_id, false;
+exception
+  when no_data_found then
+    raise exception 'Student enrollment authority is unavailable'
+      using errcode = '42501';
+end;
+$$;
+
+create or replace function public.nile_accept_user_invitation_with_enrollment(
+  p_invitation_id uuid,
+  p_auth_user_id uuid
+)
+returns table (user_id uuid, role text, accepted_at timestamptz)
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  invitation public.user_invitations%rowtype;
+  grant_row public.role_grants%rowtype;
+  accepted_time timestamptz := now();
+begin
+  select item.* into strict invitation
+  from public.user_invitations as item
+  where item.id = p_invitation_id
+  for update;
+  if invitation.auth_user_id is distinct from p_auth_user_id
+    or invitation.status not in ('queued', 'sent', 'delivered')
+    or invitation.expires_at <= accepted_time then
+    raise exception 'Invitation is invalid, expired, or already used'
+      using errcode = '42501';
+  end if;
+  select role_grant.* into strict grant_row
+  from public.role_grants as role_grant
+  where role_grant.id = invitation.role_grant_id
+    and role_grant.user_id = invitation.user_id
+    and role_grant.status = 'pending'
+  for update;
+  update public.app_users
+  set status = 'active', activated_at = accepted_time
+  where id = invitation.user_id
+    and auth_user_id = p_auth_user_id
+    and status = 'invited';
+  if not found then
+    raise exception 'Invited identity is not available for activation'
+      using errcode = '42501';
+  end if;
+  update public.role_grants set status = 'active'
+  where id = invitation.role_grant_id;
+  if grant_row.role = 'student' then
+    update public.enrollments as enrollment
+    set status = 'active'
+    from public.student_profiles as profile
+    where profile.user_id = invitation.user_id
+      and enrollment.student_profile_id = profile.id
+      and enrollment.status = 'pending';
+    update public.admission_leads as lead
+    set status = 'active', version = version + 1
+    from public.student_profiles as profile
+    where profile.user_id = invitation.user_id
+      and profile.lead_id = lead.id
+      and lead.status <> 'cancelled';
+  end if;
+  update public.user_invitations
+  set status = 'accepted', accepted_at = accepted_time
+  where id = invitation.id;
+  insert into public.identity_lifecycle_events (
+    invitation_id, user_id, auth_user_id, event_type, source
+  ) values (
+    invitation.id, invitation.user_id, p_auth_user_id,
+    'invitation.accepted', 'verified_auth_identity'
+  );
+  return query select invitation.user_id, grant_row.role, accepted_time;
+exception
+  when no_data_found then
+    raise exception 'Invitation is unavailable' using errcode = '42501';
+end;
+$$;
+
+create or replace function public.nile_read_admissions_student_workspace(
+  p_session_token_hash text
+)
+returns table (workspace jsonb)
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  actor_session public.auth_sessions%rowtype;
+  actor_grant public.role_grants%rowtype;
+  base_workspace jsonb;
+  users jsonb;
+  teacher_users jsonb;
+  students jsonb;
+  enrollments jsonb;
+begin
+  select base.workspace into strict base_workspace
+  from public.nile_read_admissions_operational_workspace(
+    p_session_token_hash
+  ) as base;
+  select session.* into strict actor_session
+  from public.auth_sessions as session
+  where session.token_hash = pg_catalog.decode(p_session_token_hash, 'hex')
+    and session.provider = 'supabase'
+    and session.revoked_at is null
+    and session.expires_at > now();
+  select grant_row.* into strict actor_grant
+  from public.role_grants as grant_row
+  where grant_row.id = actor_session.active_role_grant_id
+    and grant_row.user_id = actor_session.user_id
+    and grant_row.role in ('registrar', 'superadmin')
+    and grant_row.status = 'active';
+
+  select coalesce(pg_catalog.jsonb_agg(pg_catalog.jsonb_build_object(
+    'id', app_user.id, 'fullName', app_user.full_name,
+    'email', app_user.email::text, 'phone', app_user.phone,
+    'branchId', profile.home_branch_id, 'status', app_user.status,
+    'version', app_user.profile_version,
+    'preferredLanguage', coalesce(preferences.preferred_language, 'English'),
+    'timezone', branch.timezone
+  ) order by app_user.full_name), '[]'::jsonb)
+  into users
+  from public.student_profiles as profile
+  join public.app_users as app_user on app_user.id = profile.user_id
+  join public.branches as branch on branch.id = profile.home_branch_id
+  left join public.user_preferences as preferences
+    on preferences.user_id = app_user.id
+  where actor_grant.role = 'superadmin' or exists (
+    select 1 from public.role_grant_branch_scopes as scope
+    where scope.role_grant_id = actor_grant.id
+      and scope.branch_id = profile.home_branch_id
+      and scope.starts_at <= now()
+      and (scope.ends_at is null or scope.ends_at > now())
+  );
+
+  select coalesce(pg_catalog.jsonb_agg(distinct pg_catalog.jsonb_build_object(
+    'id', teacher_user.id, 'fullName', teacher_user.full_name,
+    'email', teacher_user.email::text, 'phone', teacher_user.phone,
+    'branchId', run.branch_id, 'departmentId', program.department_id,
+    'status', teacher_user.status, 'version', teacher_user.profile_version
+  )), '[]'::jsonb)
+  into teacher_users
+  from public.course_runs as run
+  join public.course_templates as course on course.id = run.course_template_id
+  join public.programs as program on program.id = course.program_id
+  join public.class_groups as class_group on class_group.course_run_id = run.id
+  join public.teacher_assignments as assignment
+    on assignment.class_group_id = class_group.id
+    and assignment.status = 'active'
+    and assignment.starts_at <= now()
+    and (assignment.ends_at is null or assignment.ends_at > now())
+  join public.staff_profiles as teacher
+    on teacher.id = assignment.teacher_profile_id
+  join public.app_users as teacher_user on teacher_user.id = teacher.user_id
+  where actor_grant.role = 'superadmin' or exists (
+    select 1 from public.role_grant_branch_scopes as scope
+    where scope.role_grant_id = actor_grant.id
+      and scope.branch_id = run.branch_id
+      and scope.starts_at <= now()
+      and (scope.ends_at is null or scope.ends_at > now())
+  );
+
+  select coalesce(pg_catalog.jsonb_agg(pg_catalog.jsonb_build_object(
+    'id', profile.id, 'userId', profile.user_id,
+    'status', case
+      when app_user.status = 'invited' then 'ready_to_enroll'
+      when exists (
+        select 1 from public.enrollments as enrollment
+        where enrollment.student_profile_id = profile.id
+          and enrollment.status = 'active'
+      ) then 'active'
+      else profile.status end,
+    'source', profile.source, 'guardianName', profile.guardian_name,
+    'guardianPhone', profile.guardian_phone,
+    'currentLevel', profile.current_level, 'ageGroup', profile.age_group,
+    'courseInterest', profile.course_interest, 'notes', profile.notes,
+    'country', profile.country, 'branchId', profile.home_branch_id,
+    'preferredLanguage', coalesce(preferences.preferred_language, 'English'),
+    'timezone', branch.timezone
+  ) order by app_user.full_name), '[]'::jsonb)
+  into students
+  from public.student_profiles as profile
+  join public.app_users as app_user on app_user.id = profile.user_id
+  join public.branches as branch on branch.id = profile.home_branch_id
+  left join public.user_preferences as preferences
+    on preferences.user_id = app_user.id
+  where actor_grant.role = 'superadmin' or exists (
+    select 1 from public.role_grant_branch_scopes as scope
+    where scope.role_grant_id = actor_grant.id
+      and scope.branch_id = profile.home_branch_id
+      and scope.starts_at <= now()
+      and (scope.ends_at is null or scope.ends_at > now())
+  );
+  select coalesce(pg_catalog.jsonb_agg(pg_catalog.jsonb_build_object(
+    'id', enrollment.id, 'studentId', enrollment.student_profile_id,
+    'courseRunId', enrollment.course_run_id,
+    'levelId', course.level_id, 'classGroupId', membership.class_group_id,
+    'teacherId', (
+      select teacher.user_id
+      from public.teacher_assignments as assignment
+      join public.staff_profiles as teacher
+        on teacher.id = assignment.teacher_profile_id
+      where assignment.class_group_id = membership.class_group_id
+        and assignment.status = 'active'
+        and assignment.starts_at <= now()
+        and (assignment.ends_at is null or assignment.ends_at > now())
+      order by case assignment.assignment_type
+        when 'primary' then 1 when 'substitute' then 2 else 3 end,
+        assignment.starts_at desc
+      limit 1
+    ),
+    'source', profile.source,
+    'status', case when enrollment.status = 'pending'
+      then 'enrolled' else enrollment.status end,
+    'createdAt', enrollment.created_at
+  ) order by enrollment.created_at desc), '[]'::jsonb)
+  into enrollments
+  from public.enrollments as enrollment
+  join public.student_profiles as profile
+    on profile.id = enrollment.student_profile_id
+  join public.course_runs as run on run.id = enrollment.course_run_id
+  join public.course_templates as course on course.id = run.course_template_id
+  left join public.class_memberships as membership
+    on membership.enrollment_id = enrollment.id
+    and membership.status in ('active', 'paused')
+  where actor_grant.role = 'superadmin' or exists (
+    select 1 from public.role_grant_branch_scopes as scope
+    where scope.role_grant_id = actor_grant.id
+      and scope.branch_id = run.branch_id
+      and scope.starts_at <= now()
+      and (scope.ends_at is null or scope.ends_at > now())
+  );
+  return query select base_workspace || pg_catalog.jsonb_build_object(
+    'studentUsers', users, 'teacherUsers', teacher_users,
+    'students', students, 'enrollments', enrollments
+  );
+exception
+  when no_data_found then
+    raise exception 'Admissions student authority is unavailable'
+      using errcode = '42501';
+end;
+$$;
+
+create or replace function public.nile_read_student_learning_workspace(
+  p_session_token_hash text
+)
+returns table (workspace jsonb)
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  actor_session public.auth_sessions%rowtype;
+  actor_grant public.role_grants%rowtype;
+  profile public.student_profiles%rowtype;
+  payload jsonb;
+begin
+  select session.* into strict actor_session
+  from public.auth_sessions as session
+  where session.token_hash = pg_catalog.decode(p_session_token_hash, 'hex')
+    and session.provider = 'supabase'
+    and session.revoked_at is null
+    and session.expires_at > now();
+  select grant_row.* into strict actor_grant
+  from public.role_grants as grant_row
+  where grant_row.id = actor_session.active_role_grant_id
+    and grant_row.user_id = actor_session.user_id
+    and grant_row.role = 'student' and grant_row.status = 'active';
+  select item.* into strict profile
+  from public.student_profiles as item
+  where item.user_id = actor_session.user_id and item.status = 'active';
+
+  select pg_catalog.jsonb_build_object(
+    'student', pg_catalog.jsonb_build_object(
+      'id', profile.id, 'userId', profile.user_id, 'status', profile.status,
+      'source', profile.source, 'guardianName', profile.guardian_name,
+      'guardianPhone', profile.guardian_phone,
+      'currentLevel', profile.current_level, 'ageGroup', profile.age_group,
+      'courseInterest', profile.course_interest, 'notes', profile.notes,
+      'country', profile.country
+    ),
+    'teachers', coalesce((select pg_catalog.jsonb_agg(distinct
+      pg_catalog.jsonb_build_object(
+        'id', teacher_user.id, 'fullName', teacher_user.full_name,
+        'email', teacher_user.email::text
+      ))
+      from public.enrollments as enrollment
+      join public.class_memberships as membership
+        on membership.enrollment_id = enrollment.id
+      join public.teacher_assignments as assignment
+        on assignment.class_group_id = membership.class_group_id
+      join public.staff_profiles as teacher
+        on teacher.id = assignment.teacher_profile_id
+      join public.app_users as teacher_user on teacher_user.id = teacher.user_id
+      where enrollment.student_profile_id = profile.id
+        and enrollment.status in ('active', 'paused', 'completed')
+        and membership.status in ('active', 'paused')
+        and assignment.status = 'active'
+        and assignment.starts_at <= now()
+        and (assignment.ends_at is null or assignment.ends_at > now())
+    ), '[]'::jsonb),
+    'programs', coalesce((select pg_catalog.jsonb_agg(distinct
+      pg_catalog.jsonb_build_object(
+        'id', program.id, 'title', program.title,
+        'category', program.code::text, 'departmentId', program.department_id,
+        'language', program.language, 'status', program.status
+      ))
+      from public.enrollments as enrollment
+      join public.course_runs as run on run.id = enrollment.course_run_id
+      join public.course_templates as course on course.id = run.course_template_id
+      join public.programs as program on program.id = course.program_id
+      where enrollment.student_profile_id = profile.id
+        and enrollment.status in ('active', 'paused', 'completed')
+    ), '[]'::jsonb),
+    'levels', coalesce((select pg_catalog.jsonb_agg(distinct
+      pg_catalog.jsonb_build_object(
+        'id', level.id, 'programId', level.program_id,
+        'title', level.title, 'order', level.sort_order
+      ))
+      from public.enrollments as enrollment
+      join public.course_runs as run on run.id = enrollment.course_run_id
+      join public.course_templates as course on course.id = run.course_template_id
+      join public.course_levels as level on level.id = course.level_id
+      where enrollment.student_profile_id = profile.id
+        and enrollment.status in ('active', 'paused', 'completed')
+    ), '[]'::jsonb),
+    'courses', coalesce((select pg_catalog.jsonb_agg(distinct
+      pg_catalog.jsonb_build_object(
+        'id', course.id, 'programId', course.program_id,
+        'levelId', course.level_id, 'slug', course.slug,
+        'title', course.title, 'description', course.description,
+        'status', course.status
+      ))
+      from public.enrollments as enrollment
+      join public.course_runs as run on run.id = enrollment.course_run_id
+      join public.course_templates as course on course.id = run.course_template_id
+      where enrollment.student_profile_id = profile.id
+        and enrollment.status in ('active', 'paused', 'completed')
+    ), '[]'::jsonb),
+    'courseRuns', coalesce((select pg_catalog.jsonb_agg(
+      pg_catalog.jsonb_build_object(
+        'id', run.id, 'courseId', run.course_template_id,
+        'branchId', run.branch_id,
+        'teacherId', teacher_user.id, 'term', run.term,
+        'startsOn', run.starts_on, 'endsOn', run.ends_on,
+        'status', run.status
+      ) order by run.starts_on desc)
+      from public.enrollments as enrollment
+      join public.course_runs as run on run.id = enrollment.course_run_id
+      left join public.class_memberships as membership
+        on membership.enrollment_id = enrollment.id
+        and membership.status in ('active', 'paused')
+      left join public.teacher_assignments as assignment
+        on assignment.class_group_id = membership.class_group_id
+        and assignment.status = 'active'
+        and assignment.assignment_type = 'primary'
+        and assignment.starts_at <= now()
+        and (assignment.ends_at is null or assignment.ends_at > now())
+      left join public.staff_profiles as teacher
+        on teacher.id = assignment.teacher_profile_id
+      left join public.app_users as teacher_user on teacher_user.id = teacher.user_id
+      where enrollment.student_profile_id = profile.id
+        and enrollment.status in ('active', 'paused', 'completed')
+    ), '[]'::jsonb),
+    'classGroups', coalesce((select pg_catalog.jsonb_agg(
+      pg_catalog.jsonb_build_object(
+        'id', class_group.id, 'courseRunId', class_group.course_run_id,
+        'name', class_group.name, 'capacity', class_group.capacity,
+        'schedule', 'Schedule not configured',
+        'studentIds', pg_catalog.jsonb_build_array(profile.id),
+        'status', class_group.status
+      ) order by class_group.name)
+      from public.enrollments as enrollment
+      join public.class_memberships as membership
+        on membership.enrollment_id = enrollment.id
+        and membership.status in ('active', 'paused')
+      join public.class_groups as class_group
+        on class_group.id = membership.class_group_id
+      where enrollment.student_profile_id = profile.id
+        and enrollment.status in ('active', 'paused', 'completed')
+    ), '[]'::jsonb),
+    'enrollments', coalesce((select pg_catalog.jsonb_agg(
+      pg_catalog.jsonb_build_object(
+        'id', enrollment.id, 'studentId', profile.id,
+        'courseRunId', enrollment.course_run_id,
+        'levelId', course.level_id, 'classGroupId', membership.class_group_id,
+        'teacherId', teacher_user.id, 'source', profile.source,
+        'status', enrollment.status, 'createdAt', enrollment.created_at
+      ) order by enrollment.created_at desc)
+      from public.enrollments as enrollment
+      join public.course_runs as run on run.id = enrollment.course_run_id
+      join public.course_templates as course on course.id = run.course_template_id
+      left join public.class_memberships as membership
+        on membership.enrollment_id = enrollment.id
+        and membership.status in ('active', 'paused')
+      left join public.teacher_assignments as assignment
+        on assignment.class_group_id = membership.class_group_id
+        and assignment.status = 'active'
+        and assignment.assignment_type = 'primary'
+        and assignment.starts_at <= now()
+        and (assignment.ends_at is null or assignment.ends_at > now())
+      left join public.staff_profiles as teacher
+        on teacher.id = assignment.teacher_profile_id
+      left join public.app_users as teacher_user on teacher_user.id = teacher.user_id
+      where enrollment.student_profile_id = profile.id
+        and enrollment.status in ('active', 'paused', 'completed')
+    ), '[]'::jsonb)
+  ) into payload;
+  return query select payload;
+exception
+  when no_data_found then
+    raise exception 'Student learning authority is unavailable'
+      using errcode = '42501';
+end;
+$$;
+
+create or replace function public.nile_read_teacher_class_workspace(
+  p_session_token_hash text
+)
+returns table (workspace jsonb)
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  actor_session public.auth_sessions%rowtype;
+  actor_grant public.role_grants%rowtype;
+  teacher public.staff_profiles%rowtype;
+  payload jsonb;
+begin
+  select session.* into strict actor_session
+  from public.auth_sessions as session
+  where session.token_hash = pg_catalog.decode(p_session_token_hash, 'hex')
+    and session.provider = 'supabase'
+    and session.revoked_at is null
+    and session.expires_at > now();
+  select grant_row.* into strict actor_grant
+  from public.role_grants as grant_row
+  where grant_row.id = actor_session.active_role_grant_id
+    and grant_row.user_id = actor_session.user_id
+    and grant_row.role = 'teacher' and grant_row.status = 'active'
+    and grant_row.starts_at <= now()
+    and (grant_row.ends_at is null or grant_row.ends_at > now());
+  select profile.* into strict teacher
+  from public.staff_profiles as profile
+  where profile.user_id = actor_session.user_id and profile.status = 'active';
+
+  with assigned_groups as (
+    select distinct class_group.id as class_group_id,
+      class_group.course_run_id
+    from public.teacher_assignments as assignment
+    join public.class_groups as class_group
+      on class_group.id = assignment.class_group_id
+    where assignment.teacher_profile_id = teacher.id
+      and assignment.status = 'active'
+      and assignment.starts_at <= now()
+      and (assignment.ends_at is null or assignment.ends_at > now())
+      and class_group.status in ('active', 'paused')
+  ), roster as (
+    select membership.class_group_id, enrollment.id as enrollment_id,
+      enrollment.course_run_id, enrollment.status as enrollment_status,
+      enrollment.created_at as enrollment_created_at,
+      student.id as student_profile_id, student.user_id,
+      student.status as student_status, student.source,
+      student.guardian_name, student.guardian_phone,
+      student.current_level, student.age_group, student.course_interest,
+      student.notes, student.country, student.home_branch_id,
+      app_user.full_name, app_user.email, app_user.phone,
+      app_user.status as user_status, app_user.profile_version,
+      coalesce(preferences.preferred_language, 'English') as preferred_language,
+      branch.timezone
+    from assigned_groups
+    join public.class_memberships as membership
+      on membership.class_group_id = assigned_groups.class_group_id
+      and membership.status in ('active', 'paused')
+    join public.enrollments as enrollment
+      on enrollment.id = membership.enrollment_id
+      and enrollment.status in ('active', 'paused', 'completed')
+    join public.student_profiles as student
+      on student.id = enrollment.student_profile_id
+      and student.status in ('active', 'paused')
+    join public.app_users as app_user
+      on app_user.id = student.user_id and app_user.status = 'active'
+    join public.branches as branch on branch.id = student.home_branch_id
+    left join public.user_preferences as preferences
+      on preferences.user_id = app_user.id
+  )
+  select pg_catalog.jsonb_build_object(
+    'studentUsers', coalesce((select pg_catalog.jsonb_agg(distinct
+      pg_catalog.jsonb_build_object(
+        'id', roster.user_id, 'fullName', roster.full_name,
+        'email', roster.email::text, 'phone', roster.phone,
+        'branchId', roster.home_branch_id, 'status', roster.user_status,
+        'version', roster.profile_version,
+        'preferredLanguage', roster.preferred_language,
+        'timezone', roster.timezone
+      )) from roster), '[]'::jsonb),
+    'students', coalesce((select pg_catalog.jsonb_agg(distinct
+      pg_catalog.jsonb_build_object(
+        'id', roster.student_profile_id, 'userId', roster.user_id,
+        'status', roster.student_status, 'source', roster.source,
+        'guardianName', roster.guardian_name,
+        'guardianPhone', roster.guardian_phone,
+        'currentLevel', roster.current_level, 'ageGroup', roster.age_group,
+        'courseInterest', roster.course_interest, 'notes', roster.notes,
+        'country', roster.country, 'branchId', roster.home_branch_id,
+        'preferredLanguage', roster.preferred_language,
+        'timezone', roster.timezone
+      )) from roster), '[]'::jsonb),
+    'programs', coalesce((select pg_catalog.jsonb_agg(distinct
+      pg_catalog.jsonb_build_object(
+        'id', program.id, 'title', program.title,
+        'category', program.code::text, 'departmentId', program.department_id,
+        'language', program.language, 'status', program.status
+      ))
+      from assigned_groups
+      join public.course_runs as run on run.id = assigned_groups.course_run_id
+      join public.course_templates as course on course.id = run.course_template_id
+      join public.programs as program on program.id = course.program_id
+    ), '[]'::jsonb),
+    'levels', coalesce((select pg_catalog.jsonb_agg(distinct
+      pg_catalog.jsonb_build_object(
+        'id', level.id, 'programId', level.program_id,
+        'title', level.title, 'order', level.sort_order
+      ))
+      from assigned_groups
+      join public.course_runs as run on run.id = assigned_groups.course_run_id
+      join public.course_templates as course on course.id = run.course_template_id
+      join public.course_levels as level on level.id = course.level_id
+    ), '[]'::jsonb),
+    'courses', coalesce((select pg_catalog.jsonb_agg(distinct
+      pg_catalog.jsonb_build_object(
+        'id', course.id, 'programId', course.program_id,
+        'levelId', course.level_id, 'slug', course.slug,
+        'title', course.title, 'description', course.description,
+        'status', course.status
+      ))
+      from assigned_groups
+      join public.course_runs as run on run.id = assigned_groups.course_run_id
+      join public.course_templates as course on course.id = run.course_template_id
+    ), '[]'::jsonb),
+    'courseRuns', coalesce((select pg_catalog.jsonb_agg(distinct
+      pg_catalog.jsonb_build_object(
+        'id', run.id, 'courseId', run.course_template_id,
+        'branchId', run.branch_id, 'teacherId', actor_session.user_id,
+        'term', run.term, 'startsOn', run.starts_on, 'endsOn', run.ends_on,
+        'status', run.status
+      ))
+      from assigned_groups
+      join public.course_runs as run on run.id = assigned_groups.course_run_id
+    ), '[]'::jsonb),
+    'classGroups', coalesce((select pg_catalog.jsonb_agg(
+      pg_catalog.jsonb_build_object(
+        'id', class_group.id, 'courseRunId', class_group.course_run_id,
+        'name', class_group.name, 'capacity', class_group.capacity,
+        'schedule', 'Schedule not configured',
+        'studentIds', coalesce((select pg_catalog.jsonb_agg(
+          scoped_roster.student_profile_id order by scoped_roster.full_name
+        ) from roster as scoped_roster
+          where scoped_roster.class_group_id = class_group.id), '[]'::jsonb),
+        'status', class_group.status
+      ) order by class_group.name)
+      from assigned_groups
+      join public.class_groups as class_group
+        on class_group.id = assigned_groups.class_group_id
+    ), '[]'::jsonb),
+    'enrollments', coalesce((select pg_catalog.jsonb_agg(
+      pg_catalog.jsonb_build_object(
+        'id', roster.enrollment_id, 'studentId', roster.student_profile_id,
+        'courseRunId', roster.course_run_id,
+        'levelId', course.level_id, 'classGroupId', roster.class_group_id,
+        'teacherId', actor_session.user_id, 'source', roster.source,
+        'status', roster.enrollment_status,
+        'createdAt', roster.enrollment_created_at
+      ) order by roster.enrollment_created_at desc)
+      from roster
+      join public.course_runs as run on run.id = roster.course_run_id
+      join public.course_templates as course on course.id = run.course_template_id
+    ), '[]'::jsonb)
+  ) into payload;
+  return query select payload;
+exception
+  when no_data_found then
+    raise exception 'Teacher class authority is unavailable'
+      using errcode = '42501';
+end;
+$$;
+
+revoke all on function public.nile_create_student_enrollment_invitation_with_evidence(
+  text, uuid, uuid, text, text, text, text, text, text, text, text, text,
+  text, text, uuid, uuid, text, uuid, uuid, uuid, text, text, timestamptz,
+  text, text
+) from public, anon, authenticated;
+revoke all on function public.nile_accept_user_invitation_with_enrollment(uuid, uuid)
+  from public, anon, authenticated;
+revoke all on function public.nile_read_admissions_student_workspace(text)
+  from public, anon, authenticated;
+revoke all on function public.nile_read_student_learning_workspace(text)
+  from public, anon, authenticated;
+revoke all on function public.nile_read_teacher_class_workspace(text)
+  from public, anon, authenticated;
+grant execute on function public.nile_create_student_enrollment_invitation_with_evidence(
+  text, uuid, uuid, text, text, text, text, text, text, text, text, text,
+  text, text, uuid, uuid, text, uuid, uuid, uuid, text, text, timestamptz,
+  text, text
+) to service_role;
+grant execute on function public.nile_accept_user_invitation_with_enrollment(uuid, uuid)
+  to service_role;
+grant execute on function public.nile_read_admissions_student_workspace(text)
+  to service_role;
+grant execute on function public.nile_read_student_learning_workspace(text)
+  to service_role;
+grant execute on function public.nile_read_teacher_class_workspace(text)
+  to service_role;
+
+commit;
+
+-- ============================================================================
+-- 27. Normalized teacher session and attendance authority
+-- Source: supabase/manual/025_normalized_teacher_session_attendance.sql
+-- SHA-256: 01ae245f78873bdefed9e8f33a5ab218b045280c59c7139caa98472fb655d6b7
+-- ============================================================================
+
+-- Nile Learn normalized teacher class-session and attendance authority.
+-- Manual-only. Requires the normalized foundation through package 024.
+-- Browser roles receive no direct table or RPC access.
+
+begin;
+
+do $$
+declare
+  dependency text;
+begin
+  foreach dependency in array array[
+    'app_users', 'branches', 'role_grants', 'role_grant_branch_scopes',
+    'auth_sessions', 'command_executions', 'audit_logs', 'outbox_events',
+    'staff_profiles', 'student_profiles', 'course_runs', 'class_groups',
+    'teacher_assignments', 'enrollments', 'class_memberships'
+  ] loop
+    if pg_catalog.to_regclass('public.' || dependency) is null then
+      raise exception 'Teacher attendance authority requires public.%', dependency;
+    end if;
+  end loop;
+end;
+$$;
+
+create table if not exists public.class_sessions (
+  id uuid primary key default gen_random_uuid(),
+  class_group_id uuid not null references public.class_groups(id) on delete restrict,
+  event_type text not null
+    check (event_type in ('class_session', 'live_session')),
+  title text not null check (length(pg_catalog.btrim(title)) between 2 and 180),
+  starts_at timestamptz not null,
+  ends_at timestamptz not null,
+  status text not null default 'active'
+    check (status in ('planned', 'active', 'completed', 'cancelled')),
+  version integer not null default 1 check (version > 0),
+  created_by uuid not null references public.app_users(id) on delete restrict,
+  attendance_saved_at timestamptz,
+  attendance_saved_by uuid references public.app_users(id) on delete restrict,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  check (ends_at > starts_at),
+  check (ends_at <= starts_at + interval '24 hours'),
+  check (
+    (attendance_saved_at is null and attendance_saved_by is null)
+    or (attendance_saved_at is not null and attendance_saved_by is not null)
+  )
+);
+
+create table if not exists public.attendance_records (
+  id uuid primary key default gen_random_uuid(),
+  class_session_id uuid not null references public.class_sessions(id) on delete restrict,
+  class_group_id uuid not null references public.class_groups(id) on delete restrict,
+  student_profile_id uuid not null references public.student_profiles(id) on delete restrict,
+  status text not null check (status in ('present', 'late', 'absent', 'excused')),
+  notes text check (notes is null or length(notes) <= 500),
+  version integer not null default 1 check (version > 0),
+  marked_by uuid not null references public.app_users(id) on delete restrict,
+  marked_at timestamptz not null default now(),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique (class_session_id, student_profile_id)
+);
+
+create index if not exists class_sessions_class_group_starts_idx
+  on public.class_sessions (class_group_id, starts_at);
+create index if not exists attendance_records_group_session_idx
+  on public.attendance_records (class_group_id, class_session_id);
+create index if not exists attendance_records_student_idx
+  on public.attendance_records (student_profile_id, marked_at desc);
+
+alter table public.class_sessions enable row level security;
+alter table public.class_sessions force row level security;
+alter table public.attendance_records enable row level security;
+alter table public.attendance_records force row level security;
+
+revoke all on table public.class_sessions from public, anon, authenticated;
+revoke all on table public.attendance_records from public, anon, authenticated;
+grant select, insert, update on table public.class_sessions to service_role;
+grant select, insert, update on table public.attendance_records to service_role;
+
+create or replace function public.nile_create_teacher_class_session_with_evidence(
+  p_session_token_hash text,
+  p_class_group_id uuid,
+  p_event_type text,
+  p_title text,
+  p_starts_at timestamptz,
+  p_ends_at timestamptz,
+  p_idempotency_key text,
+  p_request_hash text
+)
+returns table (
+  command_id uuid,
+  class_session_id uuid,
+  session_version integer,
+  outbox_event_id uuid,
+  replayed boolean
+)
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  actor_session public.auth_sessions%rowtype;
+  actor_user public.app_users%rowtype;
+  actor_grant public.role_grants%rowtype;
+  teacher_profile public.staff_profiles%rowtype;
+  group_row public.class_groups%rowtype;
+  run_row public.course_runs%rowtype;
+  command_row public.command_executions%rowtype;
+  created_command_id uuid := gen_random_uuid();
+  created_session_id uuid := gen_random_uuid();
+  created_outbox_id uuid := gen_random_uuid();
+begin
+  if p_session_token_hash !~ '^[a-f0-9]{64}$'
+    or p_request_hash !~ '^[a-f0-9]{64}$'
+    or length(p_idempotency_key) not between 12 and 256
+    or p_event_type not in ('class_session', 'live_session')
+    or length(pg_catalog.btrim(coalesce(p_title, ''))) not between 2 and 180
+    or p_ends_at <= p_starts_at
+    or p_ends_at > p_starts_at + interval '24 hours' then
+    raise exception 'Class session request is invalid' using errcode = '22023';
+  end if;
+
+  select item.* into strict actor_session
+  from public.auth_sessions as item
+  where item.token_hash = pg_catalog.decode(p_session_token_hash, 'hex')
+    and item.provider = 'supabase'
+    and item.revoked_at is null
+    and item.expires_at > now()
+  for update;
+  select item.* into strict actor_user
+  from public.app_users as item
+  where item.id = actor_session.user_id and item.status = 'active';
+  select item.* into strict actor_grant
+  from public.role_grants as item
+  where item.id = actor_session.active_role_grant_id
+    and item.user_id = actor_user.id
+    and item.role = 'teacher'
+    and item.status = 'active'
+    and item.starts_at <= now()
+    and (item.ends_at is null or item.ends_at > now());
+  select item.* into strict teacher_profile
+  from public.staff_profiles as item
+  where item.user_id = actor_user.id and item.status = 'active';
+
+  select item.* into command_row
+  from public.command_executions as item
+  where item.idempotency_key = p_idempotency_key;
+  if found then
+    if command_row.request_hash is distinct from pg_catalog.decode(p_request_hash, 'hex')
+      or command_row.command_type <> 'class.session.create'
+      or command_row.actor_user_id <> actor_user.id
+      or command_row.status <> 'succeeded' then
+      raise exception 'Class session idempotency conflict' using errcode = '23505';
+    end if;
+    return query
+      select command_row.id, item.id, item.version,
+        outbox.id, true
+      from public.class_sessions as item
+      left join public.outbox_events as outbox
+        on outbox.command_id = command_row.id
+        and outbox.event_type = 'class.session.created'
+      where item.id::text = command_row.target_id;
+    return;
+  end if;
+
+  select item.* into strict group_row
+  from public.class_groups as item
+  where item.id = p_class_group_id and item.status = 'active';
+  select item.* into strict run_row
+  from public.course_runs as item
+  where item.id = group_row.course_run_id
+    and item.status in ('planned', 'active');
+  if not exists (
+    select 1
+    from public.teacher_assignments as assignment
+    where assignment.class_group_id = group_row.id
+      and assignment.teacher_profile_id = teacher_profile.id
+      and assignment.status = 'active'
+      and assignment.starts_at <= p_starts_at
+      and (assignment.ends_at is null or assignment.ends_at >= p_ends_at)
+  ) then
+    raise exception 'Teacher is not assigned to this class session'
+      using errcode = '42501';
+  end if;
+  if not exists (
+    select 1 from public.role_grant_branch_scopes as scope
+    where scope.role_grant_id = actor_grant.id
+      and scope.branch_id = run_row.branch_id
+      and scope.starts_at <= p_starts_at
+      and (scope.ends_at is null or scope.ends_at >= p_ends_at)
+  ) then
+    raise exception 'Class session branch is outside the teacher scope'
+      using errcode = '42501';
+  end if;
+  if exists (
+    select 1
+    from public.class_sessions as existing
+    join public.teacher_assignments as assignment
+      on assignment.class_group_id = existing.class_group_id
+    where assignment.teacher_profile_id = teacher_profile.id
+      and assignment.status = 'active'
+      and existing.status <> 'cancelled'
+      and pg_catalog.tstzrange(existing.starts_at, existing.ends_at, '[)')
+        && pg_catalog.tstzrange(p_starts_at, p_ends_at, '[)')
+  ) then
+    raise exception 'Teacher already has an overlapping class session'
+      using errcode = '40001';
+  end if;
+
+  insert into public.command_executions (
+    id, idempotency_key, actor_user_id, actor_role_grant_id, session_id,
+    command_type, target_type, target_id, request_hash, requires_outbox
+  ) values (
+    created_command_id, p_idempotency_key, actor_user.id, actor_grant.id,
+    actor_session.id, 'class.session.create', 'ClassSession',
+    created_session_id::text, pg_catalog.decode(p_request_hash, 'hex'), true
+  );
+  insert into public.class_sessions (
+    id, class_group_id, event_type, title, starts_at, ends_at, status, created_by
+  ) values (
+    created_session_id, group_row.id, p_event_type, pg_catalog.btrim(p_title),
+    p_starts_at, p_ends_at, 'active', actor_user.id
+  );
+  insert into public.audit_logs (
+    command_id, actor_user_id, actor_role_grant_id, session_id,
+    action, entity_type, entity_id, branch_id, after_state, metadata
+  ) values (
+    created_command_id, actor_user.id, actor_grant.id, actor_session.id,
+    'class.session.created', 'ClassSession', created_session_id::text,
+    run_row.branch_id,
+    pg_catalog.jsonb_build_object(
+      'classGroupId', group_row.id, 'eventType', p_event_type,
+      'startsAt', p_starts_at, 'endsAt', p_ends_at, 'version', 1
+    ),
+    pg_catalog.jsonb_build_object(
+      'summary', 'Created ' || pg_catalog.btrim(p_title) || '.',
+      'courseRunId', run_row.id
+    )
+  );
+  insert into public.outbox_events (
+    id, command_id, event_type, aggregate_type, aggregate_id, payload,
+    idempotency_key
+  ) values (
+    created_outbox_id, created_command_id, 'class.session.created',
+    'ClassSession', created_session_id::text,
+    pg_catalog.jsonb_build_object(
+      'schemaVersion', 1, 'classSessionId', created_session_id,
+      'classGroupId', group_row.id, 'courseRunId', run_row.id
+    ),
+    'class.session.created:' || created_session_id::text
+  );
+  update public.command_executions
+  set status = 'succeeded', completed_at = now()
+  where id = created_command_id;
+
+  return query select created_command_id, created_session_id, 1,
+    created_outbox_id, false;
+exception
+  when no_data_found then
+    raise exception 'Teacher class-session authority is unavailable'
+      using errcode = '42501';
+end;
+$$;
+
+create or replace function public.nile_save_teacher_attendance_with_evidence(
+  p_session_token_hash text,
+  p_class_group_id uuid,
+  p_class_session_id uuid,
+  p_statuses jsonb,
+  p_notes jsonb,
+  p_expected_version integer,
+  p_idempotency_key text,
+  p_request_hash text
+)
+returns table (
+  command_id uuid,
+  class_session_id uuid,
+  session_version integer,
+  attendance_count integer,
+  outbox_event_id uuid,
+  replayed boolean
+)
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  actor_session public.auth_sessions%rowtype;
+  actor_user public.app_users%rowtype;
+  actor_grant public.role_grants%rowtype;
+  teacher_profile public.staff_profiles%rowtype;
+  class_session public.class_sessions%rowtype;
+  group_row public.class_groups%rowtype;
+  run_row public.course_runs%rowtype;
+  command_row public.command_executions%rowtype;
+  roster_count integer;
+  supplied_count integer;
+  created_command_id uuid := gen_random_uuid();
+  created_outbox_id uuid := gen_random_uuid();
+  student_row record;
+  status_value text;
+  note_value text;
+begin
+  if p_session_token_hash !~ '^[a-f0-9]{64}$'
+    or p_request_hash !~ '^[a-f0-9]{64}$'
+    or length(p_idempotency_key) not between 12 and 256
+    or p_expected_version < 1
+    or pg_catalog.jsonb_typeof(p_statuses) <> 'object'
+    or pg_catalog.jsonb_typeof(coalesce(p_notes, '{}'::jsonb)) <> 'object' then
+    raise exception 'Attendance request is invalid' using errcode = '22023';
+  end if;
+
+  select item.* into strict actor_session
+  from public.auth_sessions as item
+  where item.token_hash = pg_catalog.decode(p_session_token_hash, 'hex')
+    and item.provider = 'supabase'
+    and item.revoked_at is null
+    and item.expires_at > now()
+  for update;
+  select item.* into strict actor_user
+  from public.app_users as item
+  where item.id = actor_session.user_id and item.status = 'active';
+  select item.* into strict actor_grant
+  from public.role_grants as item
+  where item.id = actor_session.active_role_grant_id
+    and item.user_id = actor_user.id
+    and item.role = 'teacher'
+    and item.status = 'active'
+    and item.starts_at <= now()
+    and (item.ends_at is null or item.ends_at > now());
+  select item.* into strict teacher_profile
+  from public.staff_profiles as item
+  where item.user_id = actor_user.id and item.status = 'active';
+
+  select item.* into command_row
+  from public.command_executions as item
+  where item.idempotency_key = p_idempotency_key;
+  if found then
+    if command_row.request_hash is distinct from pg_catalog.decode(p_request_hash, 'hex')
+      or command_row.command_type <> 'attendance.save'
+      or command_row.actor_user_id <> actor_user.id
+      or command_row.status <> 'succeeded' then
+      raise exception 'Attendance idempotency conflict' using errcode = '23505';
+    end if;
+    return query
+      select command_row.id, item.id, item.version,
+        (select count(*)::integer from public.attendance_records as record
+          where record.class_session_id = item.id),
+        outbox.id, true
+      from public.class_sessions as item
+      left join public.outbox_events as outbox
+        on outbox.command_id = command_row.id
+        and outbox.event_type = 'attendance.saved'
+      where item.id::text = command_row.target_id;
+    return;
+  end if;
+
+  select item.* into strict class_session
+  from public.class_sessions as item
+  where item.id = p_class_session_id
+    and item.class_group_id = p_class_group_id
+    and item.status in ('active', 'completed')
+  for update;
+  if class_session.version <> p_expected_version then
+    raise exception 'Attendance session changed before save'
+      using errcode = '40001';
+  end if;
+  select item.* into strict group_row
+  from public.class_groups as item
+  where item.id = class_session.class_group_id and item.status = 'active';
+  select item.* into strict run_row
+  from public.course_runs as item
+  where item.id = group_row.course_run_id
+    and item.status in ('planned', 'active');
+  if not exists (
+    select 1
+    from public.teacher_assignments as assignment
+    where assignment.class_group_id = group_row.id
+      and assignment.teacher_profile_id = teacher_profile.id
+      and assignment.status = 'active'
+      and assignment.starts_at <= class_session.starts_at
+      and (assignment.ends_at is null or assignment.ends_at >= class_session.ends_at)
+  ) then
+    raise exception 'Teacher is not assigned to this attendance session'
+      using errcode = '42501';
+  end if;
+  if not exists (
+    select 1 from public.role_grant_branch_scopes as scope
+    where scope.role_grant_id = actor_grant.id
+      and scope.branch_id = run_row.branch_id
+      and scope.starts_at <= class_session.starts_at
+      and (scope.ends_at is null or scope.ends_at >= class_session.ends_at)
+  ) then
+    raise exception 'Attendance class is outside the teacher branch scope'
+      using errcode = '42501';
+  end if;
+
+  select count(*)::integer into roster_count
+  from public.class_memberships as membership
+  join public.enrollments as enrollment on enrollment.id = membership.enrollment_id
+  join public.student_profiles as profile on profile.id = enrollment.student_profile_id
+  join public.app_users as app_user on app_user.id = profile.user_id
+  where membership.class_group_id = group_row.id
+    and membership.status = 'active'
+    and enrollment.status = 'active'
+    and profile.status = 'active'
+    and app_user.status = 'active';
+  select count(*)::integer into supplied_count
+  from jsonb_object_keys(p_statuses);
+  if roster_count = 0 or supplied_count <> roster_count then
+    raise exception 'Attendance must include the complete active class roster'
+      using errcode = '22023';
+  end if;
+  if exists (
+    select 1
+    from jsonb_each_text(p_statuses) as supplied(student_id, status)
+    where supplied.status not in ('present', 'late', 'absent', 'excused')
+      or supplied.student_id !~ '^[0-9a-fA-F-]{36}$'
+      or not exists (
+        select 1
+        from public.class_memberships as membership
+        join public.enrollments as enrollment on enrollment.id = membership.enrollment_id
+        join public.student_profiles as profile on profile.id = enrollment.student_profile_id
+        join public.app_users as app_user on app_user.id = profile.user_id
+        where membership.class_group_id = group_row.id
+          and membership.status = 'active'
+          and enrollment.status = 'active'
+          and profile.status = 'active'
+          and app_user.status = 'active'
+          and profile.id::text = supplied.student_id
+      )
+  ) then
+    raise exception 'Attendance contains an invalid learner or status'
+      using errcode = '22023';
+  end if;
+  if exists (
+    select 1 from jsonb_each_text(coalesce(p_notes, '{}'::jsonb))
+      as supplied(student_id, note)
+    where length(supplied.note) > 500
+      or not (p_statuses ? supplied.student_id)
+  ) then
+    raise exception 'Attendance notes are invalid' using errcode = '22023';
+  end if;
+
+  insert into public.command_executions (
+    id, idempotency_key, actor_user_id, actor_role_grant_id, session_id,
+    command_type, target_type, target_id, request_hash, requires_outbox
+  ) values (
+    created_command_id, p_idempotency_key, actor_user.id, actor_grant.id,
+    actor_session.id, 'attendance.save', 'ClassSession',
+    class_session.id::text, pg_catalog.decode(p_request_hash, 'hex'), true
+  );
+
+  for student_row in
+    select profile.id as student_profile_id
+    from public.class_memberships as membership
+    join public.enrollments as enrollment on enrollment.id = membership.enrollment_id
+    join public.student_profiles as profile on profile.id = enrollment.student_profile_id
+    join public.app_users as app_user on app_user.id = profile.user_id
+    where membership.class_group_id = group_row.id
+      and membership.status = 'active'
+      and enrollment.status = 'active'
+      and profile.status = 'active'
+      and app_user.status = 'active'
+  loop
+    status_value := p_statuses ->> student_row.student_profile_id::text;
+    note_value := nullif(pg_catalog.btrim(
+      coalesce(p_notes ->> student_row.student_profile_id::text, '')
+    ), '');
+    insert into public.attendance_records as existing (
+      class_session_id, class_group_id, student_profile_id, status, notes,
+      marked_by
+    ) values (
+      class_session.id, group_row.id, student_row.student_profile_id,
+      status_value, note_value, actor_user.id
+    )
+    on conflict on constraint attendance_records_class_session_id_student_profile_id_key do update
+      set status = excluded.status,
+          notes = excluded.notes,
+          version = existing.version + 1,
+          marked_by = excluded.marked_by,
+          marked_at = now(),
+          updated_at = now();
+  end loop;
+
+  update public.class_sessions
+  set attendance_saved_at = now(), attendance_saved_by = actor_user.id,
+      version = version + 1, updated_at = now()
+  where id = class_session.id
+  returning * into class_session;
+  insert into public.audit_logs (
+    command_id, actor_user_id, actor_role_grant_id, session_id,
+    action, entity_type, entity_id, branch_id, before_state, after_state,
+    metadata
+  ) values (
+    created_command_id, actor_user.id, actor_grant.id, actor_session.id,
+    'attendance.saved', 'AttendanceRecord', group_row.id::text,
+    run_row.branch_id,
+    pg_catalog.jsonb_build_object('sessionVersion', p_expected_version),
+    pg_catalog.jsonb_build_object(
+      'sessionVersion', class_session.version,
+      'attendanceCount', roster_count
+    ),
+    pg_catalog.jsonb_build_object(
+      'summary', 'Saved attendance for ' || roster_count || ' learner(s).',
+      'classSessionId', class_session.id, 'courseRunId', run_row.id
+    )
+  );
+  insert into public.outbox_events (
+    id, command_id, event_type, aggregate_type, aggregate_id, payload,
+    idempotency_key
+  ) values (
+    created_outbox_id, created_command_id, 'attendance.saved',
+    'ClassSession', class_session.id::text,
+    pg_catalog.jsonb_build_object(
+      'schemaVersion', 1, 'classSessionId', class_session.id,
+      'classGroupId', group_row.id, 'attendanceCount', roster_count,
+      'sessionVersion', class_session.version
+    ),
+    'attendance.saved:' || created_command_id::text
+  );
+  update public.command_executions
+  set status = 'succeeded', completed_at = now()
+  where id = created_command_id;
+
+  return query select created_command_id, class_session.id,
+    class_session.version, roster_count, created_outbox_id, false;
+exception
+  when no_data_found then
+    raise exception 'Teacher attendance authority is unavailable'
+      using errcode = '42501';
+end;
+$$;
+
+create or replace function public.nile_read_teacher_attendance_workspace(
+  p_session_token_hash text
+)
+returns table (workspace jsonb)
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  actor_session public.auth_sessions%rowtype;
+  actor_grant public.role_grants%rowtype;
+  teacher_profile public.staff_profiles%rowtype;
+begin
+  if p_session_token_hash !~ '^[a-f0-9]{64}$' then
+    raise exception 'Session token hash is invalid' using errcode = '22023';
+  end if;
+  select item.* into strict actor_session
+  from public.auth_sessions as item
+  where item.token_hash = pg_catalog.decode(p_session_token_hash, 'hex')
+    and item.provider = 'supabase'
+    and item.revoked_at is null
+    and item.expires_at > now();
+  select item.* into strict actor_grant
+  from public.role_grants as item
+  where item.id = actor_session.active_role_grant_id
+    and item.user_id = actor_session.user_id
+    and item.role = 'teacher'
+    and item.status = 'active'
+    and item.starts_at <= now()
+    and (item.ends_at is null or item.ends_at > now());
+  select item.* into strict teacher_profile
+  from public.staff_profiles as item
+  where item.user_id = actor_session.user_id and item.status = 'active';
+
+  return query select pg_catalog.jsonb_build_object(
+    'sessions', coalesce((
+      select pg_catalog.jsonb_agg(pg_catalog.jsonb_build_object(
+        'id', session.id, 'classGroupId', session.class_group_id,
+        'eventType', session.event_type, 'title', session.title,
+        'startsAt', session.starts_at, 'endsAt', session.ends_at,
+        'status', session.status, 'attendanceSaved',
+          session.attendance_saved_at is not null,
+        'attendanceVersion', session.version,
+        'attendanceSavedAt', session.attendance_saved_at,
+        'createdBy', session.created_by, 'branchId', run.branch_id
+      ) order by session.starts_at)
+      from public.class_sessions as session
+      join public.class_groups as class_group on class_group.id = session.class_group_id
+      join public.course_runs as run on run.id = class_group.course_run_id
+      where exists (
+        select 1 from public.teacher_assignments as assignment
+        where assignment.class_group_id = session.class_group_id
+          and assignment.teacher_profile_id = teacher_profile.id
+          and assignment.status = 'active'
+          and assignment.starts_at <= session.starts_at
+          and (assignment.ends_at is null or assignment.ends_at >= session.ends_at)
+      )
+    ), '[]'::jsonb),
+    'attendance', coalesce((
+      select pg_catalog.jsonb_agg(pg_catalog.jsonb_build_object(
+        'id', record.id, 'classGroupId', record.class_group_id,
+        'studentId', record.student_profile_id,
+        'sessionId', record.class_session_id, 'status', record.status,
+        'notes', record.notes, 'version', record.version,
+        'markedBy', record.marked_by, 'markedAt', record.marked_at
+      ) order by record.marked_at desc)
+      from public.attendance_records as record
+      join public.class_sessions as session on session.id = record.class_session_id
+      where exists (
+        select 1 from public.teacher_assignments as assignment
+        where assignment.class_group_id = session.class_group_id
+          and assignment.teacher_profile_id = teacher_profile.id
+          and assignment.status = 'active'
+          and assignment.starts_at <= session.starts_at
+          and (assignment.ends_at is null or assignment.ends_at >= session.ends_at)
+      )
+    ), '[]'::jsonb)
+  );
+exception
+  when no_data_found then
+    raise exception 'Teacher attendance workspace is unavailable'
+      using errcode = '42501';
+end;
+$$;
+
+create or replace function public.nile_read_student_attendance_workspace(
+  p_session_token_hash text
+)
+returns table (workspace jsonb)
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  actor_session public.auth_sessions%rowtype;
+  actor_grant public.role_grants%rowtype;
+  student_profile public.student_profiles%rowtype;
+begin
+  if p_session_token_hash !~ '^[a-f0-9]{64}$' then
+    raise exception 'Session token hash is invalid' using errcode = '22023';
+  end if;
+  select item.* into strict actor_session
+  from public.auth_sessions as item
+  where item.token_hash = pg_catalog.decode(p_session_token_hash, 'hex')
+    and item.provider = 'supabase'
+    and item.revoked_at is null
+    and item.expires_at > now();
+  select item.* into strict actor_grant
+  from public.role_grants as item
+  where item.id = actor_session.active_role_grant_id
+    and item.user_id = actor_session.user_id
+    and item.role = 'student'
+    and item.status = 'active'
+    and item.starts_at <= now()
+    and (item.ends_at is null or item.ends_at > now());
+  select item.* into strict student_profile
+  from public.student_profiles as item
+  where item.user_id = actor_session.user_id and item.status = 'active';
+
+  return query select pg_catalog.jsonb_build_object(
+    'sessions', coalesce((
+      select pg_catalog.jsonb_agg(pg_catalog.jsonb_build_object(
+        'id', session.id, 'classGroupId', session.class_group_id,
+        'eventType', session.event_type, 'title', session.title,
+        'startsAt', session.starts_at, 'endsAt', session.ends_at,
+        'status', session.status, 'attendanceSaved',
+          session.attendance_saved_at is not null,
+        'attendanceVersion', session.version,
+        'attendanceSavedAt', session.attendance_saved_at,
+        'createdBy', session.created_by, 'branchId', run.branch_id
+      ) order by session.starts_at)
+      from public.class_sessions as session
+      join public.class_groups as class_group on class_group.id = session.class_group_id
+      join public.course_runs as run on run.id = class_group.course_run_id
+      where exists (
+        select 1
+        from public.class_memberships as membership
+        join public.enrollments as enrollment on enrollment.id = membership.enrollment_id
+        where enrollment.student_profile_id = student_profile.id
+          and enrollment.status in ('active', 'paused')
+          and membership.class_group_id = session.class_group_id
+          and membership.status in ('active', 'paused')
+      )
+    ), '[]'::jsonb),
+    'attendance', coalesce((
+      select pg_catalog.jsonb_agg(pg_catalog.jsonb_build_object(
+        'id', record.id, 'classGroupId', record.class_group_id,
+        'studentId', record.student_profile_id,
+        'sessionId', record.class_session_id, 'status', record.status,
+        'notes', record.notes, 'version', record.version,
+        'markedBy', record.marked_by, 'markedAt', record.marked_at
+      ) order by record.marked_at desc)
+      from public.attendance_records as record
+      where record.student_profile_id = student_profile.id
+    ), '[]'::jsonb)
+  );
+exception
+  when no_data_found then
+    raise exception 'Student attendance workspace is unavailable'
+      using errcode = '42501';
+end;
+$$;
+
+revoke all on function public.nile_create_teacher_class_session_with_evidence(
+  text, uuid, text, text, timestamptz, timestamptz, text, text
+) from public, anon, authenticated;
+revoke all on function public.nile_save_teacher_attendance_with_evidence(
+  text, uuid, uuid, jsonb, jsonb, integer, text, text
+) from public, anon, authenticated;
+revoke all on function public.nile_read_teacher_attendance_workspace(text)
+  from public, anon, authenticated;
+revoke all on function public.nile_read_student_attendance_workspace(text)
+  from public, anon, authenticated;
+
+grant execute on function public.nile_create_teacher_class_session_with_evidence(
+  text, uuid, text, text, timestamptz, timestamptz, text, text
+) to service_role;
+grant execute on function public.nile_save_teacher_attendance_with_evidence(
+  text, uuid, uuid, jsonb, jsonb, integer, text, text
+) to service_role;
+grant execute on function public.nile_read_teacher_attendance_workspace(text)
+  to service_role;
+grant execute on function public.nile_read_student_attendance_workspace(text)
   to service_role;
 
 commit;

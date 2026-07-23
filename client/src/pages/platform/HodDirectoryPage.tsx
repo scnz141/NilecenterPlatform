@@ -1,3 +1,4 @@
+import { requireActiveUser } from "@/lib/auth/session";
 import { useMemo, useState } from "react";
 import { ArrowRight, Plus, Search } from "lucide-react";
 import { Link } from "wouter";
@@ -9,7 +10,6 @@ import {
   StatusBadge,
 } from "@/components/platform/PlatformPrimitives";
 import { platformStore } from "@/lib/domain/store";
-import { getDemoUser } from "@/lib/platformData";
 
 type HodDirectoryView =
   | "departments"
@@ -98,7 +98,7 @@ export default function HodDirectoryPage({ view }: { view: HodDirectoryView }) {
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState("all");
   const state = useMemo(() => platformStore.getState(), []);
-  const actorId = getDemoUser("headofdepartment").id;
+  const actorId = requireActiveUser("headofdepartment").id;
   const actor = state.users.find(user => user.id === actorId);
   const academicDepartments = state.departments.filter(
     department =>

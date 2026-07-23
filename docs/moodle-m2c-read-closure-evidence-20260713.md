@@ -1,5 +1,8 @@
 # Moodle M2C-R Read-Closure Evidence
 
+Historical evidence note: ADR-011 now authorizes full synthetic Moodle sandbox
+CRUD. This file remains an immutable account of the earlier read-closure run.
+
 ## Decision Boundary
 
 This record covers only the M2C-R read-contract lane on the dedicated practice

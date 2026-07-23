@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ServerSession } from "../../../../server/auth";
 import type { PlatformRepository } from "../../../../server/platformRepository";
 import { setPlatformStateRepository } from "../../../../server/platformRepository";
@@ -46,9 +46,15 @@ function repositoryFor(state: PlatformState): PlatformRepository {
 
 let restoreRepository: (() => void) | undefined;
 
+beforeEach(() => {
+  vi.useFakeTimers();
+  vi.setSystemTime(new Date("2026-07-11T09:00:00.000Z"));
+});
+
 afterEach(() => {
   restoreRepository?.();
   restoreRepository = undefined;
+  vi.useRealTimers();
 });
 
 function install(state: PlatformState) {

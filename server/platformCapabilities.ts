@@ -6,12 +6,10 @@ import {
 } from "../client/src/lib/platformData.js";
 
 export const SELF_SCOPED_ACTION = "self_scoped" as const;
-const RECORD_MODULE_ACTION = "record_module" as const;
 
 type ActionPermissionRule =
   | Permission
-  | typeof SELF_SCOPED_ACTION
-  | typeof RECORD_MODULE_ACTION;
+  | typeof SELF_SCOPED_ACTION;
 
 export const platformActionTypesByRole = {
   student: [
@@ -25,6 +23,7 @@ export const platformActionTypesByRole = {
     "notification.read",
     "report.preset.save",
     "profile.update",
+    "support.ticket.create",
     "attendance.exception.submit",
   ],
   teacher: [
@@ -68,7 +67,6 @@ export const platformActionTypesByRole = {
     "calendar.create",
     "message.send",
     "message.read",
-    "record.save",
     "notification.read",
     "report.preset.save",
     "portal.settings.save",
@@ -94,7 +92,6 @@ export const platformActionTypesByRole = {
     "message.read",
     "quran.progress.update",
     "recitation.review",
-    "record.save",
     "course-run.create",
     "notification.read",
     "report.preset.save",
@@ -109,7 +106,6 @@ export const platformActionTypesByRole = {
     "message.send",
     "message.read",
     "payment.record",
-    "record.save",
     "room.create",
     "class.create",
     "class.update",
@@ -166,74 +162,12 @@ export const platformActionTypesByRole = {
     "quiz.review",
     "message.send",
     "message.read",
-    "record.save",
     "notification.read",
     "report.preset.save",
     "profile.update",
+    "audit.export",
   ],
 } satisfies Record<Role, readonly PlatformWorkflowAction["type"][]>;
-
-export const recordSavePermissionByRole: Record<
-  Role,
-  Readonly<Record<string, Permission>>
-> = {
-  student: {},
-  teacher: {},
-  registrar: {
-    Leads: "students:write",
-    Applications: "students:write",
-    Students: "students:write",
-    "Placement tests": "students:write",
-    Enrollments: "students:write",
-    Schedule: "schedule:write",
-    Payments: "payments:write",
-    Settings: "settings:write",
-  },
-  headofdepartment: {
-    Departments: "courses:write",
-    Programs: "courses:write",
-    Courses: "courses:write",
-    Levels: "courses:write",
-    Curriculum: "courses:write",
-    Teachers: "teachers:write",
-    Assessments: "assessments:write",
-    Certificates: "certificates:approve",
-  },
-  branchadmin: {
-    Classes: "classes:write",
-    Rooms: "rooms:write",
-    Schedule: "schedule:write",
-    Attendance: "attendance:write",
-    Payments: "payments:write",
-    Settings: "settings:write",
-  },
-  superadmin: {
-    Users: "settings:write",
-    "User detail": "settings:write",
-    "Roles & access": "settings:write",
-    "Access rules": "settings:write",
-    Branches: "settings:write",
-    Settings: "settings:write",
-    Connections: "settings:write",
-    Health: "settings:write",
-    Departments: "courses:write",
-    Programs: "courses:write",
-    Courses: "courses:write",
-    Levels: "courses:write",
-    Curriculum: "courses:write",
-    Teachers: "teachers:write",
-    Students: "students:write",
-    Applications: "students:write",
-    Enrollments: "students:write",
-    Classes: "classes:write",
-    Rooms: "rooms:write",
-    Schedule: "schedule:write",
-    Attendance: "attendance:write",
-    Assessments: "assessments:write",
-    Payments: "payments:write",
-    Certificates: "certificates:approve",
-  },
-};
 
 const actionPermissionRuleByType = {
   "lesson.start": SELF_SCOPED_ACTION,
@@ -253,7 +187,6 @@ const actionPermissionRuleByType = {
   "curriculum.module.create": "courses:write",
   "course.status.update": "courses:write",
   "material.publish.update": "courses:write",
-  "record.save": RECORD_MODULE_ACTION,
   "certificate.approve": "certificates:approve",
   "certificate.issue": "certificates:approve",
   "certificate.reject": "certificates:approve",
@@ -301,6 +234,8 @@ const actionPermissionRuleByType = {
   "recitation.submit": SELF_SCOPED_ACTION,
   "notification.read": SELF_SCOPED_ACTION,
   "profile.update": SELF_SCOPED_ACTION,
+  "support.ticket.create": SELF_SCOPED_ACTION,
+  "audit.export": "reports:read",
 } satisfies Record<PlatformWorkflowAction["type"], ActionPermissionRule>;
 
 export function roleCanRunPlatformAction(
@@ -319,11 +254,6 @@ export function requiredPermissionForPlatformAction(
 ): Permission | typeof SELF_SCOPED_ACTION | null {
   const rule = actionPermissionRuleByType[action.type];
   if (rule === SELF_SCOPED_ACTION) return rule;
-  if (rule === RECORD_MODULE_ACTION) {
-    return action.type === "record.save"
-      ? (recordSavePermissionByRole[role][action.module] ?? null)
-      : null;
-  }
   return rule;
 }
 
@@ -336,25 +266,9 @@ export function validateDefaultPlatformCapabilityContract(): string[] {
       role
     ] as readonly PlatformWorkflowAction["type"][];
     const permissions = new Set(rolePermissions[role]);
-    const modules = recordSavePermissionByRole[role];
-
-    if (actions.includes("record.save") !== Object.keys(modules).length > 0) {
-      issues.push(
-        `${role} record.save availability does not match its module map.`
-      );
-    }
-
     for (const actionType of actions) {
       const rule = actionPermissionRuleByType[actionType];
       if (rule === SELF_SCOPED_ACTION) continue;
-      if (rule === RECORD_MODULE_ACTION) {
-        for (const [module, permission] of Object.entries(modules)) {
-          if (!permissions.has(permission)) {
-            issues.push(`${role} can save ${module} but lacks ${permission}.`);
-          }
-        }
-        continue;
-      }
       if (!permissions.has(rule)) {
         issues.push(`${role} can run ${actionType} but lacks ${rule}.`);
       }

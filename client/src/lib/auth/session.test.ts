@@ -128,6 +128,9 @@ describe("getActiveUser", () => {
         roles: ["teacher"],
         activeRole: "teacher",
         provider: "supabase",
+        authorizationModel: "normalized",
+        branchIds: ["branch-real"],
+        departmentIds: ["department-real"],
         expiresAt: "2099-01-01T00:00:00.000Z",
       })
     );
@@ -139,6 +142,14 @@ describe("getActiveUser", () => {
       roles: ["teacher"],
       activeRole: "teacher",
       avatar: "ET",
+      branch: "Assigned branch",
+      department: "Assigned department",
     });
+  });
+
+  it("does not substitute a demo identity when there is no authenticated session", () => {
+    installWindow();
+
+    expect(getActiveUser()).toBeNull();
   });
 });

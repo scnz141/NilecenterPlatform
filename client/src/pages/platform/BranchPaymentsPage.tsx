@@ -1,3 +1,4 @@
+import { requireActiveUser } from "@/lib/auth/session";
 import { useMemo, useState } from "react";
 import { CheckCircle2, CreditCard, Download, Search } from "lucide-react";
 import { Link } from "wouter";
@@ -14,7 +15,6 @@ import {
 import { runPlatformWorkflowActionRequest } from "@/lib/backend/api";
 import { platformStore } from "@/lib/domain/store";
 import type { PaymentStatus } from "@/lib/domain/types";
-import { getDemoUser } from "@/lib/platformData";
 
 type PaymentFilter = "all" | PaymentStatus;
 
@@ -61,7 +61,7 @@ export default function BranchPaymentsPage({
   const [paymentError, setPaymentError] = useState("");
 
   const state = useMemo(() => platformStore.getState(), [version]);
-  const actorId = getDemoUser("branchadmin").id;
+  const actorId = requireActiveUser("branchadmin").id;
   const actor = state.users.find(user => user.id === actorId);
   const staffProfile = state.staffProfiles.find(
     profile => profile.userId === actorId && profile.role === "branchadmin"

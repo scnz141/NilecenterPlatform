@@ -11,7 +11,9 @@ This document tracks the controlled beta-readiness build loop for Nile Learn. It
 - Snapshot time: `2026-07-08T01:10:32.296Z`.
 - Phase: internal alpha stabilization moving toward beta readiness.
 - Active rule: one page = one main job.
-- External integrations remain placeholders: Moodle, EMS, payment gateway, email, SMS/WhatsApp, meetings, and production media storage are not implemented in this loop.
+- Historical loop boundary: external integrations were placeholders in this
+  run. ADR-011 now permits full synthetic Moodle sandbox CRUD; production
+  activation and the other providers remain separately gated.
 - Current protected portal QA baseline: 1,205 checks, 0 failures.
 - Baseline artifact: `output/playwright/overnight-final-rerun-20260708T035400Z/portal-qa-summary.json`.
 - Latest full verification artifact: `output/playwright/overnight-final-rerun-20260708T035400Z/portal-qa-summary.json`.
@@ -493,4 +495,6 @@ Use Aside for browser/manual QA during this loop.
 - Continue route-by-route Simple UI separation for the remaining crowded pages: student detail/support pages, teacher assignments/grading/calendar/messages/Quran review, registrar operational routes, HOD governance routes, branch operations, and super admin system routes.
 - Start durable session implementation only after reviewing `docs/session-hardening-plan.md` and keeping the 1,205-check portal QA baseline clean.
 - Start normalized Supabase/Postgres persistence only after reviewing `docs/production-persistence-plan.md` and implementing it as a controlled migration slice.
-- Keep Moodle, EMS, payments, email/SMS/WhatsApp, meetings, and production media storage as placeholders until explicitly approved.
+- Historical instruction for that loop: keep providers as placeholders. The
+  current ADR-011 order supersedes this only for full synthetic Moodle sandbox
+  CRUD; other providers and production activation remain gated.

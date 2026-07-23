@@ -161,7 +161,9 @@ It is not yet a production EMS or a live integration platform because:
 - `PlatformRepository` persists one denormalized `PlatformState` snapshot and
   falls back to local storage when Supabase access fails.
 - Server sessions are not yet durable production authority.
-- External Moodle and EMS connectors are placeholders/mock-mode boundaries.
+- The observed build used Moodle/EMS placeholder boundaries. ADR-011 now
+  authorizes full synthetic Moodle sandbox CRUD; EMS remains a finite migration
+  source.
 - The integration UI can set a connection status without proving a remote
   authentication, capability check, import, reconciliation, or writeback.
 - The current Moodle source UI reads local state and includes demo-specific
@@ -209,13 +211,15 @@ live only in `docs/NILE_LEARN_MASTER_PLAN.md`.
 
 - Normalized Nile Learn identity and workflow authority must exist before any
   provider projection or migration.
-- Moodle begins as a read-only projection against dedicated test credentials.
+- Moodle began with a projection-only phase. ADR-011 now authorizes full
+  synthetic sandbox CRUD through dedicated server-only service identities.
 - Legacy EMS uses a finite migration reader, never recurring synchronization or
   writeback.
 - External references and reconciliation evidence precede any accepted import.
 - Counts, relationships, balances, and sampled records require human approval.
-- EMS access is retired after cutover. Moodle writes require a separately
-  approved phase with explicit field authority.
+- EMS access is retired after cutover. Moodle sandbox CRUD is approved;
+  production portal activation remains separately gated with explicit field
+  authority.
 
 ### 5. UI Direction
 

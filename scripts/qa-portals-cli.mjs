@@ -327,7 +327,6 @@ const authRoutes = [
 const failures = [];
 const checks = [];
 const platformStorageKey = "nilelearn.platform.state.v1";
-const platformStateUpdatedEvent = "nilelearn:platform-state-updated";
 const outputDir = path.resolve(
   process.env.QA_OUTPUT_DIR || path.join(process.cwd(), "output", "playwright")
 );
@@ -621,9 +620,13 @@ function inspectBrowserConsole(output) {
     .filter(line => line.startsWith("[ERROR]"));
   const expected = lines.filter(
     line =>
-      line.includes(
+      (line.includes(
         "Failed to load resource: the server responded with a status of 503 (Service Unavailable)"
-      ) && line.includes("/api/integrations/moodle/projections/courses")
+      ) && line.includes("/api/integrations/moodle/projections/courses")) ||
+      (line.includes(
+        "Failed to load resource: the server responded with a status of 404 (Not Found)"
+      ) &&
+        /\/api\/forms\/assigned\/[^/]+\/draft/.test(line))
   );
   const unexpected = lines.filter(line => !expected.includes(line));
   return {
@@ -1144,10 +1147,6 @@ function loginSource(role, { resetPlatformState = false } = {}) {
         };
       } else {
         const resetPayload = await resetResponse.json();
-        if (resetPayload?.state) {
-          localStorage.setItem(${JSON.stringify(platformStorageKey)}, JSON.stringify(resetPayload.state));
-          window.dispatchEvent(new Event(${JSON.stringify(platformStateUpdatedEvent)}));
-        }
         reset = { ok: true, persistence: resetPayload?.persistence };
       }
     }
@@ -1157,14 +1156,49 @@ function loginSource(role, { resetPlatformState = false } = {}) {
 
 function workflowSetupSource(body) {
   return `async () => {
-    const STORAGE_KEY = ${JSON.stringify(platformStorageKey)};
-    const readState = () => JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}");
+    const fixtureHeaders = {
+      "Content-Type": "application/json",
+      "X-Nile-Learn-Request": "browser",
+      "X-Nile-Learn-QA-Fixture": "1"
+    };
+    const loadState = async () => {
+      const response = await fetch("/api/platform/state/qa-fixture", {
+        credentials: "include",
+        headers: fixtureHeaders
+      });
+      if (!response.ok) throw new Error("QA fixture state could not be read");
+      const payload = await response.json();
+      return payload?.state ?? {};
+    };
+    let stateCache = await loadState();
+    const readState = () => stateCache;
+    const pendingWrites = [];
     const writeState = (state) => {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-      window.dispatchEvent(new Event(${JSON.stringify(platformStateUpdatedEvent)}));
+      stateCache = state;
+      const write = fetch("/api/platform/state/qa-fixture", {
+        method: "POST",
+        credentials: "include",
+        headers: fixtureHeaders,
+        body: JSON.stringify({ state })
+      }).then(async (response) => {
+        if (!response.ok) {
+          throw new Error((await response.text()) || "QA fixture state could not be written");
+        }
+        return response.json();
+      });
+      pendingWrites.push(write);
+      return write;
     };
     try {
-      ${body}
+      const execute = async () => {
+        ${body}
+      };
+      const result = await execute();
+      await Promise.all(pendingWrites);
+      return {
+        ...(result && typeof result === "object" ? result : { ok: Boolean(result) }),
+        fixtureWritten: pendingWrites.length > 0
+      };
     } catch (error) {
       return { ok: false, error: error instanceof Error ? error.message : String(error) };
     }
@@ -1173,13 +1207,45 @@ function workflowSetupSource(body) {
 
 function workflowActionSource(body) {
   return `async () => {
-    const STORAGE_KEY = ${JSON.stringify(platformStorageKey)};
     const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
     const normalize = (value) => (value || "").replace(/\\s+/g, " ").trim();
-    const readState = () => JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}");
-    const writeState = (state) => {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-      window.dispatchEvent(new Event(${JSON.stringify(platformStateUpdatedEvent)}));
+    const fixtureHeaders = {
+      "Content-Type": "application/json",
+      "X-Nile-Learn-Request": "browser",
+      "X-Nile-Learn-QA-Fixture": "1"
+    };
+    const originalFetch = window.fetch.bind(window);
+    const loadState = async () => {
+      const response = await originalFetch("/api/platform/state/qa-fixture", {
+        credentials: "include",
+        headers: fixtureHeaders
+      });
+      if (!response.ok) throw new Error("QA fixture state could not be read");
+      const payload = await response.json();
+      return payload?.state ?? {};
+    };
+    let stateCache = await loadState();
+    const readState = () => stateCache;
+    const writeState = async (state) => {
+      const response = await originalFetch("/api/platform/state/qa-fixture", {
+        method: "POST",
+        credentials: "include",
+        headers: fixtureHeaders,
+        body: JSON.stringify({ state })
+      });
+      if (!response.ok) {
+        throw new Error((await response.text()) || "QA fixture state could not be written");
+      }
+      stateCache = state;
+      return state;
+    };
+    window.fetch = async (...args) => {
+      const response = await originalFetch(...args);
+      const requestUrl = typeof args[0] === "string" ? args[0] : args[0]?.url || "";
+      if (response.ok && requestUrl.includes("/api/platform/state/actions")) {
+        stateCache = await loadState();
+      }
+      return response;
     };
     const visible = (element) => {
       if (!element) return false;
@@ -1291,6 +1357,8 @@ function workflowActionSource(body) {
         path: location.pathname,
         visibleText: normalize(document.body.innerText || document.body.textContent).slice(0, 700)
       };
+    } finally {
+      window.fetch = originalFetch;
     }
   }`;
 }
@@ -1576,6 +1644,20 @@ async function runDeepWorkflow({
         { hardReload: true }
       );
       if (!routeReadyAfterSetupOk) return;
+    } else if (setupResult?.fixtureWritten) {
+      await goto(route);
+      const fixtureRouteReady = await pageEval(routeReadySource(route), {
+        label: `reload fixture and wait ${route}`,
+      });
+      if (!fixtureRouteReady?.ok) {
+        await assertCheck(
+          `${name} route ready after fixture`,
+          fixtureRouteReady,
+          value => value?.ok,
+          { role: role.role, route, deepWorkflow: true }
+        );
+        return;
+      }
     }
   }
 
@@ -1913,7 +1995,9 @@ const deepWorkflowCases = [
       await waitFor(() => document.querySelector(".platform-search-results button"));
       await clickButton("Grammar worksheet");
       const navigatedPath = await waitFor(() => location.pathname.includes("/app/student/assignments/asg_ar_grammar") ? location.pathname : null);
-      const scopedState = state || readState();
+      const scopedResponse = await fetch("/api/platform/state", { credentials: "include" });
+      const scopedPayload = scopedResponse.ok ? await scopedResponse.json() : null;
+      const scopedState = scopedPayload?.state;
       const scopeIsNarrow =
         !scopedState?.courseRuns?.some((item) => item.id === "run_ar_l1_alex_2026") &&
         !scopedState?.classGroups?.some((item) => item.id === "class_ar_l3_cairo") &&
@@ -1968,23 +2052,6 @@ const deepWorkflowCases = [
     source: workflowActionSource(`
       await waitFor(() => !document.querySelector(".learning-sync-pill.loading"), 5000);
       const before = readState();
-      const progress = before.lessonProgress?.find((item) => item.lessonId === "lesson_ar_conditional" && item.studentId === "stu_demo" && item.enrollmentId === "enr_ar_l3");
-      if (progress) {
-        progress.status = "in_progress";
-        delete progress.completedAt;
-      } else {
-        before.lessonProgress = before.lessonProgress || [];
-        before.lessonProgress.push({
-          id: "lp_ar_conditional_qa",
-          studentId: "stu_demo",
-          enrollmentId: "enr_ar_l3",
-          lessonId: "lesson_ar_conditional",
-          status: "in_progress",
-          notes: "QA deterministic setup."
-        });
-      }
-      before.auditLogs = (before.auditLogs || []).filter((item) => item.action !== "lesson.completed" || item.entityId !== "lesson_ar_conditional");
-      writeState(before);
       await waitFor(() => {
         const actions = document.querySelector(".learning-player-actions");
         return Array.from(actions?.querySelectorAll("button") || []).some((button) => visible(button) && !button.disabled && normalize(button.textContent).includes("Mark complete"));
@@ -2157,10 +2224,6 @@ const deepWorkflowCases = [
     `),
     reloadAfterSetup: false,
     source: workflowActionSource(`
-      const prepared = readState();
-      prepared.assignmentSubmissions = (prepared.assignmentSubmissions || []).filter((item) => item.assignmentId !== "asg_qt_audio");
-      writeState(prepared);
-      await delay(120);
       const response = "QA audio route response " + Date.now();
       await waitFor(() => normalize(document.body.textContent).includes("Audio recitation"));
       const workspace = await waitFor(() => document.querySelector(".student-assignment-workspace"));
@@ -2197,11 +2260,6 @@ const deepWorkflowCases = [
     reloadAfterSetup: false,
     source: workflowActionSource(`
       await waitFor(() => normalize(document.body.textContent).includes("Madd Rules Check"));
-      const prepared = readState();
-      prepared.quizAttempts = (prepared.quizAttempts || []).filter((item) => item.quizId !== "quiz_qt_madd");
-      prepared.grades = (prepared.grades || []).filter((item) => item.itemId !== "quiz_qt_madd");
-      writeState(prepared);
-      await delay(120);
       const before = readState();
       const workspace = await waitFor(() => document.querySelector(".student-quiz-workspace"));
       if (!workspace) throw new Error("Student quiz workspace not found");
@@ -3980,15 +4038,6 @@ const deepWorkflowCases = [
     `),
     reloadAfterSetup: false,
     source: workflowActionSource(`
-      const prepared = readState();
-      prepared.certificates = (prepared.certificates || []).map((item) =>
-        item.id === "cert_ar_2"
-          ? { ...item, status: "pending_approval", approvedBy: undefined, approvedAt: undefined, issuedBy: undefined, issuedAt: undefined }
-          : item
-      );
-      prepared.auditLogs = (prepared.auditLogs || []).filter((item) => item.entityId !== "cert_ar_2");
-      writeState(prepared);
-      await delay(120);
       await goto("/app/hod/certificates/cert_ar_2");
       await waitFor(() => normalize(document.body.textContent).includes("NCL-AR2-DEMO"));
       const existing = readState().certificates?.find((item) => item.id === "cert_ar_2");

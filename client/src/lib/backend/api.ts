@@ -17,6 +17,9 @@ export type AuthSessionDto = {
   roles: Role[];
   activeRole: Role;
   provider: "supabase" | "demo";
+  authorizationModel: "snapshot" | "normalized";
+  branchIds: string[];
+  departmentIds: string[];
   expiresAt: string;
 };
 
@@ -152,6 +155,46 @@ export function createUserInvitationRequest(input: {
       replayed: boolean;
     };
   }>("/api/admin/user-invitations", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export function createStudentEnrollmentInvitationRequest(input: {
+  fullName: string;
+  email: string;
+  phone: string;
+  branchRef: string;
+  preferredLanguage: string;
+  courseInterest: string;
+  ageGroup: string;
+  guardianName?: string;
+  guardianPhone?: string;
+  currentLevel: string;
+  notes?: string;
+  courseRunId: string;
+  classGroupId: string;
+  source: "direct" | "lead" | "application" | "placement";
+  leadId?: string;
+  applicationId?: string;
+  placementBookingId?: string;
+  locale: string;
+  idempotencyKey: string;
+}) {
+  return apiJson<{
+    ok: true;
+    delivery: "queued" | "dispatched";
+    invitation: {
+      invitationId: string;
+      userId: string;
+      roleGrantId: string;
+      studentProfileId: string;
+      enrollmentId: string;
+      classGroupId: string;
+      outboxEventId: string;
+      replayed: boolean;
+    };
+  }>("/api/registrar/student-invitations", {
     method: "POST",
     body: JSON.stringify(input),
   });
@@ -313,6 +356,27 @@ export type MoodleCourseContentProjectionDto = {
         title: string;
         visible?: boolean;
         completionTracking?: "none" | "manual" | "automatic";
+        launchAvailable?: boolean;
+        dates?: Array<{
+          label: string;
+          at: string;
+        }>;
+        resources?: Array<{
+          resourceId: string;
+          name: string;
+          mimeType?: string;
+          sizeBytes?: number;
+          kind:
+            | "pdf"
+            | "audio"
+            | "video"
+            | "image"
+            | "document"
+            | "archive"
+            | "other";
+          modifiedAt?: string;
+          external?: boolean;
+        }>;
       }>;
     }>;
   };
@@ -363,7 +427,19 @@ const moodleProjectionOutcomes = new Set<MoodleProjectionOutcome>([
   "invalid_payload",
 ]);
 const moodleCompletionTracking = new Set(["none", "manual", "automatic"]);
+const moodleResourceKinds = new Set([
+  "pdf",
+  "audio",
+  "video",
+  "image",
+  "document",
+  "archive",
+  "other",
+]);
+const safeMimeTypePattern =
+  /^[a-z0-9][a-z0-9!#$&^_.+-]{0,126}\/[a-z0-9][a-z0-9!#$&^_.+-]{0,126}$/i;
 const moodleContentCollectionLimit = 2_000;
+const moodleActivityMetadataLimit = 100;
 
 function hasExactKeys(
   value: Record<string, unknown>,
@@ -402,7 +478,7 @@ function isMoodleContentActivity(value: unknown) {
     !hasExactKeys(
       value,
       ["sourceId", "instanceSourceId", "type", "title"],
-      ["visible", "completionTracking"]
+      ["visible", "completionTracking", "launchAvailable", "dates", "resources"]
     )
   ) {
     return false;
@@ -413,9 +489,56 @@ function isMoodleContentActivity(value: unknown) {
     isProjectionText(value.type, 64) &&
     isProjectionText(value.title) &&
     (value.visible === undefined || typeof value.visible === "boolean") &&
+    (value.launchAvailable === undefined ||
+      typeof value.launchAvailable === "boolean") &&
     (value.completionTracking === undefined ||
       (typeof value.completionTracking === "string" &&
-        moodleCompletionTracking.has(value.completionTracking)))
+        moodleCompletionTracking.has(value.completionTracking))) &&
+    (value.dates === undefined ||
+      (Array.isArray(value.dates) &&
+        value.dates.length <= moodleActivityMetadataLimit &&
+        value.dates.every(isMoodleActivityDate))) &&
+    (value.resources === undefined ||
+      (Array.isArray(value.resources) &&
+        value.resources.length <= moodleActivityMetadataLimit &&
+        value.resources.every(isMoodleActivityResource)))
+  );
+}
+
+function isMoodleActivityDate(value: unknown) {
+  return (
+    isRecord(value) &&
+    hasExactKeys(value, ["label", "at"]) &&
+    isProjectionText(value.label, 100) &&
+    isIsoTimestamp(value.at)
+  );
+}
+
+function isMoodleActivityResource(value: unknown) {
+  if (!isRecord(value)) return false;
+  if (
+    !hasExactKeys(
+      value,
+      ["resourceId", "name", "kind"],
+      ["mimeType", "sizeBytes", "modifiedAt", "external"]
+    )
+  ) {
+    return false;
+  }
+  return (
+    typeof value.resourceId === "string" &&
+    /^[1-9]\d*:[1-9]\d*$/.test(value.resourceId) &&
+    isProjectionText(value.name) &&
+    typeof value.kind === "string" &&
+    moodleResourceKinds.has(value.kind) &&
+    (value.mimeType === undefined ||
+      (typeof value.mimeType === "string" &&
+        safeMimeTypePattern.test(value.mimeType))) &&
+    (value.sizeBytes === undefined ||
+      (Number.isSafeInteger(value.sizeBytes) &&
+        (value.sizeBytes as number) >= 0)) &&
+    (value.modifiedAt === undefined || isIsoTimestamp(value.modifiedAt)) &&
+    (value.external === undefined || typeof value.external === "boolean")
   );
 }
 

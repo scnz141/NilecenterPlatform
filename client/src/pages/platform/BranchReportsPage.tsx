@@ -1,3 +1,4 @@
+import { requireActiveUser } from "@/lib/auth/session";
 import { useMemo, useState } from "react";
 import { Download, Search } from "lucide-react";
 import PlatformShell from "@/components/platform/PlatformShell";
@@ -9,7 +10,6 @@ import {
 import { DataTableCard } from "@/components/platform/PlatformPrimitives";
 import { platformStore } from "@/lib/domain/store";
 import type { ReportType } from "@/lib/domain/types";
-import { getDemoUser } from "@/lib/platformData";
 
 type BranchReportType = Exclude<ReportType, "audit">;
 type SortKey = "record" | "status" | "metric";
@@ -66,7 +66,7 @@ export default function BranchReportsPage() {
   const [sortKey, setSortKey] = useState<SortKey>("record");
 
   const state = useMemo(() => platformStore.getState(), []);
-  const actorId = getDemoUser("branchadmin").id;
+  const actorId = requireActiveUser("branchadmin").id;
   const actor = state.users.find(user => user.id === actorId);
   const staffProfile = state.staffProfiles.find(
     profile => profile.userId === actorId && profile.role === "branchadmin"

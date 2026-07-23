@@ -1,0 +1,88 @@
+{
+  "component": "local_nilelearn",
+  "pluginVersion": "0.1.0-contract",
+  "protocolVersion": "1.0",
+  "operations": [
+    {
+      "name": "delivery_course.clone",
+      "requiredCapability": "moodle/course:create"
+    },
+    {
+      "name": "delivery_course.archive",
+      "requiredCapability": "moodle/course:update"
+    },
+    {
+      "name": "delivery_course.restore",
+      "requiredCapability": "moodle/course:update"
+    },
+    {
+      "name": "section.upsert",
+      "requiredCapability": "moodle/course:manageactivities"
+    },
+    {
+      "name": "section.reorder",
+      "requiredCapability": "moodle/course:sectionvisibility"
+    },
+    {
+      "name": "section.visibility",
+      "requiredCapability": "moodle/course:sectionvisibility"
+    },
+    {
+      "name": "page.upsert",
+      "requiredCapability": "moodle/course:manageactivities"
+    },
+    {
+      "name": "book.upsert",
+      "requiredCapability": "moodle/course:manageactivities"
+    },
+    {
+      "name": "url.upsert",
+      "requiredCapability": "moodle/course:manageactivities"
+    },
+    {
+      "name": "resource.upsert",
+      "requiredCapability": "moodle/course:manageactivities"
+    },
+    {
+      "name": "resource.archive",
+      "requiredCapability": "moodle/course:manageactivities"
+    },
+    {
+      "name": "assignment.upsert",
+      "requiredCapability": "moodle/course:manageactivities"
+    },
+    {
+      "name": "assignment.archive",
+      "requiredCapability": "moodle/course:manageactivities"
+    },
+    {
+      "name": "quiz_shell.upsert",
+      "requiredCapability": "moodle/course:manageactivities"
+    },
+    {
+      "name": "quiz.archive",
+      "requiredCapability": "moodle/course:manageactivities"
+    },
+    {
+      "name": "question.upsert",
+      "requiredCapability": "moodle/question:editall"
+    },
+    {
+      "name": "question.move",
+      "requiredCapability": "moodle/question:moveall"
+    },
+    { "name": "grade.update", "requiredCapability": "moodle/grade:edit" },
+    {
+      "name": "completion.update",
+      "requiredCapability": "moodle/course:overridecompletion"
+    }
+  ],
+  "nativeLaunchKinds": [
+    "lesson_authoring",
+    "h5p_authoring",
+    "scorm_authoring",
+    "video_time_authoring",
+    "quiz_attempt",
+    "assignment_submission"
+  ]
+}

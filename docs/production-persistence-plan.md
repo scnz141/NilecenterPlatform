@@ -149,9 +149,14 @@ The canonical sequence is defined in `docs/NILE_LEARN_MASTER_PLAN.md`:
 3. **Phase 2 - Durable authentication and scope authority:** map Supabase Auth exactly, resolve one active grant per opaque session, revoke rather than mutate sessions, and fail closed in production.
 4. **Phase 3 - Repository read migration:** introduce normalized server reads behind a flag and compare them to snapshot compatibility output. Snapshot remains the only writable authority during parity work.
 5. **Phases 4-5 - Student lifecycle, course delivery, and scheduling:** cut over one bounded workflow transactionally; its normalized service becomes the sole writable authority while snapshot data is generated only as a compatibility read model.
-6. **Phase 6 - Read-only Moodle projection:** ingest approved Moodle content/activity projections with checkpoints and reconciliation; no Moodle writes.
+6. **Phase 6 - Moodle projection and command foundation:** ingest approved
+   Moodle projections with checkpoints and reconciliation, then establish
+   exact mappings and durable CRUD command evidence.
 7. **Phases 7-9 - Teacher, HOD, branch, and super-admin operations:** migrate one scoped workflow family at a time with server authorization, audit/outbox evidence, parity, and portal QA.
-8. **Phase 10 - Controlled Moodle writes:** requires a later accepted ADR and a migration that deliberately widens the read-only connection constraint.
+8. **Phase 10 - Moodle CRUD activation:** ADR-010 and ADR-011 approve the
+   authority and synthetic sandbox campaign. Production activation still
+   requires the plugin, worker, command/outbox migration, RBAC, and accepted
+   operation-family gates.
 9. **Phase 11 - Finite legacy EMS migration:** dry run, reconciliation, approved import, final delta, cutover, rollback evidence, and credential retirement. No recurring EMS sync or writeback.
 10. **Phase 12 - Route-by-route UI completion:** complete Simple UI after the underlying workflows and authority boundaries are stable.
 
@@ -169,7 +174,8 @@ Until explicitly approved:
 - pending file/audio/media metadata without byte upload
 - print-to-PDF certificate flow
 - integration status/config placeholders
-- Moodle, EMS, payment, email/SMS/WhatsApp, meeting, and storage placeholders
+- Moodle projection/command fixtures, finite EMS migration fixtures, and
+  payment, email/SMS/WhatsApp, meeting, and storage placeholders
 
 ## Rollback Plan
 

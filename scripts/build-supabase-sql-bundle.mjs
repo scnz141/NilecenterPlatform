@@ -94,9 +94,42 @@ const sections = [
     title: "Account invitation lifecycle",
     path: "supabase/manual/017_account_invitation_lifecycle.sql",
   },
+  {
+    title: "Normalized self-profile and support foundation",
+    path: "supabase/manual/019_normalized_profile_support_foundation.sql",
+  },
+  {
+    title: "Normalized admissions intake foundation",
+    path: "supabase/manual/020_normalized_admissions_intake_foundation.sql",
+  },
+  {
+    title: "Normalized application conversion foundation",
+    path: "supabase/manual/021_normalized_application_conversion_foundation.sql",
+  },
+  {
+    title: "Normalized placement foundation",
+    path: "supabase/manual/022_normalized_placement_foundation.sql",
+  },
+  {
+    title: "Normalized admissions delivery read model",
+    path: "supabase/manual/023_normalized_admissions_delivery_read_model.sql",
+  },
+  {
+    title: "Normalized student enrollment invitation",
+    path: "supabase/manual/024_normalized_student_enrollment_invitation.sql",
+  },
+  {
+    title: "Normalized teacher session and attendance authority",
+    path: "supabase/manual/025_normalized_teacher_session_attendance.sql",
+  },
 ];
 
-const invitationSections = sections.slice(-2);
+const invitationSections = sections.filter(section =>
+  [
+    "supabase/manual/016_transactional_email_delivery.sql",
+    "supabase/manual/017_account_invitation_lifecycle.sql",
+  ].includes(section.path)
+);
 
 function sha256(value) {
   return createHash("sha256").update(value).digest("hex");

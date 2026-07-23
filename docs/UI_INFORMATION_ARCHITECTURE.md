@@ -334,13 +334,23 @@ embedded in Forms Manage, Builder, Publish, or Review:
 
 ### Teacher Assessments
 
-Status: Current for the listed routes.
+Status: Transitional. Route jobs remain separate, but Moodle owns every
+learning record under ADR-010.
 
-- `/app/teacher/quizzes`: ListPage for finding quiz items.
-- `/app/teacher/quizzes/new`: CreateFlowPage for creating one quiz.
-- `/app/teacher/quizzes/review`: ListPage/work queue for quiz attempts that need review.
-- `/app/teacher/question-bank`: ListPage for reusable questions and attaching questions to a selected quiz.
-- `/app/teacher/question-bank/new`: CreateFlowPage for creating one question.
+- `/app/teacher/quizzes`: ListPage for projected quizzes in assigned Moodle
+  delivery courses.
+- `/app/teacher/quizzes/new`: supported simple Moodle command flow or an
+  authenticated Moodle authoring launch; never a local quiz create.
+- `/app/teacher/quizzes/review`: projected attempt queue with an authorized
+  Moodle review launch.
+- `/app/teacher/question-bank`: projected question-bank directory for assigned
+  course contexts.
+- `/app/teacher/question-bank/new`: supported Moodle command flow or native
+  Moodle editor launch; never a local question create.
+
+Student assignment and quiz routes likewise show exact Moodle projections and
+use authenticated Moodle launches for submissions and attempts. Nile Learn
+must not persist local learning outcomes from these pages.
 
 Do not combine assignment queue, quiz list, quiz creation, question creation, question attachment, manual review, recent activity, and score metrics on one teacher assessment page.
 

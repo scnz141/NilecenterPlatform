@@ -9,6 +9,14 @@ import {
   setSessionStore,
   type SessionStore,
 } from "../../../../server/sessionStore";
+import {
+  NormalizedWorkflowUnavailableError,
+  resetNormalizedWorkflowRepository,
+  setNormalizedWorkflowRepository,
+} from "../../../../server/normalizedWorkflowRepository";
+import { scopePlatformStateForSession } from "../../../../server/routes";
+import { setPlatformStateRepository } from "../../../../server/platformRepository";
+import { seedPlatformState } from "../domain/seed";
 
 type RouteHandler = (
   request: unknown,
@@ -40,6 +48,22 @@ function request(method: string, body: Record<string, unknown> = {}) {
     ip: "127.0.0.1",
     get(name: string) {
       return name === "X-Nile-Learn-Request" ? "browser" : undefined;
+    },
+  };
+}
+
+function qaFixtureRequest(
+  method: string,
+  body: Record<string, unknown> = {},
+  enabled = true
+) {
+  const base = request(method, body);
+  return {
+    ...base,
+    get(name: string) {
+      if (name === "X-Nile-Learn-Request") return "browser";
+      if (name === "X-Nile-Learn-QA-Fixture" && enabled) return "1";
+      return undefined;
     },
   };
 }
@@ -78,6 +102,7 @@ function unavailableRepository(): SessionStore {
 
 afterEach(() => {
   resetDefaultSessionStore();
+  resetNormalizedWorkflowRepository();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
   vi.unstubAllEnvs();
@@ -139,7 +164,7 @@ describe("API durable session outage handling", () => {
 });
 
 describe("API normalized Super Admin compatibility workspace", () => {
-  it("allows the scoped workspace read while legacy snapshot mutations remain blocked", async () => {
+  it("reads through the normalized repository while unsupported mutations remain blocked", async () => {
     vi.stubEnv("NILE_PLATFORM_STATE_LOCAL_ONLY", "1");
     const repository: SessionStore = {
       kind: "supabase",
@@ -163,7 +188,18 @@ describe("API normalized Super Admin compatibility workspace", () => {
       delete: async () => undefined,
       clear: async () => undefined,
     };
+    const normalizedSession = await repository.get("durable-token");
+    if (!normalizedSession) throw new Error("Normalized test session missing.");
     const restore = setSessionStore(repository);
+    const restoreWorkflow = setNormalizedWorkflowRepository({
+      readWorkspace: async () =>
+        scopePlatformStateForSession(seedPlatformState, normalizedSession),
+      apply: async action => {
+        throw new NormalizedWorkflowUnavailableError(
+          `Normalized ${action.type} persistence is not active.`
+        );
+      },
+    });
     const { getRoutes, postRoutes } = captureRoutes();
     const read = responseRecorder();
     const write = responseRecorder();
@@ -173,19 +209,102 @@ describe("API normalized Super Admin compatibility workspace", () => {
       read.response
     );
     await postRoutes.get("/api/platform/state/actions")?.(
-      request("POST", { type: "settings.update", organizationName: "Denied" }),
+      request("POST", {
+        type: "notification.read",
+        notificationId: "notification-1",
+      }),
       write.response
     );
 
     expect(read.result.status).toBe(200);
     expect(read.result.body).toMatchObject({
-      state: { users: expect.any(Array), branches: expect.any(Array) },
+      state: { users: [], branches: [], courses: [], auditLogs: [] },
     });
     expect(write.result).toEqual({
       status: 503,
-      body: { error: "Normalized workflow persistence is not active." },
+      body: {
+        error: "Normalized notification.read persistence is not active.",
+      },
     });
+    restoreWorkflow();
     restore();
+  });
+});
+
+describe("API local-only portal QA fixture", () => {
+  it("reads and writes complete fixtures only behind the local QA gate", async () => {
+    vi.stubEnv("NILE_PLATFORM_STATE_LOCAL_ONLY", "1");
+    const sessionRepository: SessionStore = {
+      kind: "memory",
+      create: async () => undefined,
+      get: async () => ({
+        id: "durable-token",
+        userId: "usr_student_demo",
+        email: "s@nl.test",
+        name: "Student Demo",
+        roles: ["student"],
+        activeRole: "student",
+        provider: "demo",
+        authorizationModel: "compatibility",
+        createdAt: "2026-07-22T00:00:00.000Z",
+        expiresAt: "2099-07-22T12:00:00.000Z",
+      }),
+      delete: async () => undefined,
+      clear: async () => undefined,
+    };
+    let storedState = structuredClone(seedPlatformState);
+    const restoreSession = setSessionStore(sessionRepository);
+    const restorePlatform = setPlatformStateRepository({
+      readSnapshot: async () => ({
+        state: structuredClone(storedState),
+        persistence: "local",
+        syncedAt: "2026-07-22T00:00:00.000Z",
+      }),
+      writeSnapshot: async state => {
+        storedState = structuredClone(state);
+        return "local";
+      },
+      recordEvent: async () => undefined,
+    });
+
+    try {
+      const { getRoutes, postRoutes } = captureRoutes();
+      const blocked = responseRecorder();
+      const read = responseRecorder();
+      const write = responseRecorder();
+      const changed = structuredClone(seedPlatformState);
+      changed.settings.academicTerm = "QA fixture term";
+
+      await getRoutes.get("/api/platform/state/qa-fixture")?.(
+        qaFixtureRequest("GET", {}, false),
+        blocked.response
+      );
+      await getRoutes.get("/api/platform/state/qa-fixture")?.(
+        qaFixtureRequest("GET"),
+        read.response
+      );
+      await postRoutes.get("/api/platform/state/qa-fixture")?.(
+        qaFixtureRequest("POST", { state: changed }),
+        write.response
+      );
+
+      expect(blocked.result.status).toBe(404);
+      expect(read.result).toMatchObject({
+        status: 200,
+        body: { state: { users: seedPlatformState.users } },
+      });
+      expect(write.result).toMatchObject({
+        status: 200,
+        body: {
+          state: { settings: { academicTerm: "QA fixture term" } },
+          persistence: "local",
+        },
+      });
+      expect(storedState.settings.academicTerm).toBe("QA fixture term");
+    } finally {
+      restorePlatform();
+      restoreSession();
+    }
   });
 });
 

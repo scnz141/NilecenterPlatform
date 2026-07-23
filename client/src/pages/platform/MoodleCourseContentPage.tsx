@@ -2,8 +2,15 @@ import { useCallback, useEffect, useState } from "react";
 import {
   AlertTriangle,
   ArrowLeft,
+  CalendarClock,
   BookOpen,
   CloudOff,
+  FileArchive,
+  FileAudio,
+  FileImage,
+  FileText,
+  FileVideo,
+  MonitorUp,
   EyeOff,
   RefreshCw,
 } from "lucide-react";
@@ -86,6 +93,21 @@ function completionCopy(value?: "none" | "manual" | "automatic") {
   if (value === "automatic") return "Automatic completion";
   if (value === "manual") return "Manual completion";
   return "No completion tracking";
+}
+
+function formatFileSize(value?: number) {
+  if (value === undefined) return "Size unavailable";
+  if (value < 1_024) return `${value} B`;
+  if (value < 1_048_576) return `${(value / 1_024).toFixed(1)} KB`;
+  return `${(value / 1_048_576).toFixed(1)} MB`;
+}
+
+function ResourceIcon({ kind }: { kind: string }) {
+  if (kind === "audio") return <FileAudio size={16} />;
+  if (kind === "video") return <FileVideo size={16} />;
+  if (kind === "image") return <FileImage size={16} />;
+  if (kind === "archive") return <FileArchive size={16} />;
+  return <FileText size={16} />;
 }
 
 export default function MoodleCourseContentPage({
@@ -316,7 +338,43 @@ export default function MoodleCourseContentPage({
                               <small>
                                 {completionCopy(activity.completionTracking)}
                               </small>
+                              {activity.launchAvailable ? (
+                                <small>
+                                  <MonitorUp size={14} />
+                                  Available in Moodle
+                                </small>
+                              ) : null}
                             </div>
+                            {activity.dates?.length ? (
+                              <div className="moodle-content-dates-v3">
+                                {activity.dates.map(date => (
+                                  <span key={`${date.label}-${date.at}`}>
+                                    <CalendarClock size={14} />
+                                    {date.label}:{" "}
+                                    {formatObservationTime(date.at)}
+                                  </span>
+                                ))}
+                              </div>
+                            ) : null}
+                            {activity.resources?.length ? (
+                              <ul
+                                className="moodle-content-resources-v3"
+                                aria-label={`${activity.title} resources`}
+                              >
+                                {activity.resources.map(resource => (
+                                  <li key={resource.resourceId}>
+                                    <ResourceIcon kind={resource.kind} />
+                                    <span>
+                                      <strong>{resource.name}</strong>
+                                      <small>
+                                        {resource.mimeType ?? "File"} ·{" "}
+                                        {formatFileSize(resource.sizeBytes)}
+                                      </small>
+                                    </span>
+                                  </li>
+                                ))}
+                              </ul>
+                            ) : null}
                           </li>
                         ))}
                       </ul>

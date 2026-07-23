@@ -257,17 +257,6 @@ const permissionCases: PermissionCase[] = [
     },
   },
   {
-    label: "allowed generic payment record module",
-    role: "registrar",
-    permission: "payments:write",
-    action: {
-      type: "record.save",
-      module: "Payments",
-      payload: { title: "Authority permission test record" },
-      actorId: "usr_admin_demo",
-    },
-  },
-  {
     label: "report presets",
     role: "teacher",
     permission: "reports:read",
@@ -541,29 +530,6 @@ describe("server academic workflow authority", () => {
         sessionFor("teacher")
       )
     ).rejects.toThrow("Message recipient is outside this role scope.");
-
-    expect(state).toEqual(stateBeforeDenial);
-    expect(repository.writeSnapshot).not.toHaveBeenCalled();
-    expect(repository.recordEvent).not.toHaveBeenCalled();
-  });
-
-  it("denies record.save modules outside the active role allowlist", async () => {
-    const state = cloneState();
-    const stateBeforeDenial = cloneState(state);
-    const repository = installRepository(state);
-
-    await expect(
-      applyPlatformWorkflowAction(
-        {
-          type: "record.save",
-          module: "Users",
-          payload: { title: "Smuggled privileged record" },
-        },
-        sessionFor("registrar")
-      )
-    ).rejects.toThrow(
-      "Role registrar cannot save operational records for Users."
-    );
 
     expect(state).toEqual(stateBeforeDenial);
     expect(repository.writeSnapshot).not.toHaveBeenCalled();

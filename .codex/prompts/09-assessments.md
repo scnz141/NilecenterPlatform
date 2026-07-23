@@ -10,7 +10,15 @@ Build assessments across student, teacher, HOD, and admin roles: assignments, qu
 
 ## IMPLEMENT
 
-- Use domain store actions for assignment submit and quiz submit.
+- Treat Moodle as the sole authority for assignments, submissions, quizzes,
+  questions, attempts, grades, and feedback.
+- Use server-authorized Moodle projections for reads. Supported writes must use
+  durable Moodle commands; complex authoring and attempts use a short-lived
+  authenticated Moodle launch.
+- In the dedicated sandbox, exercise complete create, read, update,
+  archive/restore, and safe delete lifecycles for assignments, submissions,
+  quizzes, questions, attempts, grades, feedback, and completion.
+- Never report success from client state or a local domain mutation.
 - Add teacher/HOD review where supported.
 
 ## VERIFY

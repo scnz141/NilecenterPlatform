@@ -530,6 +530,9 @@ export function attachSession(
     roles: session.roles,
     activeRole: session.activeRole,
     provider: session.provider,
+    authorizationModel: session.authorizationModel ?? "snapshot",
+    branchIds: session.branchIds ?? [],
+    departmentIds: session.departmentIds ?? [],
     expiresAt: session.expiresAt,
   };
 }

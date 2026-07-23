@@ -1,3 +1,4 @@
+import { requireActiveUser } from "@/lib/auth/session";
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import {
   AlertCircle,
@@ -24,7 +25,6 @@ import {
 import { runPlatformWorkflowActionRequest } from "@/lib/backend/api";
 import { platformStore } from "@/lib/domain/store";
 import type { Lead } from "@/lib/domain/types";
-import { getDemoUser } from "@/lib/platformData";
 
 type RegistrarAdmissionsView =
   | "leads"
@@ -160,7 +160,7 @@ export default function RegistrarAdmissionsPage({
   });
 
   const state = useMemo(() => platformStore.getState(), [version]);
-  const actorId = getDemoUser("registrar").id;
+  const actorId = requireActiveUser("registrar").id;
   const refresh = () => setVersion(current => current + 1);
   const isAnyActionPending = Boolean(pendingAction);
 
@@ -300,10 +300,12 @@ export default function RegistrarAdmissionsPage({
       toast.error("Name and phone are required");
       return;
     }
+    const sourceKey = crypto.randomUUID();
     const result = await runRegistrarAction(
       "lead.create",
       {
         type: "lead.create",
+        branchId: state.branches[0]?.id,
         fullName: leadDraft.fullName.trim(),
         email:
           leadDraft.email.trim() ||
@@ -313,6 +315,8 @@ export default function RegistrarAdmissionsPage({
         subject: leadDraft.subject.trim() || "Arabic Language",
         source: leadDraft.source,
         notes: leadDraft.notes.trim(),
+        sourceKey,
+        idempotencyKey: `lead.create:${sourceKey}`,
         actorId,
       },
       "Lead added to admissions"
@@ -336,9 +340,16 @@ export default function RegistrarAdmissionsPage({
   };
 
   const convertLead = async (id: string) => {
+    const lead = state.leads.find(item => item.id === id);
     await runRegistrarAction(
       `lead.convert:${id}`,
-      { type: "lead.convert", leadId: id, actorId },
+      {
+        type: "lead.convert",
+        leadId: id,
+        actorId,
+        expectedVersion: lead?.version ?? 1,
+        idempotencyKey: `lead.convert:${id}`,
+      },
       "Lead converted to application"
     );
   };
@@ -353,6 +364,7 @@ export default function RegistrarAdmissionsPage({
       toast.error("Applicant name, email, and phone are required");
       return;
     }
+    const sourceKey = crypto.randomUUID();
     const result = await runRegistrarAction(
       "application.create",
       {
@@ -368,6 +380,8 @@ export default function RegistrarAdmissionsPage({
         notes: applicationDraft.notes.trim() || undefined,
         country: "Egypt",
         source: "manual",
+        sourceKey,
+        idempotencyKey: `application.create:${sourceKey}`,
         actorId,
       },
       "Application created",
@@ -407,6 +421,7 @@ export default function RegistrarAdmissionsPage({
       toast.error("Name, phone, and date are required");
       return;
     }
+    const sourceKey = crypto.randomUUID();
     const result = await runRegistrarAction(
       "placement.create",
       {
@@ -421,6 +436,8 @@ export default function RegistrarAdmissionsPage({
         preferredDate: placementDraft.preferredDate,
         currentLevel: placementDraft.currentLevel.trim() || "Placement pending",
         leadId: applicationId ? selectedApplicationLead?.id : undefined,
+        sourceKey,
+        idempotencyKey: `placement.create:${sourceKey}`,
         actorId,
       },
       "Placement booking added"
@@ -466,6 +483,8 @@ export default function RegistrarAdmissionsPage({
         recommendedLevel: recommendedLevel.trim() || "Arabic Level 2",
         score: Math.max(0, Math.min(100, Number(score) || 0)),
         notes: "Recorded from registrar admissions workspace.",
+        expectedVersion: selectedPlacement.version ?? 1,
+        idempotencyKey: `placement.result.record:${selectedPlacement.id}`,
         actorId,
       },
       "Placement result recorded"
@@ -579,10 +598,7 @@ export default function RegistrarAdmissionsPage({
           <span>Lead intake</span>
           <strong>Add one enquiry</strong>
         </div>
-        <Link
-          className="registrar-inline-close"
-          href="/app/registrar/leads"
-        >
+        <Link className="registrar-inline-close" href="/app/registrar/leads">
           Cancel
         </Link>
       </div>

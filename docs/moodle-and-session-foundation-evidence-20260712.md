@@ -1,5 +1,8 @@
 # Nile Learn Foundation Evidence - 2026-07-12
 
+Historical evidence note: ADR-011 now authorizes full synthetic Moodle sandbox
+CRUD. The no-write statements below describe this earlier foundation run only.
+
 ## Phase 2B Native PostgREST Acceptance
 
 The corrected Phase 2B SQL was applied in order to an isolated fake-data-only

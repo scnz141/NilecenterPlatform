@@ -334,6 +334,62 @@ describe("server platform action scope gates", () => {
     });
   });
 
+  it("creates support tickets for the authenticated student only", async () => {
+    const parsed = parsePlatformWorkflowAction({
+      type: "support.ticket.create",
+      requesterId: "usr_admin_demo",
+      actorId: "usr_admin_demo",
+      subject: "Class recording access",
+      details: "The latest class recording does not open from my course page.",
+      category: "learning",
+      priority: "high",
+    });
+    expect(parsed).toMatchObject({
+      type: "support.ticket.create",
+      subject: "Class recording access",
+      priority: "high",
+    });
+
+    const result = await applyPlatformWorkflowAction(
+      parsed!,
+      sessionFor("student")
+    );
+    const ticket = result.state.supportTickets.find(
+      item => item.subject === "Class recording access"
+    );
+
+    expect(ticket).toMatchObject({
+      requesterId: "usr_student_demo",
+      category: "learning",
+      priority: "high",
+      status: "pending",
+    });
+    expect(result.result).toMatchObject({
+      action: "support.ticket_created",
+      entityId: ticket?.id,
+    });
+    expect(result.state.auditLogs[0]).toMatchObject({
+      action: "support.ticket_created",
+      actorId: "usr_student_demo",
+      entityId: ticket?.id,
+    });
+
+    await expect(
+      applyPlatformWorkflowAction(
+        {
+          type: "support.ticket.create",
+          subject: "Student support request",
+          details: "A teacher must not create a ticket through the student flow.",
+          category: "account",
+          priority: "normal",
+        },
+        sessionFor("teacher")
+      )
+    ).rejects.toThrow(
+      "Role teacher cannot run support.ticket.create."
+    );
+  });
+
   it("blocks students from submitting learning work outside their enrolled course runs", async () => {
     await expect(
       applyPlatformWorkflowAction(

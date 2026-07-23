@@ -55,11 +55,11 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import {
-  getDemoUser,
   roleInspirations,
   roleMeta,
   type Role,
 } from "@/lib/platformData";
+import { requireActiveUser } from "@/lib/auth/session";
 import { getSidebarForRole } from "@/lib/rbac";
 import {
   getDirection,
@@ -70,7 +70,11 @@ import {
   type Locale,
 } from "@/lib/i18n";
 import { UiLanguageProvider } from "@/lib/i18n-context";
-import { platformStore } from "@/lib/domain/store";
+import {
+  PLATFORM_SYNC_ERROR_EVENT,
+  platformStore,
+} from "@/lib/domain/store";
+import { runPlatformWorkflowActionRequest } from "@/lib/backend/api";
 
 const iconMap = {
   Activity,
@@ -391,7 +395,7 @@ export default function PlatformShell({ role, children, title }: ShellProps) {
   const searchWrapRef = useRef<HTMLDivElement | null>(null);
   const searchButtonRef = useRef<HTMLButtonElement | null>(null);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
-  const user = getDemoUser(role);
+  const user = requireActiveUser(role);
   const meta = roleMeta[role];
   const inspiration = roleInspirations[role];
   const userScopeLabel = useMemo(() => {
@@ -445,6 +449,19 @@ export default function PlatformShell({ role, children, title }: ShellProps) {
     );
   }, [sidebarExpanded]);
 
+  useEffect(() => {
+    const onSyncError = (event: Event) => {
+      const detail = (event as CustomEvent<{ error?: string }>).detail;
+      toast.error("Change not saved", {
+        description:
+          detail?.error ?? "The server did not confirm this change.",
+      });
+    };
+    window.addEventListener(PLATFORM_SYNC_ERROR_EVENT, onSyncError);
+    return () =>
+      window.removeEventListener(PLATFORM_SYNC_ERROR_EVENT, onSyncError);
+  }, []);
+
   const searchResults = useMemo(() => {
     return platformStore
       .search(query)
@@ -459,6 +476,30 @@ export default function PlatformShell({ role, children, title }: ShellProps) {
       .slice(0, 6);
   }, [notificationVersion, role, user.id]);
   const unreadCount = notificationItems.filter(item => !item.read).length;
+
+  const markNotificationRead = async (notificationId: string) => {
+    const result = await runPlatformWorkflowActionRequest({
+      type: "notification.read",
+      notificationId,
+    });
+    if (!result.ok || !result.data) {
+      toast.error("Notification could not be updated", {
+        description: result.error,
+      });
+      return false;
+    }
+    platformStore.setState(result.data.state);
+    setNotificationVersion(version => version + 1);
+    return true;
+  };
+
+  const markAllNotificationsRead = async () => {
+    for (const notification of notificationItems.filter(item => !item.read)) {
+      const saved = await markNotificationRead(notification.id);
+      if (!saved) return;
+    }
+    toast.success(t(locale, "notificationsMarkedRead"));
+  };
 
   useEffect(() => {
     setMobileOpen(false);
@@ -939,13 +980,7 @@ export default function PlatformShell({ role, children, title }: ShellProps) {
                     <div className="platform-popover-title">
                       <strong>{t(locale, "notifications")}</strong>
                       <button
-                        onClick={() => {
-                          notificationItems.forEach(notification =>
-                            platformStore.markNotificationRead(notification.id)
-                          );
-                          setNotificationVersion(version => version + 1);
-                          toast.success(t(locale, "notificationsMarkedRead"));
-                        }}
+                        onClick={markAllNotificationsRead}
                       >
                         {t(locale, "markRead")}
                       </button>
@@ -955,9 +990,8 @@ export default function PlatformShell({ role, children, title }: ShellProps) {
                         key={item.id}
                         className="platform-notification-item"
                         role="menuitem"
-                        onClick={() => {
-                          platformStore.markNotificationRead(item.id);
-                          setNotificationVersion(version => version + 1);
+                        onClick={async () => {
+                          await markNotificationRead(item.id);
                           setNotificationsOpen(false);
                           navigate(item.href);
                         }}

@@ -45,8 +45,64 @@ afterEach(() => {
 });
 
 describe("platformStore workflow guards", () => {
+  it("keeps workflow state out of localStorage", () => {
+    const setItem = vi.mocked(window.localStorage.setItem);
+    setItem.mockClear();
+
+    platformStore.setState(platformStore.getState());
+
+    expect(setItem).not.toHaveBeenCalled();
+  });
+
+  it("rejects direct workflow mutations in a real browser surface", () => {
+    vi.stubGlobal("document", {});
+
+    expect(() =>
+      platformStore.createLead({
+        fullName: "Browser-only lead",
+        email: "browser@example.test",
+        phone: "+201000000000",
+        subject: "Arabic",
+      })
+    ).toThrow("Browser workflow mutations must use the server action API.");
+
+    vi.unstubAllGlobals();
+    vi.stubGlobal("window", { localStorage: createLocalStorageMock() });
+  });
+
+  it("rejects optimistic workflow writes for normalized sessions", () => {
+    window.localStorage.setItem(
+      "nilelearn.auth.session",
+      JSON.stringify({
+        userId: "60000000-0000-4000-8000-000000000001",
+        email: "registrar@example.test",
+        name: "Normalized Registrar",
+        roles: ["registrar"],
+        activeRole: "registrar",
+        provider: "supabase",
+        authorizationModel: "normalized",
+        branchIds: ["30000000-0000-4000-8000-000000000001"],
+        departmentIds: [],
+        expiresAt: "2099-01-01T00:00:00.000Z",
+      })
+    );
+    const before = platformStore.getState();
+
+    expect(() =>
+      platformStore.createLead({
+        fullName: "Normalized Lead",
+        email: "lead@example.test",
+        phone: "+201000000000",
+        subject: "Arabic",
+      })
+    ).toThrow(
+      "This action is unavailable until its normalized workflow repository is active."
+    );
+    expect(platformStore.getState()).toEqual(before);
+  });
+
   it("starts without hardcoded entity rows until the server snapshot hydrates it", () => {
-    window.localStorage.clear();
+    platformStore.clear();
 
     const state = platformStore.getState();
 

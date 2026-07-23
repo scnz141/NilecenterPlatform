@@ -20,14 +20,13 @@ import {
   StatusBadge,
 } from "@/components/platform/PlatformPrimitives";
 import { runPlatformWorkflowActionRequest } from "@/lib/backend/api";
-import { getActiveUser } from "@/lib/auth/session";
+import { requireActiveUser } from "@/lib/auth/session";
 import { platformStore } from "@/lib/domain/store";
 import type {
   EntityStatus,
   QuestionBankItem,
   QuizAttempt,
 } from "@/lib/domain/types";
-import { demoUsers } from "@/lib/platformData";
 
 type TeacherAssessmentView =
   | "quizzes"
@@ -128,9 +127,7 @@ export default function TeacherAssessmentPage({
   });
 
   const state = useMemo(() => platformStore.getState(), [version]);
-  const activeUser =
-    getActiveUser() ?? demoUsers.find(user => user.activeRole === "teacher");
-  const actorId = activeUser?.id ?? "usr_teacher_demo";
+  const actorId = requireActiveUser("teacher").id;
   const teacherRuns = state.courseRuns.filter(run => run.teacherId === actorId);
   const runIds = new Set(teacherRuns.map(run => run.id));
   const activeRun =

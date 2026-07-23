@@ -1,6 +1,6 @@
 # ADR-003: Moodle Read Projection Before Write Integration
 
-- Status: Accepted
+- Status: Superseded for sandbox mutation by ADR-011; retained for projection history
 - Date: 2026-07-10
 
 ## Context
@@ -18,6 +18,10 @@ activities, enrollments, completion, gradebook data, and attendance activities.
 Each run records its cursor, item results, hashes, errors, and reconciliation
 cases. Unmatched, ambiguous, stale, or conflicting records require human review.
 No Moodle write is enabled by this decision.
+
+ADR-011 now authorizes full synthetic CRUD in the dedicated Moodle sandbox.
+This ADR remains the historical contract for the first projection phase and
+does not limit the current sandbox campaign.
 
 ## Invariants
 

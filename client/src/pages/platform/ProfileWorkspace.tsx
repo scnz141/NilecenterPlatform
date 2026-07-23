@@ -14,10 +14,14 @@ import {
   changePasswordRequest,
   runPlatformWorkflowActionRequest,
 } from "@/lib/backend/api";
-import { getStoredAuthSession } from "@/lib/auth/session";
+import {
+  getStoredAuthSession,
+  requireActiveUser,
+} from "@/lib/auth/session";
 import { platformStore } from "@/lib/domain/store";
 import type {
   StaffAvailabilityStatus,
+  User,
   UserNotificationPreferences,
 } from "@/lib/domain/types";
 import { roleMeta, type Role } from "@/lib/platformData";
@@ -37,15 +41,6 @@ type ProfileDraft = {
   title: string;
   availabilityStatus: StaffAvailabilityStatus;
   notificationPreferences: UserNotificationPreferences;
-};
-
-const fallbackUserIdByRole: Record<Role, string> = {
-  student: "usr_student_demo",
-  teacher: "usr_teacher_demo",
-  registrar: "usr_registrar_demo",
-  headofdepartment: "usr_hod_demo",
-  branchadmin: "usr_branch_demo",
-  superadmin: "usr_admin_demo",
 };
 
 const titleByRole: Record<Role, string> = {
@@ -107,10 +102,15 @@ export default function ProfileWorkspace({ role }: ProfileWorkspaceProps) {
 
   const state = useMemo(() => platformStore.getState(), [version]);
   const session = getStoredAuthSession();
-  const user =
-    state.users.find(
-      item => item.id === session?.userId && item.activeRole === role
-    ) ?? state.users.find(item => item.id === fallbackUserIdByRole[role]);
+  const actor = requireActiveUser(role);
+  const user: User = state.users.find(item => item.id === actor.id) ?? {
+    id: actor.id,
+    name: actor.name,
+    email: actor.email,
+    roles: actor.roles,
+    activeRole: actor.activeRole,
+    status: "active",
+  };
   const student = state.students.find(item => item.userId === user?.id);
   const teacherProfile = state.teachers.find(item => item.userId === user?.id);
   const staffProfile =
@@ -187,6 +187,8 @@ export default function ProfileWorkspace({ role }: ProfileWorkspaceProps) {
     const result = await runPlatformWorkflowActionRequest({
       type: "profile.update",
       userId: user.id,
+      idempotencyKey: `profile.update:${crypto.randomUUID()}`,
+      expectedVersion: user.version ?? 1,
       name: draft.name,
       phone: draft.phone,
       preferredLanguage: draft.preferredLanguage,

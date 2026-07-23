@@ -116,9 +116,51 @@ export async function refreshServerSession() {
 }
 
 export function getActiveUser(): DemoUser | null {
-  const role = getStoredRole();
-  if (!role) return null;
-  return getDemoUser(role);
+  const session = getStoredAuthSession();
+  if (!session) return null;
+  const role = session.activeRole;
+  const demoMetadata = getDemoUser(role);
+  const initials = session.name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map(part => part[0]?.toUpperCase())
+    .join("");
+  const compatibilityIdentity =
+    session.provider === "demo" || session.authorizationModel === "snapshot";
+  const branchIds = session.branchIds ?? [];
+  const departmentIds = session.departmentIds ?? [];
+
+  return {
+    id: session.userId,
+    email: session.email,
+    name: session.name,
+    roles: session.roles,
+    activeRole: role,
+    branch: compatibilityIdentity
+      ? demoMetadata.branch
+      : branchIds.length
+        ? "Assigned branch"
+        : role === "superadmin"
+          ? "Global"
+          : "No branch access",
+    department: compatibilityIdentity
+      ? demoMetadata.department
+      : departmentIds.length
+        ? "Assigned department"
+        : role === "superadmin"
+          ? "Platform"
+          : "No department access",
+    avatar: initials || demoMetadata.avatar,
+  };
+}
+
+export function requireActiveUser(role?: Role): DemoUser {
+  const user = getActiveUser();
+  if (!user || (role && user.activeRole !== role)) {
+    throw new Error("An authenticated portal identity is required.");
+  }
+  return user;
 }
 
 export function canAccessRole(requiredRole: Role) {

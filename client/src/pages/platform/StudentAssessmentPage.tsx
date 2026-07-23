@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
+import { requireActiveUser } from "@/lib/auth/session";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   CheckCircle2,
   ClipboardCheck,
@@ -24,7 +25,6 @@ import type {
   PlatformState,
   QuizQuestionPreview,
 } from "@/lib/domain/types";
-import { getDemoUser } from "@/lib/platformData";
 
 type StudentAssessmentView = "assignment-detail" | "quiz-detail";
 
@@ -88,14 +88,12 @@ function mediaKindForSubmissionType(
 }
 
 function getStudentScope(state: PlatformState) {
-  const demoUser = getDemoUser("student");
-  const student =
-    state.students.find(item => item.userId === demoUser.id) ??
-    state.students[0];
+  const user = requireActiveUser("student");
+  const student = state.students.find(item => item.userId === user.id);
   return {
     student,
-    studentId: student?.id ?? "stu_demo",
-    user: demoUser,
+    studentId: student?.id ?? "",
+    user,
   };
 }
 
@@ -136,6 +134,9 @@ export default function StudentAssessmentPage({
   assignmentId?: string;
   quizId?: string;
 }) {
+  const assignmentSubmitCommandKey = useRef(
+    `assignment.submit:${crypto.randomUUID()}`
+  );
   const copy = pageCopy[view];
   const [version, setVersion] = useState(0);
   const [savingAction, setSavingAction] = useState("");
@@ -293,8 +294,11 @@ export default function StudentAssessmentPage({
       assignmentId: assignment.id,
       response: submissionText.trim(),
       pendingMedia: assignmentPendingMedia,
+      expectedVersion: assignment.version ?? 1,
+      idempotencyKey: assignmentSubmitCommandKey.current,
     });
     if (!result) return;
+    assignmentSubmitCommandKey.current = `assignment.submit:${crypto.randomUUID()}`;
     setSubmissionText("");
     setAssignmentPendingMedia([]);
     toast.success("Assignment submitted");

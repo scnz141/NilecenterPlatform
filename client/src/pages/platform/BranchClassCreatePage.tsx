@@ -1,3 +1,4 @@
+import { requireActiveUser } from "@/lib/auth/session";
 import { useMemo, useState, type FormEvent } from "react";
 import { ArrowRight, Plus } from "lucide-react";
 import { toast } from "sonner";
@@ -6,7 +7,6 @@ import PlatformShell from "@/components/platform/PlatformShell";
 import { FormFlowLayout } from "@/components/platform/PlatformLayouts";
 import { runPlatformWorkflowActionRequest } from "@/lib/backend/api";
 import { platformStore } from "@/lib/domain/store";
-import { getDemoUser } from "@/lib/platformData";
 
 export default function BranchClassCreatePage() {
   const [saving, setSaving] = useState(false);
@@ -19,7 +19,7 @@ export default function BranchClassCreatePage() {
     roomId: "",
   });
   const state = useMemo(() => platformStore.getState(), []);
-  const actorId = getDemoUser("branchadmin").id;
+  const actorId = requireActiveUser("branchadmin").id;
   const actor = state.users.find(user => user.id === actorId);
   const staffProfile = state.staffProfiles.find(
     profile => profile.userId === actorId && profile.role === "branchadmin"

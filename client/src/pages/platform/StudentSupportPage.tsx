@@ -1,3 +1,4 @@
+import { requireActiveUser } from "@/lib/auth/session";
 import { useMemo, useState, type FormEvent } from "react";
 import { CheckCircle2, Search, Send } from "lucide-react";
 import { toast } from "sonner";
@@ -12,8 +13,8 @@ import {
   StatusBadge,
 } from "@/components/platform/PlatformPrimitives";
 import { platformStore } from "@/lib/domain/store";
+import { runPlatformWorkflowActionRequest } from "@/lib/backend/api";
 import type { EntityStatus, SupportTicket } from "@/lib/domain/types";
-import { getDemoUser } from "@/lib/platformData";
 
 type TicketPriority = SupportTicket["priority"];
 
@@ -55,15 +56,20 @@ export default function StudentSupportPage({
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState("all");
   const [result, setResult] = useState("");
+  const [saving, setSaving] = useState(false);
   const [draft, setDraft] = useState<{
     subject: string;
+    details: string;
+    category: string;
     priority: TicketPriority;
   }>({
     subject: "",
+    details: "",
+    category: "learning",
     priority: "normal",
   });
   const state = useMemo(() => platformStore.getState(), [version]);
-  const user = getDemoUser("student");
+  const user = requireActiveUser("student");
   const tickets = state.supportTickets
     .filter(ticket => ticket.requesterId === user.id)
     .sort(
@@ -80,36 +86,40 @@ export default function StudentSupportPage({
       (status === "all" || ticket.status === status)
     );
   });
-  const createTicket = (event: FormEvent) => {
+  const createTicket = async (event: FormEvent) => {
     event.preventDefault();
     const subject = draft.subject.trim();
-    if (!subject) {
-      toast.error("Request subject is required");
+    if (subject.length < 4) {
+      toast.error("Request subject must contain at least 4 characters");
       return;
     }
-
-    const next = structuredClone(state);
-    const id = `ticket_${Date.now().toString(36)}`;
-    next.supportTickets = [
-      {
-        id,
-        requesterId: user.id,
-        subject,
-        status: "pending",
-        priority: draft.priority,
-        lastUpdatedAt: new Date().toISOString(),
-      },
-      ...next.supportTickets,
-    ];
-    platformStore.setState(next);
-    platformStore.audit(
-      "support.ticket_created",
-      "SupportTicket",
-      id,
-      `Created support ticket: ${subject}.`,
-      user.id
-    );
-    setDraft({ subject: "", priority: "normal" });
+    if (draft.details.trim().length < 20) {
+      toast.error("Add at least 20 characters describing the issue");
+      return;
+    }
+    setSaving(true);
+    const response = await runPlatformWorkflowActionRequest({
+      type: "support.ticket.create",
+      idempotencyKey: `support.ticket.create:${crypto.randomUUID()}`,
+      subject,
+      details: draft.details.trim(),
+      category: draft.category,
+      priority: draft.priority,
+    });
+    setSaving(false);
+    if (!response.ok || !response.data) {
+      toast.error("Support request could not be created", {
+        description: response.error,
+      });
+      return;
+    }
+    platformStore.setState(response.data.state);
+    setDraft({
+      subject: "",
+      details: "",
+      category: "learning",
+      priority: "normal",
+    });
     setResult("Your support request has been created.");
     setVersion(value => value + 1);
     toast.success("Support request created", {
@@ -145,9 +155,10 @@ export default function StudentSupportPage({
                   type="submit"
                   form="student-support-request-form"
                   className="platform-primary-button"
+                  disabled={saving}
                 >
                   <Send size={15} />
-                  Send request
+                  {saving ? "Sending request" : "Send request"}
                 </button>
               </>
             )
@@ -188,6 +199,36 @@ export default function StudentSupportPage({
                         }))
                       }
                       placeholder="Example: I need help with a class recording"
+                    />
+                  </label>
+                  <label>
+                    Category
+                    <select
+                      value={draft.category}
+                      onChange={event =>
+                        setDraft(value => ({
+                          ...value,
+                          category: event.target.value,
+                        }))
+                      }
+                    >
+                      <option value="learning">Learning</option>
+                      <option value="schedule">Schedule</option>
+                      <option value="account">Account</option>
+                      <option value="technical">Technical</option>
+                    </select>
+                  </label>
+                  <label>
+                    Details
+                    <textarea
+                      value={draft.details}
+                      onChange={event =>
+                        setDraft(value => ({
+                          ...value,
+                          details: event.target.value,
+                        }))
+                      }
+                      placeholder="Describe what happened and what you expected."
                     />
                   </label>
                   <label>

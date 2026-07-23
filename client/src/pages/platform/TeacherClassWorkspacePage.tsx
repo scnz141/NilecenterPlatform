@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   ArrowLeft,
   CalendarDays,
@@ -21,7 +21,7 @@ import {
   StatusBadge,
 } from "@/components/platform/PlatformPrimitives";
 import { runPlatformWorkflowActionRequest } from "@/lib/backend/api";
-import { getActiveUser } from "@/lib/auth/session";
+import { requireActiveUser } from "@/lib/auth/session";
 import { platformStore } from "@/lib/domain/store";
 import type {
   AttendanceStatus,
@@ -133,8 +133,10 @@ export default function TeacherClassWorkspacePage({
     Record<string, string>
   >({});
   const [attendanceSaving, setAttendanceSaving] = useState(false);
-  const activeUser = getActiveUser();
-  const actorId = activeUser?.id ?? "usr_teacher_demo";
+  const attendanceCommandKey = useRef(
+    `attendance.save:${crypto.randomUUID()}`
+  );
+  const actorId = requireActiveUser("teacher").id;
 
   useEffect(() => {
     const refreshState = () => setState(platformStore.getState());
@@ -188,6 +190,7 @@ export default function TeacherClassWorkspacePage({
 
   useEffect(() => {
     if (!classGroup || !activeSession) return;
+    attendanceCommandKey.current = `attendance.save:${activeSession.id}:${crypto.randomUUID()}`;
     const sessionKeys = new Set(
       [activeSession.id, activeSession.eventId].filter(Boolean)
     );
@@ -275,10 +278,13 @@ export default function TeacherClassWorkspacePage({
       sessionId: activeSession.id,
       statuses,
       notes: attendanceNotes,
+      expectedVersion: activeSession.attendanceVersion ?? 1,
+      idempotencyKey: attendanceCommandKey.current,
       actorId,
     });
     setAttendanceSaving(false);
     if (result.ok && result.data) {
+      attendanceCommandKey.current = `attendance.save:${activeSession.id}:${crypto.randomUUID()}`;
       platformStore.setState(result.data.state);
       setState(result.data.state);
     }

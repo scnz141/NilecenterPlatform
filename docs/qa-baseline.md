@@ -1,5 +1,9 @@
 # QA Baseline
 
+Current architecture note: ADR-011 authorizes full synthetic Moodle sandbox
+CRUD. Statements below saying a historical acceptance run made no Moodle write
+describe that run's evidence and do not restrict the current sandbox order.
+
 The disabled normalized account-invitation foundation was regression-checked
 on 2026-07-19. TypeScript, 910 unit tests, production build, disposable
 PostgreSQL invitation/email lifecycles, and the full portal suite passed. The

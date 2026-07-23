@@ -12,9 +12,9 @@ Status: accepted on 2026-07-16. The acceptance evidence is recorded in
 
 The contract covers the complete frozen alpha surface:
 
-- 282 client routes;
-- 65 workflow actions;
-- 53 server API routes;
+- 296 client routes;
+- 66 workflow actions;
+- 78 server API routes;
 - 31 approved Moodle read functions;
 - 11 bounded Moodle sandbox contract functions.
 
@@ -25,16 +25,19 @@ validation until its authority is decided explicitly.
 
 1. One record field has one writable authority at a time.
 2. Nile Learn is writable authority for identity mappings, role grants,
-   organization, admissions, delivery, attendance, finance, certificates,
-   communication, audit, and Nile-native learning records.
-3. Moodle is writable authority for Moodle-managed content, activities,
-   completion, attempts, grades, and feedback. Nile Learn receives read-only
-   projections.
-4. Nile-native and Moodle-managed assessments are separate records identified
-   by source. A route may render both, but a command must reject a target owned
-   by the other source.
-5. Sandbox write functions are contract evidence only. They do not authorize
-   production Moodle writes.
+   organization, admissions, programs and levels, class delivery, rosters,
+   schedules, rooms, attendance, finance, certificates, communication, and
+   audit.
+3. Moodle is the sole writable authority for course learning content,
+   sections, resources, assignments, submissions, quizzes, questions,
+   attempts, completion, grades, and feedback. Nile Learn receives read-only
+   projections and submits verified provider CRUD commands or authenticated
+   native Moodle launches.
+4. Legacy Nile-native learning actions are compatibility-only and must reject
+   normalized writes. They cannot create a second production authority.
+5. ADR-011 authorizes full CRUD for marker-bound synthetic data in the
+   dedicated Moodle sandbox. Production portal activation remains separately
+   gated.
 6. Browser state, titles, emails, and display names are never identity or
    authorization boundaries.
 7. Missing, stale, conflicting, or ambiguous mappings create visible
@@ -47,11 +50,11 @@ validation until its authority is decided explicitly.
 | Entry and shell         | `public_discovery`, `authentication_sessions`, `legacy_route_compatibility`, `portal_overviews`                                                                                                                                  | Nile Learn or Supabase Auth identity                                       |
 | Administration          | `identity_access_governance`, `organization_governance`, `profiles_preferences`, `platform_configuration_integrations`                                                                                                           | Nile Learn                                                                 |
 | Admissions and delivery | `admissions_student_lifecycle`, `academic_catalog_curriculum`, `class_delivery_schedule`, `attendance_exceptions`                                                                                                                | Nile Learn                                                                 |
-| Learning                | `learning_progress`, `nile_native_assignments`, `nile_native_quizzes`, `quran_learning`                                                                                                                                          | Nile Learn native records only                                             |
+| Learning                | `moodle_learning_workspace`, `moodle_assignment_workflows`, `moodle_quiz_workflows`, `quran_learning`                                                                                                                            | Moodle for learning records; Nile Learn for Quran operational review only  |
 | Operations              | `internal_communications`, `support`, `finance`, `certificates`, `reports_audit_health`, `nile_forms`                                                                                                                            | Nile Learn                                                                 |
 | Alpha compatibility     | `compatibility_state_gateway`                                                                                                                                                                                                    | Temporary server transport; underlying domain action remains authoritative |
-| Moodle projections      | `moodle_identity_projection`, `moodle_catalog_content_projection`, `moodle_enrollment_groups_projection`, `moodle_completion_projection`, `moodle_assignment_projection`, `moodle_quiz_projection`, `moodle_outcomes_projection` | Moodle, projected read-only into Nile Learn                                |
-| Moodle sandbox evidence | `moodle_sandbox_user_contract`, `moodle_sandbox_enrollment_group_contract`, `moodle_sandbox_status_contract`                                                                                                                     | Disposable sandbox only                                                    |
+| Moodle projections      | `moodle_identity_projection`, `moodle_catalog_content_projection`, `moodle_enrollment_groups_projection`, `moodle_completion_projection`, `moodle_assignment_projection`, `moodle_quiz_projection`, `moodle_outcomes_projection` | Moodle, projected into Nile Learn and edited only through Moodle commands  |
+| Moodle sandbox evidence | `moodle_sandbox_user_contract`, `moodle_sandbox_enrollment_group_contract`, `moodle_sandbox_status_contract`, `moodle_sandbox_full_crud_contract`                                                                                | Full synthetic CRUD in disposable sandbox                                  |
 
 ## Cross-Cutting Route Rules
 
@@ -60,8 +63,8 @@ validation until its authority is decided explicitly.
   its own server permission and scope gate.
 - `/app/teacher/classes/:classId/attendance` belongs to attendance, not generic
   class delivery.
-- `/app/teacher/classes/:classId/materials` belongs to Nile-native learning
-  progress, not generic class delivery.
+- `/app/teacher/classes/:classId/materials` belongs to the Moodle learning
+  workspace, not generic class delivery.
 - Report routes ending in `attendance`, `classes`, `certificates`, or `finance`
   remain report read models. They do not inherit write authority from the
   underlying operational family.

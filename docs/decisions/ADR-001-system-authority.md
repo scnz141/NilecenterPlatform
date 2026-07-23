@@ -16,10 +16,16 @@ permissions, organization, admissions, students, enrollments, course delivery,
 classes, schedules, attendance, finance, certificates, communication, and
 audit.
 
-Moodle is initially the writable authority for Moodle-managed curriculum
-content, activities, completion, attempts, grades, and feedback. Nile Learn
-stores read-only projections and mappings for those records. Nile-native
-assessments remain writable only in Nile Learn.
+Moodle is the writable authority for Moodle-managed curriculum content,
+activities, completion, attempts, grades, and feedback. Nile Learn stores
+scoped projections and mappings and submits edits through audited Moodle CRUD
+commands or native launches. Legacy Nile-native learning records are
+compatibility read models only.
+
+ADR-010 supersedes the final sentence for Moodle-managed learning records, and
+ADR-011 authorizes full synthetic CRUD testing in the dedicated sandbox. Nile
+Learn must use typed provider commands rather than create a parallel writable
+learning record.
 
 Legacy EMS is authoritative only while a finite migration is running. Accepted
 records become Nile Learn records after reconciliation and cutover. EMS never

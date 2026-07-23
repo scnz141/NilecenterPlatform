@@ -4,6 +4,11 @@ This folder contains the current local-only normalized identity/session SQL in
 manual execution order. It is a review and development bundle, not production
 promotion approval.
 
+ADR-011 authorizes full synthetic Moodle CRUD in the dedicated sandbox. These
+SQL projection packages intentionally remain read-only inside Nile Learn; all
+Moodle-owned mutations flow through command, audit, outbox, and reconciliation
+records rather than direct projection-table writes.
+
 ## Single-File Staging Bootstrap
 
 `000_nile_learn_staging_bootstrap.sql` is the single paste-ready SQL file for a

@@ -1,3 +1,4 @@
+import { requireActiveUser } from "@/lib/auth/session";
 import { useMemo, useState } from "react";
 import { Download, Search } from "lucide-react";
 import { toast } from "sonner";
@@ -14,7 +15,6 @@ import {
 import { runPlatformWorkflowActionRequest } from "@/lib/backend/api";
 import { platformStore } from "@/lib/domain/store";
 import type { PlatformState, ReportType } from "@/lib/domain/types";
-import { getDemoUser } from "@/lib/platformData";
 
 type HodReportType = Exclude<ReportType, "finance">;
 type SortKey = "record" | "status" | "metric";
@@ -68,7 +68,7 @@ function formatDate(value?: string) {
 }
 
 function getHodScope(state: PlatformState) {
-  const actorId = getDemoUser("headofdepartment").id;
+  const actorId = requireActiveUser("headofdepartment").id;
   const actor = state.users.find(user => user.id === actorId);
   const departments = state.departments.filter(
     department =>

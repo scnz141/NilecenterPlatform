@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   BookOpen,
   CalendarDays,
@@ -23,7 +23,7 @@ import {
   StatusBadge,
 } from "@/components/platform/PlatformPrimitives";
 import { runPlatformWorkflowActionRequest } from "@/lib/backend/api";
-import { getActiveUser } from "@/lib/auth/session";
+import { requireActiveUser } from "@/lib/auth/session";
 import { platformStore } from "@/lib/domain/store";
 import type {
   AssignmentSubmission,
@@ -32,7 +32,6 @@ import type {
   EntityStatus,
   QuizAttempt,
 } from "@/lib/domain/types";
-import { demoUsers } from "@/lib/platformData";
 
 type TeacherWorkView =
   | "assignments"
@@ -199,6 +198,18 @@ export default function TeacherWorkPage({
   recitationId,
 }: TeacherWorkPageProps) {
   const [state, setState] = useState(() => platformStore.getState());
+  const calendarCommandKey = useRef(
+    `class.session.create:${crypto.randomUUID()}`
+  );
+  const assignmentCreateCommandKey = useRef(
+    `assignment.create:${crypto.randomUUID()}`
+  );
+  const assignmentPublishCommandKey = useRef(
+    `assignment.publish:${crypto.randomUUID()}`
+  );
+  const assignmentGradeCommandKey = useRef(
+    `assignment.grade:${crypto.randomUUID()}`
+  );
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState<"all" | EntityStatus>("all");
   const [savingAction, setSavingAction] = useState("");
@@ -254,9 +265,7 @@ export default function TeacherWorkPage({
   );
   const [quranReviewSaved, setQuranReviewSaved] = useState(false);
 
-  const activeUser =
-    getActiveUser() ?? demoUsers.find(user => user.activeRole === "teacher");
-  const teacherId = activeUser?.id ?? "usr_teacher_demo";
+  const teacherId = requireActiveUser("teacher").id;
 
   useEffect(() => {
     const refreshState = () => setState(platformStore.getState());
@@ -596,14 +605,26 @@ export default function TeacherWorkPage({
 
   const createAssignment = async () => {
     if (!assignmentDraft.courseRunId || !assignmentDraft.title.trim()) return;
-    await runAction("Draft saved", {
+    const classGroup = teacherClassGroups.find(
+      item => item.courseRunId === assignmentDraft.courseRunId
+    );
+    if (!classGroup) {
+      setActionError("Select a course run with an assigned class.");
+      return;
+    }
+    const created = await runAction("Draft saved", {
       type: "assignment.create",
       courseRunId: assignmentDraft.courseRunId,
+      classGroupId: classGroup.id,
       title: assignmentDraft.title.trim(),
       dueAt: new Date(assignmentDraft.dueAt).toISOString(),
       submissionType: assignmentDraft.submissionType,
       rubric: splitList(assignmentDraft.rubric),
+      idempotencyKey: assignmentCreateCommandKey.current,
     });
+    if (created) {
+      assignmentCreateCommandKey.current = `assignment.create:${crypto.randomUUID()}`;
+    }
   };
 
   const updateAssignment = async () => {
@@ -626,11 +647,16 @@ export default function TeacherWorkPage({
 
   const publishAssignment = async () => {
     if (!routeAssignment) return;
-    await runAction("Assignment published", {
+    const published = await runAction("Assignment published", {
       type: "assignment.status.update",
       assignmentId: routeAssignment.id,
       status: "active",
+      expectedVersion: routeAssignment.version ?? 1,
+      idempotencyKey: assignmentPublishCommandKey.current,
     });
+    if (published) {
+      assignmentPublishCommandKey.current = `assignment.publish:${crypto.randomUUID()}`;
+    }
   };
 
   const closeAssignment = async () => {
@@ -663,8 +689,13 @@ export default function TeacherWorkPage({
       submissionId: submission.id,
       score: Math.min(100, Math.max(0, Number(assignmentScore) || 0)),
       feedback: assignmentFeedback.trim() || "Reviewed by teacher.",
+      expectedVersion: submission.version ?? 1,
+      idempotencyKey: assignmentGradeCommandKey.current,
     });
-    if (graded) setGradeSaved(true);
+    if (graded) {
+      setGradeSaved(true);
+      assignmentGradeCommandKey.current = `assignment.grade:${crypto.randomUUID()}`;
+    }
     return graded;
   };
 
@@ -746,8 +777,10 @@ export default function TeacherWorkPage({
       branchId: submitBranchId,
       roomId: usesRoom ? submitRoom?.id : undefined,
       classGroupId: usesClass ? submitClass?.id : undefined,
+      idempotencyKey: calendarCommandKey.current,
     });
     if (created) {
+      calendarCommandKey.current = `class.session.create:${crypto.randomUUID()}`;
       setCalendarResult("Your event is now on the teaching calendar.");
     }
   };

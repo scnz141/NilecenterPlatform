@@ -1,4 +1,5 @@
-import { useMemo, useState, type FormEvent } from "react";
+import { getStoredAuthSession, requireActiveUser } from "@/lib/auth/session";
+import { useMemo, useRef, useState, type FormEvent } from "react";
 import {
   ArrowRight,
   BookOpen,
@@ -25,14 +26,17 @@ import {
   DataTableCard,
   StatusBadge,
 } from "@/components/platform/PlatformPrimitives";
-import { runPlatformWorkflowActionRequest } from "@/lib/backend/api";
+import {
+  createStudentEnrollmentInvitationRequest,
+  fetchPlatformStateRequest,
+  runPlatformWorkflowActionRequest,
+} from "@/lib/backend/api";
 import { platformStore } from "@/lib/domain/store";
 import type {
   PendingMediaAttachment,
   StudentIntakeDocumentType,
   StudentStatus,
 } from "@/lib/domain/types";
-import { getDemoUser } from "@/lib/platformData";
 
 type RegistrarStudentsPageProps = {
   view?: "list" | "detail" | "create";
@@ -109,6 +113,9 @@ export default function RegistrarStudentsPage({
   const [studentStatusDrafts, setStudentStatusDrafts] = useState<
     Record<string, StudentStatus>
   >({});
+  const studentInvitationIdempotencyKey = useRef(
+    `student-invite:${crypto.randomUUID()}`
+  );
   const [studentDraft, setStudentDraft] = useState<StudentDraft>({
     fullName: "",
     email: "",
@@ -126,7 +133,7 @@ export default function RegistrarStudentsPage({
     classGroupId: "class_ar_l3_a",
   });
   const state = useMemo(() => platformStore.getState(), [version]);
-  const actorId = getDemoUser("registrar").id;
+  const actorId = requireActiveUser("registrar").id;
   const refresh = () => setVersion(current => current + 1);
   const isAnyActionPending = Boolean(pendingAction);
 
@@ -387,6 +394,81 @@ export default function RegistrarStudentsPage({
       return;
     }
 
+    const authSession = getStoredAuthSession();
+    if (
+      authSession?.provider === "supabase" &&
+      authSession.authorizationModel === "normalized"
+    ) {
+      setPendingAction("student.invitation.enrollment.create");
+      try {
+        const response = await createStudentEnrollmentInvitationRequest({
+          fullName,
+          email,
+          phone,
+          branchRef: selectedStudentCreateBranchId,
+          preferredLanguage: studentDraft.preferredLanguage,
+          courseInterest,
+          ageGroup: studentDraft.ageGroup,
+          guardianName: studentDraft.guardianName.trim() || undefined,
+          guardianPhone: studentDraft.guardianPhone.trim() || undefined,
+          currentLevel,
+          notes: studentDraft.notes.trim() || undefined,
+          courseRunId,
+          classGroupId,
+          source: "direct",
+          locale: window.localStorage.getItem("nilelearn.locale") ?? "en",
+          idempotencyKey: studentInvitationIdempotencyKey.current,
+        });
+        if (!response.ok || !response.data) {
+          throw new Error(
+            response.error ?? "Student invitation could not be queued."
+          );
+        }
+        const refreshed = await fetchPlatformStateRequest();
+        if (refreshed.ok && refreshed.data) {
+          platformStore.setState(refreshed.data.state);
+          refresh();
+        }
+        studentInvitationIdempotencyKey.current = `student-invite:${crypto.randomUUID()}`;
+        setStudentDraft(value => ({
+          ...value,
+          fullName: "",
+          email: "",
+          phone: "",
+          guardianName: "",
+          guardianPhone: "",
+          notes: "",
+        }));
+        setCreateResult({
+          studentId: response.data.invitation.studentProfileId,
+          message:
+            "The class seat is reserved. Enrollment activates after the student verifies the email and chooses a password.",
+        });
+        setCreateStep(1);
+        toast.success(
+          response.data.delivery === "dispatched"
+            ? "Student invitation sent"
+            : "Student invitation queued",
+          {
+            description:
+              response.data.delivery === "dispatched"
+                ? "The student can verify the email, set a password, and activate the assigned learning path."
+                : "The invitation and enrollment are saved for automatic delivery retry.",
+          }
+        );
+      } catch (error) {
+        toast.error("Student invitation could not be saved", {
+          description:
+            error instanceof Error
+              ? error.message
+              : "Check your session and try again.",
+        });
+      } finally {
+        setPendingAction("");
+      }
+      return;
+    }
+
     const result = await runRegistrarAction(
       "student.create",
       {
@@ -412,9 +494,9 @@ export default function RegistrarStudentsPage({
       "Identity, enrollment, class roster, teacher link, lesson path, and invoice were created."
     );
     if (result) {
-      const studentId = (
-        result as { student?: { id?: string }; id?: string }
-      ).student?.id ?? (result as { id?: string }).id;
+      const studentId =
+        (result as { student?: { id?: string }; id?: string }).student?.id ??
+        (result as { id?: string }).id;
       setStudentDraft(value => ({
         ...value,
         fullName: "",

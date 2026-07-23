@@ -24,6 +24,7 @@ import {
 } from "./platformState.js";
 import {
   getPlatformStateRepository,
+  normalizePersistedPlatformState,
   PlatformRepositoryUnavailableError,
   validatePlatformRepositoryConfiguration,
 } from "./platformRepository.js";
@@ -48,6 +49,13 @@ import { registerMoodleRoutes } from "./moodleRoutes.js";
 import { registerEmailRoutes } from "./emailRoutes.js";
 import { getEmailIntegrationStatus } from "./emailDeliveryService.js";
 import { registerUserInvitationRoutes } from "./userInvitationRoutes.js";
+import {
+  getNormalizedWorkflowRepository,
+  NormalizedWorkflowConflictError,
+  NormalizedWorkflowDeniedError,
+  NormalizedWorkflowUnavailableError,
+  NormalizedWorkflowValidationError,
+} from "./normalizedWorkflowRepository.js";
 import {
   SupabaseAuthInvitationService,
   SupabaseInvitationProviderUnavailableError,
@@ -75,6 +83,17 @@ function canResetPlatformStateForQa(req: ApiRequest) {
   );
 }
 
+function canUsePlatformStateFixtureForQa(req: ApiRequest) {
+  const localOnly =
+    process.env.NILE_PLATFORM_STATE_LOCAL_ONLY === "1" ||
+    process.env.QA_PLATFORM_STATE_LOCAL_ONLY === "1";
+  return (
+    localOnly &&
+    req.get("X-Nile-Learn-Request") === "browser" &&
+    req.get("X-Nile-Learn-QA-Fixture") === "1"
+  );
+}
+
 type ApiRequest = {
   method: string;
   body?: Record<string, unknown>;
@@ -95,20 +114,32 @@ type ApiResponse = {
 
 function rejectDurableSnapshotWorkflow(
   session: Awaited<ReturnType<typeof getRequestSession>>,
-  res: ApiResponse,
-  options: { allowNormalizedSuperAdminRead?: boolean } = {}
+  res: ApiResponse
 ) {
   if (session?.authorizationModel !== "normalized") return false;
-  if (
-    options.allowNormalizedSuperAdminRead &&
-    canReadNormalizedSuperAdminWorkspace(session)
-  ) {
-    return false;
-  }
   res.status(503).json({
     error: "Normalized workflow persistence is not active.",
   });
   return true;
+}
+
+function normalizedWorkflowErrorStatus(error: unknown) {
+  if (error instanceof NormalizedWorkflowDeniedError) return 403;
+  if (error instanceof NormalizedWorkflowConflictError) return 409;
+  if (error instanceof NormalizedWorkflowValidationError) return 422;
+  return 503;
+}
+
+function normalizedWorkflowErrorMessage(error: unknown) {
+  if (
+    error instanceof NormalizedWorkflowDeniedError ||
+    error instanceof NormalizedWorkflowConflictError ||
+    error instanceof NormalizedWorkflowValidationError ||
+    error instanceof NormalizedWorkflowUnavailableError
+  ) {
+    return error.message;
+  }
+  return "Normalized workflow persistence is unavailable.";
 }
 
 type ApiNext = () => void;
@@ -424,6 +455,9 @@ export function registerApiRoutes(app: ApiApp) {
       roles: session.roles,
       activeRole: session.activeRole,
       provider: session.provider,
+      authorizationModel: session.authorizationModel ?? "snapshot",
+      branchIds: session.branchIds ?? [],
+      departmentIds: session.departmentIds ?? [],
       expiresAt: session.expiresAt,
     });
   });
@@ -470,24 +504,40 @@ export function registerApiRoutes(app: ApiApp) {
       res.status(401).json({ error: "Sign in required." });
       return;
     }
-    if (
-      rejectDurableSnapshotWorkflow(session, res, {
-        allowNormalizedSuperAdminRead: true,
-      })
-    )
-      return;
-
     try {
+      if (session.authorizationModel === "normalized") {
+        const state =
+          await getNormalizedWorkflowRepository().readWorkspace(session);
+        res.json({
+          state,
+          persistence: "supabase",
+          syncedAt: new Date().toISOString(),
+        });
+        return;
+      }
       const snapshot = await getPlatformStateSnapshot();
       res.json({
         ...snapshot,
         state: scopePlatformStateForSession(snapshot.state, session),
       });
     } catch (error) {
-      if (error instanceof PlatformRepositoryUnavailableError) {
+      if (
+        error instanceof PlatformRepositoryUnavailableError ||
+        error instanceof NormalizedWorkflowUnavailableError ||
+        error instanceof NormalizedWorkflowDeniedError
+      ) {
         res
-          .status(503)
-          .json({ error: "Workspace data is temporarily unavailable." });
+          .status(
+            error instanceof NormalizedWorkflowDeniedError
+              ? 403
+              : 503
+          )
+          .json({
+            error:
+              error instanceof PlatformRepositoryUnavailableError
+                ? "Workspace data is temporarily unavailable."
+                : normalizedWorkflowErrorMessage(error),
+          });
         return;
       }
       throw error;
@@ -516,6 +566,50 @@ export function registerApiRoutes(app: ApiApp) {
       persistence,
       syncedAt: new Date().toISOString(),
     });
+  });
+
+  app.get("/api/platform/state/qa-fixture", async (req, res) => {
+    const session = await getApiRequestSession(req, res);
+    if (session === sessionRepositoryUnavailable) return;
+    if (!session) {
+      res.status(401).json({ error: "Sign in required." });
+      return;
+    }
+    if (!canUsePlatformStateFixtureForQa(req)) {
+      res.status(404).json({ error: "Not found." });
+      return;
+    }
+    if (rejectDurableSnapshotWorkflow(session, res)) return;
+
+    res.json(await getPlatformStateSnapshot());
+  });
+
+  app.post("/api/platform/state/qa-fixture", async (req, res) => {
+    const session = await getApiRequestSession(req, res);
+    if (session === sessionRepositoryUnavailable) return;
+    if (!session) {
+      res.status(401).json({ error: "Sign in required." });
+      return;
+    }
+    if (!canUsePlatformStateFixtureForQa(req)) {
+      res.status(404).json({ error: "Not found." });
+      return;
+    }
+    if (rejectDurableSnapshotWorkflow(session, res)) return;
+
+    try {
+      const state = normalizePersistedPlatformState(req.body?.state);
+      const persistence =
+        await getPlatformStateRepository().writeSnapshot(state);
+      res.json({ state, persistence, syncedAt: new Date().toISOString() });
+    } catch (error) {
+      res.status(400).json({
+        error:
+          error instanceof Error
+            ? error.message
+            : "The QA platform fixture is invalid.",
+      });
+    }
   });
 
   app.get("/api/certificates/verify", async (req, res) => {
@@ -580,8 +674,6 @@ export function registerApiRoutes(app: ApiApp) {
       res.status(401).json({ error: "Sign in required." });
       return;
     }
-    if (rejectDurableSnapshotWorkflow(session, res)) return;
-
     const action = parsePlatformLearningAction(req.body);
     if (!action) {
       res
@@ -591,12 +683,29 @@ export function registerApiRoutes(app: ApiApp) {
     }
 
     try {
+      if (session.authorizationModel === "normalized") {
+        const actionResult =
+          await getNormalizedWorkflowRepository().apply(action, session);
+        res.json(actionResult);
+        return;
+      }
       const actionResult = await applyPlatformLearningAction(action, session);
       res.json({
         ...actionResult,
         state: scopePlatformStateForSession(actionResult.state, session),
       });
     } catch (error) {
+      if (
+        error instanceof NormalizedWorkflowDeniedError ||
+        error instanceof NormalizedWorkflowConflictError ||
+        error instanceof NormalizedWorkflowValidationError ||
+        error instanceof NormalizedWorkflowUnavailableError
+      ) {
+        res.status(normalizedWorkflowErrorStatus(error)).json({
+          error: normalizedWorkflowErrorMessage(error),
+        });
+        return;
+      }
       res
         .status(error instanceof PlatformRepositoryUnavailableError ? 503 : 400)
         .json({
@@ -659,19 +768,6 @@ type PlatformStatePayload = Awaited<
 type RequestSession = NonNullable<
   Awaited<ReturnType<typeof getRequestSession>>
 >;
-
-function canReadNormalizedSuperAdminWorkspace(session: RequestSession) {
-  return (
-    session.authorizationModel === "normalized" &&
-    session.provider === "supabase" &&
-    session.activeRole === "superadmin" &&
-    session.roles.includes("superadmin") &&
-    Boolean(session.authUserId) &&
-    Boolean(session.activeRoleGrantId) &&
-    (session.branchIds?.length ?? 0) === 0 &&
-    (session.departmentIds?.length ?? 0) === 0
-  );
-}
 
 function quizQuestionPreviewsForRuns(
   state: PlatformStatePayload,
@@ -1633,9 +1729,6 @@ export function scopePlatformStateForSession(
   state: PlatformStatePayload,
   session: RequestSession
 ) {
-  if (canReadNormalizedSuperAdminWorkspace(session)) {
-    return state;
-  }
   const user = state.users.find(item => item.id === session.userId);
   const hasActiveRoleGrant =
     session.roles.includes(session.activeRole) &&

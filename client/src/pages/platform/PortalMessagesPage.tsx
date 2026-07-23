@@ -17,7 +17,7 @@ import {
   fetchPlatformStateRequest,
   runPlatformWorkflowActionRequest,
 } from "@/lib/backend/api";
-import { getStoredAuthSession } from "@/lib/auth/session";
+import { requireActiveUser } from "@/lib/auth/session";
 import { getMessageRecipientScope } from "@/lib/domain/messageScope";
 import {
   buildMessageConversations,
@@ -31,15 +31,6 @@ import { roleMeta, type Role } from "@/lib/platformData";
 type PortalMessagesPageProps = {
   role: Role;
   mode?: "inbox" | "compose";
-};
-
-const fallbackUserIdByRole: Record<Role, string> = {
-  student: "usr_student_demo",
-  teacher: "usr_teacher_demo",
-  registrar: "usr_registrar_demo",
-  headofdepartment: "usr_hod_demo",
-  branchadmin: "usr_branch_demo",
-  superadmin: "usr_admin_demo",
 };
 
 const titleByRole: Record<Role, string> = {
@@ -134,12 +125,16 @@ export default function PortalMessagesPage({
   const refreshInFlight = useRef(false);
 
   const state = useMemo(() => platformStore.getState(), [version]);
-  const session = getStoredAuthSession();
-  const actor =
-    state.users.find(
-      user => user.id === session?.userId && user.activeRole === role
-    ) ?? state.users.find(user => user.id === fallbackUserIdByRole[role]);
-  const actorId = actor?.id ?? fallbackUserIdByRole[role];
+  const activeUser = requireActiveUser(role);
+  const actor: User = state.users.find(user => user.id === activeUser.id) ?? {
+    id: activeUser.id,
+    name: activeUser.name,
+    email: activeUser.email,
+    roles: activeUser.roles,
+    activeRole: activeUser.activeRole,
+    status: "active",
+  };
+  const actorId = actor.id;
   const inboxHref = messagesHref(role);
 
   const recipientScope = useMemo(

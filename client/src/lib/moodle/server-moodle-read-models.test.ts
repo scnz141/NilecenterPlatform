@@ -221,10 +221,14 @@ describe("Moodle provider-neutral read models", () => {
             visible: 1,
             completion: 2,
             url: privateUrl,
+            dates: [{ label: "Due", timestamp: observedAt }],
             contents: [
               {
                 filename: "private.pdf",
                 fileurl: privateUrl,
+                filesize: 4096,
+                mimetype: "application/pdf",
+                timemodified: observedAt,
                 author: privateEmail,
               },
             ],
@@ -279,6 +283,19 @@ describe("Moodle provider-neutral read models", () => {
           title: "Welcome",
           visible: true,
           completionTracking: "automatic",
+          launchAvailable: true,
+          dates: [{ label: "Due", at: observedAtIso }],
+          resources: [
+            {
+              resourceId: "81:1",
+              name: "private.pdf",
+              mimeType: "application/pdf",
+              sizeBytes: 4096,
+              kind: "pdf",
+              modifiedAt: observedAtIso,
+              external: undefined,
+            },
+          ],
         },
       ],
     });

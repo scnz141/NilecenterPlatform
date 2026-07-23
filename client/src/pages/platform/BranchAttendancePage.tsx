@@ -1,3 +1,4 @@
+import { requireActiveUser } from "@/lib/auth/session";
 import { useEffect, useMemo, useState } from "react";
 import { Check, CircleSlash, Clock3, CircleX, Users } from "lucide-react";
 import { toast } from "sonner";
@@ -8,10 +9,8 @@ import {
   StatusBadge,
 } from "@/components/platform/PlatformPrimitives";
 import { runPlatformWorkflowActionRequest } from "@/lib/backend/api";
-import { getActiveUser } from "@/lib/auth/session";
 import { platformStore } from "@/lib/domain/store";
 import type { AttendanceStatus } from "@/lib/domain/types";
-import { getDemoUser } from "@/lib/platformData";
 
 const attendanceOptions: {
   value: AttendanceStatus;
@@ -66,8 +65,7 @@ export default function BranchAttendancePage() {
     tone: "success" | "error";
     message: string;
   } | null>(null);
-  const activeUser = getActiveUser();
-  const actorId = activeUser?.id ?? getDemoUser("branchadmin").id;
+  const actorId = requireActiveUser("branchadmin").id;
 
   useEffect(() => {
     const refreshState = () => setState(platformStore.getState());

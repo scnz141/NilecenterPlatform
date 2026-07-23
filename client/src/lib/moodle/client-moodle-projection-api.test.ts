@@ -146,6 +146,18 @@ const contentBody = () => ({
             title: "Welcome",
             visible: true,
             completionTracking: "manual",
+            launchAvailable: true,
+            dates: [{ label: "Due", at: "2026-07-18T10:00:00.000Z" }],
+            resources: [
+              {
+                resourceId: "81:1",
+                name: "course-guide.pdf",
+                mimeType: "application/pdf",
+                sizeBytes: 4096,
+                kind: "pdf",
+                modifiedAt: "2026-07-17T09:00:00.000Z",
+              },
+            ],
           },
         ],
       },

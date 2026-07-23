@@ -1,3 +1,4 @@
+import { requireActiveUser } from "@/lib/auth/session";
 import { useMemo, useState } from "react";
 import {
   ArrowRight,
@@ -31,7 +32,6 @@ import type {
   Certificate,
   PlatformState,
 } from "@/lib/domain/types";
-import { getDemoUser } from "@/lib/platformData";
 
 type HodWorkflowPageId =
   | "courses"
@@ -179,7 +179,7 @@ function getFutureDateInput(days = 7) {
 }
 
 function buildHodScope(state: PlatformState): ScopedHodData {
-  const actorId = getDemoUser("headofdepartment").id;
+  const actorId = requireActiveUser("headofdepartment").id;
   const actor = state.users.find(user => user.id === actorId);
   const departments = state.departments.filter(
     department =>

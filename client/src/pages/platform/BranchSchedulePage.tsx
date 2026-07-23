@@ -1,3 +1,4 @@
+import { requireActiveUser } from "@/lib/auth/session";
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { CalendarDays, Plus, Search } from "lucide-react";
 import { Link } from "wouter";
@@ -14,7 +15,6 @@ import {
 import { runPlatformWorkflowActionRequest } from "@/lib/backend/api";
 import { platformStore } from "@/lib/domain/store";
 import type { CalendarEventType, EntityStatus } from "@/lib/domain/types";
-import { getDemoUser } from "@/lib/platformData";
 
 const branchEventTypes: CalendarEventType[] = [
   "live_session",
@@ -74,7 +74,7 @@ export default function BranchSchedulePage({
   });
 
   const state = useMemo(() => platformStore.getState(), [version]);
-  const actorId = getDemoUser("branchadmin").id;
+  const actorId = requireActiveUser("branchadmin").id;
   const actor = state.users.find(user => user.id === actorId);
   const staffProfile = state.staffProfiles.find(
     profile => profile.userId === actorId && profile.role === "branchadmin"

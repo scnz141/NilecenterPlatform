@@ -168,7 +168,7 @@ proven. It should not be replaced by the mockup shell.
 | Assessment management         | Status filters and grading progress                    | Keep teacher authoring, HOD governance, and student attempts on separate authorized routes.            |
 | Assessment review             | Evidence and rubric side by side                       | Preserve immutable submission evidence, grading authority, and conflict handling.                      |
 | Calendar and scheduling       | Calendar plus selected-day agenda                      | Keep branch, registrar, teacher, and learner scope distinct; no meeting-provider claims.               |
-| Learning experience           | Strong player and lesson outline                       | Use existing lesson state and Moodle read authority; do not invent media or downloadable assets.       |
+| Learning experience           | Strong player and lesson outline                       | Use Moodle projections and audited CRUD command authority; do not invent media or downloadable assets. |
 | Messaging                     | Strong master-detail composition                       | Preserve participant authorization, mobile thread navigation, and message ownership.                   |
 | Profile and settings          | Clear grouped preferences                              | Show only editable fields and real security capabilities. Do not claim 2FA without implementation.     |
 | Progress and outcomes         | Clear progress summary                                 | Use scoped, explainable data; avoid synthetic recommendations and decorative analytics.                |
@@ -283,7 +283,7 @@ Every runtime UI slice must:
 2. state the page job, authorized actions, scope, data source, and all relevant
    states before editing;
 3. preserve route paths, server actions, persistence, auth, RBAC, audit,
-   Moodle read boundaries, and Nile Forms authority;
+   Moodle projection/CRUD boundaries, and Nile Forms authority;
 4. use existing shell, primitives, tokens, icons, and layout classes before
    adding abstractions;
 5. update focused tests only when structure or intentional behavior requires

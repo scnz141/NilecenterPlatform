@@ -84,6 +84,8 @@ export type PlatformLearningAction =
       pendingMedia?: PendingMediaAttachment[];
       studentId?: string;
       actorId?: string;
+      idempotencyKey?: string;
+      expectedVersion?: number;
     }
   | {
       type: "quiz.submit";
@@ -98,9 +100,11 @@ export type CreateLeadActionInput = Pick<
   Lead,
   "fullName" | "email" | "phone" | "subject" | "notes"
 > & {
+  branchId?: string;
   country?: string;
   source?: Lead["source"];
   sourceKey?: string;
+  idempotencyKey?: string;
 };
 
 export type CreateApplicationActionInput = Pick<
@@ -114,6 +118,7 @@ export type CreateApplicationActionInput = Pick<
   notes?: string;
   source?: Lead["source"];
   sourceKey?: string;
+  idempotencyKey?: string;
 };
 
 export type CreatePlacementActionInput = Pick<
@@ -123,16 +128,18 @@ export type CreatePlacementActionInput = Pick<
   branchId?: string;
   leadId?: string;
   sourceKey?: string;
+  idempotencyKey?: string;
 };
 
 export type CreateSupportTicketCommand = {
-  requesterId: string;
+  requesterId?: string;
   subject: string;
   details: string;
   category: string;
   priority: SupportTicket["priority"];
-  actorId: string;
+  actorId?: string;
   sourceKey?: string;
+  idempotencyKey?: string;
 };
 
 export type CreateCurriculumModuleActionInput = Pick<
@@ -159,6 +166,7 @@ export type CreateCalendarEventActionInput = {
   branchId?: string;
   roomId?: string;
   classGroupId?: string;
+  idempotencyKey?: string;
 };
 
 export type RescheduleClassSessionActionInput = {
@@ -189,10 +197,12 @@ export type ReviewAttendanceExceptionActionInput = {
 
 export type CreateAssignmentActionInput = {
   courseRunId: string;
+  classGroupId?: string;
   title: string;
   dueAt: string;
   submissionType: "text" | "file" | "audio" | "video";
   rubric: string[];
+  idempotencyKey?: string;
 };
 
 export type UpdateAssignmentActionInput = {
@@ -207,6 +217,8 @@ export type UpdateAssignmentStatusActionInput = {
   assignmentId: string;
   status: Extract<EntityStatus, "active" | "completed" | "cancelled">;
   reason?: string;
+  idempotencyKey?: string;
+  expectedVersion?: number;
 };
 
 export type CreateQuizActionInput = {
@@ -538,6 +550,8 @@ export type UpdateProfileActionInput = {
   title?: string;
   availabilityStatus?: StaffAvailabilityStatus;
   actorId?: string;
+  idempotencyKey?: string;
+  expectedVersion?: number;
 };
 
 export type PlatformWorkflowAction =
@@ -552,6 +566,13 @@ export type PlatformWorkflowAction =
   | ({ type: "student.create" } & CreateStudentActionInput)
   | ({ type: "student.status.update" } & UpdateStudentStatusActionInput)
   | ({ type: "student.document.add" } & AddStudentDocumentActionInput)
+  | ({ type: "support.ticket.create" } & CreateSupportTicketCommand)
+  | {
+      type: "audit.export";
+      rowCount: number;
+      format: "csv";
+      actorId?: string;
+    }
   | ({ type: "profile.update" } & UpdateProfileActionInput)
   | ({ type: "user.update" } & UpdateUserActionInput)
   | ({ type: "permission.update" } & UpdatePermissionActionInput)
@@ -585,12 +606,6 @@ export type PlatformWorkflowAction =
       type: "material.publish.update";
       actorId?: string;
     } & UpdateMaterialPublishActionInput)
-  | {
-      type: "record.save";
-      module: string;
-      payload: Record<string, string>;
-      actorId?: string;
-    }
   | ({
       type: "assignment.create";
       actorId?: string;
@@ -614,6 +629,8 @@ export type PlatformWorkflowAction =
       score: number;
       feedback: string;
       actorId?: string;
+      idempotencyKey?: string;
+      expectedVersion?: number;
     }
   | {
       type: "quiz.review";
@@ -628,6 +645,8 @@ export type PlatformWorkflowAction =
       sessionId: string;
       statuses: Record<string, AttendanceStatus>;
       notes?: Record<string, string>;
+      expectedVersion?: number;
+      idempotencyKey?: string;
       actorId?: string;
     }
   | ({
@@ -692,12 +711,16 @@ export type PlatformWorkflowAction =
       score: number;
       notes: string;
       actorId?: string;
+      idempotencyKey?: string;
+      expectedVersion?: number;
     }
   | {
       type: "lead.convert";
       leadId: string;
       branchId?: string;
       actorId?: string;
+      idempotencyKey?: string;
+      expectedVersion?: number;
     }
   | { type: "application.convert"; applicationId: string; actorId?: string }
   | {
@@ -1696,8 +1719,9 @@ export function applyCreateSupportTicket(
     : undefined;
   if (replayTicket) return replayTicket;
 
+  const requesterId = input.requesterId?.trim();
   const requester = state.users.find(
-    user => user.id === input.requesterId && user.status === "active"
+    user => user.id === requesterId && user.status === "active"
   );
   const subject = input.subject.trim();
   const details = input.details.trim();
@@ -1817,24 +1841,6 @@ function applyUpdateMaterialPublish(
     input.actorId ?? "usr_teacher_demo"
   );
   return updated;
-}
-
-function applySaveOperationalRecord(
-  state: PlatformState,
-  input: { module: string; payload: Record<string, string>; actorId?: string },
-  ctx: MutationContext
-) {
-  const entityId = ctx.createId("record");
-  const audit = appendAudit(
-    state,
-    ctx,
-    "record.saved",
-    input.module,
-    entityId,
-    `Saved ${input.module} record: ${input.payload.title ?? input.payload.name ?? entityId}.`,
-    input.actorId ?? "usr_admin_demo"
-  );
-  return { entityId, audit };
 }
 
 function teacherActor(state: PlatformState, actorId?: string) {
@@ -7511,6 +7517,34 @@ export function applyPlatformWorkflowAction(
         result,
       };
     }
+    case "support.ticket.create": {
+      const result = applyCreateSupportTicket(state, action, ctx);
+      return {
+        action: "support.ticket_created",
+        entityType: "SupportTicket",
+        entityId: result.id,
+        summary: `Created support ticket ${result.subject}.`,
+        result,
+      };
+    }
+    case "audit.export": {
+      const audit = appendAudit(
+        state,
+        ctx,
+        "audit.exported",
+        "AuditLog",
+        "filtered",
+        `Exported ${action.rowCount} audit row(s) as ${action.format.toUpperCase()}.`,
+        action.actorId
+      );
+      return {
+        action: "audit.exported",
+        entityType: "AuditLog",
+        entityId: audit.id,
+        summary: audit.summary,
+        result: audit,
+      };
+    }
     case "profile.update": {
       const result = applyUpdateProfile(state, action, ctx);
       return {
@@ -7702,16 +7736,6 @@ export function applyPlatformWorkflowAction(
         entityType: "LessonResource",
         entityId: result.id,
         summary: `${result.title} marked ${result.published ? "published" : "unpublished"}.`,
-        result,
-      };
-    }
-    case "record.save": {
-      const result = applySaveOperationalRecord(state, action, ctx);
-      return {
-        action: "record.saved",
-        entityType: action.module,
-        entityId: result.entityId,
-        summary: result.audit.summary,
         result,
       };
     }

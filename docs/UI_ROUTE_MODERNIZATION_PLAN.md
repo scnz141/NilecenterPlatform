@@ -40,8 +40,10 @@ template. Each route family needs a page-type-specific solution.
 
 - Preserve existing routes, business logic, RBAC, server-action gates,
   persistence, audit evidence, and role scopes.
-- Do not activate Moodle, EMS, payment, email/SMS/WhatsApp, meeting, or
-  production-media integrations.
+- This UI-only plan must not activate providers. ADR-011 separately authorizes
+  full synthetic Moodle sandbox CRUD; production Moodle, EMS, payment,
+  email/SMS/WhatsApp, meeting, and media activation remain outside this UI
+  slice.
 - Do not create a new generic `FeaturePage` replacement.
 - Do not add charts merely to fill space. A chart must answer an operational
   question and have text alternatives.

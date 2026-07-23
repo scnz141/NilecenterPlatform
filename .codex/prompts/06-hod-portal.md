@@ -6,15 +6,22 @@ Build `/app/hod/*` for departments, programs, courses, Moodle source, levels, cu
 
 ## PLAN
 
-- Map academic ownership across departments, programs, courses, levels, modules, lessons, and teachers.
+- Map Nile departments, programs, levels, offerings, classes, and teachers to
+  versioned Moodle templates, delivery courses, sections, activities, and
+  question-bank contexts.
 
 ## IMPLEMENT
 
-- Build governance workflows for curriculum, module creation, teacher/class oversight, assessments, and certificates.
+- Build Nile governance for catalog mapping, teacher/class oversight,
+  certificate eligibility, and reports.
+- Manage Moodle template/course curriculum through full allowlisted CRUD or an
+  authenticated native Moodle authoring launch; never create parallel native
+  Nile learning records.
 
 ## VERIFY
 
-- Create/update curriculum module, inspect Moodle source, approve/issue certificates, test reports.
+- Create/update/archive a synthetic Moodle curriculum module, inspect read-back
+  and reconciliation, approve/issue certificates, and test reports.
 - Run `scripts/verify.sh`.
 
 ## REVIEW

@@ -8,7 +8,11 @@ import {
   type AssignTeacherActionInput,
   type PlatformWorkflowAction,
 } from "./actions";
-import { runPlatformWorkflowActionRequest } from "../backend/api";
+import {
+  fetchPlatformStateRequest,
+  runPlatformWorkflowActionRequest,
+} from "../backend/api";
+import { getStoredAuthSession } from "../auth/session";
 import type {
   AttendanceStatus,
   AuditLog,
@@ -32,8 +36,8 @@ import type {
   ReportType,
 } from "./types";
 
-const STORAGE_KEY = "nilelearn.platform.state.v1";
 const PLATFORM_STATE_UPDATED_EVENT = "nilelearn:platform-state-updated";
+export const PLATFORM_SYNC_ERROR_EVENT = "nilelearn:platform-sync-error";
 
 type CreateLeadInput = Pick<
   Lead,
@@ -174,6 +178,9 @@ function normalizeStoredState(value: unknown): PlatformState {
 }
 
 class PlatformStore {
+  private state: PlatformState | null = null;
+  private syncQueue: Promise<void> = Promise.resolve();
+
   private appendAudit(
     state: PlatformState,
     action: string,
@@ -210,29 +217,23 @@ class PlatformStore {
   }
 
   getState(): PlatformState {
-    if (typeof window === "undefined") return createEmptyState();
-    const raw = window.localStorage.getItem(STORAGE_KEY);
-    if (!raw) {
-      const state = createEmptyState();
-      this.setState(state);
-      return state;
-    }
-    try {
-      return normalizeStoredState(JSON.parse(raw));
-    } catch {
-      const state = createEmptyState();
-      this.setState(state);
-      return state;
-    }
+    this.state ??= createEmptyState();
+    return JSON.parse(JSON.stringify(this.state)) as PlatformState;
   }
 
   reset() {
     this.setState(cloneSeed());
   }
 
+  clear() {
+    this.setState(createEmptyState());
+  }
+
   setState(state: PlatformState) {
+    this.state = normalizeStoredState(
+      JSON.parse(JSON.stringify(state)) as PlatformState
+    );
     if (typeof window === "undefined") return;
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
     if (
       typeof window.dispatchEvent === "function" &&
       typeof CustomEvent !== "undefined"
@@ -241,26 +242,64 @@ class PlatformStore {
     }
   }
 
-  private syncAction(action: PlatformWorkflowAction) {
+  private syncAction(
+    action: PlatformWorkflowAction,
+    previousState: PlatformState
+  ) {
     if (
       typeof window === "undefined" ||
       typeof window.dispatchEvent !== "function"
     )
       return;
-    runPlatformWorkflowActionRequest(action).then(result => {
-      if (!result.ok || !result.data) return;
-      this.setState(result.data.state);
+    this.syncQueue = this.syncQueue.then(async () => {
+      const result = await runPlatformWorkflowActionRequest(action);
+      if (result.ok && result.data) {
+        this.setState(result.data.state);
+        return;
+      }
+
+      const authoritative = await fetchPlatformStateRequest();
+      if (authoritative.ok && authoritative.data) {
+        this.setState(authoritative.data.state);
+      } else {
+        this.setState(previousState);
+      }
+      if (typeof CustomEvent !== "undefined") {
+        window.dispatchEvent(
+          new CustomEvent(PLATFORM_SYNC_ERROR_EVENT, {
+            detail: {
+              action: action.type,
+              error:
+                result.error ??
+                authoritative.error ??
+                "The change was not saved by the server.",
+            },
+          })
+        );
+      }
     });
   }
 
   applyAction(action: PlatformWorkflowAction) {
+    if (typeof window !== "undefined" && typeof document !== "undefined") {
+      throw new Error(
+        "Browser workflow mutations must use the server action API."
+      );
+    }
+    const session = getStoredAuthSession();
+    if (session?.authorizationModel === "normalized") {
+      throw new Error(
+        "This action is unavailable until its normalized workflow repository is active."
+      );
+    }
     const state = this.getState();
+    const previousState = JSON.parse(JSON.stringify(state)) as PlatformState;
     const result = applyPlatformWorkflowAction(state, action, {
       createId,
       now,
     });
     this.setState(state);
-    this.syncAction(action);
+    this.syncAction(action, previousState);
     return result;
   }
 
@@ -271,6 +310,9 @@ class PlatformStore {
     summary: string,
     actorId = "usr_admin_demo"
   ) {
+    if (typeof window !== "undefined" && typeof document !== "undefined") {
+      throw new Error("Browser audit writes must use the server action API.");
+    }
     const state = this.getState();
     const audit = this.appendAudit(
       state,
@@ -303,19 +345,6 @@ class PlatformStore {
   createPlacementBooking(input: CreatePlacementInput) {
     return this.applyAction({ type: "placement.create", ...input })
       .result as PlacementTestBooking;
-  }
-
-  saveOperationalRecord(
-    module: string,
-    payload: Record<string, string>,
-    actorId = "usr_admin_demo"
-  ) {
-    return (
-      this.applyAction({ type: "record.save", module, payload, actorId })
-        .result as {
-        entityId: string;
-      }
-    ).entityId;
   }
 
   startLesson(

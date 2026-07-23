@@ -140,6 +140,8 @@ run_prettier_check() {
     scripts/validate-phase6h3-moodle-grade-outcome-pglite.mjs
     scripts/validate-phase6h4-moodle-activity-outcome-schema.mjs
     scripts/validate-phase6h4-moodle-activity-outcome-pglite.mjs
+    scripts/validate-phase6k-moodle-command-contract-schema.mjs
+    scripts/validate-phase6k-moodle-command-contract-pglite.mjs
     scripts/validate-phase1-pglite.mjs
     scripts/validate-phase2-session-schema.mjs
     scripts/validate-phase2-session-pglite.mjs
@@ -509,6 +511,16 @@ fi
 if has_script "check:phase6h4-moodle-activity-outcome:runtime"; then
   run_step "Phase 6H4 Moodle activity outcome PostgreSQL runtime" \
     run_package_script check:phase6h4-moodle-activity-outcome:runtime
+fi
+
+if has_script "check:phase6k-moodle-command-contract"; then
+  run_step "Phase 6K Moodle command contract schema" \
+    run_package_script check:phase6k-moodle-command-contract
+fi
+
+if has_script "check:phase6k-moodle-command-contract:runtime"; then
+  run_step "Phase 6K Moodle command contract PostgreSQL runtime" \
+    run_package_script check:phase6k-moodle-command-contract:runtime
 fi
 
 if has_script "check:email-delivery"; then

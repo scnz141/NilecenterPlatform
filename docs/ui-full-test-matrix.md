@@ -103,7 +103,7 @@ These public routes are now included in `npm run qa:portals` for render, control
 | Support           | `/app/student/support`                           | Support/contact action, form states.                               |
 | Profile           | `/app/student/profile`                           | Profile data, edit/save if supported, password/session boundaries. |
 | Quran progress    | `/app/student/quran-progress`                    | Submit recitation, progress records, no teacher review controls.   |
-| Moodle            | `/app/student/moodle-source`                     | Placeholder/status copy, no live integration assumptions.          |
+| Moodle            | `/app/student/moodle-source`                     | Scoped projection states; CRUD remains role- and activation-gated. |
 
 ## Teacher Portal Pages
 
@@ -126,7 +126,7 @@ These public routes are now included in `npm run qa:portals` for render, control
 | Reports           | `/app/teacher/reports`                     | Teacher-scoped rows only.                                           |
 | Profile           | `/app/teacher/profile`                     | Account/teaching profile data.                                      |
 | Quran review      | `/app/teacher/quran-review`                | Review recitation, update Quran progress, approve.                  |
-| Moodle            | `/app/teacher/moodle-source`               | Placeholder/status copy, no live integration assumptions.           |
+| Moodle            | `/app/teacher/moodle-source`               | Scoped projection plus approved command/launch states.              |
 
 ## Registrar Portal Pages
 
@@ -151,22 +151,22 @@ These public routes are now included in `npm run qa:portals` for render, control
 
 ## HOD Portal Pages
 
-| Page         | Route                    | Required UI tests                                               |
-| ------------ | ------------------------ | --------------------------------------------------------------- |
-| Dashboard    | `/app/hod/dashboard`     | Academic health, curriculum, teachers, certificate approvals.   |
-| Departments  | `/app/hod/departments`   | Department data and scope.                                      |
-| Programs     | `/app/hod/programs`      | Program list/status.                                            |
-| Courses      | `/app/hod/courses`       | Update scoped course status.                                    |
-| Moodle       | `/app/hod/moodle-source` | Placeholder/status copy, no live sync assumptions.              |
-| Levels       | `/app/hod/levels`        | Level data and curriculum relation.                             |
-| Curriculum   | `/app/hod/curriculum`    | Create module, persist/audit.                                   |
-| Teachers     | `/app/hod/teachers`      | Teacher performance/scope.                                      |
-| Classes      | `/app/hod/classes`       | Department classes only.                                        |
-| Schedule     | `/app/hod/schedule`      | Academic schedule state.                                        |
-| Assessments  | `/app/hod/assessments`   | Create assessment, grade department submission.                 |
-| Certificates | `/app/hod/certificates`  | Block issue before approval, approve/issue, reject with reason. |
-| Reports      | `/app/hod/reports`       | Academic reports only, finance excluded, save preset.           |
-| Messages     | `/app/hod/messages`      | Department-scoped message and audit.                            |
+| Page         | Route                    | Required UI tests                                                       |
+| ------------ | ------------------------ | ----------------------------------------------------------------------- |
+| Dashboard    | `/app/hod/dashboard`     | Academic health, curriculum, teachers, certificate approvals.           |
+| Departments  | `/app/hod/departments`   | Department data and scope.                                              |
+| Programs     | `/app/hod/programs`      | Program list/status.                                                    |
+| Courses      | `/app/hod/courses`       | Update scoped course status.                                            |
+| Moodle       | `/app/hod/moodle-source` | Template mappings, projection, CRUD command, and reconciliation states. |
+| Levels       | `/app/hod/levels`        | Level data and curriculum relation.                                     |
+| Curriculum   | `/app/hod/curriculum`    | Create module, persist/audit.                                           |
+| Teachers     | `/app/hod/teachers`      | Teacher performance/scope.                                              |
+| Classes      | `/app/hod/classes`       | Department classes only.                                                |
+| Schedule     | `/app/hod/schedule`      | Academic schedule state.                                                |
+| Assessments  | `/app/hod/assessments`   | Create assessment, grade department submission.                         |
+| Certificates | `/app/hod/certificates`  | Block issue before approval, approve/issue, reject with reason.         |
+| Reports      | `/app/hod/reports`       | Academic reports only, finance excluded, save preset.                   |
+| Messages     | `/app/hod/messages`      | Department-scoped message and audit.                                    |
 
 ## Branch Admin Portal Pages
 
@@ -201,7 +201,7 @@ These public routes are now included in `npm run qa:portals` for render, control
 | Courses            | `/app/admin/courses`            | Admin course status governance.                                              |
 | Certificates       | `/app/admin/certificates`       | Certificate governance view, no HOD-only confusion.                          |
 | Schedule           | `/app/admin/schedule`           | Platform schedule view.                                                      |
-| Moodle             | `/app/admin/moodle-source`      | Placeholder/status copy, no live sync assumptions.                           |
+| Moodle             | `/app/admin/moodle-source`      | Capability, mapping, command, failure, and reconciliation states.            |
 | Settings           | `/app/admin/settings`           | Save platform configuration audit.                                           |
 | Connections        | `/app/admin/integrations`       | Check placeholder provider, logs result, no real external calls.             |
 | Activity log       | `/app/admin/audit-logs`         | Activity rows, filters, no private secret leakage.                           |

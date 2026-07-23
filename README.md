@@ -1,6 +1,11 @@
 # Nile Center Learning Platform
 
-Nile Learn is a Vite, React, TypeScript, Tailwind CSS, Radix/shadcn-style learning platform for Nile Center. It includes public course discovery, authentication screens, protected role-based portals, a replaceable local platform store, rich seed data, RBAC helpers, i18n/RTL scaffolding, Moodle/EMS integration placeholders, and an admin blueprint for module ownership.
+Nile Learn is a Vite, React, TypeScript learning platform for Nile Center. It
+includes public course discovery, authentication, six protected role portals,
+RBAC, i18n/RTL scaffolding, normalized integration foundations, and
+Moodle-owned learning workflows. The dedicated Moodle sandbox is approved for
+full synthetic CRUD under ADR-011; production portal activation remains gated
+by the master plan.
 
 ## Run
 

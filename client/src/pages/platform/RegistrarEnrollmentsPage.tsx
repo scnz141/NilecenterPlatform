@@ -1,3 +1,4 @@
+import { requireActiveUser } from "@/lib/auth/session";
 import { useMemo, useState } from "react";
 import { CheckCircle2, UserPlus } from "lucide-react";
 import { toast } from "sonner";
@@ -13,7 +14,6 @@ import {
 } from "@/components/platform/PlatformPrimitives";
 import { runPlatformWorkflowActionRequest } from "@/lib/backend/api";
 import { platformStore } from "@/lib/domain/store";
-import { getDemoUser } from "@/lib/platformData";
 
 type AssignmentDraft = {
   courseRunId: string;
@@ -50,7 +50,7 @@ export default function RegistrarEnrollmentsPage({
   const [activationSaved, setActivationSaved] = useState(false);
 
   const state = useMemo(() => platformStore.getState(), [version]);
-  const actorId = getDemoUser("registrar").id;
+  const actorId = requireActiveUser("registrar").id;
   const refresh = () => setVersion(current => current + 1);
   const isAnyActionPending = Boolean(pendingAction);
   const isActionPending = (actionKey: string) => pendingAction === actionKey;

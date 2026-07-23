@@ -23,9 +23,10 @@ UI work also requires `DESIGN.md`, `docs/DESIGN_V2.md`, and
   updated accepted baseline.
 - Preserve server-derived identity and scope, RBAC, RLS, validation, action
   gates, audit logging, and fake-only demo data.
-- Live Moodle, EMS, payment, email/SMS/WhatsApp, meeting, and production media
-  integrations are prohibited until their master-plan phase is explicitly
-  approved.
+- Full synthetic Moodle CRUD is approved only in the dedicated sandbox under
+  ADR-011 and the current master-plan checkpoint. Production Moodle activation,
+  EMS, payment, email/SMS/WhatsApp, meeting, and production media integrations
+  remain prohibited until their master-plan phase is explicitly approved.
 - Legacy staff credentials and browser automation are discovery tools only.
   They are never production integration mechanisms.
 - A live provider requires server-only credentials, a threat and data design,

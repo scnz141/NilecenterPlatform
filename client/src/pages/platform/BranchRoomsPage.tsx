@@ -1,3 +1,4 @@
+import { requireActiveUser } from "@/lib/auth/session";
 import { useMemo, useState, type FormEvent } from "react";
 import { Plus, Search } from "lucide-react";
 import { toast } from "sonner";
@@ -14,7 +15,6 @@ import {
 import { runPlatformWorkflowActionRequest } from "@/lib/backend/api";
 import { platformStore } from "@/lib/domain/store";
 import type { EntityStatus } from "@/lib/domain/types";
-import { getDemoUser } from "@/lib/platformData";
 
 type RoomStatus = Extract<EntityStatus, "active" | "pending" | "paused">;
 
@@ -51,7 +51,7 @@ export default function BranchRoomsPage({
   });
 
   const state = useMemo(() => platformStore.getState(), [version]);
-  const actorId = getDemoUser("branchadmin").id;
+  const actorId = requireActiveUser("branchadmin").id;
   const actor = state.users.find(user => user.id === actorId);
   const staffProfile = state.staffProfiles.find(
     profile => profile.userId === actorId && profile.role === "branchadmin"

@@ -263,7 +263,8 @@
         ],
         "workflowActions": [
           "^(application[.](convert|create)|enrollment[.](activate|status[.]update|transfer)|lead[.](convert|create)|placement[.](create|result[.]record)|student[.](create|document[.]add|status[.]update))$"
-        ]
+        ],
+        "serverApiRoutes": ["^POST /api/registrar/student-invitations$"]
       }
     },
     {
@@ -348,22 +349,22 @@
       }
     },
     {
-      "id": "nile_native_assignments",
-      "name": "Nile-native assignments, submissions, grading, and feedback",
-      "nileLearnAuthority": "canonical_writable",
-      "moodleAuthority": "none",
-      "projectionDirection": "none",
-      "externalId": "source_system must be nile_learn; Moodle activity IDs are not accepted",
-      "conflictRule": "A record is Nile-native or Moodle-managed, never both.",
+      "id": "moodle_assignment_workflows",
+      "name": "Moodle-owned assignments, submissions, grading, and feedback",
+      "nileLearnAuthority": "read_only_projection",
+      "moodleAuthority": "canonical_writable",
+      "projectionDirection": "moodle_to_nile_learn",
+      "externalId": "exact Moodle delivery-course, assignment, user, submission, and grade mappings",
+      "conflictRule": "Moodle is the sole learning-record authority. Legacy Nile assignment actions reject normalized writes and later route through verified Moodle commands or launches.",
       "permittedRoles": [
         "student",
         "teacher",
         "headofdepartment",
         "superadmin"
       ],
-      "auditOwner": "nile_learn_assessment_audit",
-      "failureBehavior": "Reject unrelated class submissions and grades atomically.",
-      "futureWriteStatus": "nile_learn_native_only",
+      "auditOwner": "nile_learn_moodle_command_audit",
+      "failureBehavior": "Reject local mutation, stale or missing mappings, and unrelated-class access without changing projected state.",
+      "futureWriteStatus": "moodle_command_required",
       "selectors": {
         "clientRoutes": [
           "^/app/student/assignments(?:/.*)?$",
@@ -375,22 +376,22 @@
       }
     },
     {
-      "id": "nile_native_quizzes",
-      "name": "Nile-native quizzes, attempts, question bank, and review",
-      "nileLearnAuthority": "canonical_writable",
-      "moodleAuthority": "none",
-      "projectionDirection": "none",
-      "externalId": "source_system must be nile_learn; Moodle quiz IDs are not accepted",
-      "conflictRule": "A quiz is Nile-native or Moodle-managed, never both.",
+      "id": "moodle_quiz_workflows",
+      "name": "Moodle-owned quizzes, attempts, question bank, and review",
+      "nileLearnAuthority": "read_only_projection",
+      "moodleAuthority": "canonical_writable",
+      "projectionDirection": "moodle_to_nile_learn",
+      "externalId": "exact Moodle delivery-course, quiz, question-bank, user, and attempt mappings",
+      "conflictRule": "Moodle is the sole quiz and question authority. Nile surfaces either verified projections or an authorized Moodle command or launch.",
       "permittedRoles": [
         "student",
         "teacher",
         "headofdepartment",
         "superadmin"
       ],
-      "auditOwner": "nile_learn_assessment_audit",
-      "failureBehavior": "Reject attempts, review, or question changes outside the assigned class scope.",
-      "futureWriteStatus": "nile_learn_native_only",
+      "auditOwner": "nile_learn_moodle_command_audit",
+      "failureBehavior": "Reject local mutation, unsigned launches, stale mappings, and attempts outside the assigned class scope.",
+      "futureWriteStatus": "moodle_command_required",
       "selectors": {
         "clientRoutes": [
           "^/app/student/quizzes(?:/.*)?$",
@@ -403,22 +404,22 @@
       }
     },
     {
-      "id": "learning_progress",
-      "name": "Nile Learn learning workspace and local lesson progress",
-      "nileLearnAuthority": "canonical_writable",
-      "moodleAuthority": "none",
-      "projectionDirection": "none",
-      "externalId": "Moodle-managed lessons use the separate read projection family",
-      "conflictRule": "Local completion commands accept Nile-native lessons only.",
+      "id": "moodle_learning_workspace",
+      "name": "Moodle-owned course content, resources, and learning progress",
+      "nileLearnAuthority": "read_only_projection",
+      "moodleAuthority": "canonical_writable",
+      "projectionDirection": "moodle_to_nile_learn",
+      "externalId": "exact Moodle delivery-course, section, module, resource, and completion mappings",
+      "conflictRule": "Moodle owns content and completion. Nile Learn owns only the mapped class, roster, timetable, and operational context.",
       "permittedRoles": [
         "student",
         "teacher",
         "headofdepartment",
         "superadmin"
       ],
-      "auditOwner": "nile_learn_learning_audit",
-      "failureBehavior": "Reject unknown enrollment, lesson, or ownership and keep prior progress.",
-      "futureWriteStatus": "nile_learn_native_only",
+      "auditOwner": "nile_learn_moodle_projection_and_command_audit",
+      "failureBehavior": "Reject local mutation and unknown enrollment, mapping, or ownership while preserving the last verified projection as stale.",
+      "futureWriteStatus": "moodle_command_or_launch_required",
       "selectors": {
         "clientRoutes": [
           "^/app/student/(courses(?:/.*)?|grades)$",
@@ -548,7 +549,9 @@
           "^/app/student/reports$",
           "^/app/teacher/reports(?:/.*)?$"
         ],
-        "workflowActions": ["^(report[.]preset[.]save|system[.]health_check)$"]
+        "workflowActions": [
+          "^(audit[.]export|report[.]preset[.]save|system[.]health_check)$"
+        ]
       }
     },
     {
@@ -565,7 +568,7 @@
       "futureWriteStatus": "nile_learn_writable",
       "selectors": {
         "clientRoutes": ["^/app/student/support(?:/new)?$"],
-        "workflowActions": ["^record[.]save$"]
+        "workflowActions": ["^(record[.]save|support[.]ticket[.]create)$"]
       }
     },
     {
@@ -633,7 +636,7 @@
       "futureWriteStatus": "replace_with_granular_repositories",
       "selectors": {
         "serverApiRoutes": [
-          "^(GET|POST) /api/platform/(records|state(?:/actions|/reset)?)$"
+          "^(GET|POST) /api/platform/(records|state(?:/actions|/reset|/qa-fixture)?)$"
         ]
       }
     },

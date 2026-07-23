@@ -7,10 +7,11 @@ normalized Supabase/Postgres migration becomes shared-environment or runtime
 authority.
 
 The platform is in internal alpha stabilization. The current protected baseline
-is 1,205 portal QA checks and 0 failures. This plan must not be treated as
-permission to connect live Moodle, EMS, payments, email/SMS/WhatsApp, meetings,
-or production media storage. `docs/NILE_LEARN_MASTER_PLAN.md` is authoritative
-when sequencing or provider ownership is discussed here.
+is 1,634 portal QA checks and 0 failures. ADR-011 authorizes full synthetic CRUD
+in the dedicated Moodle sandbox. This plan does not activate production Moodle,
+EMS, payments, email/SMS/WhatsApp, meetings, or production media storage.
+`docs/NILE_LEARN_MASTER_PLAN.md` remains authoritative for sequencing and
+provider ownership.
 
 ## Sources
 
@@ -132,12 +133,13 @@ Teacher relationship:
 | Data family                                                                                                 | Writable authority                      |
 | ----------------------------------------------------------------------------------------------------------- | --------------------------------------- |
 | Identity, roles, scopes, admissions, students, delivery, attendance, finance, certificates, messages, audit | Nile Learn                              |
-| Moodle-managed content, activities, completion, attempts, grades, feedback                                  | Moodle initially                        |
-| Nile-native assessments and grades                                                                          | Nile Learn                              |
+| Moodle-managed content, activities, completion, attempts, grades, feedback                                  | Moodle                                  |
+| Legacy Nile-native learning records                                                                         | Compatibility read model only           |
 | Legacy EMS records                                                                                          | Legacy EMS during finite migration only |
 
 Legacy EMS has no recurring synchronization or outbound writeback. Moodle data
-is first exposed through read-only projections and reconciliation.
+is exposed through scoped projections; updates use typed, audited Moodle CRUD
+commands or authenticated native launches.
 
 ### Server Boundary
 
@@ -535,9 +537,10 @@ These must become server-authoritative in normalized persistence:
 - provider mappings, synchronization evidence, migration evidence, and platform
   settings
 
-Moodle-managed content, attempts, and grades are server-authoritative read-only
-projections in Nile Learn until an approved write phase. They are not silently
-converted into Nile-owned records.
+Moodle-managed content, attempts, and grades remain authoritative in Moodle.
+Nile Learn reads scoped projections and submits edits only through typed,
+audited Moodle CRUD commands or authenticated native launches. They are never
+silently converted into Nile-owned records.
 
 ## Local/Demo-Only Data
 
@@ -642,15 +645,18 @@ Only after parity is proven:
 - Keep snapshot export only for QA/debug if still useful.
 - Remove assumptions that all data can be loaded as one large `PlatformState`.
 
-### Phase 6: Read-Only Moodle Projection
+### Phase 6: Moodle Projection And CRUD Command Foundation
 
 Only after normalized identity, durable sessions, RLS, repository reads, and
 reconciliation tables are stable:
 
-- import Moodle mappings and read-only projections;
+- import Moodle mappings and scoped projections;
 - record cursors, runs, item errors, and reconciliation cases;
 - prove repeated synchronization is idempotent;
-- do not enable provider writes.
+- prove full synthetic CRUD in the dedicated sandbox through exact mappings,
+  commands, read-back, reconciliation, archive/restore, and cleanup;
+- keep production portal activation disabled until each operation family is
+  accepted.
 
 ### Phase 11: Finite Legacy EMS Migration
 

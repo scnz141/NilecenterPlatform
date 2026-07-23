@@ -7,6 +7,7 @@ import {
 import { UserInvitationService } from "../../../../server/userInvitationService";
 import { SupabaseAuthInvitationService } from "../../../../server/supabaseAuthInvitations";
 import { dispatchQueuedInvitationEmail } from "../../../../server/userInvitationRoutes";
+import { SupabaseUserInvitationRepository } from "../../../../server/userInvitationRepository";
 import type {
   UserInvitationAuthPort,
   UserInvitationRepositoryPort,
@@ -50,6 +51,16 @@ function repositoryPort(
       outboxEventId: "a4000000-0000-4000-8000-000000000001",
       replayed: false,
     })),
+    createStudentEnrollment: vi.fn(async input => ({
+      invitationId: input.invitationId,
+      userId: "a2000000-0000-4000-8000-000000000002",
+      roleGrantId: "a3000000-0000-4000-8000-000000000002",
+      studentProfileId: "a5000000-0000-4000-8000-000000000002",
+      enrollmentId: "a6000000-0000-4000-8000-000000000002",
+      classGroupId: input.classGroupId,
+      outboxEventId: "a4000000-0000-4000-8000-000000000002",
+      replayed: false,
+    })),
     accept: vi.fn(async () => ({
       userId: "a2000000-0000-4000-8000-000000000001",
       role: "teacher",
@@ -57,6 +68,13 @@ function repositoryPort(
     })),
     ...overrides,
   };
+}
+
+function jsonResponse(body: unknown, status = 200) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { "content-type": "application/json" },
+  });
 }
 
 describe("account invitation security envelope", () => {
@@ -80,6 +98,88 @@ describe("account invitation security envelope", () => {
 });
 
 describe("normalized account invitation lifecycle", () => {
+  it("persists a student invitation through the atomic enrollment RPC", async () => {
+    const adminFetch = vi.fn(async () =>
+      jsonResponse([
+        {
+          invitation_id: "a5000000-0000-4000-8000-000000000001",
+          user_id: "a2000000-0000-4000-8000-000000000002",
+          role_grant_id: "a3000000-0000-4000-8000-000000000002",
+          student_profile_id: "a5000000-0000-4000-8000-000000000002",
+          enrollment_id: "a6000000-0000-4000-8000-000000000002",
+          class_group_id: "70000000-0000-4000-8000-000000000001",
+          outbox_event_id: "a4000000-0000-4000-8000-000000000002",
+          replayed: false,
+        },
+      ])
+    );
+    const repository = new SupabaseUserInvitationRepository(adminFetch);
+
+    await expect(
+      repository.createStudentEnrollment({
+        sessionToken: "normalized-registrar-session",
+        invitationId: "a5000000-0000-4000-8000-000000000001",
+        authUserId: "a1000000-0000-4000-8000-000000000001",
+        fullName: "Student Example",
+        email: "student@example.test",
+        phone: "+201000000011",
+        branchRef: "20000000-0000-4000-8000-000000000001",
+        preferredLanguage: "English",
+        courseInterest: "Arabic Language",
+        ageGroup: "Adult",
+        currentLevel: "Arabic Level 3",
+        courseRunId: "60000000-0000-4000-8000-000000000001",
+        classGroupId: "70000000-0000-4000-8000-000000000001",
+        source: "direct",
+        locale: "en",
+        activationEnvelope: `v1.${"a".repeat(64)}`,
+        expiresAt: "2026-07-23T12:00:00.000Z",
+        idempotencyKey: "student-invite:test-direct-0001",
+      })
+    ).resolves.toMatchObject({
+      studentProfileId: "a5000000-0000-4000-8000-000000000002",
+      enrollmentId: "a6000000-0000-4000-8000-000000000002",
+    });
+
+    expect(adminFetch.mock.calls[0]?.[0]).toBe(
+      "rpc/nile_create_student_enrollment_invitation_with_evidence"
+    );
+    const requestBody = JSON.parse(String(adminFetch.mock.calls[0]?.[1]?.body));
+    expect(requestBody).toMatchObject({
+      p_source: "direct",
+      p_course_run_id: "60000000-0000-4000-8000-000000000001",
+      p_class_group_id: "70000000-0000-4000-8000-000000000001",
+      p_idempotency_key: "student-invite:test-direct-0001",
+    });
+    expect(requestBody.p_session_token_hash).toHaveLength(64);
+    expect(JSON.stringify(requestBody)).not.toContain(
+      "normalized-registrar-session"
+    );
+  });
+
+  it("uses the enrollment-aware invitation acceptance RPC", async () => {
+    const adminFetch = vi.fn(async () =>
+      jsonResponse([
+        {
+          user_id: "a2000000-0000-4000-8000-000000000002",
+          role: "student",
+          accepted_at: "2026-07-22T12:00:00.000Z",
+        },
+      ])
+    );
+    const repository = new SupabaseUserInvitationRepository(adminFetch);
+
+    await expect(
+      repository.accept(
+        "a5000000-0000-4000-8000-000000000001",
+        "a1000000-0000-4000-8000-000000000001"
+      )
+    ).resolves.toMatchObject({ role: "student" });
+    expect(adminFetch.mock.calls[0]?.[0]).toBe(
+      "rpc/nile_accept_user_invitation_with_enrollment"
+    );
+  });
+
   it("dispatches the durable invitation outbox immediately when Resend is ready", async () => {
     const processBatch = vi.fn(async () => [
       {
@@ -235,6 +335,106 @@ describe("normalized account invitation lifecycle", () => {
       })
     ).rejects.toThrow();
     expect(repository.create).not.toHaveBeenCalled();
+    expect(auth.removeGeneratedUser).toHaveBeenCalledWith(
+      "a1000000-0000-4000-8000-000000000001"
+    );
+  });
+
+  it("creates a pending student invitation with enrollment and class evidence", async () => {
+    const repository = repositoryPort();
+    const auth = authPort();
+    const service = new UserInvitationService(repository, auth, env);
+
+    await expect(
+      service.createStudentEnrollment({
+        sessionToken: "normalized-registrar-session",
+        fullName: "Student Example",
+        email: "student@example.test",
+        phone: "+201000000011",
+        branchRef: "20000000-0000-4000-8000-000000000001",
+        preferredLanguage: "English",
+        courseInterest: "Arabic Language",
+        ageGroup: "Adult",
+        currentLevel: "Arabic Level 3",
+        courseRunId: "60000000-0000-4000-8000-000000000001",
+        classGroupId: "70000000-0000-4000-8000-000000000001",
+        source: "direct",
+        locale: "en",
+        idempotencyKey: "student-invite:test-direct-0001",
+      })
+    ).resolves.toMatchObject({
+      studentProfileId: expect.any(String),
+      enrollmentId: expect.any(String),
+      replayed: false,
+    });
+
+    expect(repository.createStudentEnrollment).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sessionToken: "normalized-registrar-session",
+        source: "direct",
+        courseRunId: "60000000-0000-4000-8000-000000000001",
+        classGroupId: "70000000-0000-4000-8000-000000000001",
+        activationEnvelope: expect.stringMatching(/^v1\./),
+      })
+    );
+    expect(auth.generate).toHaveBeenCalledWith(
+      "student@example.test",
+      expect.stringContaining("/auth/accept-invitation?invitation=")
+    );
+  });
+
+  it("rejects incomplete minor student details before creating an Auth identity", async () => {
+    const repository = repositoryPort();
+    const auth = authPort();
+    const service = new UserInvitationService(repository, auth, env);
+
+    await expect(
+      service.createStudentEnrollment({
+        sessionToken: "normalized-registrar-session",
+        fullName: "Minor Student",
+        email: "minor@example.test",
+        phone: "+201000000012",
+        branchRef: "20000000-0000-4000-8000-000000000001",
+        preferredLanguage: "English",
+        courseInterest: "Arabic Language",
+        ageGroup: "Child",
+        currentLevel: "Foundation",
+        courseRunId: "60000000-0000-4000-8000-000000000001",
+        classGroupId: "70000000-0000-4000-8000-000000000001",
+        source: "direct",
+      })
+    ).rejects.toThrow("Guardian name and phone");
+
+    expect(auth.generate).not.toHaveBeenCalled();
+    expect(repository.createStudentEnrollment).not.toHaveBeenCalled();
+  });
+
+  it("removes a generated student Auth identity when enrollment persistence fails", async () => {
+    const repository = repositoryPort({
+      createStudentEnrollment: vi.fn(async () => {
+        throw new Error("enrollment unavailable");
+      }),
+    });
+    const auth = authPort();
+    const service = new UserInvitationService(repository, auth, env);
+
+    await expect(
+      service.createStudentEnrollment({
+        sessionToken: "normalized-registrar-session",
+        fullName: "Student Example",
+        email: "student@example.test",
+        phone: "+201000000011",
+        branchRef: "20000000-0000-4000-8000-000000000001",
+        preferredLanguage: "English",
+        courseInterest: "Arabic Language",
+        ageGroup: "Adult",
+        currentLevel: "Arabic Level 3",
+        courseRunId: "60000000-0000-4000-8000-000000000001",
+        classGroupId: "70000000-0000-4000-8000-000000000001",
+        source: "direct",
+      })
+    ).rejects.toThrow("enrollment unavailable");
+
     expect(auth.removeGeneratedUser).toHaveBeenCalledWith(
       "a1000000-0000-4000-8000-000000000001"
     );

@@ -9,6 +9,7 @@ import {
   StatusBadge,
 } from "@/components/platform/PlatformPrimitives";
 import { runPlatformWorkflowActionRequest } from "@/lib/backend/api";
+import { requireActiveUser } from "@/lib/auth/session";
 import { platformStore } from "@/lib/domain/store";
 import type { Course, EntityStatus } from "@/lib/domain/types";
 
@@ -169,7 +170,7 @@ export default function AdminCoursesPage({
       type: "course.status.update",
       courseId: course.id,
       status: nextStatus,
-      actorId: "usr_admin_demo",
+      actorId: requireActiveUser("superadmin").id,
     });
     setSavingCourseId("");
 

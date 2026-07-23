@@ -1,3 +1,4 @@
+import { requireActiveUser } from "@/lib/auth/session";
 import { useMemo, useState } from "react";
 import { CheckCircle2, CreditCard, Search } from "lucide-react";
 import { Link } from "wouter";
@@ -14,7 +15,6 @@ import {
 import { runPlatformWorkflowActionRequest } from "@/lib/backend/api";
 import { platformStore } from "@/lib/domain/store";
 import type { Payment, PaymentStatus } from "@/lib/domain/types";
-import { getDemoUser } from "@/lib/platformData";
 
 type RegistrarPaymentsPageProps = {
   invoiceId?: string;
@@ -69,7 +69,7 @@ export default function RegistrarPaymentsPage({
   const [recorded, setRecorded] = useState(false);
 
   const state = useMemo(() => platformStore.getState(), [version]);
-  const actorId = getDemoUser("registrar").id;
+  const actorId = requireActiveUser("registrar").id;
   const refresh = () => setVersion(current => current + 1);
 
   const paymentRows = state.invoices.map(invoice => {

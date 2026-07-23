@@ -90,12 +90,18 @@ export type MoodleCourseSection = {
     visible?: number;
     url?: string;
     completion?: number;
+    dates?: Array<{
+      label?: string;
+      timestamp?: number;
+    }>;
     contents?: Array<{
       type?: string;
       filename?: string;
       fileurl?: string;
       filesize?: number;
       mimetype?: string;
+      timemodified?: number;
+      isexternalfile?: boolean;
     }>;
   }>;
 };

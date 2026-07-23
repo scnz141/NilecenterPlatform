@@ -123,6 +123,7 @@ export type User = {
   branchId?: string;
   departmentId?: string;
   status: EntityStatus;
+  version?: number;
 };
 
 export type Branch = {
@@ -308,11 +309,14 @@ export type Enrollment = {
 export type Assignment = {
   id: string;
   courseRunId: string;
+  classGroupId?: string;
   title: string;
   dueAt: string;
   submissionType: "text" | "file" | "audio" | "video";
   rubric: string[];
   status: EntityStatus;
+  version?: number;
+  publishedAt?: string;
 };
 
 export type AssignmentSubmission = {
@@ -325,6 +329,9 @@ export type AssignmentSubmission = {
   pendingMedia?: PendingMediaAttachment[];
   score?: number;
   feedback?: string;
+  version?: number;
+  gradedAt?: string;
+  gradedBy?: string;
 };
 
 export type Quiz = {
@@ -396,6 +403,10 @@ export type Grade = {
   score: number;
   maxScore: number;
   feedback: string;
+  version?: number;
+  releaseStatus?: "withheld" | "released";
+  releasedAt?: string;
+  releasedBy?: string;
 };
 
 export type LessonProgress = {
@@ -430,6 +441,8 @@ export type ClassSession = {
   endsAt: string;
   status: EntityStatus;
   attendanceSaved: boolean;
+  attendanceVersion?: number;
+  attendanceSavedAt?: string;
 };
 
 export type AttendanceExceptionRequest = {
@@ -479,6 +492,9 @@ export type AttendanceRecord = {
   sessionId: string;
   status: AttendanceStatus;
   notes?: string;
+  version?: number;
+  markedBy?: string;
+  markedAt?: string;
 };
 
 export type Lead = {
@@ -493,6 +509,7 @@ export type Lead = {
   notes?: string;
   sourceKey?: string;
   createdAt: string;
+  version?: number;
 };
 
 export type Application = {
@@ -503,6 +520,7 @@ export type Application = {
   schedulePreference: string;
   sourceKey?: string;
   status: EntityStatus;
+  version?: number;
 };
 
 export type PlacementTestBooking = {
@@ -518,6 +536,7 @@ export type PlacementTestBooking = {
   sourceKey?: string;
   status: EntityStatus;
   recommendedLevel?: string;
+  version?: number;
 };
 
 export type PlacementTestResult = {
@@ -528,6 +547,7 @@ export type PlacementTestResult = {
   recommendedLevel: string;
   notes: string;
   createdAt: string;
+  version?: number;
 };
 
 export type EnrollmentWorkflow = {
@@ -741,6 +761,7 @@ export type SupportTicket = {
   priority: "low" | "normal" | "high" | "urgent";
   sourceKey?: string;
   lastUpdatedAt: string;
+  version?: number;
 };
 
 export type AuditLog = {

@@ -1,5 +1,11 @@
 # Nile Center Learning Platform - Design Brainstorm
 
+> Current authority note: this is an early brainstorm, not an integration
+> contract. ADR-010 makes Moodle authoritative for Moodle-managed learning
+> records, and ADR-011 authorizes full synthetic Moodle sandbox CRUD. Follow
+> `docs/NILE_LEARN_MASTER_PLAN.md` and
+> `docs/MOODLE_INTEGRATION_EXECUTION_PLAN.md` when this file differs.
+
 ## Three Stylistic Approaches
 
 ### 1. "Oasis Scholastica" — Desert Modernism meets Digital Learning
@@ -1342,7 +1348,7 @@ Settings:
 - Payment settings placeholder
 
 Integrations:
-- Moodle integration config placeholders
+- Moodle connection, capability, command, and reconciliation configuration
 - Email provider placeholder
 - WhatsApp provider placeholder
 - Meeting provider placeholder
@@ -1552,10 +1558,13 @@ UI:
 - Use progress trackers and milestone cards.
 
 ============================================================
-MOODLE / LEGACY LMS INTEGRATION PLACEHOLDER
+MOODLE CRUD INTEGRATION / LEGACY EMS MIGRATION
 ============================================================
 
-The current LMS appears Moodle-based. Build a clean integration layer but do not hard-code credentials.
+Moodle is the writable authority for Moodle-managed learning records. Build a
+server-only integration with scoped projections, full allowlisted CRUD
+commands, native launches, audit/outbox evidence, reconciliation, and cleanup.
+Do not hard-code credentials.
 
 Create:
 - /lib/moodle/client.ts
@@ -1568,7 +1577,7 @@ Environment variables in .env.example:
 - MOODLE_TOKEN
 - EMS_BASE_URL
 
-Implement placeholders/functions:
+Implement typed reads and CRUD commands:
 - getMoodleCourses()
 - getMoodleCourse(id)
 - getMoodleUserCourses(userId)
@@ -1576,8 +1585,17 @@ Implement placeholders/functions:
 - getMoodleAssignments(courseId)
 - mapMoodleCourseToCourse()
 - mapMoodleGradeToGrade()
+- createMoodleDeliveryCourse()
+- updateMoodleSection()
+- upsertMoodleResource()
+- upsertMoodleAssignment()
+- upsertMoodleQuizAndQuestions()
+- updateMoodleGradeAndFeedback()
+- archiveOrRestoreMoodleActivity()
+- reconcileMoodleCommand()
 
-If no real token exists, return mock data and clearly document how to connect later.
+When the runtime is disabled, show an explicit unavailable state. Never report
+mock data as synchronized provider state.
 
 ============================================================
 SEED DATA
@@ -1945,7 +1963,7 @@ Implement in this order:
 17. Certificates
 18. Quran-specific features
 19. Reports
-20. Moodle/EMS integration placeholders
+20. Moodle CRUD integration and finite EMS migration boundaries
 21. Seed data
 22. Tests/lint/build fixes
 23. README/update documentation

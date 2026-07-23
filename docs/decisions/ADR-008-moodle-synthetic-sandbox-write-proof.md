@@ -6,7 +6,8 @@ Accepted for the dedicated practice sandbox only on 2026-07-13.
 
 ## Context
 
-ADR-003 keeps the first production Moodle integration read-only. Before Nile
+This ADR records the historical first bounded write proof. ADR-011 now
+authorizes full synthetic CRUD in the dedicated sandbox. Before Nile
 Learn can design Phase 10 user provisioning or enrolment synchronization, the
 team needs repeatable evidence for Moodle mutation contracts, unknown outcomes,
 replay, reconciliation, and cleanup. Testing those concerns with real students,

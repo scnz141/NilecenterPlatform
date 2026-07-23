@@ -9,7 +9,10 @@ Scope note: auth and backend stay as they are for this phase. The current app us
 - Core feature pages use the shared platform shell, role-aware navigation, searchable tables, filters, quick-create forms, row inspectors, audit logging, metrics, empty states, and responsive layouts.
 - Stateful workflows are implemented for learning progress, assignments, quizzes, attendance, scheduling, certificates, Quran review, messages, finance, admissions, reports, integrations, and system admin.
 - Legacy prototype routes redirect into the maintained `/app` platform instead of exposing incomplete old screens.
-- Moodle, EMS, email, WhatsApp, meeting, payment, upload, PDF, and sync surfaces remain mock-mode or disabled integration boundaries by design.
+- Moodle portal surfaces may consume scoped projections and future audited CRUD
+  commands; full synthetic sandbox CRUD is approved by ADR-011. Production
+  Moodle activation and EMS, WhatsApp, meeting, payment, upload, and PDF
+  providers remain phase-gated.
 
 ## Completed In This Phase
 

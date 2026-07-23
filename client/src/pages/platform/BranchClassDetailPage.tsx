@@ -1,3 +1,4 @@
+import { requireActiveUser } from "@/lib/auth/session";
 import { useMemo, useState, type FormEvent } from "react";
 import { ArrowLeft, Save } from "lucide-react";
 import { toast } from "sonner";
@@ -7,13 +8,12 @@ import { DetailLayout } from "@/components/platform/PlatformLayouts";
 import { runPlatformWorkflowActionRequest } from "@/lib/backend/api";
 import { platformStore } from "@/lib/domain/store";
 import type { ClassGroup } from "@/lib/domain/types";
-import { getDemoUser } from "@/lib/platformData";
 
 export default function BranchClassDetailPage() {
   const params = useParams<{ classGroupId: string }>();
   const [version, setVersion] = useState(0);
   const state = useMemo(() => platformStore.getState(), [version]);
-  const actorId = getDemoUser("branchadmin").id;
+  const actorId = requireActiveUser("branchadmin").id;
   const group = state.classGroups.find(item => item.id === params.classGroupId);
   const run = state.courseRuns.find(item => item.id === group?.courseRunId);
   const course = state.courses.find(item => item.id === run?.courseId);

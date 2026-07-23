@@ -1,3 +1,4 @@
+import { requireActiveUser } from "@/lib/auth/session";
 import { useEffect, useMemo, useState } from "react";
 import {
   ArrowRight,
@@ -29,7 +30,10 @@ import {
   DataTableCard,
   StatusBadge,
 } from "@/components/platform/PlatformPrimitives";
-import { fetchPlatformStateRequest } from "@/lib/backend/api";
+import {
+  fetchPlatformStateRequest,
+  runPlatformWorkflowActionRequest,
+} from "@/lib/backend/api";
 import { platformStore } from "@/lib/domain/store";
 import type {
   Lesson,
@@ -37,7 +41,6 @@ import type {
   LessonResource,
   PlatformState,
 } from "@/lib/domain/types";
-import { getDemoUser } from "@/lib/platformData";
 
 const PLATFORM_STATE_UPDATED_EVENT = "nilelearn:platform-state-updated";
 
@@ -117,11 +120,9 @@ function statusTone(
 }
 
 function getStudentOptionData(state: PlatformState, courseId?: string) {
-  const demoUser = getDemoUser("student");
-  const student =
-    state.students.find(item => item.userId === demoUser.id) ??
-    state.students[0];
-  const studentId = student?.id ?? "stu_demo";
+  const user = requireActiveUser("student");
+  const student = state.students.find(item => item.userId === user.id);
+  const studentId = student?.id ?? "";
   const options = state.enrollments
     .filter(enrollment => enrollment.studentId === studentId)
     .map(enrollment => {
@@ -280,28 +281,44 @@ export default function StudentLearningPage({
     classSessions.find(item => new Date(item.endsAt).getTime() >= now) ??
     [...classSessions].reverse()[0];
   const room = state.rooms.find(item => item.id === classGroup?.roomId);
-  const completeSelectedLesson = () => {
+  const completeSelectedLesson = async () => {
     if (!selectedLesson) return;
-    const lesson = platformStore.completeLesson(
-      selectedLesson.id,
+    const result = await runPlatformWorkflowActionRequest({
+      type: "lesson.complete",
+      lessonId: selectedLesson.id,
       studentId,
-      getDemoUser("student").id,
-      selected.enrollment.id
-    );
+      enrollmentId: selected.enrollment.id,
+    });
+    if (!result.ok || !result.data) {
+      toast.error("Lesson could not be completed", {
+        description: result.error,
+      });
+      return;
+    }
+    platformStore.setState(result.data.state);
     setVersion(value => value + 1);
-    toast.success("Lesson marked complete", { description: lesson.title });
+    toast.success("Lesson marked complete", {
+      description: selectedLesson.title,
+    });
   };
 
-  const startSelectedLesson = () => {
+  const startSelectedLesson = async () => {
     if (!selectedLesson) return;
-    const lesson = platformStore.startLesson(
-      selectedLesson.id,
+    const result = await runPlatformWorkflowActionRequest({
+      type: "lesson.start",
+      lessonId: selectedLesson.id,
       studentId,
-      getDemoUser("student").id,
-      selected.enrollment.id
-    );
+      enrollmentId: selected.enrollment.id,
+    });
+    if (!result.ok || !result.data) {
+      toast.error("Lesson could not be opened", {
+        description: result.error,
+      });
+      return;
+    }
+    platformStore.setState(result.data.state);
     setVersion(value => value + 1);
-    toast.success("Lesson opened", { description: lesson.title });
+    toast.success("Lesson opened", { description: selectedLesson.title });
   };
 
   const joinLiveClass = () => {

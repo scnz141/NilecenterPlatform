@@ -1311,7 +1311,7 @@ describe("server academic snapshot read scopes", () => {
     );
   });
 
-  it("allows a currently scoped normalized superadmin to read the compatibility workspace", () => {
+  it("keeps normalized superadmins off the seeded compatibility workspace", () => {
     const state = cloneState();
     const scoped = scopePlatformStateForSession(state, {
       ...sessionFor("superadmin"),
@@ -1324,7 +1324,8 @@ describe("server academic snapshot read scopes", () => {
       departmentIds: [],
     });
 
-    expect(scoped).toBe(state);
+    expectSafeEmptyState(scoped);
+    expect(scoped).not.toBe(state);
   });
 
   it("returns the full unmodified state for a valid superadmin", () => {

@@ -2,7 +2,13 @@
 
 **Prepared for:** Nile Center project blueprint review  
 **Prepared on:** 14 July 2026  
-**Project stage:** Tested internal alpha and production-foundation planning
+**Project stage:** Tested internal alpha and Moodle CRUD foundation
+
+> **Current architecture update, 23 July 2026:** ADR-010 makes Moodle the sole
+> writable authority for Moodle-managed learning records, and ADR-011 approves
+> full synthetic CRUD in the dedicated sandbox. Earlier read-only wording in
+> this dated report describes the first projection milestone, not the current
+> sandbox permission.
 
 ## Presentation Message
 
@@ -14,7 +20,7 @@ safe for real operational use.
 
 > Nile Learn has a strongly tested internal-alpha product and a locally proven
 > production foundation. The next program is controlled activation: durable
-> sessions, normalized workflow data, read-only Moodle projection, and finally
+> sessions, normalized workflow data, Moodle projection plus CRUD commands, and finally
 > a reconciled one-time EMS migration.
 
 ## 1. What We Are Building
@@ -63,7 +69,7 @@ yet be treated as the final production system for real institutional records.
 | School workflows           | Tested internal alpha     | Admissions, enrollment, classes, attendance, assessments, finance records, certificates, messaging, and reports work with controlled platform data. |
 | Production database design | Locally proven foundation | The safer table design and security rules pass local database tests but are not the active shared production system.                                |
 | Durable login sessions     | Locally proven foundation | The design passes local lifecycle tests, but the deployed runtime still uses compatibility behavior.                                                |
-| Moodle integration         | Partial sandbox proof     | Safe read models and reversible synthetic operations are proven, but there is no live portal synchronization.                                       |
+| Moodle integration         | CRUD foundation approved  | Full synthetic sandbox CRUD is authorized; typed command runtime and production portal activation remain in progress.                               |
 | Legacy EMS migration       | Discovery complete        | Required workflows are mapped, but no production import or cutover has started.                                                                     |
 | UI modernization           | In progress               | Important screens are being separated and simplified, but quality is not yet consistent across every route and display size.                        |
 | External providers         | Future                    | Real payments, email, SMS, WhatsApp, meetings, and production media storage are not connected.                                                      |
@@ -191,16 +197,16 @@ flowchart LR
 
 ### Source of Truth
 
-| Information                                             | Intended owner                                  |
-| ------------------------------------------------------- | ----------------------------------------------- |
-| Identity, roles, permissions, branches, and departments | Nile Learn                                      |
-| Admissions, students, guardians, and enrollment         | Nile Learn                                      |
-| Classes, rooms, schedules, and attendance               | Nile Learn                                      |
-| Internal finance, certificates, messages, and audit     | Nile Learn                                      |
-| Moodle-managed course content and activities            | Moodle initially                                |
-| Moodle completion, attempts, grades, and feedback       | Moodle initially, shown read-only in Nile Learn |
-| Legacy EMS records                                      | One-time migration source only                  |
-| Images, documents, audio, and video                     | Future approved storage provider                |
+| Information                                             | Intended owner                                      |
+| ------------------------------------------------------- | --------------------------------------------------- |
+| Identity, roles, permissions, branches, and departments | Nile Learn                                          |
+| Admissions, students, guardians, and enrollment         | Nile Learn                                          |
+| Classes, rooms, schedules, and attendance               | Nile Learn                                          |
+| Internal finance, certificates, messages, and audit     | Nile Learn                                          |
+| Moodle-managed course content and activities            | Moodle initially                                    |
+| Moodle completion, attempts, grades, and feedback       | Moodle; scoped projection and audited CRUD commands |
+| Legacy EMS records                                      | One-time migration source only                      |
+| Images, documents, audio, and video                     | Future approved storage provider                    |
 
 The most important rule is that the same field must never have two systems
 allowed to change it.
@@ -234,37 +240,38 @@ browser console errors.
 - Safe production-scale storage of real institutional data.
 - Durable login across multiple servers and deployments.
 - Production backup, restore, monitoring, and disaster recovery.
-- Live Moodle synchronization or a completed EMS migration.
+- Production Moodle portal activation or a completed EMS migration.
 - Real payment, message delivery, meeting, or media providers.
 - Performance under real user volume or large historical datasets.
 
-## 7. Moodle Readiness
+## 7. Moodle CRUD Readiness
 
 Moodle is being treated as the initial learning-content and activity engine,
 not as the owner of all school operations.
 
 ### Proven
 
-- A hardened server-side read client with a fixed approved function list.
+- A hardened server-side client with exact operation manifests.
 - Sanitized models that avoid copying private provider payloads.
-- A reversible sandbox proof for one fake user, enrollment, group, and group
-  membership.
+- Reversible sandbox proofs for synthetic user, enrollment, group, course, and
+  content lifecycles.
 - Replay did not create duplicates.
 - Cleanup removed the temporary records and the retired token was rejected.
-- **26 of 31 read contracts** passed with available synthetic fixtures.
+- The historical read campaign reached closure; ADR-011 now authorizes the
+  complete CRUD campaign.
 
 ### Remaining Moodle Limits
 
-- Five H5P and SCORM checks are blocked by missing package fixtures.
-- No portal currently synchronizes production Moodle data.
-- Course content, submissions, quizzes, grades, attendance, files, messages,
-  calendar, and certificates are not connected end to end.
+- The `local_nilelearn` plugin, command worker, and signed launches still need
+  operation-family implementation and sandbox acceptance.
+- No portal currently activates production Moodle CRUD.
 - Production mappings, scheduled synchronization, reconciliation, and
   monitoring are not implemented.
-- Moodle write operations remain blocked until production data, command,
-  audit, retry, and rollback foundations are ready.
+- Production Moodle writes remain blocked until command, audit, retry,
+  reconciliation, RBAC, and rollback gates are accepted.
 
-**Moodle status:** Useful sandbox evidence, not production integration.
+**Moodle status:** Full synthetic sandbox CRUD approved; production activation
+is not yet accepted.
 
 ## 8. Legacy EMS Position
 
@@ -374,11 +381,13 @@ Recommended order:
 Each workflow needs data comparison, role-scope tests, audit evidence,
 rollback, and full portal QA before the next workflow begins.
 
-### Stage 4 - Complete Read-Only Moodle Projection
+### Stage 4 - Complete Moodle Projection And Sandbox CRUD
 
 - Close the five H5P/SCORM fixture checks and reach 31/31.
 - Add stable external-ID mappings.
-- Import provider data into read-only projections.
+- Import provider data into scoped projections.
+- Prove full synthetic create, read, update, archive/restore, and safe delete
+  lifecycles through typed Moodle commands.
 - Add synchronization status, reconciliation, retries, and operator review.
 - Keep Nile-owned attendance, schedules, messages, finance, certificates, and
   private documents out of Moodle write authority.
@@ -437,7 +446,7 @@ local database and session foundations, and real Moodle sandbox evidence.
 The remaining work is mainly controlled production activation and integration,
 not uncontrolled feature expansion. The project should advance by protecting
 the current alpha, activating durable identity and data foundations in staging,
-migrating one workflow at a time, completing read-only Moodle projection, and
+migrating one workflow at a time, completing Moodle projections and CRUD command evidence, and
 only then carrying out the one-time EMS migration and external-provider rollout.
 
 ## Evidence Used

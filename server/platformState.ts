@@ -463,10 +463,7 @@ function assertActionPermission(
   );
   if (permission === SELF_SCOPED_ACTION) return;
   if (!permission) {
-    const module = action.type === "record.save" ? action.module : action.type;
-    throw new Error(
-      `Role ${session.activeRole} cannot save operational records for ${module}.`
-    );
+    throw new Error(`Role ${session.activeRole} cannot run ${action.type}.`);
   }
   if (!state.permissions[session.activeRole]?.includes(permission)) {
     throw new Error(
@@ -518,6 +515,13 @@ function assertScopedAction(
     (action.userId ?? session.userId) !== session.userId
   ) {
     throw new Error("Users can only update their own profile.");
+  }
+
+  if (
+    action.type === "support.ticket.create" &&
+    action.requesterId !== session.userId
+  ) {
+    throw new Error("Users can only create support requests for themselves.");
   }
 
   assertStudentScopedAction(state, action, session);
@@ -1314,6 +1318,8 @@ function applyServerActor(
       return { ...action, fromUserId: actorId, actorId };
     case "profile.update":
       return { ...action, userId: action.userId ?? actorId, actorId };
+    case "support.ticket.create":
+      return { ...action, requesterId: actorId, actorId };
     case "calendar.create": {
       const branchIds = branchIdsForSessionScope(state, session);
       const defaultBranchId =
@@ -1453,6 +1459,13 @@ function numberValue(input: Record<string, unknown>, key: string) {
   return typeof input[key] === "number" && Number.isFinite(input[key])
     ? input[key]
     : Number(input[key]);
+}
+
+function optionalNumberValue(input: Record<string, unknown>, key: string) {
+  const value = input[key];
+  if (value === undefined || value === null || value === "") return undefined;
+  const parsed = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(parsed) ? parsed : undefined;
 }
 
 function stringArrayValue(value: unknown) {
@@ -1644,6 +1657,14 @@ export function parsePlatformWorkflowAction(
       assignmentId: input.assignmentId,
       response: input.response,
       pendingMedia: pendingMediaValue(input.pendingMedia),
+      idempotencyKey:
+        typeof input.idempotencyKey === "string"
+          ? input.idempotencyKey
+          : undefined,
+      expectedVersion:
+        typeof input.expectedVersion === "number"
+          ? input.expectedVersion
+          : undefined,
       studentId:
         typeof input.studentId === "string" ? input.studentId : undefined,
       actorId: typeof input.actorId === "string" ? input.actorId : undefined,
@@ -1688,8 +1709,11 @@ export function parsePlatformWorkflowAction(
       email,
       phone,
       subject,
+      branchId: optionalStringValue(input, "branchId"),
       notes: optionalStringValue(input, "notes"),
       country: optionalStringValue(input, "country"),
+      sourceKey: optionalStringValue(input, "sourceKey"),
+      idempotencyKey: optionalStringValue(input, "idempotencyKey"),
       source: leadSources.has(input.source as Lead["source"])
         ? (input.source as Lead["source"])
         : undefined,
@@ -1722,6 +1746,8 @@ export function parsePlatformWorkflowAction(
       schedulePreference,
       notes: optionalStringValue(input, "notes"),
       country: optionalStringValue(input, "country"),
+      sourceKey: optionalStringValue(input, "sourceKey"),
+      idempotencyKey: optionalStringValue(input, "idempotencyKey"),
       source: leadSources.has(input.source as Lead["source"])
         ? (input.source as Lead["source"])
         : undefined,
@@ -1754,6 +1780,8 @@ export function parsePlatformWorkflowAction(
       currentLevel,
       branchId: optionalStringValue(input, "branchId"),
       leadId: optionalStringValue(input, "leadId"),
+      sourceKey: optionalStringValue(input, "sourceKey"),
+      idempotencyKey: optionalStringValue(input, "idempotencyKey"),
     };
   }
 
@@ -1784,13 +1812,6 @@ export function parsePlatformWorkflowAction(
     const id = stringValue(input, "id");
     if (!id || typeof input.published !== "boolean") return null;
     return { type, id, published: input.published };
-  }
-
-  if (type === "record.save") {
-    const module = stringValue(input, "module").trim();
-    const payload = stringRecordValue(input.payload);
-    if (!module) return null;
-    return { type, module, payload };
   }
 
   if (type === "user.create") {
@@ -1975,6 +1996,7 @@ export function parsePlatformWorkflowAction(
 
   if (type === "profile.update") {
     const availabilityStatus = optionalStringValue(input, "availabilityStatus");
+    const expectedVersion = numberValue(input, "expectedVersion");
     if (
       availabilityStatus &&
       !staffAvailabilityStatuses.has(
@@ -2007,6 +2029,10 @@ export function parsePlatformWorkflowAction(
         PlatformWorkflowAction,
         { type: "profile.update" }
       >["availabilityStatus"],
+      idempotencyKey: optionalStringValue(input, "idempotencyKey"),
+      expectedVersion: Number.isInteger(expectedVersion)
+        ? expectedVersion
+        : undefined,
     };
   }
 
@@ -2290,10 +2316,12 @@ export function parsePlatformWorkflowAction(
     return {
       type,
       courseRunId,
+      classGroupId: optionalStringValue(input, "classGroupId"),
       title,
       dueAt,
       submissionType: submissionType as "text" | "file" | "audio" | "video",
       rubric: stringArrayValue(input.rubric),
+      idempotencyKey: optionalStringValue(input, "idempotencyKey"),
     };
   }
 
@@ -2334,6 +2362,8 @@ export function parsePlatformWorkflowAction(
       assignmentId,
       status: status as "active" | "completed" | "cancelled",
       reason: optionalStringValue(input, "reason"),
+      idempotencyKey: optionalStringValue(input, "idempotencyKey"),
+      expectedVersion: optionalNumberValue(input, "expectedVersion"),
     };
   }
 
@@ -2439,7 +2469,14 @@ export function parsePlatformWorkflowAction(
     const score = numberValue(input, "score");
     const feedback = stringValue(input, "feedback");
     if (!submissionId || !Number.isFinite(score) || !feedback) return null;
-    return { type, submissionId, score, feedback };
+    return {
+      type,
+      submissionId,
+      score,
+      feedback,
+      idempotencyKey: optionalStringValue(input, "idempotencyKey"),
+      expectedVersion: optionalNumberValue(input, "expectedVersion"),
+    };
   }
 
   if (type === "attendance.save") {
@@ -2453,6 +2490,8 @@ export function parsePlatformWorkflowAction(
       sessionId,
       statuses,
       notes: stringRecordValue(input.notes),
+      expectedVersion: optionalNumberValue(input, "expectedVersion"),
+      idempotencyKey: optionalStringValue(input, "idempotencyKey"),
     };
   }
 
@@ -2504,6 +2543,7 @@ export function parsePlatformWorkflowAction(
       branchId: optionalStringValue(input, "branchId"),
       roomId: optionalStringValue(input, "roomId"),
       classGroupId: optionalStringValue(input, "classGroupId"),
+      idempotencyKey: optionalStringValue(input, "idempotencyKey"),
     };
   }
 
@@ -2604,13 +2644,34 @@ export function parsePlatformWorkflowAction(
       !notes
     )
       return null;
-    return { type, bookingId, recommendedLevel, score, notes };
+    const expectedVersion = numberValue(input, "expectedVersion");
+    return {
+      type,
+      bookingId,
+      recommendedLevel,
+      score,
+      notes,
+      idempotencyKey: optionalStringValue(input, "idempotencyKey"),
+      expectedVersion: Number.isInteger(expectedVersion)
+        ? expectedVersion
+        : undefined,
+    };
   }
 
   if (type === "lead.convert") {
     const leadId = stringValue(input, "leadId");
     return leadId
-      ? { type, leadId, branchId: optionalStringValue(input, "branchId") }
+      ? {
+          type,
+          leadId,
+          branchId: optionalStringValue(input, "branchId"),
+          idempotencyKey: optionalStringValue(input, "idempotencyKey"),
+          expectedVersion: Number.isInteger(
+            numberValue(input, "expectedVersion")
+          )
+            ? numberValue(input, "expectedVersion")
+            : undefined,
+        }
       : null;
   }
 
@@ -2720,6 +2781,30 @@ export function parsePlatformWorkflowAction(
     return notificationId ? { type, notificationId } : null;
   }
 
+  if (type === "support.ticket.create") {
+    const subject = stringValue(input, "subject");
+    const details = stringValue(input, "details");
+    const category = stringValue(input, "category");
+    const priority = stringValue(input, "priority");
+    if (
+      !subject ||
+      !details ||
+      !category ||
+      !["low", "normal", "high", "urgent"].includes(priority)
+    ) {
+      return null;
+    }
+    return {
+      type,
+      subject,
+      details,
+      category,
+      priority: priority as "low" | "normal" | "high" | "urgent",
+      sourceKey: optionalStringValue(input, "sourceKey"),
+      idempotencyKey: optionalStringValue(input, "idempotencyKey"),
+    };
+  }
+
   if (type === "message.read") {
     const messageId = stringValue(input, "messageId");
     return messageId ? { type, messageId } : null;
@@ -2752,6 +2837,13 @@ export function parsePlatformWorkflowAction(
       rowCount: Number.isFinite(rowCount) ? rowCount : undefined,
       actorId: typeof input.actorId === "string" ? input.actorId : undefined,
     };
+  }
+
+  if (type === "audit.export") {
+    const rowCount = numberValue(input, "rowCount");
+    return Number.isInteger(rowCount) && rowCount >= 0
+      ? { type, rowCount, format: "csv" }
+      : null;
   }
 
   return null;

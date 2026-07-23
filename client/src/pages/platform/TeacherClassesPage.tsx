@@ -7,7 +7,7 @@ import {
   DataTableCard,
   StatusBadge,
 } from "@/components/platform/PlatformPrimitives";
-import { getActiveUser } from "@/lib/auth/session";
+import { requireActiveUser } from "@/lib/auth/session";
 import { platformStore } from "@/lib/domain/store";
 import type { ClassGroup, CourseRun, EntityStatus } from "@/lib/domain/types";
 
@@ -45,8 +45,7 @@ function formatDateTime(value?: string) {
 
 export default function TeacherClassesPage() {
   const state = useMemo(() => platformStore.getState(), []);
-  const activeUser = getActiveUser();
-  const teacherId = activeUser?.id ?? "usr_teacher_demo";
+  const teacherId = requireActiveUser("teacher").id;
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState<"all" | EntityStatus>("all");
 

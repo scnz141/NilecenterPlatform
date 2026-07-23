@@ -206,7 +206,9 @@ Manual verification tools used:
 ## Remaining limitations
 
 - No real production data was used.
-- Moodle, EMS, payment gateway, WhatsApp/email, meeting provider, and media storage remain placeholders by design.
+- Moodle normalized projections and command evidence exist, and full synthetic
+  sandbox CRUD is approved. Production Moodle activation, EMS, payment,
+  WhatsApp/email, meeting, and media storage remain phase-gated.
 - The Supabase test model is snapshot/record based and not yet the final normalized production schema.
 - The hosted Supabase tables are reachable, but local Supabase CLI/Docker workflows were not available because Docker is not running.
 - Seed upserts do not delete historical `platform_events`, so table row counts can include previous QA-generated activity.
@@ -215,4 +217,6 @@ Manual verification tools used:
 
 - Design and migrate the normalized production Supabase/Postgres schema when production persistence is approved.
 - Run local Supabase CLI migration verification after Docker is available.
-- Add real provider integrations only when Moodle, EMS, payments, messaging, meetings, and media storage are explicitly in scope.
+- Full synthetic Moodle sandbox CRUD is now explicitly in scope under ADR-011.
+  Production Moodle activation and EMS, payments, messaging, meetings, and
+  media storage remain separately gated.

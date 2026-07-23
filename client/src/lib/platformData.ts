@@ -1797,53 +1797,7 @@ const pageCopy: Record<
 };
 
 export function getDemoUser(role: Role): DemoUser {
-  const fallback =
-    demoUsers.find(user => user.activeRole === role) ?? demoUsers[0];
-  if (typeof window === "undefined") return fallback;
-
-  try {
-    const raw = window.localStorage.getItem("nilelearn.auth.session");
-    if (!raw) return fallback;
-    const session = JSON.parse(raw) as {
-      userId?: unknown;
-      email?: unknown;
-      name?: unknown;
-      roles?: unknown;
-      activeRole?: unknown;
-      expiresAt?: unknown;
-    };
-    if (
-      session.activeRole !== role ||
-      typeof session.userId !== "string" ||
-      typeof session.email !== "string" ||
-      typeof session.name !== "string" ||
-      !Array.isArray(session.roles) ||
-      !session.roles.includes(role) ||
-      typeof session.expiresAt !== "string" ||
-      Date.parse(session.expiresAt) <= Date.now()
-    ) {
-      return fallback;
-    }
-    return {
-      ...fallback,
-      id: session.userId,
-      email: session.email,
-      name: session.name,
-      roles: session.roles.filter(
-        (item): item is Role => typeof item === "string" && item in roleMeta
-      ),
-      activeRole: role,
-      avatar:
-        session.name
-          .split(/\s+/)
-          .filter(Boolean)
-          .slice(0, 2)
-          .map(part => part[0]?.toUpperCase())
-          .join("") || fallback.avatar,
-    };
-  } catch {
-    return fallback;
-  }
+  return demoUsers.find(user => user.activeRole === role) ?? demoUsers[0];
 }
 
 const studentLearningPageIds = new Set([

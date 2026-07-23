@@ -1,0 +1,63 @@
+{
+  "version": 1,
+  "status": "accepted-local",
+  "phase": "integration-stabilization-phase6k-moodle-command-contract",
+  "checkedAt": "2026-07-23T01:45:32.000Z",
+  "scope": {
+    "protocolVersion": "1.0",
+    "commandOperations": 19,
+    "nativeLaunchKinds": 6,
+    "durableTables": 3,
+    "browserCommandRoutesAdded": 0,
+    "productionMoodleWritesEnabled": false
+  },
+  "sqlLifecycle": {
+    "command": "npm run check:phase6k-moodle-command-contract:runtime",
+    "result": "passed",
+    "forwardApplications": 2,
+    "assertionPasses": 2,
+    "rollbackReapplyPasses": 1,
+    "runtimeRoleDenials": 18,
+    "durableCommandLifecycles": 1,
+    "unknownOutcomeReconciliations": 1,
+    "remoteCalls": 0,
+    "dockerUsed": false
+  },
+  "focusedValidation": {
+    "commands": [
+      "npm run verify:phase6k-fast",
+      "npm run check",
+      "npm test -- --run",
+      "npm run build"
+    ],
+    "result": "passed",
+    "unitTestFiles": 69,
+    "unitTests": 961
+  },
+  "fullValidation": {
+    "command": "QA_OUTPUT_DIR=output/playwright/phase6k-command-contract-acceptance-20260723-r2 scripts/verify.sh",
+    "result": "passed",
+    "typescript": "passed",
+    "productionBuild": "passed",
+    "portalBaselineProtected": true
+  },
+  "fullPortalQa": {
+    "artifact": "output/playwright/phase6k-command-contract-acceptance-20260723-r2/portal-qa-summary.json",
+    "artifactSha256": "848fefabf06eea0bf31cc6b32fef3f956d42cf45f5a5457bae4ab3f85aa36f67",
+    "totalChecks": 1634,
+    "failedChecks": 0,
+    "elapsedMs": 664896,
+    "fullSuite": true,
+    "interrupted": false
+  },
+  "boundaries": {
+    "manualSqlUnapplied": true,
+    "browserCommandRpcAvailable": false,
+    "commandWorkerAvailable": false,
+    "pluginInstalled": false,
+    "providerCalled": false,
+    "moodleWritePerformed": false,
+    "credentialsAccessed": false,
+    "runtimeActivated": false
+  }
+}

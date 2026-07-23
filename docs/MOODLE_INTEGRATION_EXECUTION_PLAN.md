@@ -2,20 +2,36 @@
 
 ## Goal
 
-Integrate Moodle as a server-only, minimum-privilege, read-only source for
-Moodle-managed learning content and outcomes while Nile Learn remains the
+Integrate Moodle as the server-only writable authority for Moodle-managed
+learning content and outcomes while Nile Learn remains the
 authority for identity grants, organization, admissions, enrolments, class
 delivery, schedules, attendance, finance, certificates, communication, and
-audit. Preserve exact external IDs and reconciliation evidence so a later
-controlled write phase is possible without dual ownership.
+audit. Preserve exact external IDs and reconciliation evidence while exposing
+full CRUD through typed commands or authenticated native Moodle launches,
+without dual ownership.
 
-This plan follows `docs/decisions/ADR-003-moodle-read-projection.md`. The only
-write exception is the synthetic, CLI-only M2B proof accepted by
+ADR-003 governs the historical first projection phase. ADR-010 establishes
+Moodle-owned learning authority, and ADR-011 authorizes full synthetic CRUD in
+the dedicated sandbox. The earlier bounded synthetic proofs accepted by
 `docs/decisions/ADR-008-moodle-synthetic-sandbox-write-proof.md`, followed by
 the isolated M2C provider-contract campaign accepted by
 `docs/decisions/ADR-009-moodle-comprehensive-sandbox-contract-campaign.md`.
-Neither authorizes production writes or bypasses the sequencing in
+remain historical evidence. Production activation still follows
 `docs/NILE_LEARN_MASTER_PLAN.md`.
+
+## Current Sandbox CRUD Order
+
+The dedicated sandbox is fully writable for marker-bound synthetic data. The
+campaign must test complete create, read, update, archive/restore, and safe
+delete lifecycles for Moodle-owned users, enrolments, groups, delivery courses,
+sections, content, files, assignments, submissions, quizzes, questions,
+attempts, grades, feedback, completion, and supported activities.
+
+Each operation requires an exact service-function or `local_nilelearn`
+allowlist, a mapped synthetic actor, idempotency, read-back verification,
+unknown-outcome reconciliation, ordered cleanup, repeated cleanup, and token
+teardown. Records with learner history are archived rather than destructively
+deleted. No real PII may enter the sandbox.
 
 ## Verified Sandbox Contract
 
@@ -40,19 +56,19 @@ revocation, and synthetic-object cleanup still require verified closure.
 
 ## Authority Boundary
 
-| Family                                                            | Initial authority                  | Nile Learn behavior                                        |
-| ----------------------------------------------------------------- | ---------------------------------- | ---------------------------------------------------------- |
-| Moodle course IDs, sections, modules, and Moodle-managed content  | Moodle                             | Read-only projection with source hashes                    |
-| Moodle enrolment observation                                      | Moodle                             | Reconciliation signal, never automatic Nile role authority |
-| Moodle completion, attempts, grades, and feedback                 | Moodle                             | Read-only outcome projection                               |
-| Nile course offering, class group, teacher assignment, and roster | Nile Learn                         | Canonical                                                  |
-| Attendance                                                        | Nile Learn                         | Canonical; the sandbox has no Attendance plugin            |
-| Files and media                                                   | Future approved storage/Moodle URL | Metadata only in this phase                                |
+| Family                                                            | Initial authority                  | Nile Learn behavior                                         |
+| ----------------------------------------------------------------- | ---------------------------------- | ----------------------------------------------------------- |
+| Moodle course IDs, sections, modules, and Moodle-managed content  | Moodle                             | Scoped projection and full audited CRUD commands            |
+| Moodle enrolment observation                                      | Moodle                             | Reconciliation signal, never automatic Nile role authority  |
+| Moodle completion, attempts, grades, and feedback                 | Moodle                             | Scoped projections, commands, and native Moodle interaction |
+| Nile course offering, class group, teacher assignment, and roster | Nile Learn                         | Canonical                                                   |
+| Attendance                                                        | Nile Learn                         | Canonical; the sandbox has no Attendance plugin             |
+| Files and media                                                   | Future approved storage/Moodle URL | Metadata only in this phase                                 |
 
 No field may have two writable authorities. A missing external mapping remains
 unmatched; titles and names are never matching keys.
 
-## Initial Read Function Allowlist
+## Historical Initial Read Function Allowlist
 
 The first custom service may contain only functions required by an accepted
 projection. Start with:
@@ -91,7 +107,9 @@ projection. Start with:
 
 Calendar, Moodle messaging, BigBlueButton, user creation, course creation,
 enrolment mutation, grade mutation, quiz attempts, assignment submission, and
-all other write-capable functions stay outside the initial service.
+all other write-capable functions stayed outside that historical initial
+service. ADR-011 now permits them in separate exact sandbox CRUD services or
+the reviewed plugin manifest.
 
 The service role must be reviewed against the capability list Moodle displays
 for every function. If a function requires a write-level capability merely to
@@ -239,8 +257,8 @@ administrator-private, temporary WebDAV fixture path, passed all 31 approved
 reads twice with identical fingerprints, removed every disposable remote and
 local artifact, revoked temporary capabilities, and proved retired-token
 rejection. M2C-R is accepted. The closure proof is
-`docs/moodle-m2c-read-closure-evidence-20260716.md`. Later M2C loops remain
-blocked until the integration stabilization ownership matrix is complete.
+`docs/moodle-m2c-read-closure-evidence-20260716.md`. The ownership matrix is
+accepted, and ADR-011 now authorizes all remaining synthetic CRUD lanes.
 
 The 2026-07-16 closure validator requires a separate disposable interaction
 learner for H5P and SCORM evidence. It accepts H5P results only when an attempt
@@ -284,9 +302,11 @@ grade history, completion events, messages, and notifications can leave durable
 provider history; use disposable fixtures and report restoration separately
 from deletion.
 
-### M3 - Provider-Neutral Projection Persistence
+### M3 - Provider-Neutral Projection And Command Persistence
 
-Blocked until normalized repository prerequisites are accepted.
+The normalized foundation and Phase 6K command contract exist as manual,
+runtime-disabled packages. Promote them only through their accepted database
+gates.
 
 - Use `integration_connections`, `external_records`, `sync_cursors`,
   `sync_runs`, `sync_run_items`, and `reconciliation_cases`.
@@ -310,13 +330,15 @@ Blocked until normalized repository prerequisites are accepted.
 - Require source-hash idempotency and item-level reconciliation.
 - Preserve audit evidence for operator actions and mapping decisions.
 
-### M6 - Controlled Writes
+### M6 - Full Sandbox CRUD And Controlled Runtime Activation
 
-Production writes are not approved. M2B supplies synthetic provider-contract
-evidence only. M6 still requires normalized mappings, transactional outbox
-processing, durable idempotency, reconciliation approval, production threat
-review, and explicit field authority. Attendance writeback remains optional
-because Nile Learn owns attendance.
+Full synthetic sandbox CRUD is approved by ADR-011. Implement and test every
+Moodle-owned operation family through exact services or `local_nilelearn`,
+including replay, read-back, reconciliation, archive/restore, safe deletion,
+and cleanup. Production portal activation remains gated by normalized mappings,
+transactional outbox processing, durable idempotency, actor capability checks,
+operation-family acceptance, and threat review. Attendance remains in Nile
+Learn and is not transferred to Moodle authority.
 
 ## Tests And Gates
 
@@ -335,7 +357,8 @@ Every slice must include:
 
 Stop rather than widening access when:
 
-- a required function is missing or needs a broad write capability;
+- a required function is missing or requires capability outside its reviewed
+  CRUD operation manifest;
 - the service account can use normal administrator login;
 - a token would be browser-visible;
 - a course/user mapping is ambiguous;

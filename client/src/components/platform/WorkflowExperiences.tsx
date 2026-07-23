@@ -1,3 +1,4 @@
+import { requireActiveUser } from "@/lib/auth/session";
 import { useEffect, useId, useMemo, useState, type ReactNode } from "react";
 import {
   Activity,
@@ -67,8 +68,7 @@ import { getMessageRecipientScope } from "@/lib/domain/messageScope";
 import { checkSupabaseBrowserConnection } from "@/lib/supabase/client";
 import { withRuntimeIntegrationStatus } from "@/lib/integrations/registry";
 import {
-  getDemoUser,
-  roleMeta,
+roleMeta,
   type PageConfig,
   type Role,
 } from "@/lib/platformData";
@@ -793,9 +793,6 @@ type WorkflowProps = {
 
 type PlatformStateSnapshot = ReturnType<typeof platformStore.getState>;
 
-const STUDENT_PROFILE_ID = "stu_demo";
-const STUDENT_USER_ID = "usr_student_demo";
-
 function formatSyncStatusLabel(
   status: "loading" | "supabase" | "local" | "offline"
 ) {
@@ -1022,35 +1019,23 @@ function getHodCertificateIds(state: PlatformStateSnapshot, actorId: string) {
 }
 
 function getRoleActorUser(state: PlatformStateSnapshot, role: Role) {
-  const demoUser = getDemoUser(role);
-  const user =
-    state.users.find(user => user.id === demoUser.id) ??
-    state.users.find(user => user.activeRole === role) ??
-    state.users.find(user => user.roles.includes(role));
-  const demoBranch = state.branches.find(
-    branch => branch.name === demoUser.branch
-  );
-  const demoDepartment = state.departments.find(
-    department => department.name === demoUser.department
-  );
+  const actor = requireActiveUser(role);
+  const user = state.users.find(user => user.id === actor.id);
 
   return {
-    id: user?.id ?? demoUser.id,
-    name: user?.name ?? demoUser.name,
-    branchId: user?.branchId ?? demoBranch?.id,
-    departmentId: user?.departmentId ?? demoDepartment?.id,
+    id: actor.id,
+    name: user?.name ?? actor.name,
+    branchId: user?.branchId,
+    departmentId: user?.departmentId,
   };
 }
 
 function getStudentScope(state: PlatformStateSnapshot) {
-  const student =
-    state.students.find(item => item.id === STUDENT_PROFILE_ID) ??
-    state.students[0];
-  const studentId = student?.id ?? STUDENT_PROFILE_ID;
-  const user =
-    state.users.find(item => item.id === student?.userId) ??
-    state.users.find(item => item.id === STUDENT_USER_ID);
-  const userId = user?.id ?? STUDENT_USER_ID;
+  const actor = requireActiveUser("student");
+  const user = state.users.find(item => item.id === actor.id);
+  const student = state.students.find(item => item.userId === actor.id);
+  const studentId = student?.id ?? "";
+  const userId = actor.id;
   const enrollments = state.enrollments.filter(
     enrollment => enrollment.studentId === studentId
   );
@@ -1258,7 +1243,7 @@ function LearningWorkflow({
   const [quizAnswer, setQuizAnswer] = useState("Correct");
   const [manualRunId, setManualRunId] = useState<string | null>(null);
   const [manualLessonId, setManualLessonId] = useState<string | null>(null);
-  const studentId = state.students[0]?.id ?? "stu_demo";
+  const { studentId } = getStudentScope(state);
   const routeCourseId = params?.courseId;
   const routeLessonId = params?.lessonId;
   const enrollments = state.enrollments.filter(
@@ -1378,56 +1363,82 @@ function LearningWorkflow({
     setManualLessonId(null);
   };
 
-  const startSelectedLesson = () => {
+  const startSelectedLesson = async () => {
     if (!selectedLesson) return;
     setManualLessonId(selectedLesson.id);
-    const lesson = platformStore.startLesson(
-      selectedLesson.id,
+    const result = await runPlatformWorkflowActionRequest({
+      type: "lesson.start",
+      lessonId: selectedLesson.id,
       studentId,
-      getDemoUser(role).id,
-      enrollment?.id
-    );
-    refresh();
-    toast.success("Lesson opened", { description: lesson.title });
-  };
-
-  const completeSelectedLesson = () => {
-    if (!selectedLesson) return;
-    setManualLessonId(selectedLesson.id);
-    const lesson = platformStore.completeLesson(
-      selectedLesson.id,
-      studentId,
-      getDemoUser(role).id,
-      enrollment?.id
-    );
-    refresh();
-    toast.success("Lesson marked complete", { description: lesson.title });
-  };
-
-  const submitCheckpoint = () => {
-    if (!assignment || !assignmentResponse.trim()) return;
-    const saved = platformStore.submitAssignment(
-      assignment.id,
-      assignmentResponse,
-      studentId,
-      getDemoUser(role).id
-    );
-    refresh();
-    toast.success("Checkpoint submitted", { description: saved.id });
-  };
-
-  const submitQuickQuiz = () => {
-    if (!quiz || !quizAnswer.trim() || attemptsRemaining <= 0) return;
-    const attempt = platformStore.submitQuizAttempt(
-      quiz.id,
-      { q1: quizAnswer },
-      studentId,
-      getDemoUser(role).id
-    );
-    refresh();
-    toast.success("Quiz attempt saved", {
-      description: `${attempt.score}/${attempt.maxScore}`,
+      enrollmentId: enrollment?.id,
     });
+    if (!result.ok || !result.data) {
+      toast.error("Lesson could not be opened", { description: result.error });
+      return;
+    }
+    platformStore.setState(result.data.state);
+    refresh();
+    toast.success("Lesson opened", { description: selectedLesson.title });
+  };
+
+  const completeSelectedLesson = async () => {
+    if (!selectedLesson) return;
+    setManualLessonId(selectedLesson.id);
+    const result = await runPlatformWorkflowActionRequest({
+      type: "lesson.complete",
+      lessonId: selectedLesson.id,
+      studentId,
+      enrollmentId: enrollment?.id,
+    });
+    if (!result.ok || !result.data) {
+      toast.error("Lesson could not be completed", {
+        description: result.error,
+      });
+      return;
+    }
+    platformStore.setState(result.data.state);
+    refresh();
+    toast.success("Lesson marked complete", {
+      description: selectedLesson.title,
+    });
+  };
+
+  const submitCheckpoint = async () => {
+    if (!assignment || !assignmentResponse.trim()) return;
+    const result = await runPlatformWorkflowActionRequest({
+      type: "assignment.submit",
+      assignmentId: assignment.id,
+      response: assignmentResponse,
+      studentId,
+    });
+    if (!result.ok || !result.data) {
+      toast.error("Checkpoint could not be submitted", {
+        description: result.error,
+      });
+      return;
+    }
+    platformStore.setState(result.data.state);
+    refresh();
+    toast.success("Checkpoint submitted");
+  };
+
+  const submitQuickQuiz = async () => {
+    if (!quiz || !quizAnswer.trim() || attemptsRemaining <= 0) return;
+    const result = await runPlatformWorkflowActionRequest({
+      type: "quiz.submit",
+      quizId: quiz.id,
+      answers: { q1: quizAnswer },
+      studentId,
+    });
+    if (!result.ok || !result.data) {
+      toast.error("Quiz attempt could not be saved", {
+        description: result.error,
+      });
+      return;
+    }
+    platformStore.setState(result.data.state);
+    refresh();
+    toast.success("Quiz attempt saved");
   };
 
   if (!selectedOption || !course || !run) {
@@ -7856,11 +7867,18 @@ function AdmissionsWorkflow({ role, state, refresh }: WorkflowProps) {
                     </div>
                     <button
                       disabled={converted}
-                      onClick={() => {
-                        platformStore.convertLeadToApplication(
-                          lead.id,
-                          getDemoUser(role).id
-                        );
+                      onClick={async () => {
+                        const result = await runPlatformWorkflowActionRequest({
+                          type: "lead.convert",
+                          leadId: lead.id,
+                        });
+                        if (!result.ok || !result.data) {
+                          toast.error("Lead could not be converted", {
+                            description: result.error,
+                          });
+                          return;
+                        }
+                        platformStore.setState(result.data.state);
                         refresh();
                         toast.success("Lead converted to application");
                       }}
@@ -7902,14 +7920,23 @@ function AdmissionsWorkflow({ role, state, refresh }: WorkflowProps) {
               !state.placementTests[0] ||
               state.placementTests[0].status === "completed"
             }
-            onClick={() => {
-              platformStore.recordPlacementResult(
-                state.placementTests[0].id,
+            onClick={async () => {
+              const booking = state.placementTests[0];
+              if (!booking) return;
+              const result = await runPlatformWorkflowActionRequest({
+                type: "placement.result.record",
+                bookingId: booking.id,
                 recommendedLevel,
                 score,
-                "Recorded from registrar workflow.",
-                getDemoUser(role).id
-              );
+                notes: "Recorded from registrar workflow.",
+              });
+              if (!result.ok || !result.data) {
+                toast.error("Placement result could not be saved", {
+                  description: result.error,
+                });
+                return;
+              }
+              platformStore.setState(result.data.state);
               refresh();
               toast.success("Placement result recorded");
             }}

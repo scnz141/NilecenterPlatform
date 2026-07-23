@@ -1,3 +1,4 @@
+import { requireActiveUser } from "@/lib/auth/session";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Award,
@@ -22,7 +23,6 @@ import {
   fetchPlatformStateRequest,
   runPlatformWorkflowActionRequest,
 } from "@/lib/backend/api";
-import { getStoredAuthSession } from "@/lib/auth/session";
 import { platformStore } from "@/lib/domain/store";
 import { nileFormsCutoverEnabled } from "@/lib/forms/cutover";
 import type {
@@ -30,7 +30,6 @@ import type {
   PendingMediaAttachment,
   PlatformState,
 } from "@/lib/domain/types";
-import { getDemoUser } from "@/lib/platformData";
 
 export type StudentRecordView =
   | "grades"
@@ -127,15 +126,10 @@ function useStudentPlatformState() {
 }
 
 function getStudentScope(state: PlatformState) {
-  const session = getStoredAuthSession();
-  const fallbackUser = getDemoUser("student");
-  const user =
-    state.users.find(item => item.id === session?.userId) ??
-    state.users.find(item => item.id === fallbackUser.id) ??
-    state.users.find(item => item.activeRole === "student");
-  const student =
-    state.students.find(item => item.userId === user?.id) ?? state.students[0];
-  const studentId = student?.id ?? "stu_demo";
+  const actor = requireActiveUser("student");
+  const user = state.users.find(item => item.id === actor.id) ?? actor;
+  const student = state.students.find(item => item.userId === actor.id);
+  const studentId = student?.id ?? "";
   const enrollments = state.enrollments.filter(
     enrollment => enrollment.studentId === studentId
   );

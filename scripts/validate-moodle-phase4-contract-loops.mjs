@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
@@ -37,6 +38,23 @@ function sha256(filePath) {
     .createHash("sha256")
     .update(fs.readFileSync(filePath))
     .digest("hex");
+}
+
+function sha256GitArtifact(sourceCommit, artifactPath) {
+  assert(
+    /^[a-f0-9]{40}$/.test(sourceCommit),
+    `Historical evidence source commit is invalid: ${artifactPath}`
+  );
+  const contents = execFileSync(
+    "git",
+    ["show", `${sourceCommit}:${artifactPath}`],
+    {
+      cwd: root,
+      encoding: null,
+      maxBuffer: 16 * 1024 * 1024,
+    }
+  );
+  return crypto.createHash("sha256").update(contents).digest("hex");
 }
 
 function stable(values) {
@@ -204,12 +222,17 @@ function validate(candidate, { runNegativeControls = true } = {}) {
 
   for (const artifact of candidate.evidenceArtifacts ?? []) {
     const artifactPath = path.join(root, artifact.path);
+    if (!artifact.sourceCommit) {
+      assert(
+        fs.existsSync(artifactPath),
+        `Evidence artifact is missing: ${artifact.path}`
+      );
+    }
+    const artifactHash = artifact.sourceCommit
+      ? sha256GitArtifact(artifact.sourceCommit, artifact.path)
+      : sha256(artifactPath);
     assert(
-      fs.existsSync(artifactPath),
-      `Evidence artifact is missing: ${artifact.path}`
-    );
-    assert(
-      sha256(artifactPath) === artifact.sha256,
+      artifactHash === artifact.sha256,
       `Evidence artifact hash mismatch: ${artifact.path}`
     );
   }

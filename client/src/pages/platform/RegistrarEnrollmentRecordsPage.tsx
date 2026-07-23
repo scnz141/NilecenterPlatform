@@ -1,3 +1,4 @@
+import { requireActiveUser } from "@/lib/auth/session";
 import { useMemo, useState, type FormEvent } from "react";
 import {
   ArrowLeft,
@@ -21,7 +22,6 @@ import {
 import { runPlatformWorkflowActionRequest } from "@/lib/backend/api";
 import { platformStore } from "@/lib/domain/store";
 import type { StudentStatus } from "@/lib/domain/types";
-import { getDemoUser } from "@/lib/platformData";
 
 function tone(status: StudentStatus): "green" | "amber" | "red" | "slate" {
   if (status === "active" || status === "completed") return "green";
@@ -47,7 +47,7 @@ export default function RegistrarEnrollmentRecordsPage({
   const [transferReason, setTransferReason] = useState("");
   const [statusReason, setStatusReason] = useState("");
   const state = useMemo(() => platformStore.getState(), [version]);
-  const actorId = getDemoUser("registrar").id;
+  const actorId = requireActiveUser("registrar").id;
   const refresh = () => setVersion(value => value + 1);
   const enrollment = enrollmentId
     ? state.enrollments.find(item => item.id === enrollmentId)

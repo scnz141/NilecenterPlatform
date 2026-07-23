@@ -71,6 +71,33 @@ export type ExternalActivityReadModel = Readonly<{
   title: string;
   visible?: boolean;
   completionTracking?: "none" | "manual" | "automatic";
+  launchAvailable?: boolean;
+  dates?: readonly ExternalActivityDateReadModel[];
+  resources?: readonly ExternalActivityResourceReadModel[];
+}>;
+
+export type ExternalActivityDateReadModel = Readonly<{
+  label: string;
+  at: string;
+}>;
+
+export type ExternalActivityResourceKind =
+  | "pdf"
+  | "audio"
+  | "video"
+  | "image"
+  | "document"
+  | "archive"
+  | "other";
+
+export type ExternalActivityResourceReadModel = Readonly<{
+  resourceId: string;
+  name: string;
+  mimeType?: string;
+  sizeBytes?: number;
+  kind: ExternalActivityResourceKind;
+  modifiedAt?: string;
+  external?: boolean;
 }>;
 
 export type ExternalCourseSectionReadModel = Readonly<{
@@ -479,7 +506,7 @@ function record(value: unknown, label: string): UnknownRecord {
 function boundedArray(
   value: unknown,
   label: string,
-  limit = MOODLE_READ_MODEL_LIMITS.collectionItems
+  limit: number = MOODLE_READ_MODEL_LIMITS.collectionItems
 ) {
   if (!Array.isArray(value) || value.length > limit) return invalid(label);
   return value;
@@ -489,7 +516,7 @@ function arrayField(
   value: UnknownRecord,
   key: string,
   label: string,
-  limit = MOODLE_READ_MODEL_LIMITS.collectionItems
+  limit: number = MOODLE_READ_MODEL_LIMITS.collectionItems
 ) {
   if (!Object.hasOwn(value, key)) return invalid(label);
   return boundedArray(value[key], label, limit);
@@ -499,7 +526,7 @@ function optionalArrayField(
   value: UnknownRecord,
   key: string,
   label: string,
-  limit = MOODLE_READ_MODEL_LIMITS.nestedItems
+  limit: number = MOODLE_READ_MODEL_LIMITS.nestedItems
 ) {
   if (!Object.hasOwn(value, key)) return [];
   return boundedArray(value[key], label, limit);
@@ -768,14 +795,102 @@ export function parseMoodleCoursesResponse(payload: unknown) {
   );
 }
 
+const safeMimeTypePattern =
+  /^[a-z0-9][a-z0-9!#$&^_.+-]{0,126}\/[a-z0-9][a-z0-9!#$&^_.+-]{0,126}$/i;
+
+function optionalMimeType(value: UnknownRecord, key: string, label: string) {
+  const candidate = value[key];
+  if (candidate === undefined || candidate === null || candidate === "") {
+    return undefined;
+  }
+  if (typeof candidate !== "string" || !safeMimeTypePattern.test(candidate)) {
+    return invalid(label);
+  }
+  return candidate.toLowerCase();
+}
+
+function resourceKind(
+  mimeType: string | undefined,
+  filename: string
+): ExternalActivityResourceKind {
+  if (mimeType === "application/pdf" || /\.pdf$/i.test(filename)) return "pdf";
+  if (mimeType?.startsWith("audio/")) return "audio";
+  if (mimeType?.startsWith("video/")) return "video";
+  if (mimeType?.startsWith("image/")) return "image";
+  if (
+    mimeType?.includes("zip") ||
+    mimeType?.includes("compressed") ||
+    /\.(?:zip|rar|7z|tar|gz)$/i.test(filename)
+  ) {
+    return "archive";
+  }
+  if (
+    mimeType?.startsWith("text/") ||
+    mimeType?.includes("document") ||
+    mimeType?.includes("spreadsheet") ||
+    mimeType?.includes("presentation")
+  ) {
+    return "document";
+  }
+  return "other";
+}
+
+function parseActivityResource(
+  value: unknown,
+  activitySourceId: string,
+  index: number,
+  label: string
+): ExternalActivityResourceReadModel {
+  const item = record(value, label);
+  const name = requiredText(item, "filename", label);
+  const mimeType = optionalMimeType(item, "mimetype", label);
+  return {
+    resourceId: `${activitySourceId}:${index + 1}`,
+    name,
+    mimeType,
+    sizeBytes: optionalInteger(item, "filesize", label, 0),
+    kind: resourceKind(mimeType, name),
+    modifiedAt: optionalTimestamp(item, "timemodified", label),
+    external: optionalBoolean(item, "isexternalfile", label),
+  };
+}
+
+function parseActivityDate(
+  value: unknown,
+  label: string
+): ExternalActivityDateReadModel {
+  const item = record(value, label);
+  const at = optionalTimestamp(item, "timestamp", label);
+  if (!at) return invalid(label);
+  return {
+    label: requiredText(item, "label", label, 100),
+    at,
+  };
+}
+
+function hasSafeMoodleLaunch(value: unknown, label: string) {
+  if (value === undefined || value === null || value === "") return undefined;
+  if (typeof value !== "string") return invalid(label);
+  try {
+    const url = new URL(value);
+    if (url.protocol !== "https:" && url.protocol !== "http:") {
+      return invalid(label);
+    }
+    return true;
+  } catch {
+    return invalid(label);
+  }
+}
+
 function parseActivity(
   value: unknown,
   label: string
 ): ExternalActivityReadModel {
   const item = record(value, label);
   const userVisible = optionalBoolean(item, "uservisible", label);
+  const activitySourceId = sourceId(item, "id", label);
   return {
-    sourceId: sourceId(item, "id", label),
+    sourceId: activitySourceId,
     instanceSourceId: sourceId(item, "instance", label),
     type: requiredText(item, "modname", label, 64),
     title: requiredText(item, "name", label),
@@ -784,6 +899,23 @@ function parseActivity(
         ? optionalBoolean(item, "visible", label)
         : userVisible,
     completionTracking: optionalCompletionTracking(item, "completion", label),
+    launchAvailable: hasSafeMoodleLaunch(item.url, label),
+    dates: Object.hasOwn(item, "dates")
+      ? optionalArrayField(item, "dates", label, 100).map((date, index) =>
+          parseActivityDate(date, `${label} date ${index}`)
+        )
+      : undefined,
+    resources: Object.hasOwn(item, "contents")
+      ? optionalArrayField(item, "contents", label, 100).map(
+          (resource, index) =>
+            parseActivityResource(
+              resource,
+              activitySourceId,
+              index,
+              `${label} resource ${index}`
+            )
+        )
+      : undefined,
   };
 }
 

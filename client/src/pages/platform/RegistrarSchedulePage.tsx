@@ -1,3 +1,4 @@
+import { requireActiveUser } from "@/lib/auth/session";
 import { useMemo, useState } from "react";
 import { CalendarDays, Plus } from "lucide-react";
 import { toast } from "sonner";
@@ -11,7 +12,6 @@ import { StatusBadge } from "@/components/platform/PlatformPrimitives";
 import { runPlatformWorkflowActionRequest } from "@/lib/backend/api";
 import { platformStore } from "@/lib/domain/store";
 import type { CalendarEventType, EntityStatus } from "@/lib/domain/types";
-import { getDemoUser } from "@/lib/platformData";
 
 const registrarEventTypes: CalendarEventType[] = [
   "placement_test",
@@ -65,7 +65,7 @@ export default function RegistrarSchedulePage({
   const [eventSaving, setEventSaving] = useState(false);
 
   const state = useMemo(() => platformStore.getState(), [version]);
-  const actorId = getDemoUser("registrar").id;
+  const actorId = requireActiveUser("registrar").id;
   const actor = state.users.find(user => user.id === actorId);
   const staffProfile = state.staffProfiles.find(
     profile => profile.userId === actorId && profile.role === "registrar"

@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
   platformActionTypesByRole,
-  recordSavePermissionByRole,
   requiredPermissionForPlatformAction,
   roleCanRunPlatformAction,
   validateDefaultPlatformCapabilityContract,
@@ -12,17 +11,10 @@ describe("server platform capability contract", () => {
     expect(validateDefaultPlatformCapabilityContract()).toEqual([]);
   });
 
-  it("keeps operational ownership explicit for generic compatibility records", () => {
-    expect(recordSavePermissionByRole.registrar).not.toHaveProperty("Classes");
-    expect(recordSavePermissionByRole.headofdepartment).not.toHaveProperty(
-      "Classes"
-    );
-    expect(recordSavePermissionByRole.branchadmin).not.toHaveProperty(
-      "Students"
-    );
-    expect(recordSavePermissionByRole.branchadmin).not.toHaveProperty(
-      "Teachers"
-    );
+  it("does not expose the retired generic record save command", () => {
+    for (const actions of Object.values(platformActionTypesByRole)) {
+      expect(actions).not.toContain("record.save");
+    }
   });
 
   it("keeps class definition changes with branch operations", () => {
