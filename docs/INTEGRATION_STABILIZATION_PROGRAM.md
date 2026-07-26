@@ -13,7 +13,7 @@ Modernization Checkpoint** in `docs/NILE_LEARN_MASTER_PLAN.md`.
 ## Non-Negotiable Boundaries
 
 - Preserve the six permanent Nile Learn roles and server-side role/scope gates.
-- Preserve the current portal QA baseline of 1,634 checks and 0 failures. Earlier
+- Preserve the current portal QA baseline of 1,663 checks and 0 failures. Earlier
   phase attestations retain their historical acceptance counts.
 - Use fake synthetic data only for provider and staging evidence.
 - Keep provider credentials server-only, expiring, minimum privilege, and out
@@ -78,7 +78,7 @@ command runs the ownership/evidence contracts first, then TypeScript, unit
 tests, and the production build concurrently. It intentionally omits database
 runtime drills and browser QA. Focused portal runs use `VERIFY_SCOPE=focused`
 with one exact role or workflow and isolated output/state directories. Only an
-unfiltered plain `scripts/verify.sh` may certify the protected `1,634/0`
+unfiltered plain `scripts/verify.sh` may certify the protected `1,663/0`
 baseline.
 
 Acceptance: every protected route and workflow action maps to exactly one
@@ -139,9 +139,12 @@ bypass RLS/RPC boundaries, rollback is clean, and secrets remain server-only.
 Main job: expose Moodle-owned learning data through Nile Learn role scope and
 prepare typed CRUD commands without transferring record authority.
 
-Status: projection packages accepted as historical Phase 6 evidence. ADR-010
-and ADR-011 now authorize Moodle-owned command work and full synthetic sandbox
-CRUD under the current master-plan checkpoint.
+Status: Phases 6A through 6I are accepted read-only projection and isolated
+staging foundations. Phase 6J corrected learning authority, Phase 6K accepted
+the manual durable command contract, and Phase 6L is the only active
+implementation slice. The exact checkpoint, accepted evidence, and stop
+conditions live in `docs/NILE_LEARN_MASTER_PLAN.md`; this companion program
+does not redefine them.
 
 Implemented boundary: authenticated server-only read endpoints now project
 Moodle course and course-content data through canonical Nile Learn enrolment,
@@ -173,36 +176,40 @@ authority, loads only the requested course observation, filters unknown or
 hidden student content closed, and returns reconciliation metadata without
 exposing provider credentials or write controls.
 
-Phase 6E establishes exact current user-mapping authority without matching by
-email or display name. Phase 6F adds a bounded class enrollment/group
-observation route with person-level teacher scope and aggregate governance
-scope. Phase 6G adds assignment/quiz definitions and schedule status for an
-exact authorized class. Phase 6H1 adds assignment submission and grade-result
-observations. Phase 6H2 adds quiz-attempt summary observations with student-own,
-exact-class teacher, and aggregate governance audiences. Phase 6H3 adds
-gradebook and explicitly released-feedback summaries with the same bounded
-audiences and exact grade-item mappings. These packages are manual, unapplied,
-and runtime-disabled; their portable PostgreSQL lifecycle, rollback, RLS
-denial, focused test, build, and complete 1,634/0 portal evidence is accepted.
+Phase 6E through 6H4 establish exact user, enrollment/group, assessment,
+assignment-result, quiz-attempt, grade, lesson, H5P, and SCORM projection
+families. Phase 6I accepted the complete read-only package on the pinned
+synthetic-data staging project. Phase 6J freezes conflicting Nile-native
+learning writes. Phase 6K defines the 19-operation command and six-launch
+contract as manual SQL with portable replay, rollback, and denial evidence.
 
-The only approved next implementation slice is Phase 6H4: a read-only bounded
-lesson, H5P, and SCORM outcome summary projection. It must expose only current
-completion and explicitly released score summaries, require exact course,
-class, user, and activity mappings, exclude raw attempt tracks and learner
-answers, and add no Moodle write control.
+Phase 6L implements and verifies the versioned `local_nilelearn` plugin,
+operation-family CRUD, durable command worker, native launches, authorized file
+delivery, scoped portal wiring, and synthetic staging acceptance. The plugin
+service installs disabled and restricted. An operation remains unavailable
+until its create/read/update/replay/reconcile/archive/restore/safe-delete and
+cleanup lifecycle passes. Production activation is a separate decision.
 
 Remaining acceptance gates and limitations:
 
-- Later projection-family portal views are not yet wired.
-- Normalized authority and mapping persistence is implemented as an unapplied
-  manual SQL and repository contract. Approved staging promotion and real
-  PostgREST/RLS acceptance evidence are still pending.
-- The accepted projection boundary did not configure a live service token or
-  perform provider writes.
-- Full synthetic sandbox CRUD is now approved by ADR-011. Production portal
-  activation remains disabled until operation-family gates pass.
-- Approved live read evidence and isolated PostgREST/RLS proof are still
-  required before runtime activation.
+- Phase 6L plugin source, deterministic packaging, local worker RPCs, launch
+  contracts, authorized file delivery, mapped-actor draft staging, closed role
+  capabilities, all-operation fixture execution, unknown-outcome handling, and
+  interrupted-completion recovery are implemented and pass their local gates.
+  Live plugin execution, upload-to-mapping creation, complete CRUD-family
+  read-back, native launches, cleanup, credential teardown, and
+  isolated-staging rollback/reapply are not accepted until their current gates
+  pass. Local closure evidence is recorded in
+  `docs/qa-attestations/integration-phase6l-local-closure-20260724.json`.
+- The sandbox web installer currently rejects installation because the Moodle
+  host cannot write `/var/www/html/local`; installation must be completed by
+  the authorized server owner or after that directory is made writable.
+- Isolated-staging promotion requires the pinned staging Data API and pooler
+  credentials. Production credentials must never be substituted.
+- The accepted projection packages and Phase 6K command package remain
+  disabled outside the pinned staging target.
+- Retired package `026` must never be applied.
+- Production SQL and Moodle writes remain prohibited.
 
 Initial order:
 
@@ -218,8 +225,10 @@ department, branch, or global according to existing server scope. Nile Learn
 continues to own admissions documents, attendance exceptions, internal
 messages, scheduling, payments, certificates, and audit.
 
-Acceptance: provider outage fails closed without stale authority, unmapped or
-ambiguous records are not projected, and no portal action writes to Moodle.
+Acceptance: provider outage fails closed without stale authority; unmapped or
+ambiguous records are not projected; all 19 operations and six launches pass
+synthetic sandbox gates with repeated cleanup; staging rollback/reapply passes;
+production remains unchanged; and the protected portal baseline remains clean.
 
 ## Phase 7: Preserve the Quality Gates
 

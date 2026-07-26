@@ -35,6 +35,7 @@ import type {
   StaffProfile,
   StaffRole,
   SupportTicket,
+  StudentIntervention,
   StudentEntrySource,
   StudentIntakeDocumentType,
   StudentStatus,
@@ -169,6 +170,13 @@ export type CreateCalendarEventActionInput = {
   idempotencyKey?: string;
 };
 
+export type ResolveScheduleConflictActionInput = {
+  conflictId: string;
+  decision: "activate" | "cancel";
+  reason: string;
+  expectedVersion: number;
+};
+
 export type RescheduleClassSessionActionInput = {
   sessionId: string;
   startsAt: string;
@@ -282,6 +290,41 @@ export type AssignTeacherActionInput = {
   specialties?: string[];
   teachingLevels?: string[];
   availability?: string[];
+  actorId?: string;
+};
+
+export type UpdateTeacherAvailabilityActionInput = {
+  teacherId?: string;
+  branchId: string;
+  availabilityStatus: Extract<
+    StaffAvailabilityStatus,
+    "available" | "limited" | "unavailable"
+  >;
+  slots: Array<Pick<TeacherAvailability, "weekday" | "startsAt" | "endsAt">>;
+  actorId?: string;
+};
+
+export type CreateStudentInterventionActionInput = Pick<
+  StudentIntervention,
+  | "studentId"
+  | "classGroupId"
+  | "category"
+  | "priority"
+  | "summary"
+  | "nextStep"
+  | "studentVisible"
+> & {
+  actorId?: string;
+};
+
+export type UpdateStudentInterventionStatusActionInput = {
+  interventionId: string;
+  status: Extract<
+    StudentIntervention["status"],
+    "monitoring" | "resolved" | "cancelled"
+  >;
+  resolutionNote: string;
+  expectedVersion?: number;
   actorId?: string;
 };
 
@@ -654,6 +697,10 @@ export type PlatformWorkflowAction =
       actorId?: string;
     } & CreateCalendarEventActionInput)
   | ({
+      type: "calendar.conflict.resolve";
+      actorId?: string;
+    } & ResolveScheduleConflictActionInput)
+  | ({
       type: "class.session.reschedule";
       actorId?: string;
     } & RescheduleClassSessionActionInput)
@@ -731,6 +778,15 @@ export type PlatformWorkflowAction =
       actorId?: string;
     }
   | ({ type: "teacher.assign" } & AssignTeacherActionInput)
+  | ({
+      type: "teacher.availability.update";
+    } & UpdateTeacherAvailabilityActionInput)
+  | ({
+      type: "student.intervention.create";
+    } & CreateStudentInterventionActionInput)
+  | ({
+      type: "student.intervention.status.update";
+    } & UpdateStudentInterventionStatusActionInput)
   | {
       type: "quran.progress.update";
       recordId: string;
@@ -3415,6 +3471,47 @@ function applyCreateCalendarEvent(
     status: conflicts.length || availabilityGaps.length ? "pending" : "active",
   };
   state.events = [event, ...state.events];
+  let conflictReview: PlatformState["scheduleConflicts"][number] | undefined;
+  if (conflicts.length || availabilityGaps.length) {
+    const kinds = new Set<
+      PlatformState["scheduleConflicts"][number]["kinds"][number]
+    >();
+    for (const conflict of conflicts) {
+      if (event.roomId && conflict.roomId === event.roomId) kinds.add("room");
+      if (event.ownerId === conflict.ownerId) kinds.add("owner");
+      if (event.classGroupId && conflict.classGroupId === event.classGroupId) {
+        kinds.add("class");
+      }
+      const conflictGroup = conflict.classGroupId
+        ? state.classGroups.find(item => item.id === conflict.classGroupId)
+        : undefined;
+      const conflictRun = conflictGroup
+        ? state.courseRuns.find(item => item.id === conflictGroup.courseRunId)
+        : undefined;
+      if (
+        scheduleTeacherId &&
+        (conflictRun?.teacherId ?? conflict.ownerId) === scheduleTeacherId
+      ) {
+        kinds.add("teacher");
+      }
+    }
+    if (availabilityGaps.length) kinds.add("availability");
+    conflictReview = {
+      id: ctx.createId("schedule_conflict"),
+      eventId: event.id,
+      branchId,
+      kinds: Array.from(kinds),
+      relatedEventIds: conflicts.map(item => item.id),
+      teacherIds: availabilityGaps,
+      status: "open",
+      detectedAt: ctx.now(),
+      version: 1,
+    };
+    state.scheduleConflicts = [
+      conflictReview,
+      ...(state.scheduleConflicts ?? []),
+    ];
+  }
   if (
     event.classGroupId &&
     (event.type === "class_session" || event.type === "live_session")
@@ -3444,7 +3541,129 @@ function applyCreateCalendarEvent(
     `${event.title} created${conflicts.length ? ` with ${conflicts.length} conflict(s)` : ""}${availabilityGaps.length ? `${conflicts.length ? " and" : " with"} teacher availability review` : ""}.`,
     input.actorId ?? "usr_branch_demo"
   );
-  return { event, conflicts, availabilityGaps };
+  return { event, conflicts, availabilityGaps, conflictReview };
+}
+
+function applyResolveScheduleConflict(
+  state: PlatformState,
+  input: ResolveScheduleConflictActionInput & { actorId?: string },
+  ctx: MutationContext
+) {
+  const review = (state.scheduleConflicts ?? []).find(
+    item => item.id === input.conflictId
+  );
+  if (!review) throw new Error("Schedule conflict review was not found.");
+  if (review.status !== "open") {
+    throw new Error("Schedule conflict review is already closed.");
+  }
+  if (review.version !== input.expectedVersion) {
+    throw new Error("Schedule conflict review changed. Refresh and try again.");
+  }
+  const reason = input.reason.trim();
+  if (reason.length < 10 || reason.length > 500) {
+    throw new Error(
+      "Conflict resolution reason must contain 10 to 500 characters."
+    );
+  }
+  const event = state.events.find(item => item.id === review.eventId);
+  if (!event) throw new Error("Schedule conflict event was not found.");
+  const actorId = input.actorId;
+  if (!actorId)
+    throw new Error("Schedule conflict resolution requires an actor.");
+
+  if (input.decision === "activate") {
+    const starts = new Date(event.startsAt).getTime();
+    const ends = new Date(event.endsAt).getTime();
+    const classGroup = event.classGroupId
+      ? state.classGroups.find(item => item.id === event.classGroupId)
+      : undefined;
+    const run = classGroup
+      ? state.courseRuns.find(item => item.id === classGroup.courseRunId)
+      : undefined;
+    const teacherId = run?.teacherId;
+    const remainingConflict = state.events.find(candidate => {
+      if (candidate.id === event.id || candidate.status === "cancelled") {
+        return false;
+      }
+      const candidateStarts = new Date(candidate.startsAt).getTime();
+      const candidateEnds = new Date(candidate.endsAt).getTime();
+      if (!(starts < candidateEnds && ends > candidateStarts)) return false;
+      const candidateGroup = candidate.classGroupId
+        ? state.classGroups.find(item => item.id === candidate.classGroupId)
+        : undefined;
+      const candidateRun = candidateGroup
+        ? state.courseRuns.find(item => item.id === candidateGroup.courseRunId)
+        : undefined;
+      const candidateTeacherId = candidateRun?.teacherId ?? candidate.ownerId;
+      return Boolean(
+        (event.roomId && candidate.roomId === event.roomId) ||
+          event.ownerId === candidate.ownerId ||
+          (event.classGroupId &&
+            candidate.classGroupId === event.classGroupId) ||
+          (teacherId && candidateTeacherId === teacherId)
+      );
+    });
+    const requiresAvailability = Boolean(
+      teacherId &&
+        classGroup &&
+        (event.type === "class_session" || event.type === "live_session")
+    );
+    const hasAvailability =
+      !requiresAvailability ||
+      state.teacherAvailability.some(item =>
+        availabilityCoversSlot(item, {
+          teacherId: teacherId!,
+          branchId: review.branchId,
+          weekday: calendarWeekday(event.startsAt),
+          startsAt: calendarTime(event.startsAt),
+          endsAt: calendarTime(event.endsAt),
+        })
+      );
+    if (remainingConflict || !hasAvailability) {
+      throw new Error(
+        "Schedule conflict is still active. Reschedule the event or update availability before activation."
+      );
+    }
+  }
+
+  const nextEventStatus =
+    input.decision === "activate" ? "active" : "cancelled";
+  state.events = state.events.map(item =>
+    item.id === event.id ? { ...item, status: nextEventStatus } : item
+  );
+  state.classSessions = state.classSessions.map(item =>
+    item.eventId === event.id ? { ...item, status: nextEventStatus } : item
+  );
+  const now = ctx.now();
+  const nextReview = {
+    ...review,
+    status:
+      input.decision === "activate"
+        ? ("resolved" as const)
+        : ("cancelled" as const),
+    resolvedAt: now,
+    resolvedBy: actorId,
+    resolutionReason: reason,
+    version: review.version + 1,
+  };
+  state.scheduleConflicts = (state.scheduleConflicts ?? []).map(item =>
+    item.id === review.id ? nextReview : item
+  );
+  appendAudit(
+    state,
+    ctx,
+    input.decision === "activate"
+      ? "calendar.conflict_resolved"
+      : "calendar.conflict_cancelled",
+    "ScheduleConflictReview",
+    review.id,
+    `${event.title} conflict review ${input.decision === "activate" ? "resolved" : "cancelled"}. ${reason}`,
+    actorId
+  );
+  return {
+    review: nextReview,
+    event: state.events.find(item => item.id === event.id)!,
+  };
 }
 
 function classSessionPair(state: PlatformState, sessionId: string) {
@@ -5091,6 +5310,322 @@ function parseTeacherAvailabilitySlot(
     endsAt,
     branchId,
   } satisfies TeacherAvailability;
+}
+
+const availabilityWeekdays = new Set([
+  "Sunday",
+  "Monday",
+  "Tuesday",
+  "Wednesday",
+  "Thursday",
+  "Friday",
+  "Saturday",
+]);
+
+function availabilitySlotId(
+  teacherId: string,
+  branchId: string,
+  weekday: string,
+  startsAt: string,
+  endsAt: string
+) {
+  return ["availability", teacherId, branchId, weekday, startsAt, endsAt]
+    .join("_")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+}
+
+function applyUpdateTeacherAvailability(
+  state: PlatformState,
+  input: UpdateTeacherAvailabilityActionInput,
+  ctx: MutationContext
+) {
+  const teacherId = input.teacherId ?? input.actorId;
+  if (!teacherId) throw new Error("Teacher availability requires a teacher.");
+  const user = state.users.find(item => item.id === teacherId);
+  const teacher = state.teachers.find(item => item.userId === teacherId);
+  const staff = state.staffProfiles.find(
+    item => item.userId === teacherId && item.role === "teacher"
+  );
+  const branch = state.branches.find(item => item.id === input.branchId);
+  if (
+    !user ||
+    !teacher ||
+    !staff ||
+    !branch ||
+    user.status !== "active" ||
+    teacher.status !== "active" ||
+    staff.status !== "active"
+  ) {
+    throw new Error("Availability requires an active teacher and branch.");
+  }
+  if (
+    !staff.branchIds.includes(input.branchId) &&
+    !staff.branchIds.includes("br_global")
+  ) {
+    throw new Error("Teacher availability is outside the assigned branch.");
+  }
+  if (input.availabilityStatus === "unavailable" && input.slots.length) {
+    throw new Error("An unavailable teacher cannot have active time slots.");
+  }
+  if (input.availabilityStatus === "available" && !input.slots.length) {
+    throw new Error("An available teacher needs at least one time slot.");
+  }
+
+  const seen = new Set<string>();
+  const updatedAt = ctx.now();
+  const slots = input.slots.map(slot => {
+    const startsAt = normalizeTime(slot.startsAt);
+    const endsAt = normalizeTime(slot.endsAt);
+    if (
+      !availabilityWeekdays.has(slot.weekday) ||
+      !startsAt ||
+      !endsAt ||
+      startsAt >= endsAt
+    ) {
+      throw new Error("Availability requires a valid weekday and time range.");
+    }
+    const key = `${slot.weekday}|${startsAt}|${endsAt}`;
+    if (seen.has(key)) throw new Error("Availability slots must be unique.");
+    seen.add(key);
+    return {
+      id: availabilitySlotId(
+        teacherId,
+        input.branchId,
+        slot.weekday,
+        startsAt,
+        endsAt
+      ),
+      teacherId,
+      branchId: input.branchId,
+      weekday: slot.weekday,
+      startsAt,
+      endsAt,
+      updatedAt,
+      updatedBy: input.actorId ?? teacherId,
+    } satisfies TeacherAvailability;
+  });
+
+  const currentSlots = state.teacherAvailability
+    .filter(
+      item => item.teacherId === teacherId && item.branchId === input.branchId
+    )
+    .map(item => `${item.weekday}|${item.startsAt}|${item.endsAt}`)
+    .sort();
+  const nextSlots = slots
+    .map(item => `${item.weekday}|${item.startsAt}|${item.endsAt}`)
+    .sort();
+  const unchanged =
+    teacher.availabilityStatus === input.availabilityStatus &&
+    currentSlots.length === nextSlots.length &&
+    currentSlots.every((item, index) => item === nextSlots[index]);
+  if (unchanged) return { teacher, staff, slots, changed: false };
+
+  state.teacherAvailability = [
+    ...state.teacherAvailability.filter(
+      item => item.teacherId !== teacherId || item.branchId !== input.branchId
+    ),
+    ...slots,
+  ];
+  const availabilityLabels = slots.map(
+    item => `${item.weekday.slice(0, 3)} ${item.startsAt}-${item.endsAt}`
+  );
+  const updatedTeacher = {
+    ...teacher,
+    availabilityStatus: input.availabilityStatus,
+    availability: availabilityLabels,
+  };
+  const updatedStaff = {
+    ...staff,
+    availabilityStatus: input.availabilityStatus,
+    updatedAt,
+  };
+  state.teachers = state.teachers.map(item =>
+    item.id === teacher.id ? updatedTeacher : item
+  );
+  state.staffProfiles = state.staffProfiles.map(item =>
+    item.id === staff.id ? updatedStaff : item
+  );
+  appendAudit(
+    state,
+    ctx,
+    "teacher.availability_updated",
+    "TeacherProfile",
+    teacher.id,
+    `${user.name} set ${input.availabilityStatus} availability with ${slots.length} weekly slot(s) for ${branch.name}.`,
+    input.actorId ?? teacherId
+  );
+  return {
+    teacher: updatedTeacher,
+    staff: updatedStaff,
+    slots,
+    changed: true,
+  };
+}
+
+function applyCreateStudentIntervention(
+  state: PlatformState,
+  input: CreateStudentInterventionActionInput,
+  ctx: MutationContext
+) {
+  const teacherId = input.actorId?.trim();
+  const classGroup = state.classGroups.find(
+    item => item.id === input.classGroupId && item.status === "active"
+  );
+  const run = state.courseRuns.find(
+    item => item.id === classGroup?.courseRunId && item.status === "active"
+  );
+  const student = state.students.find(
+    item => item.id === input.studentId && item.status !== "cancelled"
+  );
+  const user = state.users.find(item => item.id === student?.userId);
+  if (!teacherId || !classGroup || !run || run.teacherId !== teacherId) {
+    throw new Error(
+      "Teachers can only create interventions for assigned active classes."
+    );
+  }
+  if (
+    !student ||
+    !user ||
+    (!classGroup.studentIds.includes(student.id) &&
+      !state.enrollments.some(
+        item =>
+          item.classGroupId === classGroup.id &&
+          item.studentId === student.id &&
+          item.status === "active"
+      ))
+  ) {
+    throw new Error(
+      "Teachers can only create interventions for assigned class learners."
+    );
+  }
+  const summary = input.summary.trim();
+  const nextStep = input.nextStep.trim();
+  if (summary.length < 10 || summary.length > 500) {
+    throw new Error("Intervention summary must contain 10 to 500 characters.");
+  }
+  if (nextStep.length < 10 || nextStep.length > 500) {
+    throw new Error(
+      "Intervention next step must contain 10 to 500 characters."
+    );
+  }
+  const duplicate = state.studentInterventions.find(
+    item =>
+      item.studentId === student.id &&
+      item.classGroupId === classGroup.id &&
+      item.category === input.category &&
+      item.status !== "resolved" &&
+      item.status !== "cancelled"
+  );
+  if (duplicate) {
+    throw new Error(
+      "An active intervention already exists for this learner and category."
+    );
+  }
+  const now = ctx.now();
+  const intervention: StudentIntervention = {
+    id: ctx.createId("intervention"),
+    studentId: student.id,
+    classGroupId: classGroup.id,
+    teacherId,
+    category: input.category,
+    priority: input.priority,
+    summary,
+    nextStep,
+    studentVisible: input.studentVisible,
+    status: "open",
+    createdAt: now,
+    updatedAt: now,
+    version: 1,
+  };
+  state.studentInterventions = [intervention, ...state.studentInterventions];
+  if (intervention.studentVisible) {
+    notify(state, ctx, {
+      userId: user.id,
+      title: "Learning support plan",
+      body: intervention.nextStep,
+      href: "/app/student/support",
+    });
+  }
+  appendAudit(
+    state,
+    ctx,
+    "student.intervention_created",
+    "StudentIntervention",
+    intervention.id,
+    `Created ${intervention.priority} ${intervention.category} intervention for ${user.name} in ${classGroup.name}.`,
+    teacherId
+  );
+  return intervention;
+}
+
+function applyUpdateStudentInterventionStatus(
+  state: PlatformState,
+  input: UpdateStudentInterventionStatusActionInput,
+  ctx: MutationContext
+) {
+  const intervention = state.studentInterventions.find(
+    item => item.id === input.interventionId
+  );
+  if (!intervention) throw new Error("Student intervention was not found.");
+  if (intervention.teacherId !== input.actorId) {
+    throw new Error(
+      "Teachers can only update interventions they created for assigned learners."
+    );
+  }
+  if (
+    intervention.status === "resolved" ||
+    intervention.status === "cancelled"
+  ) {
+    throw new Error("Completed interventions cannot be changed.");
+  }
+  if (
+    input.expectedVersion !== undefined &&
+    input.expectedVersion !== intervention.version
+  ) {
+    throw new Error("Student intervention changed. Refresh and try again.");
+  }
+  const resolutionNote = input.resolutionNote.trim();
+  if (resolutionNote.length < 10 || resolutionNote.length > 500) {
+    throw new Error(
+      "Intervention update note must contain 10 to 500 characters."
+    );
+  }
+  const now = ctx.now();
+  const updated: StudentIntervention = {
+    ...intervention,
+    status: input.status,
+    resolutionNote,
+    resolvedAt: input.status === "resolved" ? now : undefined,
+    updatedAt: now,
+    version: intervention.version + 1,
+  };
+  state.studentInterventions = state.studentInterventions.map(item =>
+    item.id === intervention.id ? updated : item
+  );
+  const student = state.students.find(item => item.id === updated.studentId);
+  if (updated.studentVisible && student) {
+    notify(state, ctx, {
+      userId: student.userId,
+      title:
+        updated.status === "resolved"
+          ? "Learning support plan completed"
+          : "Learning support plan updated",
+      body: resolutionNote,
+      href: "/app/student/support",
+    });
+  }
+  appendAudit(
+    state,
+    ctx,
+    "student.intervention_status_updated",
+    "StudentIntervention",
+    updated.id,
+    `Set intervention to ${updated.status}: ${resolutionNote}`,
+    input.actorId
+  );
+  return updated;
 }
 
 function studentStatusFromAccountStatus(status: EntityStatus): StudentStatus {
@@ -7901,6 +8436,19 @@ export function applyPlatformWorkflowAction(
         result,
       };
     }
+    case "calendar.conflict.resolve": {
+      const result = applyResolveScheduleConflict(state, action, ctx);
+      return {
+        action:
+          action.decision === "activate"
+            ? "calendar.conflict_resolved"
+            : "calendar.conflict_cancelled",
+        entityType: "ScheduleConflictReview",
+        entityId: result.review.id,
+        summary: `${result.event.title} conflict review ${action.decision === "activate" ? "resolved" : "cancelled"}.`,
+        result,
+      };
+    }
     case "class.session.reschedule": {
       const result = applyRescheduleClassSession(state, action, ctx);
       return {
@@ -8058,6 +8606,38 @@ export function applyPlatformWorkflowAction(
         entityType: "CourseRun",
         entityId: result.courseRun.id,
         summary: `${result.teacher.name} assigned to ${result.classGroups.length} class group(s).`,
+        result,
+      };
+    }
+    case "teacher.availability.update": {
+      const result = applyUpdateTeacherAvailability(state, action, ctx);
+      return {
+        action: "teacher.availability_updated",
+        entityType: "TeacherProfile",
+        entityId: result.teacher.id,
+        summary: result.changed
+          ? `Saved ${result.slots.length} availability slot(s).`
+          : "Availability was already up to date.",
+        result,
+      };
+    }
+    case "student.intervention.create": {
+      const result = applyCreateStudentIntervention(state, action, ctx);
+      return {
+        action: "student.intervention_created",
+        entityType: "StudentIntervention",
+        entityId: result.id,
+        summary: `Created ${result.category} intervention.`,
+        result,
+      };
+    }
+    case "student.intervention.status.update": {
+      const result = applyUpdateStudentInterventionStatus(state, action, ctx);
+      return {
+        action: "student.intervention_status_updated",
+        entityType: "StudentIntervention",
+        entityId: result.id,
+        summary: `Set intervention to ${result.status}.`,
         result,
       };
     }

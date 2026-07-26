@@ -549,6 +549,86 @@ describe("server platform action scope gates", () => {
     });
   });
 
+  it("lets branch admins cancel branch-scoped conflict reviews with authenticated audit evidence", async () => {
+    const branchSession = sessionFor("branchadmin");
+    const created = await applyPlatformWorkflowAction(
+      {
+        type: "calendar.create",
+        eventType: "live_session",
+        title: "Cairo branch conflict review",
+        startsAt: "2026-07-05T14:15:00+03:00",
+        endsAt: "2026-07-05T14:45:00+03:00",
+        branchId: "br_cairo",
+        roomId: "room_cairo_4",
+        classGroupId: "class_ar_l3_cairo",
+      },
+      branchSession
+    );
+    const createdResult = created.result.result as {
+      conflictReview: { id: string; version: number };
+    };
+    expect(createdResult.conflictReview.id).toBeTruthy();
+
+    const resolved = await applyPlatformWorkflowAction(
+      {
+        type: "calendar.conflict.resolve",
+        conflictId: createdResult.conflictReview.id,
+        decision: "cancel",
+        reason: "The branch removed this duplicate schedule request.",
+        expectedVersion: 1,
+      },
+      branchSession
+    );
+
+    expect(
+      resolved.state.scheduleConflicts.find(
+        item => item.id === createdResult.conflictReview.id
+      )
+    ).toMatchObject({
+      status: "cancelled",
+      version: 2,
+      resolvedBy: "usr_branch_demo",
+    });
+    expect(resolved.state.auditLogs[0]).toMatchObject({
+      action: "calendar.conflict_cancelled",
+      actorId: "usr_branch_demo",
+      entityId: createdResult.conflictReview.id,
+    });
+  });
+
+  it("rejects branch conflict resolution outside the authenticated branch", async () => {
+    const created = await applyPlatformWorkflowAction(
+      {
+        type: "calendar.create",
+        eventType: "live_session",
+        title: "Online conflict owned by teacher",
+        startsAt: "2026-06-26T09:15:00+03:00",
+        endsAt: "2026-06-26T09:45:00+03:00",
+        branchId: "br_online",
+        classGroupId: "class_ar_l3_a",
+      },
+      sessionFor("teacher")
+    );
+    const createdResult = created.result.result as {
+      conflictReview: { id: string };
+    };
+
+    await expect(
+      applyPlatformWorkflowAction(
+        {
+          type: "calendar.conflict.resolve",
+          conflictId: createdResult.conflictReview.id,
+          decision: "cancel",
+          reason: "This branch actor must not resolve an online conflict.",
+          expectedVersion: 1,
+        },
+        sessionFor("branchadmin")
+      )
+    ).rejects.toThrow(
+      "Branch admin can only resolve schedule conflicts in their branch."
+    );
+  });
+
   it("blocks branch admins from attendance and room creation outside their branch", async () => {
     const branchSession = sessionFor("branchadmin");
 
@@ -1212,5 +1292,164 @@ describe("server platform action scope gates", () => {
         sessionFor("headofdepartment")
       )
     ).rejects.toThrow("Role headofdepartment cannot run settings.save.");
+  });
+
+  it("saves deterministic teacher availability and ignores spoofed teacher ids", async () => {
+    const action = {
+      type: "teacher.availability.update" as const,
+      teacherId: "usr_teacher_alex_demo",
+      branchId: "br_online",
+      availabilityStatus: "available" as const,
+      slots: [
+        { weekday: "Monday", startsAt: "09:00", endsAt: "12:00" },
+        { weekday: "Wednesday", startsAt: "13:00", endsAt: "16:00" },
+      ],
+    };
+
+    const first = await applyPlatformWorkflowAction(
+      action,
+      sessionFor("teacher")
+    );
+    const slots = first.state.teacherAvailability.filter(
+      item =>
+        item.teacherId === "usr_teacher_demo" &&
+        item.branchId === "br_online"
+    );
+    expect(slots).toHaveLength(2);
+    expect(slots.map(item => item.id)).toEqual([
+      "availability_usr_teacher_demo_br_online_monday_09_00_12_00",
+      "availability_usr_teacher_demo_br_online_wednesday_13_00_16_00",
+    ]);
+    expect(
+      first.state.auditLogs.find(
+        item => item.action === "teacher.availability_updated"
+      )
+    ).toMatchObject({
+      actorId: "usr_teacher_demo",
+      entityType: "TeacherProfile",
+    });
+
+    const auditCount = first.state.auditLogs.filter(
+      item => item.action === "teacher.availability_updated"
+    ).length;
+    const replay = await applyPlatformWorkflowAction(
+      action,
+      sessionFor("teacher")
+    );
+    expect(
+      replay.state.auditLogs.filter(
+        item => item.action === "teacher.availability_updated"
+      )
+    ).toHaveLength(auditCount);
+
+    await expect(
+      applyPlatformWorkflowAction(
+        {
+          ...action,
+          teacherId: "usr_teacher_alex_demo",
+        },
+        sessionFor("teacher")
+      )
+    ).resolves.toMatchObject({
+      result: { action: "teacher.availability_updated" },
+    });
+
+    await expect(
+      applyPlatformWorkflowAction(action, sessionFor("branchadmin"))
+    ).rejects.toThrow(
+      "Role branchadmin cannot run teacher.availability.update."
+    );
+  });
+
+  it("creates and resolves exact-class student interventions with audit evidence", async () => {
+    const created = await applyPlatformWorkflowAction(
+      {
+        type: "student.intervention.create",
+        studentId: "stu_demo",
+        classGroupId: "class_ar_l3_a",
+        category: "academic",
+        priority: "high",
+        summary: "Grammar assessment results need a focused follow-up.",
+        nextStep: "Review the next two Moodle outcomes with the learner.",
+        studentVisible: true,
+      },
+      sessionFor("teacher")
+    );
+    const intervention = created.state.studentInterventions.find(
+      item =>
+        item.studentId === "stu_demo" &&
+        item.classGroupId === "class_ar_l3_a" &&
+        item.category === "academic"
+    );
+    expect(intervention).toMatchObject({
+      teacherId: "usr_teacher_demo",
+      priority: "high",
+      status: "open",
+      studentVisible: true,
+      version: 1,
+    });
+    expect(
+      created.state.auditLogs.find(
+        item =>
+          item.action === "student.intervention_created" &&
+          item.entityId === intervention?.id
+      )
+    ).toMatchObject({
+      actorId: "usr_teacher_demo",
+      entityType: "StudentIntervention",
+    });
+    expect(
+      created.state.notifications.find(
+        item =>
+          item.userId === "usr_student_demo" &&
+          item.title === "Learning support plan"
+      )
+    ).toBeTruthy();
+
+    const resolved = await applyPlatformWorkflowAction(
+      {
+        type: "student.intervention.status.update",
+        interventionId: intervention!.id,
+        status: "resolved",
+        resolutionNote:
+          "The learner completed both review actions and no further follow-up is required.",
+        expectedVersion: 1,
+      },
+      sessionFor("teacher")
+    );
+    expect(
+      resolved.state.studentInterventions.find(
+        item => item.id === intervention?.id
+      )
+    ).toMatchObject({
+      status: "resolved",
+      version: 2,
+      teacherId: "usr_teacher_demo",
+    });
+    expect(
+      resolved.state.auditLogs.find(
+        item =>
+          item.action === "student.intervention_status_updated" &&
+          item.entityId === intervention?.id
+      )
+    ).toBeTruthy();
+
+    await expect(
+      applyPlatformWorkflowAction(
+        {
+          type: "student.intervention.create",
+          studentId: "stu_alex_demo",
+          classGroupId: "class_ar_l3_a",
+          category: "wellbeing",
+          priority: "normal",
+          summary: "This unrelated learner must not be writable.",
+          nextStep: "This action must be rejected by exact-class scope.",
+          studentVisible: false,
+        },
+        sessionFor("teacher")
+      )
+    ).rejects.toThrow(
+      "Teacher can only create interventions for assigned class learners."
+    );
   });
 });

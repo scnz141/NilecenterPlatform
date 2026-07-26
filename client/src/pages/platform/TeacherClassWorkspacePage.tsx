@@ -1,12 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 import {
   ArrowLeft,
+  ArrowRight,
+  BookOpen,
   CalendarDays,
   CheckCircle2,
   CircleSlash,
   CircleX,
   Clock3,
-  FileText,
   Users,
 } from "lucide-react";
 import { Link } from "wouter";
@@ -61,8 +62,8 @@ const viewMeta: Record<
   },
   materials: {
     title: "Materials",
-    description: "Published class learning resources.",
-    icon: FileText,
+    description: "Verified Moodle sections and learning resources.",
+    icon: BookOpen,
   },
 };
 
@@ -124,7 +125,6 @@ export default function TeacherClassWorkspacePage({
   view,
 }: TeacherClassWorkspacePageProps) {
   const [state, setState] = useState(() => platformStore.getState());
-  const [materialSavingKey, setMaterialSavingKey] = useState("");
   const [selectedSessionId, setSelectedSessionId] = useState("");
   const [attendanceStatuses, setAttendanceStatuses] = useState<
     Record<string, AttendanceStatus>
@@ -133,9 +133,7 @@ export default function TeacherClassWorkspacePage({
     Record<string, string>
   >({});
   const [attendanceSaving, setAttendanceSaving] = useState(false);
-  const attendanceCommandKey = useRef(
-    `attendance.save:${crypto.randomUUID()}`
-  );
+  const attendanceCommandKey = useRef(`attendance.save:${crypto.randomUUID()}`);
   const actorId = requireActiveUser("teacher").id;
 
   useEffect(() => {
@@ -164,16 +162,6 @@ export default function TeacherClassWorkspacePage({
     );
   const enrollments = state.enrollments.filter(
     item => item.classGroupId === classGroup?.id
-  );
-  const moduleIds = new Set(
-    state.modules
-      .filter(item => item.courseId === course?.id)
-      .map(item => item.id)
-  );
-  const lessons = state.lessons.filter(item => moduleIds.has(item.moduleId));
-  const lessonIds = new Set(lessons.map(item => item.id));
-  const resources = state.resources.filter(item =>
-    lessonIds.has(item.lessonId)
   );
   const attendanceRecords = state.attendance.filter(
     item => item.classGroupId === classGroup?.id
@@ -245,23 +233,6 @@ export default function TeacherClassWorkspacePage({
       active={view as TeacherClassSection}
     />
   );
-
-  const toggleResourcePublish = async (resourceId: string) => {
-    const resource = state.resources.find(item => item.id === resourceId);
-    if (!resource) return;
-    setMaterialSavingKey(resource.id);
-    const result = await runPlatformWorkflowActionRequest({
-      type: "material.publish.update",
-      id: resource.id,
-      published: !resource.published,
-      actorId,
-    });
-    setMaterialSavingKey("");
-    if (result.ok && result.data) {
-      platformStore.setState(result.data.state);
-      setState(result.data.state);
-    }
-  };
 
   const saveAttendance = async () => {
     if (!classGroup || !activeSession) return;
@@ -576,6 +547,13 @@ export default function TeacherClassWorkspacePage({
                     >
                       {student?.status ?? "active"}
                     </StatusBadge>
+                    <Link
+                      className="teacher-classes-row-action"
+                      href={`/app/teacher/classes/${currentClass.id}/students/${item.studentId}`}
+                    >
+                      View
+                      <ArrowRight size={14} />
+                    </Link>
                   </div>
                 </article>
               );
@@ -588,45 +566,31 @@ export default function TeacherClassWorkspacePage({
     return (
       <DataTableCard
         title="Class materials"
-        subtitle={`${resources.length} resources`}
+        subtitle="Moodle-managed learning content"
       >
-        <div className="teacher-material-list teacher-class-material-list">
-          {resources.length ? (
-            resources.map(resource => {
-              const lesson = lessons.find(
-                item => item.id === resource.lessonId
-              );
-              return (
-                <article key={resource.id}>
-                  <div>
-                    <strong>{resource.title}</strong>
-                    <small>
-                      {lesson?.title ?? "Lesson"} · {resource.type}
-                    </small>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => void toggleResourcePublish(resource.id)}
-                    disabled={materialSavingKey === resource.id}
-                  >
-                    {materialSavingKey === resource.id
-                      ? "Saving..."
-                      : resource.published
-                        ? "Published"
-                        : "Publish"}
-                  </button>
-                </article>
-              );
-            })
+        <div
+          className="platform-empty-state"
+          data-testid="teacher-materials-moodle-owner"
+        >
+          <BookOpen size={20} aria-hidden="true" />
+          <strong>Materials are managed in Moodle</strong>
+          <span>
+            Open the verified course snapshot to review sections, pages, files,
+            audio, video, assignments, and quizzes for this class.
+          </span>
+          {course ? (
+            <Link
+              className="platform-primary-button"
+              href={`/app/teacher/moodle-source/${course.id}`}
+              data-testid="teacher-materials-open-moodle"
+            >
+              Open course content
+              <ArrowRight size={15} />
+            </Link>
           ) : (
-            <article>
-              <div>
-                <strong>No materials yet</strong>
-                <small>
-                  Published resources for this class will appear here.
-                </small>
-              </div>
-            </article>
+            <span role="status">
+              This class does not have a mapped course yet.
+            </span>
           )}
         </div>
       </DataTableCard>

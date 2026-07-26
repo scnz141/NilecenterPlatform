@@ -3287,6 +3287,118 @@ describe("platformStore workflow guards", () => {
     ).toBe(true);
   });
 
+  it("creates a durable conflict review and cancels the pending event with audit evidence", () => {
+    const state = platformStore.getState();
+    const created = applyPlatformWorkflowAction(state, {
+      type: "calendar.create",
+      title: "Branch conflict review",
+      eventType: "live_session",
+      startsAt: "2026-06-26T09:15:00+03:00",
+      endsAt: "2026-06-26T10:00:00+03:00",
+      ownerId: "usr_branch_demo",
+      branchId: "br_online",
+      roomId: "room_online_a",
+      classGroupId: "class_ar_l3_a",
+      actorId: "usr_branch_demo",
+    });
+    const createdResult = created.result as {
+      event: { id: string; status: string };
+      conflictReview?: { id: string; version: number; status: string };
+    };
+
+    expect(createdResult.event.status).toBe("pending");
+    expect(createdResult.conflictReview).toMatchObject({
+      status: "open",
+      version: 1,
+    });
+    expect(createdResult.conflictReview?.id).toBeTruthy();
+
+    const resolved = applyPlatformWorkflowAction(state, {
+      type: "calendar.conflict.resolve",
+      conflictId: createdResult.conflictReview!.id,
+      decision: "cancel",
+      reason: "The branch cancelled this duplicate session after review.",
+      expectedVersion: 1,
+      actorId: "usr_branch_demo",
+    });
+    const resolvedResult = resolved.result as {
+      event: { status: string };
+      review: { status: string; version: number; resolvedBy?: string };
+    };
+
+    expect(resolvedResult.event.status).toBe("cancelled");
+    expect(resolvedResult.review).toMatchObject({
+      status: "cancelled",
+      version: 2,
+      resolvedBy: "usr_branch_demo",
+    });
+    expect(
+      state.auditLogs.some(
+        item =>
+          item.action === "calendar.conflict_cancelled" &&
+          item.entityId === createdResult.conflictReview?.id &&
+          item.actorId === "usr_branch_demo"
+      )
+    ).toBe(true);
+  });
+
+  it("activates a reviewed event only after teacher availability is corrected", () => {
+    const state = platformStore.getState();
+    const created = applyPlatformWorkflowAction(state, {
+      type: "calendar.create",
+      title: "Availability review class",
+      eventType: "live_session",
+      startsAt: "2026-07-04T10:00:00+03:00",
+      endsAt: "2026-07-04T11:00:00+03:00",
+      ownerId: "usr_branch_demo",
+      branchId: "br_online",
+      classGroupId: "class_ar_l3_a",
+      actorId: "usr_branch_demo",
+    });
+    const createdResult = created.result as {
+      event: { id: string; status: string };
+      conflictReview: { id: string; version: number };
+    };
+
+    expect(() =>
+      applyPlatformWorkflowAction(state, {
+        type: "calendar.conflict.resolve",
+        conflictId: createdResult.conflictReview.id,
+        decision: "activate",
+        reason: "Teacher availability has not yet been corrected.",
+        expectedVersion: 1,
+        actorId: "usr_branch_demo",
+      })
+    ).toThrow("Schedule conflict is still active");
+
+    state.teacherAvailability.push({
+      id: "avail_teacher_sat_review",
+      teacherId: "usr_teacher_demo",
+      weekday: "Saturday",
+      startsAt: "09:00",
+      endsAt: "12:00",
+      branchId: "br_online",
+    });
+    const resolved = applyPlatformWorkflowAction(state, {
+      type: "calendar.conflict.resolve",
+      conflictId: createdResult.conflictReview.id,
+      decision: "activate",
+      reason: "Teacher availability now covers the complete class time.",
+      expectedVersion: 1,
+      actorId: "usr_branch_demo",
+    });
+    const resolvedResult = resolved.result as {
+      event: { status: string };
+      review: { status: string; version: number };
+    };
+
+    expect(resolvedResult.event.status).toBe("active");
+    expect(resolvedResult.review).toMatchObject({
+      status: "resolved",
+      version: 2,
+    });
+  });
+
   it("flags branch-created class sessions that overlap the assigned teacher", () => {
     const result = platformStore.createCalendarEvent(
       {

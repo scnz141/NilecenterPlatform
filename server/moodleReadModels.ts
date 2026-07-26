@@ -98,6 +98,7 @@ export type ExternalActivityResourceReadModel = Readonly<{
   kind: ExternalActivityResourceKind;
   modifiedAt?: string;
   external?: boolean;
+  downloadPath?: string;
 }>;
 
 export type ExternalCourseSectionReadModel = Readonly<{

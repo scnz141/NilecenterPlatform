@@ -115,6 +115,7 @@ const roles = [
       "/app/teacher/classes/class_ar_l3_a/sessions",
       "/app/teacher/classes/class_ar_l3_a/attendance",
       "/app/teacher/classes/class_ar_l3_a/students",
+      "/app/teacher/classes/class_ar_l3_a/students/stu_demo",
       "/app/teacher/classes/class_ar_l3_a/materials",
       "/app/teacher/classes/class_ar_l3_a",
       "/app/teacher/assignments/asg_ar_grammar",
@@ -622,7 +623,8 @@ function inspectBrowserConsole(output) {
     line =>
       (line.includes(
         "Failed to load resource: the server responded with a status of 503 (Service Unavailable)"
-      ) && line.includes("/api/integrations/moodle/projections/courses")) ||
+      ) &&
+        line.includes("/api/integrations/moodle/projections/courses")) ||
       (line.includes(
         "Failed to load resource: the server responded with a status of 404 (Not Found)"
       ) &&
@@ -2593,52 +2595,287 @@ const deepWorkflowCases = [
       value?.auditActorId === "usr_teacher_demo",
   },
   {
-    name: "teacher materials workflow publishes assigned lesson resource",
+    name: "teacher availability workflow saves authenticated weekly schedule",
     role: "teacher",
-    route: "/app/teacher/classes/class_ar_l3_a/materials",
+    route: "/app/teacher/availability",
     setupSource: workflowSetupSource(`
       const state = readState();
-      state.resources = (state.resources || []).map((item) =>
-        item.id === "res_ar_pdf" ? { ...item, published: false } : item
+      state.teacherAvailability = (state.teacherAvailability || []).filter(
+        (item) => item.teacherId !== "usr_teacher_demo"
       );
-      state.auditLogs = (state.auditLogs || []).filter((item) => item.entityId !== "res_ar_pdf");
+      state.teachers = (state.teachers || []).map((item) =>
+        item.userId === "usr_teacher_demo"
+          ? { ...item, availabilityStatus: "limited" }
+          : item
+      );
+      state.staffProfiles = (state.staffProfiles || []).map((item) =>
+        item.userId === "usr_teacher_demo"
+          ? { ...item, availabilityStatus: "limited" }
+          : item
+      );
+      state.auditLogs = (state.auditLogs || []).filter(
+        (item) =>
+          !(
+            item.action === "teacher.availability_updated" &&
+            item.entityId === "usr_teacher_demo"
+          )
+      );
       writeState(state);
       return { ok: true };
     `),
     reloadAfterSetup: false,
     source: workflowActionSource(`
-      await waitFor(() => normalize(document.body.textContent).includes("Grammar handout"));
-      const row = Array.from(document.querySelectorAll(".teacher-material-list article"))
-        .find((article) => normalize(article.textContent).includes("Grammar handout"));
-      const publishButton = row?.querySelector("button");
-      if (!publishButton || !visible(publishButton) || publishButton.disabled) throw new Error("Material publish button not found");
-      const beforeLabel = normalize(publishButton.textContent).toLowerCase();
-      const expectedPublished = beforeLabel === "published" ? false : true;
-      const expectedAction = expectedPublished ? "material.published" : "material.unpublished";
-      publishButton.click();
+      await waitFor(() => normalize(document.body.textContent).includes("Teaching availability"));
+      const status = document.querySelector('input[name="availability-status"][value="available"]');
+      if (!status) throw new Error("Available status control was not rendered");
+      status.click();
+      const monday = Array.from(document.querySelectorAll(".teacher-availability-day"))
+        .find((item) => normalize(item.textContent).startsWith("Monday"));
+      if (!monday) throw new Error("Monday availability row was not rendered");
+      const enabled = monday.querySelector('input[type="checkbox"]');
+      if (!enabled) throw new Error("Monday availability toggle was not rendered");
+      if (!enabled.checked) enabled.click();
+      await waitFor(() => {
+        const currentMonday = Array.from(document.querySelectorAll(".teacher-availability-day"))
+          .find((item) => normalize(item.textContent).startsWith("Monday"));
+        const controls = currentMonday?.querySelectorAll('input[type="time"]');
+        return controls?.length === 2 && !controls[0].disabled && !controls[1].disabled
+          ? currentMonday
+          : null;
+      });
+      const currentMonday = Array.from(document.querySelectorAll(".teacher-availability-day"))
+        .find((item) => normalize(item.textContent).startsWith("Monday"));
+      const times = currentMonday?.querySelectorAll('input[type="time"]') || [];
+      if (times.length !== 2) throw new Error("Monday time controls were not rendered");
+      setValue(times[0], "09:15");
+      setValue(times[1], "12:45");
+      const save = document.querySelector('[data-testid="teacher-availability-save"]');
+      if (!save || save.disabled) throw new Error("Save availability action was unavailable");
+      save.click();
       const state = await waitFor(() => {
         const next = readState();
-        const resource = next.resources?.find((item) => item.id === "res_ar_pdf");
-        const audit = next.auditLogs?.find((item) => item.entityId === "res_ar_pdf" && item.action === expectedAction);
-        return resource?.published === expectedPublished && audit ? next : null;
+        const slot = next.teacherAvailability?.find(
+          (item) =>
+            item.teacherId === "usr_teacher_demo" &&
+            item.branchId === "br_online" &&
+            item.weekday === "Monday" &&
+            item.startsAt === "09:15" &&
+            item.endsAt === "12:45"
+        );
+        const audit = next.auditLogs?.find(
+          (item) =>
+            item.action === "teacher.availability_updated" &&
+            item.entityId === "tch_demo" &&
+            item.actorId === "usr_teacher_demo"
+        );
+        return slot && audit ? next : null;
       }, 5000);
-      const resource = state?.resources?.find((item) => item.id === "res_ar_pdf");
-      const audit = state?.auditLogs?.find((item) => item.entityId === "res_ar_pdf" && item.action === expectedAction);
+      const fallback = state || readState();
+      const slot = fallback?.teacherAvailability?.find(
+        (item) =>
+          item.teacherId === "usr_teacher_demo" &&
+          item.weekday === "Monday"
+      );
+      const audit = fallback?.auditLogs?.find(
+        (item) =>
+          item.action === "teacher.availability_updated" &&
+          item.entityId === "tch_demo"
+      );
       return {
         ok: Boolean(state),
-        beforeLabel,
-        expectedPublished,
-        published: resource?.published,
-        lastAudit: audit?.action,
-        actorId: audit?.actorId
+        slotId: slot?.id,
+        startsAt: slot?.startsAt,
+        endsAt: slot?.endsAt,
+        status: fallback?.teachers?.find((item) => item.userId === "usr_teacher_demo")?.availabilityStatus,
+        auditActorId: audit?.actorId,
+        slots: fallback?.teacherAvailability?.filter((item) => item.teacherId === "usr_teacher_demo"),
+        pageText: normalize(document.body.textContent).slice(-800)
       };
     `),
     predicate: value =>
       value?.ok &&
-      value?.published === value?.expectedPublished &&
-      (value?.lastAudit === "material.published" ||
-        value?.lastAudit === "material.unpublished") &&
-      value?.actorId === "usr_teacher_demo",
+      value?.slotId ===
+        "availability_usr_teacher_demo_br_online_monday_09_15_12_45" &&
+      value?.startsAt === "09:15" &&
+      value?.endsAt === "12:45" &&
+      value?.status === "available" &&
+      value?.auditActorId === "usr_teacher_demo",
+  },
+  {
+    name: "teacher intervention workflow creates and resolves assigned learner support",
+    role: "teacher",
+    route: "/app/teacher/classes/class_ar_l3_a/students/stu_demo",
+    setupSource: workflowSetupSource(`
+      const state = readState();
+      const removedIds = (state.studentInterventions || [])
+        .filter(
+          (item) =>
+            item.studentId === "stu_demo" &&
+            item.classGroupId === "class_ar_l3_a" &&
+            item.category === "academic"
+        )
+        .map((item) => item.id);
+      state.studentInterventions = (state.studentInterventions || []).filter(
+        (item) => !removedIds.includes(item.id)
+      );
+      state.auditLogs = (state.auditLogs || []).filter(
+        (item) =>
+          !(
+            removedIds.includes(item.entityId) &&
+            (item.action === "student.intervention_created" ||
+              item.action === "student.intervention_status_updated")
+          )
+      );
+      state.notifications = (state.notifications || []).filter(
+        (item) =>
+          !(
+            item.userId === "usr_student_demo" &&
+            item.title === "Learning support plan" &&
+            normalize(item.body).includes("Review the next two outcomes")
+          )
+      );
+      writeState(state);
+      return { ok: true };
+    `),
+    reloadAfterSetup: false,
+    source: workflowActionSource(`
+      const workspace = await waitFor(() =>
+        document.querySelector('[data-testid="teacher-student-interventions"]')
+      );
+      if (!workspace) throw new Error("Teacher intervention workspace not found");
+      const concern = "QA intervention " + Date.now() + " needs focused review.";
+      const nextAction = "Review the next two outcomes with the assigned learner.";
+      setByLabel("Category", "academic", workspace);
+      setByLabel("Priority", "high", workspace);
+      setByLabel("Concern", concern, workspace);
+      setByLabel("Next action", nextAction, workspace);
+      const share = Array.from(workspace.querySelectorAll("label")).find((label) =>
+        normalize(label.textContent).includes("Share the support action")
+      )?.querySelector('input[type="checkbox"]');
+      if (!share) throw new Error("Student visibility control was not rendered");
+      if (!share.checked) share.click();
+      const create = workspace.querySelector('[data-testid="teacher-intervention-create"]');
+      if (!create || create.disabled) throw new Error("Create intervention action was unavailable");
+      create.click();
+      const createdState = await waitFor(() => {
+        const next = readState();
+        const record = next.studentInterventions?.find(
+          (item) =>
+            item.studentId === "stu_demo" &&
+            item.classGroupId === "class_ar_l3_a" &&
+            item.summary === concern
+        );
+        const audit = record
+          ? next.auditLogs?.find(
+              (item) =>
+                item.action === "student.intervention_created" &&
+                item.entityId === record.id &&
+                item.actorId === "usr_teacher_demo"
+            )
+          : null;
+        const notification = next.notifications?.find(
+          (item) =>
+            item.userId === "usr_student_demo" &&
+            item.title === "Learning support plan" &&
+            normalize(item.body).includes("Review the next two outcomes")
+        );
+        return record && audit && notification ? { next, record } : null;
+      }, 5000);
+      const recordRow = await waitFor(() =>
+        Array.from(workspace.querySelectorAll(".teacher-intervention-list article"))
+          .find((item) => normalize(item.textContent).includes(concern))
+      );
+      if (!recordRow) throw new Error("Created intervention was not rendered");
+      const noteInput = recordRow.querySelector('input[placeholder="Record the result or next review."]');
+      if (!noteInput) throw new Error("Intervention follow-up input was not rendered");
+      const resolution = "QA intervention resolved after the planned learner review.";
+      setValue(noteInput, resolution);
+      const resolve = Array.from(recordRow.querySelectorAll("button")).find(
+        (button) => normalize(button.textContent) === "Resolve"
+      );
+      if (!resolve || resolve.disabled) throw new Error("Resolve intervention action was unavailable");
+      resolve.click();
+      const resolvedState = await waitFor(() => {
+        const next = readState();
+        const record = next.studentInterventions?.find(
+          (item) => item.id === createdState.record.id
+        );
+        const audit = next.auditLogs?.find(
+          (item) =>
+            item.action === "student.intervention_status_updated" &&
+            item.entityId === createdState.record.id &&
+            item.actorId === "usr_teacher_demo"
+        );
+        return record?.status === "resolved" && record?.version === 2 && audit
+          ? { next, record, audit }
+          : null;
+      }, 5000);
+      return {
+        ok: Boolean(resolvedState),
+        studentId: resolvedState?.record?.studentId,
+        classGroupId: resolvedState?.record?.classGroupId,
+        teacherId: resolvedState?.record?.teacherId,
+        status: resolvedState?.record?.status,
+        version: resolvedState?.record?.version,
+        resolutionNote: resolvedState?.record?.resolutionNote,
+        auditActorId: resolvedState?.audit?.actorId
+      };
+    `),
+    predicate: value =>
+      value?.ok &&
+      value?.studentId === "stu_demo" &&
+      value?.classGroupId === "class_ar_l3_a" &&
+      value?.teacherId === "usr_teacher_demo" &&
+      value?.status === "resolved" &&
+      value?.version === 2 &&
+      value?.resolutionNote?.startsWith("QA intervention resolved") &&
+      value?.auditActorId === "usr_teacher_demo",
+  },
+  {
+    name: "student support shows only teacher-shared intervention",
+    role: "student",
+    route: "/app/student/support",
+    source: workflowActionSource(`
+      const section = await waitFor(() =>
+        document.querySelector(".student-support-record-card")
+      );
+      const text = normalize(section?.textContent);
+      return {
+        ok: Boolean(section),
+        showsPlan: text.includes("Attendance"),
+        showsNextStep: text.includes("Review punctuality after the next two class sessions"),
+        showsMonitoring: text.includes("Monitoring"),
+        exposesStaffOnly: text.includes("Private staff intervention")
+      };
+    `),
+    predicate: value =>
+      value?.ok &&
+      value?.showsPlan &&
+      value?.showsNextStep &&
+      value?.showsMonitoring &&
+      value?.exposesStaffOnly === false,
+  },
+  {
+    name: "teacher materials workflow uses Moodle-owned course content",
+    role: "teacher",
+    route: "/app/teacher/classes/class_ar_l3_a/materials",
+    source: workflowActionSource(`
+      await waitFor(() => normalize(document.body.textContent).includes("Materials are managed in Moodle"));
+      const owner = document.querySelector('[data-testid="teacher-materials-moodle-owner"]');
+      const open = document.querySelector('[data-testid="teacher-materials-open-moodle"]');
+      const nativeMutation = owner?.querySelector("button");
+      return {
+        ok: Boolean(owner && open),
+        href: open?.getAttribute("href"),
+        hasNativeMutation: Boolean(nativeMutation),
+        copy: normalize(owner?.textContent)
+      };
+    `),
+    predicate: value =>
+      value?.ok &&
+      value?.href === "/app/teacher/moodle-source/course_ar_l3" &&
+      value?.hasNativeMutation === false &&
+      value?.copy?.includes("verified course snapshot"),
   },
   {
     name: "teacher class reminder workflow sends scoped student message",
@@ -2685,265 +2922,73 @@ const deepWorkflowCases = [
       value?.actorId === "usr_teacher_demo",
   },
   {
-    name: "teacher assignment workflow drafts, edits, and publishes assigned work",
+    name: "teacher assignment workflow enforces Moodle ownership",
     role: "teacher",
     route: "/app/teacher/assignments/new",
     source: workflowActionSource(`
-      const createForm = await waitFor(() => document.querySelector('[data-testid="teacher-assignment-create-form"]'));
-      if (!createForm) throw new Error("Assignment draft form did not render");
-      const draftTitle = "QA assignment draft " + Date.now();
-      setByLabel("Class", "run_ar_l3_2026");
-      setByLabel("Title", draftTitle);
-      setByLabel("Due date", "2026-07-25");
-      setByLabel("Submission", "text");
-      setByLabel("Rubric", "Accuracy, Clarity");
-      await clickButtonWithin('[data-testid="teacher-assignment-create-form"]', "Save draft", true);
-      const draftState = await waitFor(() => {
-        const next = readState();
-        const assignment = next.assignments?.find((item) => item.title === draftTitle);
-        const audit = assignment
-          ? next.auditLogs?.find((item) => item.action === "assignment.created" && item.entityId === assignment.id)
-          : null;
-        return assignment?.status === "draft" && audit ? next : null;
-      }, 5000);
-      const draft = draftState?.assignments?.find((item) => item.title === draftTitle);
-      if (!draft) throw new Error("Assignment draft was not persisted");
-
-      await goto("/app/teacher/assignments/" + draft.id);
-      const draftControls = await waitFor(() => document.querySelector('[data-testid="teacher-assignment-draft-controls"]'));
-      if (!draftControls) throw new Error("Assignment draft controls did not render");
-      const publishedTitle = draftTitle + " published";
-      setByLabel("Title", publishedTitle);
-      setByLabel("Due date", "2026-07-26");
-      setByLabel("Submission type", "file");
-      setByLabel("Rubric", "Evidence, Structure");
-      await clickButtonWithin('[data-testid="teacher-assignment-draft-controls"]', "Save draft", true);
-      const updatedState = await waitFor(() => {
-        const next = readState();
-        const assignment = next.assignments?.find((item) => item.id === draft.id);
-        const audit = next.auditLogs?.find((item) => item.action === "assignment.updated" && item.entityId === draft.id);
-        return assignment?.title === publishedTitle && assignment?.submissionType === "file" && audit ? next : null;
-      }, 5000);
-      if (!updatedState) throw new Error("Assignment draft update was not persisted");
-
-      const publishButton = await waitFor(() => {
-        const button = document.querySelector('[data-testid="teacher-assignment-publish"]');
-        return button && !button.disabled ? button : null;
-      }, 5000);
-      if (!publishButton) throw new Error("Publish assignment button did not become available");
-      publishButton.click();
-      const publishedState = await waitFor(() => {
-        const next = readState();
-        const assignment = next.assignments?.find((item) => item.id === draft.id);
-        const audit = next.auditLogs?.find((item) => item.action === "assignment.published" && item.entityId === draft.id);
-        return assignment?.status === "active" && audit ? next : null;
-      }, 5000);
-      const assignment = publishedState?.assignments?.find((item) => item.id === draft.id);
-      const createdAudit = publishedState?.auditLogs?.find((item) => item.action === "assignment.created" && item.entityId === draft.id);
-      const updatedAudit = publishedState?.auditLogs?.find((item) => item.action === "assignment.updated" && item.entityId === draft.id);
-      const publishedAudit = publishedState?.auditLogs?.find((item) => item.action === "assignment.published" && item.entityId === draft.id);
-      const publishedControls = await waitFor(() => document.querySelector('[data-testid="teacher-assignment-published-controls"]'));
+      const boundary = await waitFor(() => document.querySelector('[data-testid="teacher-moodle-assignments-authority"]'));
+      const disabled = await waitFor(() => document.querySelector('[data-testid="teacher-moodle-write-disabled"]'));
+      const nativeForm = document.querySelector('[data-testid="teacher-assignment-create-form"]');
       return {
-        ok: Boolean(publishedState && publishedControls),
-        status: assignment?.status,
-        title: assignment?.title,
-        submissionType: assignment?.submissionType,
-        rubric: assignment?.rubric,
-        createdActorId: createdAudit?.actorId,
-        updatedActorId: updatedAudit?.actorId,
-        publishedActorId: publishedAudit?.actorId
+        ok: Boolean(boundary && disabled),
+        authority: boundary?.getAttribute("data-moodle-authority"),
+        nativeWrite: boundary?.getAttribute("data-native-write"),
+        hasNativeForm: Boolean(nativeForm),
+        copy: normalize(boundary?.textContent)
       };
     `),
     predicate: value =>
       value?.ok &&
-      value?.status === "active" &&
-      value?.title?.startsWith("QA assignment draft") &&
-      value?.submissionType === "file" &&
-      value?.rubric?.includes("Evidence") &&
-      value?.createdActorId === "usr_teacher_demo" &&
-      value?.updatedActorId === "usr_teacher_demo" &&
-      value?.publishedActorId === "usr_teacher_demo",
+      value?.authority === "true" &&
+      value?.nativeWrite === "false" &&
+      value?.hasNativeForm === false &&
+      value?.copy?.includes("No local fallback write"),
   },
   {
-    name: "teacher quiz workflow drafts, assembles, and publishes assigned quiz",
+    name: "teacher quiz workflow enforces Moodle ownership",
     role: "teacher",
     route: "/app/teacher/quizzes/new",
     source: workflowActionSource(`
-      const createForm = await waitFor(() => document.querySelector('[data-testid="teacher-quiz-create-form"]'));
-      if (!createForm) throw new Error("Quiz draft form did not render");
-      const draftTitle = "QA quiz draft " + Date.now();
-      setByLabel("Class", "run_ar_l3_2026");
-      setByLabel("Quiz title", draftTitle);
-      setByLabel("Due date", "2026-07-29");
-      setByLabel("Minutes", "25");
-      setByLabel("Attempts", "2");
-      setByLabel("Question types", "multiple_choice");
-      await clickButtonWithin('[data-testid="teacher-quiz-create-form"]', "Save quiz draft", true);
-      const draftState = await waitFor(() => {
-        const next = readState();
-        const quiz = next.quizzes?.find((item) => item.title === draftTitle);
-        const audit = quiz
-          ? next.auditLogs?.find((item) => item.action === "quiz.created" && item.entityId === quiz.id)
-          : null;
-        return quiz?.status === "draft" && audit ? next : null;
-      }, 5000);
-      const draft = draftState?.quizzes?.find((item) => item.title === draftTitle);
-      if (!draft) throw new Error("Quiz draft was not persisted");
-
-      await goto("/app/teacher/quizzes/" + draft.id);
-      const draftControls = await waitFor(() => document.querySelector('[data-testid="teacher-quiz-draft-controls"]'));
-      if (!draftControls) throw new Error("Quiz draft controls did not render");
-      const publishedTitle = draftTitle + " published";
-      setByLabel("Quiz title", publishedTitle);
-      setByLabel("Due date", "2026-07-30");
-      setByLabel("Minutes", "30");
-      setByLabel("Attempts per learner", "3");
-      await clickButtonWithin('[data-testid="teacher-quiz-draft-controls"]', "Save draft", true);
-      const updatedState = await waitFor(() => {
-        const next = readState();
-        const quiz = next.quizzes?.find((item) => item.id === draft.id);
-        const audit = next.auditLogs?.find((item) => item.action === "quiz.updated" && item.entityId === draft.id);
-        return quiz?.title === publishedTitle && quiz?.durationMinutes === 30 && quiz?.attemptsAllowed === 3 && audit ? next : null;
-      }, 5000);
-      if (!updatedState) throw new Error("Quiz draft update was not persisted");
-
-      const questionEditor = await waitFor(() => document.querySelector('[data-testid="teacher-quiz-question-editor"]'));
-      if (!questionEditor) throw new Error("Quiz question editor did not render");
-      const question = questionEditor.querySelector('input[data-question-id="qbi_ar_conditional_mcq"]');
-      if (!question) throw new Error("Assigned-run question was not available");
-      if (!question.checked) question.click();
-      await waitFor(() => {
-        const button = questionEditor.querySelector('[data-testid="teacher-quiz-save-questions"]');
-        return button && !button.disabled ? button : null;
-      }, 3000);
-      await clickButtonWithin('[data-testid="teacher-quiz-question-editor"]', "Save questions", true);
-      const assembledState = await waitFor(() => {
-        const next = readState();
-        const quiz = next.quizzes?.find((item) => item.id === draft.id);
-        const audit = next.auditLogs?.find((item) => item.action === "quiz.questions.updated" && item.entityId === draft.id);
-        return quiz?.questionIds?.includes("qbi_ar_conditional_mcq") && audit ? next : null;
-      }, 5000);
-      if (!assembledState) throw new Error("Quiz question selection was not persisted");
-
-      const publishButton = await waitFor(() => {
-        const button = document.querySelector('[data-testid="teacher-quiz-publish"]');
-        return button && !button.disabled ? button : null;
-      }, 5000);
-      if (!publishButton) throw new Error("Publish quiz button did not become available");
-      publishButton.click();
-      const publishedState = await waitFor(() => {
-        const next = readState();
-        const quiz = next.quizzes?.find((item) => item.id === draft.id);
-        const audit = next.auditLogs?.find((item) => item.action === "quiz.published" && item.entityId === draft.id);
-        return quiz?.status === "active" && audit ? next : null;
-      }, 5000);
-      const quiz = publishedState?.quizzes?.find((item) => item.id === draft.id);
-      const createdAudit = publishedState?.auditLogs?.find((item) => item.action === "quiz.created" && item.entityId === draft.id);
-      const updatedAudit = publishedState?.auditLogs?.find((item) => item.action === "quiz.updated" && item.entityId === draft.id);
-      const questionsAudit = publishedState?.auditLogs?.find((item) => item.action === "quiz.questions.updated" && item.entityId === draft.id);
-      const publishedAudit = publishedState?.auditLogs?.find((item) => item.action === "quiz.published" && item.entityId === draft.id);
-      const publishedControls = await waitFor(() => document.querySelector('[data-testid="teacher-quiz-published-controls"]'));
-      const studentLogin = await fetch("/api/auth/login", {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json", "X-Nile-Learn-Request": "browser" },
-        body: JSON.stringify({
-          email: "s@nl.test",
-          password: ${JSON.stringify(password)},
-          role: "student"
-        })
-      });
-      const studentStateResponse = studentLogin.ok
-        ? await fetch("/api/platform/state", { credentials: "include" })
-        : null;
-      const studentStatePayload = studentStateResponse?.ok
-        ? await studentStateResponse.json()
-        : null;
-      const notification = studentStatePayload?.state?.notifications?.find(
-        (item) =>
-          item.userId === "usr_student_demo" &&
-          item.href === "/app/student/quizzes/" + draft.id
-      );
+      const boundary = await waitFor(() => document.querySelector('[data-testid="teacher-moodle-quizzes-authority"]'));
+      const disabled = await waitFor(() => document.querySelector('[data-testid="teacher-moodle-write-disabled"]'));
+      const nativeForm = document.querySelector('[data-testid="teacher-quiz-create-form"]');
       return {
-        ok: Boolean(publishedState && publishedControls && notification),
-        status: quiz?.status,
-        title: quiz?.title,
-        durationMinutes: quiz?.durationMinutes,
-        attemptsAllowed: quiz?.attemptsAllowed,
-        questionIds: quiz?.questionIds,
-        createdActorId: createdAudit?.actorId,
-        updatedActorId: updatedAudit?.actorId,
-        questionsActorId: questionsAudit?.actorId,
-        publishedActorId: publishedAudit?.actorId,
-        notificationUserId: notification?.userId
+        ok: Boolean(boundary && disabled),
+        authority: boundary?.getAttribute("data-moodle-authority"),
+        nativeWrite: boundary?.getAttribute("data-native-write"),
+        hasNativeForm: Boolean(nativeForm),
+        copy: normalize(boundary?.textContent)
       };
     `),
     predicate: value =>
       value?.ok &&
-      value?.status === "active" &&
-      value?.title?.startsWith("QA quiz draft") &&
-      value?.durationMinutes === 30 &&
-      value?.attemptsAllowed === 3 &&
-      value?.questionIds?.includes("qbi_ar_conditional_mcq") &&
-      value?.createdActorId === "usr_teacher_demo" &&
-      value?.updatedActorId === "usr_teacher_demo" &&
-      value?.questionsActorId === "usr_teacher_demo" &&
-      value?.publishedActorId === "usr_teacher_demo" &&
-      value?.notificationUserId === "usr_student_demo",
+      value?.authority === "true" &&
+      value?.nativeWrite === "false" &&
+      value?.hasNativeForm === false &&
+      value?.copy?.includes("No local fallback write"),
   },
   {
-    name: "teacher grading workflow scores pending assignment submission",
+    name: "teacher grading workflow enforces Moodle ownership",
     role: "teacher",
     route: "/app/teacher/grading",
-    setupSource: workflowSetupSource(`
-      const state = readState();
-      const submission = state.assignmentSubmissions?.find((item) => item.id === "sub_ar_grammar_draft");
-      state.assignmentSubmissions = submission
-        ? [
-            { ...submission, status: "pending", score: undefined, feedback: undefined },
-            ...(state.assignmentSubmissions || []).filter((item) => item.id !== "sub_ar_grammar_draft"),
-          ]
-        : (state.assignmentSubmissions || []);
-      state.grades = (state.grades || []).filter((item) => item.itemId !== "asg_ar_grammar");
-      writeState(state);
-      return { ok: Boolean(submission), submissionId: submission?.id };
-    `),
-    reloadAfterSetup: false,
     source: workflowActionSource(`
-      await goto("/app/teacher/grading/sub_ar_grammar_draft");
-      const editor = await waitFor(() => document.querySelector('[data-testid="teacher-grade-editor"]'));
-      if (!editor) throw new Error("Teacher grade editor not found");
-      const feedback = "QA grading feedback " + Date.now();
-      setValue(editor.querySelector('input[type="number"]'), "91");
-      setValue(editor.querySelector('input[placeholder]'), feedback);
-      const gradeButton = Array.from(editor.querySelectorAll("button"))
-        .find((button) => visible(button) && !button.disabled && normalize(button.textContent) === "Save result");
-      if (!gradeButton) throw new Error("Save result button not found");
-      gradeButton.click();
-      await delay(140);
-      const state = await waitFor(() => {
-        const next = readState();
-        const submission = next.assignmentSubmissions?.find((item) => item.id === "sub_ar_grammar_draft");
-        const grade = next.grades?.find((item) => item.itemId === "asg_ar_grammar" && item.feedback === feedback);
-        return submission?.status === "completed" && submission?.score === 91 && grade ? next : null;
-      });
-      const fallback = readState();
-      const submission = (state || fallback)?.assignmentSubmissions?.find((item) => item.id === "sub_ar_grammar_draft");
-      const grade = (state || fallback)?.grades?.find((item) => item.itemId === "asg_ar_grammar" && item.feedback === feedback);
+      const boundary = await waitFor(() => document.querySelector('[data-testid="teacher-moodle-grading-authority"]'));
+      const disabled = await waitFor(() => document.querySelector('[data-testid="teacher-moodle-write-disabled"]'));
+      const nativeEditor = document.querySelector('[data-testid="teacher-grade-editor"]');
       return {
-        ok: Boolean(state),
-        submissionStatus: submission?.status,
-        submissionScore: submission?.score,
-        gradeScore: grade?.score,
-        gradeFeedback: grade?.feedback
+        ok: Boolean(boundary && disabled),
+        authority: boundary?.getAttribute("data-moodle-authority"),
+        nativeWrite: boundary?.getAttribute("data-native-write"),
+        hasNativeEditor: Boolean(nativeEditor),
+        copy: normalize(boundary?.textContent)
       };
     `),
     predicate: value =>
       value?.ok &&
-      value?.submissionStatus === "completed" &&
-      value?.submissionScore === 91 &&
-      value?.gradeScore === 91 &&
-      value?.gradeFeedback?.startsWith("QA grading feedback"),
+      value?.authority === "true" &&
+      value?.nativeWrite === "false" &&
+      value?.hasNativeEditor === false &&
+      value?.copy?.includes("No local fallback write"),
   },
   {
     name: "student gradebook shows returned assignment feedback",
@@ -3001,65 +3046,27 @@ const deepWorkflowCases = [
       value?.hasGradebook,
   },
   {
-    name: "teacher quiz review workflow updates attempt and grade feedback",
+    name: "teacher quiz review workflow enforces Moodle ownership",
     role: "teacher",
     route: "/app/teacher/quizzes/review",
-    setupSource: workflowSetupSource(`
-      const state = readState();
-      const attempt = state.quizAttempts?.find((item) => item.id === "attempt_ar_teacher_review");
-      state.quizAttempts = attempt
-        ? [
-            { ...attempt, status: "pending", score: 0 },
-            ...(state.quizAttempts || []).filter((item) => item.id !== "attempt_ar_teacher_review"),
-          ]
-        : (state.quizAttempts || []);
-      state.grades = (state.grades || []).filter((item) => item.itemId !== "quiz_ar_teacher_review");
-      state.auditLogs = (state.auditLogs || []).filter((item) => item.entityId !== "attempt_ar_teacher_review");
-      writeState(state);
-      return { ok: Boolean(attempt), attemptId: attempt?.id };
-    `),
-    reloadAfterSetup: false,
     source: workflowActionSource(`
-      await goto("/app/teacher/quizzes/review/attempt_ar_teacher_review");
-      const reviewPanel = await waitFor(() => document.querySelector(".teacher-quiz-review-form"));
-      if (!reviewPanel) throw new Error("Quiz review form not found");
-      const feedback = "QA quiz review " + Date.now();
-      setValue(reviewPanel.querySelector('input[type="number"]'), "93");
-      setValue(reviewPanel.querySelector("textarea"), feedback);
-      const reviewButton = Array.from(reviewPanel.querySelectorAll("button"))
-        .find((button) => visible(button) && !button.disabled && normalize(button.textContent) === "Save review");
-      if (!reviewButton) throw new Error("Save review button not found");
-      reviewButton.click();
-      await delay(140);
-      const state = await waitFor(() => {
-        const next = readState();
-        const attempt = next.quizAttempts?.find((item) => item.id === "attempt_ar_teacher_review" && item.score === 93);
-        const grade = next.grades?.find((item) => item.itemId === "quiz_ar_teacher_review" && item.feedback === feedback);
-        const audit = next.auditLogs?.find((item) => item.action === "quiz.reviewed" && item.entityId === "attempt_ar_teacher_review" && item.actorId === "usr_teacher_demo");
-        return attempt?.status === "completed" && grade && audit ? next : null;
-      });
-      const fallback = readState();
-      const attempt = (state || fallback)?.quizAttempts?.find((item) => item.id === "attempt_ar_teacher_review" && item.score === 93);
-      const grade = (state || fallback)?.grades?.find((item) => item.itemId === "quiz_ar_teacher_review" && item.feedback === feedback);
-      const audit = (state || fallback)?.auditLogs?.find((item) => item.action === "quiz.reviewed" && item.entityId === "attempt_ar_teacher_review" && item.actorId === "usr_teacher_demo");
+      const boundary = await waitFor(() => document.querySelector('[data-testid="teacher-moodle-quizzes-authority"]'));
+      const disabled = await waitFor(() => document.querySelector('[data-testid="teacher-moodle-write-disabled"]'));
+      const nativeReview = document.querySelector(".teacher-quiz-review-form");
       return {
-        ok: Boolean(state),
-        attemptStatus: attempt?.status,
-        attemptScore: attempt?.score,
-        gradeScore: grade?.score,
-        gradeFeedback: grade?.feedback,
-        auditAction: audit?.action,
-        auditActorId: audit?.actorId
+        ok: Boolean(boundary && disabled),
+        authority: boundary?.getAttribute("data-moodle-authority"),
+        nativeWrite: boundary?.getAttribute("data-native-write"),
+        hasNativeReview: Boolean(nativeReview),
+        copy: normalize(boundary?.textContent)
       };
     `),
     predicate: value =>
       value?.ok &&
-      value?.attemptStatus === "completed" &&
-      value?.attemptScore === 93 &&
-      value?.gradeScore === 93 &&
-      value?.gradeFeedback?.startsWith("QA quiz review") &&
-      value?.auditAction === "quiz.reviewed" &&
-      value?.auditActorId === "usr_teacher_demo",
+      value?.authority === "true" &&
+      value?.nativeWrite === "false" &&
+      value?.hasNativeReview === false &&
+      value?.copy?.includes("No local fallback write"),
   },
   {
     name: "branch dashboard renders scoped operations command center",
@@ -3273,6 +3280,95 @@ const deepWorkflowCases = [
       value?.title?.startsWith("QA review session") &&
       value?.sessionCreated === true &&
       value?.branchInvariantOk === true,
+  },
+  {
+    name: "branch schedule conflict workflow records and cancels review",
+    role: "branchadmin",
+    route: "/app/branch/schedule",
+    source: workflowActionSource(`
+      await goto("/app/branch/schedule/new");
+      const composer = await waitFor(() =>
+        document.querySelector('[data-testid="branch-schedule-composer"]')
+      );
+      if (!composer) throw new Error("Branch schedule composer did not open");
+      const title = "QA conflict review " + Date.now();
+      setByLabel("Title", title);
+      setByLabel("Type", "live_session");
+      setByLabel("Date", "2026-07-05");
+      setByLabel("Starts", "14:15");
+      setByLabel("Ends", "14:45");
+      await clickButton("Create event");
+      const createdState = await waitFor(() => {
+        const next = readState();
+        const event = next.events?.find((item) => item.title === title);
+        const review = next.scheduleConflicts?.find(
+          (item) => item.eventId === event?.id && item.status === "open"
+        );
+        const audit = event
+          ? next.auditLogs?.find(
+              (item) =>
+                item.action === "calendar.created_with_conflict" &&
+                item.entityId === event.id &&
+                item.actorId === "usr_branch_demo"
+            )
+          : null;
+        return event?.status === "pending" && review && audit
+          ? { next, event, review }
+          : null;
+      }, 5000);
+      if (!createdState) throw new Error("Durable schedule conflict was not created");
+      await goto("/app/branch/schedule/conflicts");
+      const row = await waitFor(() =>
+        document.querySelector(
+          '[data-conflict-id="' + createdState.review.id + '"]'
+        )
+      );
+      if (!row) throw new Error("Schedule conflict review was not rendered");
+      const reason = row.querySelector("textarea");
+      if (!reason) throw new Error("Conflict resolution reason was not rendered");
+      setValue(reason, "QA cancelled the duplicate session after branch review.");
+      const cancel = Array.from(row.querySelectorAll("button")).find(
+        (button) => normalize(button.textContent) === "Cancel event"
+      );
+      if (!cancel || cancel.disabled) throw new Error("Cancel event action was unavailable");
+      cancel.click();
+      const resolvedState = await waitFor(() => {
+        const next = readState();
+        const review = next.scheduleConflicts?.find(
+          (item) => item.id === createdState.review.id
+        );
+        const event = next.events?.find(
+          (item) => item.id === createdState.event.id
+        );
+        const audit = next.auditLogs?.find(
+          (item) =>
+            item.action === "calendar.conflict_cancelled" &&
+            item.entityId === createdState.review.id &&
+            item.actorId === "usr_branch_demo"
+        );
+        return review?.status === "cancelled" &&
+          review?.version === 2 &&
+          event?.status === "cancelled" &&
+          audit
+          ? { review, event, audit }
+          : null;
+      }, 5000);
+      return {
+        ok: Boolean(resolvedState),
+        reviewStatus: resolvedState?.review?.status,
+        reviewVersion: resolvedState?.review?.version,
+        resolvedBy: resolvedState?.review?.resolvedBy,
+        eventStatus: resolvedState?.event?.status,
+        auditActorId: resolvedState?.audit?.actorId
+      };
+    `),
+    predicate: value =>
+      value?.ok &&
+      value?.reviewStatus === "cancelled" &&
+      value?.reviewVersion === 2 &&
+      value?.resolvedBy === "usr_branch_demo" &&
+      value?.eventStatus === "cancelled" &&
+      value?.auditActorId === "usr_branch_demo",
   },
   {
     name: "branch class-session workflow reschedules and cancels with audit evidence",
@@ -3742,48 +3838,27 @@ const deepWorkflowCases = [
       value?.hasSortHeader === true,
   },
   {
-    name: "HOD curriculum workflow creates server-backed module",
+    name: "HOD curriculum workflow enforces Moodle ownership",
     role: "headofdepartment",
-    route: "/app/hod/curriculum",
+    route: "/app/hod/curriculum/new",
     source: workflowActionSource(`
-      await goto("/app/hod/curriculum/new");
-      const composer = await waitFor(() => document.querySelector('[data-testid="hod-module-composer"]'));
-      if (!composer) throw new Error("HOD module composer did not open");
-      const title = "QA HOD module " + Date.now();
-      setByLabel("Module title", title);
-      setByLabel("Outcomes", "Map source lesson, Align assessment");
-      await clickButton("Add module");
-      const state = await waitFor(() => {
-        const next = readState();
-        const module = next.modules?.find((item) => item.title === title && item.courseId === "course_ar_l3");
-        const audit = next.auditLogs?.find((item) => item.action === "curriculum.module_created" && item.summary?.includes(title));
-        return module && audit ? next : null;
-      }, 5000);
-      const readServerState = async () => {
-        const response = await fetch("/api/platform/state", { credentials: "include" });
-        if (!response.ok) return null;
-        const payload = await response.json();
-        return payload?.state ?? null;
-      };
-      const verifiedState = state || await readServerState();
-      const module = verifiedState?.modules?.find((item) => item.title === title);
-      const audit = verifiedState?.auditLogs?.find((item) => item.action === "curriculum.module_created" && item.summary?.includes(title));
+      const boundary = await waitFor(() => document.querySelector('[data-testid="hod-moodle-curriculum-authority"]'));
+      const disabled = await waitFor(() => document.querySelector('[data-testid="hod-moodle-write-disabled"]'));
+      const nativeComposer = document.querySelector('[data-testid="hod-module-composer"]');
       return {
-        ok: Boolean(verifiedState),
-        courseId: module?.courseId,
-        order: module?.order,
-        outcomes: module?.outcomes,
-        lastAudit: audit?.action,
-        actorId: audit?.actorId
+        ok: Boolean(boundary && disabled),
+        authority: boundary?.getAttribute("data-moodle-authority"),
+        nativeWrite: boundary?.getAttribute("data-native-write"),
+        hasNativeComposer: Boolean(nativeComposer),
+        copy: normalize(boundary?.textContent)
       };
     `),
     predicate: value =>
       value?.ok &&
-      value?.courseId === "course_ar_l3" &&
-      value?.order >= 4 &&
-      value?.outcomes?.includes("Map source lesson") &&
-      value?.lastAudit === "curriculum.module_created" &&
-      value?.actorId === "usr_hod_demo",
+      value?.authority === "true" &&
+      value?.nativeWrite === "false" &&
+      value?.hasNativeComposer === false &&
+      value?.copy?.includes("No local fallback write"),
   },
   {
     name: "HOD course-run workflow creates department delivery run",
@@ -3866,102 +3941,50 @@ const deepWorkflowCases = [
       value?.actorId === "usr_hod_demo",
   },
   {
-    name: "HOD assessment workflow creates scoped academic assessment",
+    name: "HOD assessment workflow enforces Moodle ownership",
     role: "headofdepartment",
-    route: "/app/hod/assessments",
+    route: "/app/hod/assessments/new",
     source: workflowActionSource(`
-      await goto("/app/hod/assessments/new");
-      const composer = await waitFor(() => document.querySelector('[data-testid="hod-assignment-composer"]'));
-      if (!composer) throw new Error("HOD assignment composer did not open");
-      const title = "QA HOD assessment " + Date.now();
-      setByLabel("Assignment title", title);
-      setByLabel("Submission type", "text");
-      await clickButton("Create assignment");
-      const state = await waitFor(() => {
-        const next = readState();
-        const assignment = next.assignments?.find((item) => item.title === title);
-        const audit = assignment
-          ? next.auditLogs?.find((item) => item.action === "assignment.created" && item.entityId === assignment.id)
-          : null;
-        return assignment && audit ? next : null;
-      });
-      const assignment = state?.assignments?.find((item) => item.title === title);
-      const audit = assignment
-        ? state?.auditLogs?.find((item) => item.action === "assignment.created" && item.entityId === assignment.id)
-        : null;
+      const boundary = await waitFor(() => document.querySelector('[data-testid="hod-moodle-assessments-authority"]'));
+      const disabled = await waitFor(() => document.querySelector('[data-testid="hod-moodle-write-disabled"]'));
+      const nativeComposer = document.querySelector('[data-testid="hod-assignment-composer"]');
       return {
-        ok: Boolean(state),
-        title: assignment?.title,
-        courseRunId: assignment?.courseRunId,
-        lastAudit: audit?.action,
-        actorId: audit?.actorId
+        ok: Boolean(boundary && disabled),
+        authority: boundary?.getAttribute("data-moodle-authority"),
+        nativeWrite: boundary?.getAttribute("data-native-write"),
+        hasNativeComposer: Boolean(nativeComposer),
+        copy: normalize(boundary?.textContent)
       };
     `),
     predicate: value =>
       value?.ok &&
-      value?.title?.startsWith("QA HOD assessment") &&
-      value?.courseRunId === "run_ar_l3_2026" &&
-      value?.lastAudit === "assignment.created" &&
-      value?.actorId === "usr_hod_demo",
+      value?.authority === "true" &&
+      value?.nativeWrite === "false" &&
+      value?.hasNativeComposer === false &&
+      value?.copy?.includes("No local fallback write"),
   },
   {
-    name: "HOD assignment grading workflow scores department submission",
+    name: "HOD assessment review workflow enforces Moodle ownership",
     role: "headofdepartment",
-    route: "/app/hod/assessments",
-    setupSource: workflowSetupSource(`
-      const state = readState();
-      const submission = state.assignmentSubmissions?.find((item) => item.id === "sub_ar_grammar_draft");
-      state.assignmentSubmissions = submission
-        ? [
-            { ...submission, status: "pending", score: undefined, feedback: undefined },
-            ...(state.assignmentSubmissions || []).filter((item) => item.id !== "sub_ar_grammar_draft"),
-          ]
-        : (state.assignmentSubmissions || []);
-      state.grades = (state.grades || []).filter((item) => item.itemId !== "asg_ar_grammar");
-      writeState(state);
-      return { ok: Boolean(submission), submissionId: submission?.id };
-    `),
-    reloadAfterSetup: false,
+    route: "/app/hod/assessments/review/sub_ar_grammar_draft",
     source: workflowActionSource(`
-      await goto("/app/hod/assessments/review/sub_ar_grammar_draft");
-      const reviewCard = await waitFor(() => document.querySelector('[data-testid="hod-submission-review"]'));
-      if (!reviewCard) throw new Error("HOD submission review did not open");
-      const feedback = "QA HOD grading feedback " + Date.now();
-      const editor = reviewCard.querySelector('[data-testid="hod-grade-editor"]');
-      if (!editor) throw new Error("HOD grade editor was not rendered");
-      const inputs = Array.from(editor.querySelectorAll("input"));
-      const scoreInput = inputs.find((input) => input.type === "number");
-      const feedbackInput = inputs.find((input) => input.type !== "number");
-      setValue(scoreInput, "89");
-      setValue(feedbackInput, feedback);
-      const gradeButton = Array.from(editor.querySelectorAll("button"))
-        .find((button) => visible(button) && !button.disabled && normalize(button.textContent) === "Save result");
-      if (!gradeButton) throw new Error("HOD grade submission button not found");
-      gradeButton.click();
-      await delay(140);
-      const state = await waitFor(() => {
-        const next = readState();
-        const submission = next.assignmentSubmissions?.find((item) => item.id === "sub_ar_grammar_draft");
-        const grade = next.grades?.find((item) => item.itemId === "asg_ar_grammar" && item.feedback === feedback);
-        return submission?.status === "completed" && submission?.score === 89 && grade ? next : null;
-      });
-      const fallback = readState();
-      const submission = (state || fallback)?.assignmentSubmissions?.find((item) => item.id === "sub_ar_grammar_draft");
-      const grade = (state || fallback)?.grades?.find((item) => item.itemId === "asg_ar_grammar" && item.feedback === feedback);
+      const boundary = await waitFor(() => document.querySelector('[data-testid="hod-moodle-assessments-authority"]'));
+      const disabled = await waitFor(() => document.querySelector('[data-testid="hod-moodle-write-disabled"]'));
+      const nativeReview = document.querySelector('[data-testid="hod-submission-review"]');
       return {
-        ok: Boolean(state),
-        submissionStatus: submission?.status,
-        submissionScore: submission?.score,
-        gradeScore: grade?.score,
-        gradeFeedback: grade?.feedback
+        ok: Boolean(boundary && disabled),
+        authority: boundary?.getAttribute("data-moodle-authority"),
+        nativeWrite: boundary?.getAttribute("data-native-write"),
+        hasNativeReview: Boolean(nativeReview),
+        copy: normalize(boundary?.textContent)
       };
     `),
     predicate: value =>
       value?.ok &&
-      value?.submissionStatus === "completed" &&
-      value?.submissionScore === 89 &&
-      value?.gradeScore === 89 &&
-      value?.gradeFeedback?.startsWith("QA HOD grading feedback"),
+      value?.authority === "true" &&
+      value?.nativeWrite === "false" &&
+      value?.hasNativeReview === false &&
+      value?.copy?.includes("No local fallback write"),
   },
   {
     name: "HOD certificate issue is blocked until approval when issue control exists",
@@ -4241,6 +4264,34 @@ const deepWorkflowCases = [
       value?.presetOwner === "usr_hod_demo" &&
       value?.presetType === "attendance" &&
       value?.auditAction === "report.preset.saved",
+  },
+  {
+    name: "HOD reports define Nile operations and fail closed for Moodle outcomes",
+    role: "headofdepartment",
+    route: "/app/hod/reports",
+    source: workflowActionSource(`
+      await waitFor(() => document.querySelector("[data-testid='hod-operational-metrics']"));
+      const operations = document.querySelector("[data-testid='hod-operational-metrics']");
+      const outcomes = document.querySelector("[data-testid='hod-moodle-outcomes']");
+      const operationsText = normalize(operations?.textContent);
+      const outcomeText = normalize(outcomes?.textContent);
+      return {
+        hasNileSource: operationsText.includes("Nile Learn data"),
+        hasAttendanceDefinition: operationsText.includes("Due or completed class sessions whose attendance register has been saved"),
+        hasCapacityDefinition: operationsText.includes("Students on active class rosters divided by configured class capacity"),
+        hasTeacherDefinition: operationsText.includes("Average active classes per teacher"),
+        hasMoodleBoundary: outcomeText.includes("Moodle-owned academic measures") &&
+          outcomeText.includes("Unavailable"),
+        hasFalseCompatibilityOutcome: outcomeText.includes("Enrollment progress")
+      };
+    `),
+    predicate: value =>
+      value?.hasNileSource === true &&
+      value?.hasAttendanceDefinition === true &&
+      value?.hasCapacityDefinition === true &&
+      value?.hasTeacherDefinition === true &&
+      value?.hasMoodleBoundary === true &&
+      value?.hasFalseCompatibilityOutcome === false,
   },
   {
     name: "admin academic governance updates catalog status from admin route",
@@ -5520,36 +5571,69 @@ const deepWorkflowCases = [
           value?.activities >= 0)),
   },
   {
-    name: "admin integrations workflow checks mock provider and logs result",
+    name: "admin integrations workflow reads server verified provider health",
     role: "superadmin",
     route: "/app/admin/integrations",
     source: workflowActionSource(`
-      await clickButton("Moodle LMS");
-      await clickButton("Record review");
-      const checkedState = await waitFor(() => {
-        const next = readState();
-        return next.auditLogs?.some((item) => item.action === "integration.local_checked" && item.entityId === "moodle") ? next : null;
-      }, 5000);
-      const found = await waitFor(() => normalize(document.body.innerText || document.body.textContent).includes("Moodle LMS") && normalize(document.body.innerText || document.body.textContent).includes("Reviewed"));
+      const beforeAudits = (readState().auditLogs || []).filter((item) => item.action === "integration.local_checked").length;
+      const list = await waitFor(() => document.querySelector('[data-testid="admin-connections-list"][data-authority="server"]'));
+      const moodle = await waitFor(() => document.querySelector('[data-testid="admin-connection-moodle"]'));
+      if (!list || !moodle) throw new Error("Server-backed Moodle health did not render");
+      moodle.click();
+      await clickButton("Refresh status");
+      const refreshed = await waitFor(() => document.querySelector('[data-testid="admin-connections-list"][data-authority="server"]'));
       const body = normalize(document.body.innerText || document.body.textContent);
-      const integration = checkedState?.integrations?.find((item) => item.id === "moodle");
-      const checkAudit = checkedState?.auditLogs?.find((item) => item.action === "integration.local_checked" && item.entityId === "moodle");
+      const afterAudits = (readState().auditLogs || []).filter((item) => item.action === "integration.local_checked").length;
+      const buttons = Array.from(document.querySelectorAll("button")).map((button) => normalize(button.textContent));
       return {
-        ok: Boolean(found && checkedState),
-        checkedProvider: body.includes("Moodle LMS"),
-        checkLogged: body.includes("Reviewed"),
-        status: integration?.status,
-        checkAuditAction: checkAudit?.action,
-        checkAuditActorId: checkAudit?.actorId,
-        body: body.slice(0, 700)
+        ok: Boolean(refreshed),
+        authority: refreshed?.getAttribute("data-authority"),
+        hasMoodle: body.includes("Moodle learning"),
+        hasEndpointGate: body.includes("Server endpoint configured"),
+        hasPluginGate: body.includes("Plugin installation accepted"),
+        hasLocalReviewMutation: buttons.includes("Record review"),
+        auditDelta: afterAudits - beforeAudits
       };
     `),
     predicate: value =>
       value?.ok &&
-      value?.checkedProvider === true &&
-      value?.checkLogged === true &&
-      value?.checkAuditAction === "integration.local_checked" &&
-      value?.checkAuditActorId === "usr_admin_demo",
+      value?.authority === "server" &&
+      value?.hasMoodle === true &&
+      value?.hasEndpointGate === true &&
+      value?.hasPluginGate === true &&
+      value?.hasLocalReviewMutation === false &&
+      value?.auditDelta === 0,
+  },
+  {
+    name: "admin Moodle queue stays inspectable and fail closed without normalized authority",
+    role: "superadmin",
+    route: "/app/admin/integrations",
+    source: workflowActionSource(`
+      const moodle = await waitFor(() => document.querySelector('[data-testid="admin-connection-moodle"]'));
+      moodle.click();
+      const link = await waitFor(() => document.querySelector('[data-testid="admin-moodle-command-queue-link"]'));
+      link.click();
+      await waitFor(() => normalize(document.body.textContent).includes("Moodle command queue"));
+      const body = await waitFor(() => {
+        const text = normalize(document.body.innerText || document.body.textContent);
+        return text.includes("Normalized access required") ? text : null;
+      });
+      const boundary = document.querySelector('[data-testid="admin-moodle-command-boundary"]');
+      return {
+        route: window.location.pathname,
+        empty: body.includes("No commands in this view"),
+        authorityMessage: body.includes("Normalized access required"),
+        failClosed: normalize(boundary?.textContent).includes("Fail closed"),
+        hasMutation: Array.from(document.querySelectorAll("button"))
+          .some((button) => /reconcile|cancel command|retry command/i.test(normalize(button.textContent)))
+      };
+    `),
+    predicate: value =>
+      value?.route === "/app/admin/integrations/moodle-commands" &&
+      value?.empty === true &&
+      value?.authorityMessage === true &&
+      value?.failClosed === true &&
+      value?.hasMutation === false,
   },
   {
     name: "admin system health workflow records health audit",

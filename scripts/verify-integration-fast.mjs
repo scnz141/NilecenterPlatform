@@ -37,10 +37,11 @@ if (
     "phase6h3",
     "phase6h4",
     "phase6k",
+    "phase6l",
   ].includes(validationScope)
 ) {
   throw new Error(
-    `INTEGRATION_FAST_SCOPE must be complete, phase6b, phase6c, phase6d, phase6e, phase6f, phase6g, phase6h1, phase6h2, phase6h3, phase6h4, or phase6k, received: ${validationScope}`
+    `INTEGRATION_FAST_SCOPE must be complete, phase6b, phase6c, phase6d, phase6e, phase6f, phase6g, phase6h1, phase6h2, phase6h3, phase6h4, phase6k, or phase6l, received: ${validationScope}`
   );
 }
 
@@ -90,6 +91,11 @@ const contractCommands = [
     "Phase 6K Moodle command contract schema",
     ["run", "check:phase6k-moodle-command-contract"],
   ],
+  ["Phase 6L Moodle plugin", ["run", "check:phase6l-moodle-plugin"]],
+  [
+    "Phase 6L Moodle command runtime schema",
+    ["run", "check:phase6l-moodle-command-runtime"],
+  ],
   ["Transactional email schema", ["run", "check:email-delivery"]],
   ["Account invitation schema", ["run", "check:account-invitations"]],
 ];
@@ -133,6 +139,10 @@ const sharedImplementationCommands = [
   [
     "Phase 6K Moodle command contract runtime",
     ["run", "check:phase6k-moodle-command-contract:runtime"],
+  ],
+  [
+    "Phase 6L Moodle command runtime",
+    ["run", "check:phase6l-moodle-command-runtime:runtime"],
   ],
   ["Transactional email runtime", ["run", "check:email-delivery:runtime"]],
   ["Account invitation runtime", ["run", "check:account-invitations:runtime"]],
@@ -453,6 +463,44 @@ const phase6kImplementationCommands = [
     ],
   ],
 ];
+const phase6lContractCommands = contractCommands.filter(([label]) =>
+  [
+    "feature freeze",
+    "ownership matrix",
+    "Phase 6 projection contract",
+    "Phase 6E user mapping schema",
+    "Phase 6K Moodle command contract schema",
+    "Phase 6L Moodle plugin",
+    "Phase 6L Moodle command runtime schema",
+  ].includes(label)
+);
+const phase6lImplementationCommands = [
+  [
+    "Phase 6K Moodle command contract runtime",
+    ["run", "check:phase6k-moodle-command-contract:runtime"],
+  ],
+  [
+    "Phase 6L Moodle command runtime",
+    ["run", "check:phase6l-moodle-command-runtime:runtime"],
+  ],
+  ["TypeScript", ["run", "check"]],
+  [
+    "Moodle command runtime tests",
+    [
+      "test",
+      "--",
+      "--run",
+      "client/src/lib/moodle/server-moodle-command-contract.test.ts",
+      "client/src/lib/moodle/server-moodle-command-provider.test.ts",
+      "client/src/lib/moodle/server-moodle-command-repository.test.ts",
+      "client/src/lib/moodle/server-moodle-command-routes.test.ts",
+      "client/src/lib/moodle/server-moodle-command-runtime.test.ts",
+      "client/src/lib/moodle/server-moodle-file-access.test.ts",
+      "client/src/lib/moodle/server-moodle-client.test.ts",
+      "client/src/lib/moodle/server-moodle-projection-routes.test.ts",
+    ],
+  ],
+];
 const selectedContractCommands =
   validationScope === "phase6d"
     ? phase6dContractCommands
@@ -472,7 +520,9 @@ const selectedContractCommands =
                   ? phase6h4ContractCommands
                   : validationScope === "phase6k"
                     ? phase6kContractCommands
-                    : contractCommands;
+                    : validationScope === "phase6l"
+                      ? phase6lContractCommands
+                      : contractCommands;
 const implementationCommands =
   validationScope === "phase6b"
     ? phase6bImplementationCommands
@@ -496,7 +546,9 @@ const implementationCommands =
                       ? phase6h4ImplementationCommands
                       : validationScope === "phase6k"
                         ? phase6kImplementationCommands
-                        : completeImplementationCommands;
+                        : validationScope === "phase6l"
+                          ? phase6lImplementationCommands
+                          : completeImplementationCommands;
 
 function terminateChild(child, signal = "SIGTERM") {
   if (!child.pid || child.exitCode !== null || child.signalCode !== null)

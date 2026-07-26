@@ -1,4 +1,5 @@
 import { requireActiveUser } from "@/lib/auth/session";
+import "@/styles/messages-v1.css";
 import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { motion } from "framer-motion";
 import { Link } from "wouter";

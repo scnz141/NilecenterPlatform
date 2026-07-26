@@ -1,135 +1,124 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { Link } from "wouter";
 import { ChevronRight, RefreshCcw } from "lucide-react";
-import { toast } from "sonner";
 import PlatformShell from "@/components/platform/PlatformShell";
 import { SettingsLayout } from "@/components/platform/PlatformLayouts";
 import {
   DataTableCard,
   StatusBadge,
 } from "@/components/platform/PlatformPrimitives";
-import { runPlatformWorkflowActionRequest } from "@/lib/backend/api";
-import { platformStore } from "@/lib/domain/store";
-import type { IntegrationConfig, IntegrationStatus } from "@/lib/domain/types";
+import {
+  fetchIntegrationHealthRequest,
+  type IntegrationHealthDto,
+} from "@/lib/backend/api";
+import "@/styles/integration-health.css";
 
-function formatConnectionStatus(status: IntegrationStatus) {
-  if (status === "mock_mode") return "Test mode";
-  if (status === "connected") return "Configured";
-  if (status === "error") return "Needs review";
-  return "Not configured";
-}
-
-function integrationTone(
-  status: IntegrationStatus
-): "green" | "amber" | "red" | "slate" {
-  if (status === "connected") return "green";
-  if (status === "mock_mode") return "amber";
-  if (status === "error") return "red";
-  return "slate";
-}
-
-type ConnectionFilter = "all" | "configured" | "test" | "attention";
+type Provider = IntegrationHealthDto["providers"][number];
+type ConnectionFilter = "all" | "verified" | "attention" | "deferred";
 
 const connectionFilters: Array<{
   id: ConnectionFilter;
   label: string;
 }> = [
   { id: "all", label: "All" },
-  { id: "configured", label: "Configured" },
-  { id: "test", label: "Test mode" },
-  { id: "attention", label: "Needs review" },
+  { id: "verified", label: "Live verified" },
+  { id: "attention", label: "Needs attention" },
+  { id: "deferred", label: "Deferred" },
 ];
 
 function matchesConnectionFilter(
-  status: IntegrationStatus,
+  state: Provider["state"],
   filter: ConnectionFilter
 ) {
   if (filter === "all") return true;
-  if (filter === "configured") return status === "connected";
-  if (filter === "test") return status === "mock_mode";
-  return status === "error" || status === "not_configured";
+  if (filter === "verified") return state === "verified";
+  if (filter === "deferred") return state === "deferred";
+  return (
+    state === "configured" ||
+    state === "unavailable" ||
+    state === "disabled" ||
+    state === "incomplete"
+  );
+}
+
+function stateLabel(state: Provider["state"]) {
+  if (state === "verified") return "Live verified";
+  if (state === "configured") return "Configured";
+  if (state === "unavailable") return "Unavailable";
+  if (state === "incomplete") return "Needs setup";
+  if (state === "deferred") return "Deferred";
+  return "Disabled";
+}
+
+function stateTone(
+  state: Provider["state"]
+): "green" | "amber" | "red" | "slate" {
+  if (state === "verified") return "green";
+  if (state === "configured" || state === "incomplete") return "amber";
+  if (state === "unavailable") return "red";
+  return "slate";
+}
+
+function checkLabel(status: Provider["checks"][number]["status"]) {
+  if (status === "passed") return "Passed";
+  if (status === "failed") return "Failed";
+  if (status === "not_applicable") return "Not applicable";
+  return "Not run";
 }
 
 export default function AdminIntegrationsPage() {
-  const [version, setVersion] = useState(0);
-  const [selectedIntegrationId, setSelectedIntegrationId] =
-    useState<IntegrationConfig["id"]>("moodle");
+  const [health, setHealth] = useState<IntegrationHealthDto | null>(null);
+  const [selectedIntegrationId, setSelectedIntegrationId] = useState("moodle");
   const [filter, setFilter] = useState<ConnectionFilter>("all");
-  const [saving, setSaving] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [integrationCheck, setIntegrationCheck] = useState<{
-    integrationId: IntegrationConfig["id"];
-    detail: string;
-  } | null>(null);
-  const state = useMemo(() => platformStore.getState(), [version]);
-  const integrations = state.integrations;
-  const visibleIntegrations = integrations.filter(integration =>
-    matchesConnectionFilter(integration.status, filter)
+
+  const loadHealth = () => {
+    setLoading(true);
+    setError("");
+    void fetchIntegrationHealthRequest().then(result => {
+      if (!result.ok || !result.data) {
+        setHealth(null);
+        setError(result.error ?? "Connection health is unavailable.");
+      } else {
+        setHealth(result.data);
+      }
+      setLoading(false);
+    });
+  };
+
+  useEffect(loadHealth, []);
+
+  const integrations = health?.providers ?? [];
+  const visibleIntegrations = useMemo(
+    () =>
+      integrations.filter(integration =>
+        matchesConnectionFilter(integration.state, filter)
+      ),
+    [filter, integrations]
   );
   const selectedIntegration =
     visibleIntegrations.find(
       integration => integration.id === selectedIntegrationId
     ) ?? visibleIntegrations[0];
-  const runIntegrationAction = async (
-    action: {
-      type: "integration.local_check";
-      integrationId: IntegrationConfig["id"];
-    },
-    successMessage: string
-  ) => {
-    if (saving) return undefined;
-    setSaving(true);
-    setError("");
-    setIntegrationCheck(null);
-    const response = await runPlatformWorkflowActionRequest(action);
-    setSaving(false);
-
-    if (!response.ok || !response.data) {
-      const message = response.error ?? "Connection action could not be saved.";
-      setError(message);
-      toast.error("Connection action failed", { description: message });
-      return undefined;
-    }
-
-    platformStore.setState(response.data.state);
-    setVersion(value => value + 1);
-    toast.success(successMessage);
-    return response.data.result.result;
-  };
-
-  const recordIntegrationReview = () => {
-    if (!selectedIntegration) return;
-    void runIntegrationAction(
-      {
-        type: "integration.local_check",
-        integrationId: selectedIntegration.id,
-      },
-      "Connection review recorded"
-    ).then(result => {
-      const checkedAt = (result as { checkedAt?: string } | undefined)
-        ?.checkedAt;
-      setIntegrationCheck({
-        integrationId: selectedIntegration.id,
-        detail: `Reviewed ${checkedAt ? new Date(checkedAt).toLocaleString() : new Date().toLocaleString()}`,
-      });
-    });
-  };
 
   return (
     <PlatformShell role="superadmin" title="Connections">
       <SettingsLayout
         className="admin-integrations-page"
         title="Connections"
-        description="Review what is ready and what still needs setup."
+        description="Separate configured services from providers that have passed a live server check."
         context="Admin"
         actions={
           <button
             type="button"
             className="platform-primary-button"
-            onClick={recordIntegrationReview}
-            disabled={saving || !selectedIntegration}
+            onClick={loadHealth}
+            disabled={loading}
+            data-testid="admin-connections-refresh"
           >
             <RefreshCcw size={15} />
-            {saving ? "Recording" : "Review setup"}
+            {loading ? "Checking" : "Refresh status"}
           </button>
         }
         toolbar={
@@ -160,43 +149,58 @@ export default function AdminIntegrationsPage() {
             subtitle={`${visibleIntegrations.length} of ${integrations.length} services`}
             className="admin-connections-list-card"
           >
-            <div
-              className="admin-connection-list"
-              data-testid="admin-connections-list"
-            >
-              {visibleIntegrations.map(integration => (
+            {loading ? (
+              <div role="status" className="platform-empty-state">
+                <RefreshCcw size={18} aria-hidden="true" />
+                <strong>Checking server configuration</strong>
+              </div>
+            ) : error ? (
+              <div role="alert" className="platform-empty-state">
+                <strong>Connection status unavailable</strong>
+                <span>{error}</span>
                 <button
-                  key={integration.id}
                   type="button"
-                  className={
-                    integration.id === selectedIntegration?.id ? "active" : ""
-                  }
-                  aria-pressed={integration.id === selectedIntegration?.id}
-                  data-testid={`admin-connection-${integration.id}`}
-                  onClick={() => {
-                    setSelectedIntegrationId(integration.id);
-                    setError("");
-                  }}
+                  className="platform-secondary-button"
+                  onClick={loadHealth}
                 >
-                  <div>
-                    <strong>{integration.label}</strong>
-                    <small>{integration.notes}</small>
-                  </div>
-                  <StatusBadge tone={integrationTone(integration.status)}>
-                    {formatConnectionStatus(integration.status)}
-                  </StatusBadge>
-                  <ChevronRight size={16} aria-hidden="true" />
+                  Retry
                 </button>
-              ))}
-              {!visibleIntegrations.length ? (
-                <div className="platform-empty-state">
-                  <strong>No connections in this view</strong>
-                  <span>
-                    Choose another filter to review the remaining services.
-                  </span>
-                </div>
-              ) : null}
-            </div>
+              </div>
+            ) : (
+              <div
+                className="admin-connection-list"
+                data-testid="admin-connections-list"
+                data-authority={health?.authority}
+              >
+                {visibleIntegrations.map(integration => (
+                  <button
+                    key={integration.id}
+                    type="button"
+                    className={
+                      integration.id === selectedIntegration?.id ? "active" : ""
+                    }
+                    aria-pressed={integration.id === selectedIntegration?.id}
+                    data-testid={`admin-connection-${integration.id}`}
+                    onClick={() => setSelectedIntegrationId(integration.id)}
+                  >
+                    <div>
+                      <strong>{integration.label}</strong>
+                      <small>{integration.summary}</small>
+                    </div>
+                    <StatusBadge tone={stateTone(integration.state)}>
+                      {stateLabel(integration.state)}
+                    </StatusBadge>
+                    <ChevronRight size={16} aria-hidden="true" />
+                  </button>
+                ))}
+                {!visibleIntegrations.length ? (
+                  <div className="platform-empty-state">
+                    <strong>No connections in this view</strong>
+                    <span>Choose another filter to review other services.</span>
+                  </div>
+                ) : null}
+              </div>
+            )}
           </DataTableCard>
         }
         side={
@@ -208,48 +212,46 @@ export default function AdminIntegrationsPage() {
               <div className="admin-connection-inspector-heading">
                 <span>Selected connection</span>
                 <h2>{selectedIntegration.label}</h2>
-                <StatusBadge tone={integrationTone(selectedIntegration.status)}>
-                  {formatConnectionStatus(selectedIntegration.status)}
+                <StatusBadge tone={stateTone(selectedIntegration.state)}>
+                  {stateLabel(selectedIntegration.state)}
                 </StatusBadge>
               </div>
-              <p>{selectedIntegration.notes}</p>
+              <p>{selectedIntegration.summary}</p>
               <div className="admin-connection-inspector-boundary">
-                <span>Setup boundary</span>
-                <strong>
-                  {selectedIntegration.serverOnly
-                    ? "Protected setup"
-                    : "No protected setup"}
-                </strong>
-                <small>
-                  {selectedIntegration.serverOnly
-                    ? "Credentials and provider settings are handled outside this workspace."
-                    : "This connection does not require browser-visible setup fields."}
-                </small>
+                <span>Server checks</span>
+                {selectedIntegration.checks.map(check => (
+                  <div key={check.label}>
+                    <strong>{check.label}</strong>
+                    <small data-status={check.status}>
+                      {checkLabel(check.status)}
+                    </small>
+                  </div>
+                ))}
               </div>
-              <button
-                type="button"
-                className="platform-secondary-button"
-                onClick={recordIntegrationReview}
-                disabled={saving}
-              >
-                <RefreshCcw size={15} />
-                {saving ? "Recording review" : "Record review"}
-              </button>
-              {error ? (
-                <div className="admin-system-result error" role="alert">
-                  <strong>Review was not saved</strong>
-                  <span>{error}</span>
-                </div>
-              ) : null}
-              {integrationCheck?.integrationId === selectedIntegration.id ? (
-                <div className="admin-system-result success" role="status">
-                  <strong>Review recorded</strong>
-                  <span>{integrationCheck.detail}</span>
-                </div>
-              ) : null}
               <small className="admin-connection-meta">
-                Status is reported by the approved server integration.
+                {selectedIntegration.verification.status === "verified"
+                  ? "Live verification passed "
+                  : selectedIntegration.verification.status === "failed"
+                    ? "Live verification failed "
+                    : "Configuration reviewed "}
+                {selectedIntegration.verification.checkedAt
+                  ? new Date(
+                      selectedIntegration.verification.checkedAt
+                    ).toLocaleString()
+                  : health?.checkedAt
+                  ? new Date(health.checkedAt).toLocaleString()
+                  : "by the server"}
+                . Secrets and raw provider errors are never returned.
               </small>
+              {selectedIntegration.id === "moodle" ? (
+                <Link
+                  href="/app/admin/integrations/moodle-commands"
+                  className="platform-secondary-button"
+                  data-testid="admin-moodle-command-queue-link"
+                >
+                  Review command queue
+                </Link>
+              ) : null}
             </section>
           ) : (
             <div className="platform-empty-state">

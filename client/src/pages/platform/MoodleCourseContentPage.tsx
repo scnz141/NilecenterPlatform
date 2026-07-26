@@ -13,6 +13,7 @@ import {
   MonitorUp,
   EyeOff,
   RefreshCw,
+  Download,
 } from "lucide-react";
 import { Link } from "wouter";
 import PlatformShell from "@/components/platform/PlatformShell";
@@ -371,6 +372,16 @@ export default function MoodleCourseContentPage({
                                         {formatFileSize(resource.sizeBytes)}
                                       </small>
                                     </span>
+                                    {resource.downloadPath ? (
+                                      <a
+                                        className="platform-icon-button"
+                                        href={resource.downloadPath}
+                                        aria-label={`Open ${resource.name}`}
+                                        title={`Open ${resource.name}`}
+                                      >
+                                        <Download size={15} />
+                                      </a>
+                                    ) : null}
                                   </li>
                                 ))}
                               </ul>

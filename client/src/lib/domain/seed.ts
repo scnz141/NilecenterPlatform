@@ -1801,6 +1801,7 @@ export const seedPlatformState: PlatformState = {
       status: "pending",
     },
   ],
+  scheduleConflicts: [],
   classSessions: [
     {
       id: "session_ar_l1_alex",
@@ -2749,6 +2750,23 @@ export const seedPlatformState: PlatformState = {
       status: "active",
       priority: "normal",
       lastUpdatedAt: "2026-06-26T12:00:00+03:00",
+    },
+  ],
+  studentInterventions: [
+    {
+      id: "intervention_stu_demo_attendance",
+      studentId: "stu_demo",
+      classGroupId: "class_ar_l3_a",
+      teacherId: "usr_teacher_demo",
+      category: "attendance",
+      priority: "normal",
+      summary: "Follow up after a late arrival pattern.",
+      nextStep: "Review punctuality after the next two class sessions.",
+      studentVisible: true,
+      status: "monitoring",
+      createdAt: "2026-06-24T11:00:00+03:00",
+      updatedAt: "2026-06-24T11:00:00+03:00",
+      version: 1,
     },
   ],
   reportPresets: [

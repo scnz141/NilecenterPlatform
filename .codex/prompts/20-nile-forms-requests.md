@@ -85,7 +85,7 @@ Add focused tests for:
 
 Run focused tests first, then `npm run check`, `npm test -- --run`,
 `npm run build`, and the unfiltered `scripts/verify.sh`. Preserve the protected
-1,634/0 portal baseline.
+1,663/0 portal baseline.
 
 ## EXCLUSIONS
 

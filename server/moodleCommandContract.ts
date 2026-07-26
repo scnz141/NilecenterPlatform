@@ -38,6 +38,61 @@ export const MOODLE_NATIVE_LAUNCH_KINDS = [
 export type MoodleNativeLaunchKind =
   (typeof MOODLE_NATIVE_LAUNCH_KINDS)[number];
 
+export type MoodleCommandRole =
+  | "student"
+  | "teacher"
+  | "registrar"
+  | "headofdepartment"
+  | "branchadmin"
+  | "superadmin";
+
+const teacherOperations = MOODLE_COMMAND_OPERATIONS.filter(
+  operation => !operation.startsWith("delivery_course.")
+);
+
+export const MOODLE_COMMAND_OPERATIONS_BY_ROLE: Readonly<
+  Record<MoodleCommandRole, readonly MoodleCommandOperation[]>
+> = {
+  student: [],
+  teacher: teacherOperations,
+  registrar: [],
+  headofdepartment: MOODLE_COMMAND_OPERATIONS,
+  branchadmin: [],
+  superadmin: [
+    "delivery_course.clone",
+    "delivery_course.archive",
+    "delivery_course.restore",
+  ],
+};
+
+export const MOODLE_NATIVE_LAUNCH_KINDS_BY_ROLE: Readonly<
+  Record<MoodleCommandRole, readonly MoodleNativeLaunchKind[]>
+> = {
+  student: ["quiz_attempt", "assignment_submission"],
+  teacher: [
+    "lesson_authoring",
+    "h5p_authoring",
+    "scorm_authoring",
+    "video_time_authoring",
+  ],
+  registrar: [],
+  headofdepartment: [
+    "lesson_authoring",
+    "h5p_authoring",
+    "scorm_authoring",
+    "video_time_authoring",
+  ],
+  branchadmin: [],
+  superadmin: [],
+};
+
+export function getMoodleRoleCapabilities(role: MoodleCommandRole) {
+  return {
+    operations: MOODLE_COMMAND_OPERATIONS_BY_ROLE[role],
+    nativeLaunchKinds: MOODLE_NATIVE_LAUNCH_KINDS_BY_ROLE[role],
+  } as const;
+}
+
 export type MoodlePluginOperation = Readonly<{
   name: MoodleCommandOperation;
   requiredCapability: string;
@@ -211,12 +266,28 @@ export function parseMoodlePluginCapabilityManifest(
   };
 }
 
+function stableMoodleCommandJson(value: unknown): string {
+  if (Array.isArray(value)) {
+    return `[${value.map(item => stableMoodleCommandJson(item)).join(",")}]`;
+  }
+  if (isRecord(value)) {
+    return `{${Object.keys(value)
+      .sort()
+      .map(
+        key =>
+          `${JSON.stringify(key)}:${stableMoodleCommandJson(value[key])}`
+      )
+      .join(",")}}`;
+  }
+  return JSON.stringify(value);
+}
+
 export function hashMoodleCommandPayload(
   payload: Readonly<Record<string, unknown>>
 ) {
   return crypto
     .createHash("sha256")
-    .update(JSON.stringify(payload), "utf8")
+    .update(stableMoodleCommandJson(payload), "utf8")
     .digest("hex");
 }
 

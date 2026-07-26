@@ -1,3 +1,4 @@
+import "@/styles/nile-forms.css";
 import { AlertCircle, ArrowLeft, CheckCircle2, FileCheck2 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { Link, useLocation } from "wouter";

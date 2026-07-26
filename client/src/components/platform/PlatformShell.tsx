@@ -75,6 +75,7 @@ import {
   platformStore,
 } from "@/lib/domain/store";
 import { runPlatformWorkflowActionRequest } from "@/lib/backend/api";
+import { usePortalRoleStyles } from "@/lib/ui/portalRoleStyles";
 
 const iconMap = {
   Activity,
@@ -165,7 +166,10 @@ const sidebarWorkflowGroups: Record<Role, SidebarSection[]> = {
     },
   ],
   teacher: [
-    { label: "Today", items: ["Dashboard", "Classes", "Calendar"] },
+    {
+      label: "Today",
+      items: ["Dashboard", "Classes", "Calendar", "Availability"],
+    },
     {
       label: "Teaching",
       items: [
@@ -373,6 +377,7 @@ function canShowSearchResult(role: Role, href: string) {
 }
 
 export default function PlatformShell({ role, children, title }: ShellProps) {
+  const roleStylesReady = usePortalRoleStyles(role);
   const [location, navigate] = useLocation();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [sidebarExpanded, setSidebarExpanded] = useState(() => {
@@ -625,6 +630,19 @@ export default function PlatformShell({ role, children, title }: ShellProps) {
       document.removeEventListener("pointerdown", onPointerDown);
     };
   }, [accountOpen, notificationsOpen, searchOpen]);
+
+  if (!roleStylesReady) {
+    return (
+      <main
+        className="platform-route-loading"
+        data-testid="portal-role-styles-loading"
+        aria-live="polite"
+      >
+        <span />
+        <strong>Loading workspace</strong>
+      </main>
+    );
+  }
 
   const sidebarMarkup = (
     <div className="platform-sidebar-inner">

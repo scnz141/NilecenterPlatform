@@ -1,3 +1,4 @@
+import "@/styles/nile-forms.css";
 import { useEffect, useMemo, useState } from "react";
 import {
   ArrowLeft,

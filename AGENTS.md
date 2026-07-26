@@ -64,7 +64,7 @@ Do not duplicate or infer that status in companion files.
 
 Current QA baseline:
 
-- Portal QA: 1,634 checks, 0 failures.
+- Portal QA: 1,663 checks, 0 failures.
 - This baseline must not be broken.
 
 Current priority:
@@ -320,6 +320,17 @@ Use the commands that exist in `package.json`:
 - `npm run verify:phase6k-fast` runs the bounded ownership, projection,
   user-mapping, and Phase 6K contracts with TypeScript and focused command
   tests. It intentionally omits the full unit suite, build, and portal QA.
+- `npm run check:phase6l-moodle-plugin`,
+  `npm run check:phase6l-moodle-command-runtime`, and
+  `npm run check:phase6l-moodle-command-runtime:runtime` verify the local
+  `local_nilelearn` source package, exact 19-operation and six-launch manifest,
+  service-only command/launch runtime, replay, reconciliation,
+  rollback/reapply, and browser-role denials. They do not prove a live plugin
+  installation or enable production writes.
+- `npm run verify:phase6l-fast` runs the bounded Phase 6L ownership, plugin,
+  command-runtime, TypeScript, and focused server tests. It intentionally omits
+  live Moodle CRUD, isolated-staging promotion, the full unit suite, build, and
+  portal QA.
 - `npm run check:phase6-staging-db:static` verifies the immutable Phase 6I
   target, ordered SQL package, artifact hashes, and trusted local tooling
   without reading credentials or contacting a remote project.
@@ -337,7 +348,7 @@ Use the commands that exist in `package.json`:
   drills rollback/reapply, invalidates the temporary fake login, and writes
   redacted evidence. It must never target production or enable Moodle calls,
   Moodle writes, or the normalized runtime.
-- Plain `scripts/verify.sh` is the final gate. It rejects portal filters/skips and asserts the protected `1,634/0` summary.
+- Plain `scripts/verify.sh` is the final gate. It rejects portal filters/skips and asserts the protected `1,663/0` summary.
 - `FULL_FORMAT_CHECK=1 scripts/verify.sh` runs the repo-wide Prettier audit. Use this intentionally because the current app has existing formatting drift.
 - `npm run qa:portals` for portal route QA when browser/runtime context is available.
 - `npm run seed:supabase` only when explicitly working on Supabase demo seeding.

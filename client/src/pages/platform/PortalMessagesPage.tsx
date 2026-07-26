@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import "@/styles/messages-v1.css";
 import {
   ArrowLeft,
   MessageSquare,

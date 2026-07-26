@@ -46,6 +46,8 @@ import { seedPlatformState } from "../client/src/lib/domain/seed.js";
 import { registerNileFormsRoutes } from "./nileFormsRoutes.js";
 import { registerNileRequestsRoutes } from "./nileRequestsRoutes.js";
 import { registerMoodleRoutes } from "./moodleRoutes.js";
+import { registerMoodleCommandRoutes } from "./moodleCommandRoutes.js";
+import { registerIntegrationHealthRoutes } from "./integrationHealthRoutes.js";
 import { registerEmailRoutes } from "./emailRoutes.js";
 import { getEmailIntegrationStatus } from "./emailDeliveryService.js";
 import { registerUserInvitationRoutes } from "./userInvitationRoutes.js";
@@ -110,6 +112,7 @@ type ApiResponse = {
   setHeader(name: string, value: string): void;
   status(code: number): ApiResponse;
   json(body: unknown): void;
+  send(body: Buffer): void;
 };
 
 function rejectDurableSnapshotWorkflow(
@@ -273,6 +276,8 @@ export function registerApiRoutes(app: ApiApp) {
   registerNileFormsRoutes(app);
   registerNileRequestsRoutes(app);
   registerMoodleRoutes(app);
+  registerMoodleCommandRoutes(app);
+  registerIntegrationHealthRoutes(app);
   registerUserInvitationRoutes(app);
 
   app.get("/api/integrations/supabase/status", async (req, res) => {
@@ -527,11 +532,7 @@ export function registerApiRoutes(app: ApiApp) {
         error instanceof NormalizedWorkflowDeniedError
       ) {
         res
-          .status(
-            error instanceof NormalizedWorkflowDeniedError
-              ? 403
-              : 503
-          )
+          .status(error instanceof NormalizedWorkflowDeniedError ? 403 : 503)
           .json({
             error:
               error instanceof PlatformRepositoryUnavailableError
@@ -684,8 +685,10 @@ export function registerApiRoutes(app: ApiApp) {
 
     try {
       if (session.authorizationModel === "normalized") {
-        const actionResult =
-          await getNormalizedWorkflowRepository().apply(action, session);
+        const actionResult = await getNormalizedWorkflowRepository().apply(
+          action,
+          session
+        );
         res.json(actionResult);
         return;
       }
@@ -1038,6 +1041,7 @@ function scopedStateBase(
     quizAttempts: [],
     grades: [],
     events: [],
+    scheduleConflicts: [],
     classSessions: [],
     teacherAvailability: [],
     rooms: [],
@@ -1063,6 +1067,7 @@ function scopedStateBase(
     documents: [],
     notifications: [],
     supportTickets: [],
+    studentInterventions: [],
     reportPresets: [],
     auditLogs: [],
     integrations: [],
@@ -1886,6 +1891,7 @@ export function scopePlatformStateForSession(
           ? classGroupIds.has(item.classGroupId)
           : item.ownerId === session.userId
       ),
+      scheduleConflicts: [],
       classSessions: state.classSessions.filter(item =>
         classGroupIds.has(item.classGroupId)
       ),
@@ -1895,6 +1901,9 @@ export function scopePlatformStateForSession(
       attendance: attendanceForScope(state, academicScope, classGroupIds),
       attendanceExceptions: state.attendanceExceptions.filter(
         item => item.studentId === student.id
+      ),
+      studentInterventions: state.studentInterventions.filter(
+        item => item.studentId === student.id && item.studentVisible
       ),
       invoices,
       payments: state.payments.filter(item => invoiceIds.has(item.invoiceId)),
@@ -2066,6 +2075,9 @@ export function scopePlatformStateForSession(
       quizAttempts: quizAttemptsForScope(state, academicScope),
       grades: gradesForScope(state, academicScope),
       events: state.events.filter(item => eventIds.has(item.id)),
+      scheduleConflicts: (state.scheduleConflicts ?? []).filter(item =>
+        eventIds.has(item.eventId)
+      ),
       classSessions: state.classSessions.filter(item =>
         classGroupIds.has(item.classGroupId)
       ),
@@ -2080,6 +2092,12 @@ export function scopePlatformStateForSession(
       attendance: attendanceForScope(state, academicScope, classGroupIds),
       attendanceExceptions: state.attendanceExceptions.filter(item =>
         classGroupIds.has(item.classGroupId)
+      ),
+      studentInterventions: state.studentInterventions.filter(
+        item =>
+          item.teacherId === session.userId &&
+          classGroupIds.has(item.classGroupId) &&
+          studentIds.has(item.studentId)
       ),
       quranPlans: quranRows.quranPlans,
       quranProgress: quranRows.quranProgress,
@@ -2279,6 +2297,9 @@ export function scopePlatformStateForSession(
       quizAttempts: quizAttemptsForScope(state, academicScope),
       grades: gradesForScope(state, academicScope),
       events: state.events.filter(item => eventIds.has(item.id)),
+      scheduleConflicts: (state.scheduleConflicts ?? []).filter(item =>
+        eventIds.has(item.eventId)
+      ),
       classSessions: state.classSessions.filter(item =>
         classGroupIds.has(item.classGroupId)
       ),
@@ -2293,6 +2314,10 @@ export function scopePlatformStateForSession(
       attendance: attendanceForScope(state, academicScope, classGroupIds),
       attendanceExceptions: state.attendanceExceptions.filter(item =>
         classGroupIds.has(item.classGroupId)
+      ),
+      studentInterventions: state.studentInterventions.filter(
+        item =>
+          classGroupIds.has(item.classGroupId) && studentIds.has(item.studentId)
       ),
       invoices: state.invoices.filter(item => invoiceIds.has(item.id)),
       payments: state.payments.filter(item => paymentIds.has(item.id)),
@@ -2482,6 +2507,9 @@ export function scopePlatformStateForSession(
       ],
       enrollments: enrollmentsWithAuthoritativeTeachers(state, enrollments),
       events: state.events.filter(item => eventIds.has(item.id)),
+      scheduleConflicts: (state.scheduleConflicts ?? []).filter(item =>
+        eventIds.has(item.eventId)
+      ),
       classSessions: state.classSessions.filter(item =>
         classGroupIds.has(item.classGroupId)
       ),
@@ -2688,6 +2716,9 @@ export function scopePlatformStateForSession(
       quizAttempts: quizAttemptsForScope(state, academicScope),
       grades: gradesForScope(state, academicScope),
       events: state.events.filter(item => eventIds.has(item.id)),
+      scheduleConflicts: (state.scheduleConflicts ?? []).filter(item =>
+        eventIds.has(item.eventId)
+      ),
       classSessions: state.classSessions.filter(item =>
         classGroupIds.has(item.classGroupId)
       ),
@@ -2703,6 +2734,10 @@ export function scopePlatformStateForSession(
       attendance: attendanceForScope(state, academicScope, classGroupIds),
       attendanceExceptions: state.attendanceExceptions.filter(item =>
         classGroupIds.has(item.classGroupId)
+      ),
+      studentInterventions: state.studentInterventions.filter(
+        item =>
+          classGroupIds.has(item.classGroupId) && studentIds.has(item.studentId)
       ),
       certificates,
       quranPlans: quranRows.quranPlans,

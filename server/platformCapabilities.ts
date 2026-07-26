@@ -7,9 +7,7 @@ import {
 
 export const SELF_SCOPED_ACTION = "self_scoped" as const;
 
-type ActionPermissionRule =
-  | Permission
-  | typeof SELF_SCOPED_ACTION;
+type ActionPermissionRule = Permission | typeof SELF_SCOPED_ACTION;
 
 export const platformActionTypesByRole = {
   student: [
@@ -49,6 +47,9 @@ export const platformActionTypesByRole = {
     "notification.read",
     "report.preset.save",
     "profile.update",
+    "teacher.availability.update",
+    "student.intervention.create",
+    "student.intervention.status.update",
   ],
   registrar: [
     "lead.create",
@@ -101,6 +102,7 @@ export const platformActionTypesByRole = {
   branchadmin: [
     "attendance.save",
     "calendar.create",
+    "calendar.conflict.resolve",
     "class.session.reschedule",
     "class.session.cancel",
     "message.send",
@@ -141,6 +143,7 @@ export const platformActionTypesByRole = {
     "system.health_check",
     "settings.save",
     "teacher.assign",
+    "teacher.availability.update",
     "course.status.update",
     "room.create",
     "class.create",
@@ -149,6 +152,7 @@ export const platformActionTypesByRole = {
     "class.status.update",
     "room.status.update",
     "attendance.exception.review",
+    "calendar.conflict.resolve",
     "class.session.reschedule",
     "class.session.cancel",
     "assignment.update",
@@ -191,6 +195,9 @@ const actionPermissionRuleByType = {
   "certificate.issue": "certificates:approve",
   "certificate.reject": "certificates:approve",
   "teacher.assign": "teachers:write",
+  "teacher.availability.update": "schedule:write",
+  "student.intervention.create": SELF_SCOPED_ACTION,
+  "student.intervention.status.update": SELF_SCOPED_ACTION,
   "lead.create": "students:write",
   "application.create": "students:write",
   "placement.create": "students:write",
@@ -204,6 +211,7 @@ const actionPermissionRuleByType = {
   "enrollment.transfer": "students:write",
   "enrollment.status.update": "students:write",
   "calendar.create": "schedule:write",
+  "calendar.conflict.resolve": "schedule:write",
   "class.session.reschedule": "schedule:write",
   "class.session.cancel": "schedule:write",
   "room.create": "rooms:write",

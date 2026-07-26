@@ -91,7 +91,14 @@ begin
     from pg_catalog.pg_proc as procedure
     join pg_catalog.pg_namespace as namespace on namespace.oid = procedure.pronamespace
     where namespace.nspname = 'public'
-      and procedure.proname like '%moodle%command%'
+      and procedure.proname = any(array[
+        'nile_create_moodle_command',
+        'nile_claim_moodle_command',
+        'nile_complete_moodle_command_attempt',
+        'nile_get_moodle_command_status',
+        'nile_reconcile_moodle_command',
+        'nile_consume_moodle_launch'
+      ]::text[])
   ) then
     raise exception 'Phase 6K unexpectedly exposed a public Moodle command RPC';
   end if;

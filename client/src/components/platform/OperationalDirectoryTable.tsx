@@ -1,4 +1,5 @@
 import type { HTMLAttributes, ReactNode } from "react";
+import "@/styles/directories-v2.css";
 import { ArrowRight } from "lucide-react";
 import { Link } from "wouter";
 import { translateUiLabel } from "@/lib/i18n";

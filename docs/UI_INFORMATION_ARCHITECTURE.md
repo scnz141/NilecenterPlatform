@@ -160,6 +160,24 @@ Preferred role sidebar intent:
 - HOD: Dashboard, Departments, Programs, Courses, Curriculum, Teachers, Classes, Assessments, Forms, Certificates, Reports, Messages.
 - Branch admin: Dashboard, Students, Teachers, Classes, Rooms, Schedule, Attendance, Forms, Payments, Reports, Messages, Settings.
 
+### Teacher Classes
+
+Status: Current.
+
+- `/app/teacher/classes`: ListPage for assigned classes only.
+- `/app/teacher/classes/:classId`: DetailPage overview for one assigned class.
+- `/app/teacher/classes/:classId/sessions`: session list for that class.
+- `/app/teacher/classes/:classId/attendance`: Nile-owned attendance workspace.
+- `/app/teacher/classes/:classId/students`: scoped class roster.
+- `/app/teacher/classes/:classId/students/:studentId`: scoped learner detail.
+- `/app/teacher/availability`: signed-in teacher weekly scheduling
+  availability and status.
+- `/app/teacher/classes/:classId/materials`: ownership handoff to the verified
+  Moodle course projection.
+
+Do not restore Nile-native lesson or material mutations. Moodle owns sections,
+resources, assignments, quizzes, completion, grades, and feedback.
+
 ## Sub-Navigation Rules
 
 - Use sub-navigation when one top-level area has multiple jobs.
@@ -256,6 +274,9 @@ technical control center.
 - `/app/admin/integrations`: SettingsPage for connection readiness and reviewed
   connection status only. Protected credentials and provider configuration stay
   outside browser UI.
+- `/app/admin/integrations/moodle-commands`: ListPage for safe, server-derived
+  Moodle command status and reconciliation-required evidence only. It does not
+  activate Moodle, expose command payloads, or configure credentials.
 - `/app/admin/system-health`: ReportPage for concise service-health review and
   the existing health-check action only.
 - `/app/admin/audit-logs`: ReportPage for searchable, exportable activity only.
@@ -353,6 +374,19 @@ use authenticated Moodle launches for submissions and attempts. Nile Learn
 must not persist local learning outcomes from these pages.
 
 Do not combine assignment queue, quiz list, quiz creation, question creation, question attachment, manual review, recent activity, and score metrics on one teacher assessment page.
+
+### HOD Moodle Governance
+
+Status: Moodle-authority boundary active.
+
+- `/app/hod/curriculum`: Department Moodle template and curriculum mapping overview.
+- `/app/hod/curriculum/new`: Capability-gated Moodle curriculum release entry.
+- `/app/hod/assessments`: Department Moodle assessment and outcome overview.
+- `/app/hod/assessments/new`: Capability-gated Moodle assessment entry.
+- `/app/hod/assessments/review`: Moodle moderation and outcome review.
+- `/app/hod/moodle-source/:courseId`: Verified Moodle course projection.
+
+Nile Learn must not create local curriculum modules, assignments, quizzes, grades, or feedback from these routes. Course runs, schedules, attendance, certificates, and operational governance remain Nile-owned.
 
 ### Role-Wide Report Pages
 

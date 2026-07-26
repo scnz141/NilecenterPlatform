@@ -1,0 +1,115 @@
+{
+  "version": 1,
+  "status": "local-non-moodle-phases-accepted",
+  "phase": "phases7-10-authority-ui-checkpoint",
+  "checkedAt": "2026-07-24T21:13:02.768Z",
+  "scope": {
+    "teacherAssignedLearnerDetail": true,
+    "teacherMoodleLearningOwnership": true,
+    "hodMoodleGovernanceOwnership": true,
+    "serverDerivedIntegrationHealth": true,
+    "moodleActivationFailClosed": true,
+    "teacherWeeklyAvailability": true,
+    "durableAssignedLearnerInterventions": true,
+    "definedHodOperationalMetrics": true,
+    "durableBranchScheduleConflictReview": true,
+    "safeSuperAdminMoodleCommandQueue": true,
+    "responsiveStylesForChangedSurfaces": true
+  },
+  "focusedPortalQa": [
+    {
+      "scope": "teacher",
+      "artifact": "output/playwright/phase7-teacher-ownership-final-20260724/portal-qa-summary.json",
+      "totalChecks": 360,
+      "failedChecks": 0
+    },
+    {
+      "scope": "hod-and-branch",
+      "artifact": "output/playwright/phase8-governance-20260724/portal-qa-summary.json",
+      "totalChecks": 578,
+      "failedChecks": 0
+    },
+    {
+      "scope": "superadmin",
+      "artifact": "output/playwright/phase9-superadmin-20260724/portal-qa-summary.json",
+      "totalChecks": 486,
+      "failedChecks": 0
+    },
+    {
+      "scope": "teacher-availability",
+      "artifact": "output/playwright/phase7-teacher-availability-20260724/portal-qa-summary.json",
+      "totalChecks": 7,
+      "failedChecks": 0
+    },
+    {
+      "scope": "teacher-intervention",
+      "artifact": "output/playwright/phase7-teacher-intervention-20260724/portal-qa-summary.json",
+      "totalChecks": 7,
+      "failedChecks": 0
+    },
+    {
+      "scope": "student-support-intervention",
+      "artifact": "output/playwright/phase7-student-support-rerun-20260724/portal-qa-summary.json",
+      "totalChecks": 6,
+      "failedChecks": 0
+    },
+    {
+      "scope": "branch-schedule-conflict",
+      "artifact": "output/playwright/phase8-branch-conflicts-rerun-20260724/portal-qa-summary.json",
+      "totalChecks": 6,
+      "failedChecks": 0
+    },
+    {
+      "scope": "hod-defined-metrics",
+      "artifact": "output/playwright/phase8-hod-metrics-20260724/portal-qa-summary.json",
+      "totalChecks": 6,
+      "failedChecks": 0
+    },
+    {
+      "scope": "superadmin-moodle-command-queue",
+      "artifact": "output/playwright/phase9-admin-moodle-queue-rerun-20260724/portal-qa-summary.json",
+      "totalChecks": 6,
+      "failedChecks": 0
+    }
+  ],
+  "fullValidation": {
+    "command": "QA_OUTPUT_DIR=output/playwright/phases7-10-acceptance-20260724 scripts/verify.sh",
+    "result": "passed",
+    "typescript": "passed",
+    "unitTestFiles": 77,
+    "unitTests": 1004,
+    "productionBuild": "passed",
+    "portalBaselineProtected": true
+  },
+  "fullPortalQa": {
+    "artifact": "output/playwright/phases7-10-acceptance-20260724/portal-qa-summary.json",
+    "artifactSha256": "65c09eca5bd5bda26f21439af33885479b8386186c83e67a193d7ca4061fe8c8",
+    "totalChecks": 1663,
+    "failedChecks": 0,
+    "elapsedMs": 691113,
+    "fullSuite": true,
+    "interrupted": false
+  },
+  "externalGates": {
+    "moodlePluginInstall": "deferred_host_local_directory_not_writable",
+    "liveMoodleCrudAccepted": false,
+    "nativeLaunchesAccepted": false,
+    "isolatedStagingAccepted": false,
+    "productionActivationAccepted": false
+  },
+  "remainingLocalWork": {
+    "teacherAvailability": false,
+    "substituteAssignmentHistory": true,
+    "durableInterventionRecords": false,
+    "hodMetricDefinitions": false,
+    "branchConflictAndCapacityResolution": false,
+    "superAdminCommandQueueInspection": false,
+    "superAdminCommandReconciliationMutation": true,
+    "completeRouteByRouteUiProgram": true
+  },
+  "boundaries": {
+    "productionMoodleWritesEnabled": false,
+    "productionDatabaseChanged": false,
+    "pluginHostPermissionsBypassed": false
+  }
+}

@@ -4,25 +4,60 @@ Current architecture note: ADR-011 authorizes full synthetic Moodle sandbox
 CRUD. Statements below saying a historical acceptance run made no Moodle write
 describe that run's evidence and do not restrict the current sandbox order.
 
-The disabled normalized account-invitation foundation was regression-checked
-on 2026-07-19. TypeScript, 910 unit tests, production build, disposable
-PostgreSQL invitation/email lifecycles, and the full portal suite passed. The
-portal baseline remains 1,634 checks with 0 failures; no Supabase or Resend
-endpoint was contacted.
-
 Nile Learn is currently in internal alpha stabilization. The protected portal QA baseline is:
 
-- Portal QA: 1,634 checks, 0 failures.
-- Checked at: `2026-07-18T13:40:32Z`.
-- Validation command: `QA_OUTPUT_DIR=output/playwright/codex-phase14b-acceptance scripts/verify.sh`.
+- Portal QA: 1,663 checks, 0 failures.
+- Checked at: `2026-07-24T21:13:02.768Z`.
+- Validation command:
+  `QA_OUTPUT_DIR=output/playwright/phases7-10-acceptance-20260724 scripts/verify.sh`.
 - QA summary artifact:
-  `output/playwright/codex-phase14b-acceptance/portal-qa-summary.json`.
+  `output/playwright/phases7-10-acceptance-20260724/portal-qa-summary.json`.
 
 `docs/NILE_LEARN_MASTER_PLAN.md` defines the next architecture phases, and
 `docs/MODERNIZATION_EXECUTION_CONTRACT.md` defines how this baseline is
 protected during each slice.
 
 ## Latest Preservation Evidence
+
+The bounded Phase 7-10 authority and UI checkpoint is accepted locally:
+
+- Teacher assessment, quiz, question-bank, and grading routes now state and
+  enforce Moodle ownership instead of presenting Nile-native learning writes.
+- Teacher learner detail is constrained to an assigned class and roster
+  relationship; HOD curriculum and assessment routes use department-scoped
+  Moodle governance surfaces.
+- Super Admin integration health is server-derived and does not expose secrets
+  or claim provider connectivity from seeded browser state.
+- Teachers can save a scoped weekly availability schedule and create durable
+  interventions only for learners in assigned classes. Students see only
+  teacher-shared intervention plans.
+- Branch schedule conflicts are durable review records. Activation rechecks
+  room, class, teacher, availability, and capacity invariants; unsafe override
+  is not available.
+- HOD reports use defined department-scoped Nile operational metrics and label
+  Moodle-owned curriculum, assessment, and released-outcome metrics unavailable
+  until fresh normalized projections exist.
+- Super Admin can inspect a closed, server-derived Moodle command queue without
+  seeing payloads or credentials. No command mutation is exposed while the
+  plugin/runtime gate is deferred.
+- Moodle command execution remains disabled unless runtime approval, accepted
+  plugin evidence, and server-only provider configuration are all present.
+- Focused Teacher QA passed 360 checks, HOD/Branch QA passed 578 checks, and
+  Super Admin QA passed 486 checks, all with 0 failures.
+- Full validation passed TypeScript, 1,004 unit tests across 77 files,
+  production build, all integration/database contracts, and 1,663 portal
+  checks with 0 failures.
+- Checked at: `2026-07-24T21:13:02.768Z`.
+- QA summary artifact:
+  `output/playwright/phases7-10-acceptance-20260724/portal-qa-summary.json`.
+- Artifact SHA-256:
+  `65c09eca5bd5bda26f21439af33885479b8386186c83e67a193d7ca4061fe8c8`.
+- Result: 1,663 checks, 0 failures in 691,113 ms.
+- Attestation:
+  `docs/qa-attestations/integration-phases7-10-local-boundaries-20260724.json`.
+- The Moodle plugin host installation remains deferred because
+  `/var/www/html/local` is not writable. No live Moodle CRUD, staging
+  activation, or production write is accepted by this checkpoint.
 
 Phase 14B is accepted as the typed Requests foundation for branch incidents
 and maintenance requests created from exact reviewed Nile Forms evidence:

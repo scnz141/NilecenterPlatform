@@ -378,6 +378,46 @@ function postPinnedHttps(
   });
 }
 
+function getPinnedHttps(
+  endpoint: URL,
+  signal: AbortSignal,
+  addresses: Array<{ address: string; family: number }>,
+  range?: string
+) {
+  return new Promise<Response>((resolve, reject) => {
+    const request = httpsRequest(
+      endpoint,
+      {
+        method: "GET",
+        agent: false,
+        lookup: createPinnedLookup(addresses),
+        servername: endpoint.hostname,
+        signal,
+        headers: {
+          Accept: "*/*",
+          ...(range ? { Range: range } : {}),
+        },
+      },
+      incoming => {
+        const status = incoming.statusCode ?? 502;
+        const hasBody = status !== 204 && status !== 205 && status !== 304;
+        const responseBody = hasBody
+          ? (Readable.toWeb(incoming) as ReadableStream<Uint8Array>)
+          : null;
+        resolve(
+          new Response(responseBody, {
+            status,
+            statusText: incoming.statusMessage,
+            headers: headersFromIncoming(incoming.headers),
+          })
+        );
+      }
+    );
+    request.once("error", reject);
+    request.end();
+  });
+}
+
 function appendParameter(
   target: URLSearchParams,
   key: string,
@@ -475,6 +515,41 @@ async function readBoundedResponse(response: Response, maxBytes: number) {
     chunks.map(chunk => Buffer.from(chunk)),
     totalBytes
   ).toString("utf8");
+}
+
+async function readBoundedBinary(response: Response, maxBytes: number) {
+  const declaredLength = Number(response.headers.get("content-length"));
+  if (Number.isFinite(declaredLength) && declaredLength > maxBytes) {
+    await response.body?.cancel().catch(() => undefined);
+    throw new MoodleApiError(
+      "Moodle file response exceeded the configured limit.",
+      413,
+      "invalid_response"
+    );
+  }
+  if (!response.body) return Buffer.alloc(0);
+
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let totalBytes = 0;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    totalBytes += value.byteLength;
+    if (totalBytes > maxBytes) {
+      await reader.cancel();
+      throw new MoodleApiError(
+        "Moodle file response exceeded the configured limit.",
+        413,
+        "invalid_response"
+      );
+    }
+    chunks.push(value);
+  }
+  return Buffer.concat(
+    chunks.map(chunk => Buffer.from(chunk)),
+    totalBytes
+  );
 }
 
 function requireObject<T>(payload: unknown, label: string): T {
@@ -721,6 +796,107 @@ export function createMoodleClient({
         );
       }
       return payload as MoodleCourseSection[];
+    },
+    async downloadFile(fileUrl: string, range?: string) {
+      let target: URL;
+      try {
+        target = new URL(fileUrl);
+      } catch {
+        throw new MoodleApiError(
+          "Moodle file URL is invalid.",
+          400,
+          "invalid_response"
+        );
+      }
+      if (
+        target.protocol !== safeBaseUrl.protocol ||
+        target.hostname.toLowerCase() !== safeBaseUrl.hostname.toLowerCase() ||
+        target.port !== safeBaseUrl.port ||
+        target.username ||
+        target.password ||
+        target.hash ||
+        !target.pathname.startsWith(safeBaseUrl.pathname)
+      ) {
+        throw new MoodleApiError(
+          "Moodle file URL is outside the approved provider.",
+          403,
+          "permission"
+        );
+      }
+      if (
+        range !== undefined &&
+        !/^bytes=(?:\d+-\d*|-\d+)$/.test(range)
+      ) {
+        throw new MoodleApiError(
+          "Moodle file range is invalid.",
+          400,
+          "invalid_response"
+        );
+      }
+      target.searchParams.delete("token");
+      target.searchParams.delete("wstoken");
+      target.searchParams.set("token", safeToken);
+
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), boundedTimeout);
+      timeout.unref?.();
+      try {
+        const addresses = await resolvePublicDestination(
+          safeBaseUrl.hostname,
+          allowInsecureLocalhost,
+          resolveHostname,
+          controller.signal
+        );
+        const response = fetchImpl
+          ? await fetchImpl(target, {
+              method: "GET",
+              headers: range ? { Range: range } : undefined,
+              redirect: "error",
+              signal: controller.signal,
+            })
+          : await getPinnedHttps(
+              target,
+              controller.signal,
+              addresses,
+              range
+            );
+        if (![200, 206].includes(response.status)) {
+          await response.body?.cancel().catch(() => undefined);
+          const denied = response.status === 401 || response.status === 403;
+          throw new MoodleApiError(
+            "Moodle file is unavailable.",
+            denied ? 403 : 502,
+            denied ? "permission" : "remote"
+          );
+        }
+        return {
+          status: response.status,
+          body: await readBoundedBinary(response, boundedMaxResponse),
+          contentType:
+            clean(response.headers.get("content-type")) ||
+            "application/octet-stream",
+          contentRange:
+            clean(response.headers.get("content-range")) || undefined,
+          acceptRanges:
+            clean(response.headers.get("accept-ranges")) || "bytes",
+        };
+      } catch (error) {
+        if (error instanceof MoodleApiError) throw error;
+        if (error instanceof Error && error.name === "AbortError") {
+          throw new MoodleApiError(
+            "Moodle file request timed out.",
+            504,
+            "timeout"
+          );
+        }
+        throw new MoodleApiError(
+          "Moodle file could not be reached.",
+          502,
+          "remote"
+        );
+      } finally {
+        clearTimeout(timeout);
+      }
     },
   };
 }

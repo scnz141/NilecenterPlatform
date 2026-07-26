@@ -528,6 +528,42 @@ function assertScopedAction(
 
   if (session.activeRole === "teacher") {
     if (
+      action.type === "teacher.availability.update" &&
+      action.teacherId !== session.userId
+    ) {
+      throw new Error("Teachers can only update their own availability.");
+    }
+    if (action.type === "student.intervention.create") {
+      const group = state.classGroups.find(
+        item => item.id === action.classGroupId
+      );
+      const run = state.courseRuns.find(item => item.id === group?.courseRunId);
+      if (
+        !group ||
+        !run ||
+        run.teacherId !== session.userId ||
+        !teacherOwnsStudent(state, session.userId, action.studentId)
+      ) {
+        throw new Error(
+          "Teacher can only create interventions for assigned class learners."
+        );
+      }
+    }
+    if (action.type === "student.intervention.status.update") {
+      const intervention = state.studentInterventions.find(
+        item => item.id === action.interventionId
+      );
+      if (
+        !intervention ||
+        intervention.teacherId !== session.userId ||
+        !teacherOwnsStudent(state, session.userId, intervention.studentId)
+      ) {
+        throw new Error(
+          "Teacher can only update interventions for assigned class learners."
+        );
+      }
+    }
+    if (
       action.type === "assignment.create" ||
       action.type === "quiz.create" ||
       action.type === "question.create"
@@ -703,6 +739,16 @@ function assertScopedAction(
 
   if (session.activeRole === "branchadmin") {
     const branchIds = branchIdsForSessionScope(state, session);
+    if (action.type === "calendar.conflict.resolve") {
+      const conflict = (state.scheduleConflicts ?? []).find(
+        item => item.id === action.conflictId
+      );
+      if (!conflict || !branchIds.has(conflict.branchId)) {
+        throw new Error(
+          "Branch admin can only resolve schedule conflicts in their branch."
+        );
+      }
+    }
     if (action.type === "attendance.exception.review") {
       const request = state.attendanceExceptions.find(
         item => item.id === action.requestId
@@ -1335,6 +1381,13 @@ function applyServerActor(
         actorId,
       };
     }
+    case "teacher.availability.update":
+      return {
+        ...action,
+        teacherId:
+          session.activeRole === "teacher" ? session.userId : action.teacherId,
+        actorId,
+      };
     default:
       return { ...action, actorId };
   }
@@ -2547,6 +2600,28 @@ export function parsePlatformWorkflowAction(
     };
   }
 
+  if (type === "calendar.conflict.resolve") {
+    const conflictId = stringValue(input, "conflictId");
+    const decision = stringValue(input, "decision");
+    const reason = stringValue(input, "reason").trim();
+    const expectedVersion = optionalNumberValue(input, "expectedVersion");
+    if (
+      !conflictId ||
+      (decision !== "activate" && decision !== "cancel") ||
+      reason.length < 10 ||
+      expectedVersion === undefined
+    ) {
+      return null;
+    }
+    return {
+      type,
+      conflictId,
+      decision,
+      reason,
+      expectedVersion,
+    };
+  }
+
   if (type === "class.session.reschedule") {
     const sessionId = stringValue(input, "sessionId");
     const startsAt = stringValue(input, "startsAt");
@@ -2738,6 +2813,116 @@ export function parsePlatformWorkflowAction(
       specialties: stringArrayValue(input.specialties),
       teachingLevels: stringArrayValue(input.teachingLevels),
       availability: stringArrayValue(input.availability),
+    };
+  }
+
+  if (type === "teacher.availability.update") {
+    const teacherId = optionalStringValue(input, "teacherId");
+    const branchId = stringValue(input, "branchId");
+    const availabilityStatus = stringValue(input, "availabilityStatus");
+    const slots = Array.isArray(input.slots)
+      ? input.slots
+          .map(slot => {
+            if (!slot || typeof slot !== "object") return null;
+            const value = slot as Record<string, unknown>;
+            const weekday = stringValue(value, "weekday");
+            const startsAt = stringValue(value, "startsAt");
+            const endsAt = stringValue(value, "endsAt");
+            return weekday && startsAt && endsAt
+              ? { weekday, startsAt, endsAt }
+              : null;
+          })
+          .filter(
+            (
+              slot
+            ): slot is {
+              weekday: string;
+              startsAt: string;
+              endsAt: string;
+            } => Boolean(slot)
+          )
+      : [];
+    if (
+      !branchId ||
+      !new Set(["available", "limited", "unavailable"]).has(availabilityStatus)
+    ) {
+      return null;
+    }
+    return {
+      type,
+      teacherId,
+      branchId,
+      availabilityStatus: availabilityStatus as Extract<
+        PlatformWorkflowAction,
+        { type: "teacher.availability.update" }
+      >["availabilityStatus"],
+      slots,
+    };
+  }
+
+  if (type === "student.intervention.create") {
+    const studentId = stringValue(input, "studentId");
+    const classGroupId = stringValue(input, "classGroupId");
+    const category = stringValue(input, "category");
+    const priority = stringValue(input, "priority");
+    const summary = stringValue(input, "summary");
+    const nextStep = stringValue(input, "nextStep");
+    const studentVisible =
+      typeof input.studentVisible === "boolean"
+        ? input.studentVisible
+        : undefined;
+    if (
+      !studentId ||
+      !classGroupId ||
+      !new Set(["attendance", "engagement", "academic", "wellbeing"]).has(
+        category
+      ) ||
+      !new Set(["low", "normal", "high", "urgent"]).has(priority) ||
+      !summary ||
+      !nextStep ||
+      studentVisible === undefined
+    ) {
+      return null;
+    }
+    return {
+      type,
+      studentId,
+      classGroupId,
+      category: category as Extract<
+        PlatformWorkflowAction,
+        { type: "student.intervention.create" }
+      >["category"],
+      priority: priority as Extract<
+        PlatformWorkflowAction,
+        { type: "student.intervention.create" }
+      >["priority"],
+      summary,
+      nextStep,
+      studentVisible,
+    };
+  }
+
+  if (type === "student.intervention.status.update") {
+    const interventionId = stringValue(input, "interventionId");
+    const status = stringValue(input, "status");
+    const resolutionNote = stringValue(input, "resolutionNote");
+    const expectedVersion = optionalNumberValue(input, "expectedVersion");
+    if (
+      !interventionId ||
+      !new Set(["monitoring", "resolved", "cancelled"]).has(status) ||
+      !resolutionNote
+    ) {
+      return null;
+    }
+    return {
+      type,
+      interventionId,
+      status: status as Extract<
+        PlatformWorkflowAction,
+        { type: "student.intervention.status.update" }
+      >["status"],
+      resolutionNote,
+      expectedVersion,
     };
   }
 

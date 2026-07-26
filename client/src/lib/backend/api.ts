@@ -124,6 +124,88 @@ export function fetchSessionRequest() {
   return apiJson<AuthSessionDto | null>("/api/auth/session");
 }
 
+export type MoodleCommandCapabilitiesDto = {
+  state: "available" | "disabled" | "normalized_session_required";
+  operations: string[];
+  nativeLaunchKinds: string[];
+  scopeValidatedOnCommand: true;
+};
+
+export function fetchMoodleCommandCapabilitiesRequest() {
+  return apiJson<MoodleCommandCapabilitiesDto>(
+    "/api/integrations/moodle/capabilities"
+  );
+}
+
+export type MoodleAdminCommandDto = {
+  commandId: string;
+  operation: string;
+  status:
+    | "queued"
+    | "processing"
+    | "applied"
+    | "failed"
+    | "reconciliation_required"
+    | "cancelled";
+  attemptCount: number;
+  errorCode?: string;
+  reconciliationCaseId?: string;
+  providerVersion?: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export function fetchMoodleAdminCommandsRequest() {
+  return apiJson<{
+    commands: MoodleAdminCommandDto[];
+    runtimeState: "available" | "disabled" | "normalized_session_required";
+  }>("/api/integrations/moodle/commands");
+}
+
+export function reconcileMoodleAdminCommandRequest(
+  commandId: string,
+  resolution: "confirmed_not_applied" | "cancelled"
+) {
+  return apiJson<{
+    reconciliation: { status: string; audit_id?: number; auditId?: number };
+  }>(
+    `/api/integrations/moodle/commands/${encodeURIComponent(commandId)}/reconcile`,
+    {
+      method: "POST",
+      body: JSON.stringify({ resolution }),
+    }
+  );
+}
+
+export type IntegrationHealthDto = {
+  checkedAt: string;
+  authority: "server";
+  providers: Array<{
+    id: string;
+    label: string;
+    state:
+      | "verified"
+      | "configured"
+      | "unavailable"
+      | "disabled"
+      | "incomplete"
+      | "deferred";
+    summary: string;
+    checks: Array<{
+      label: string;
+      status: "passed" | "failed" | "not_run" | "not_applicable";
+    }>;
+    verification: {
+      status: "verified" | "failed" | "not_run" | "not_applicable";
+      checkedAt?: string;
+    };
+  }>;
+};
+
+export function fetchIntegrationHealthRequest() {
+  return apiJson<IntegrationHealthDto>("/api/integrations/health");
+}
+
 export function logoutRequest() {
   return apiJson<{ ok: true }>("/api/auth/logout", { method: "POST" });
 }
@@ -376,6 +458,7 @@ export type MoodleCourseContentProjectionDto = {
             | "other";
           modifiedAt?: string;
           external?: boolean;
+          downloadPath?: string;
         }>;
       }>;
     }>;
@@ -520,7 +603,7 @@ function isMoodleActivityResource(value: unknown) {
     !hasExactKeys(
       value,
       ["resourceId", "name", "kind"],
-      ["mimeType", "sizeBytes", "modifiedAt", "external"]
+      ["mimeType", "sizeBytes", "modifiedAt", "external", "downloadPath"]
     )
   ) {
     return false;
@@ -538,7 +621,12 @@ function isMoodleActivityResource(value: unknown) {
       (Number.isSafeInteger(value.sizeBytes) &&
         (value.sizeBytes as number) >= 0)) &&
     (value.modifiedAt === undefined || isIsoTimestamp(value.modifiedAt)) &&
-    (value.external === undefined || typeof value.external === "boolean")
+    (value.external === undefined || typeof value.external === "boolean") &&
+    (value.downloadPath === undefined ||
+      (typeof value.downloadPath === "string" &&
+        /^\/api\/integrations\/moodle\/files\/[A-Za-z0-9_-]{40,1200}$/.test(
+          value.downloadPath
+        )))
   );
 }
 

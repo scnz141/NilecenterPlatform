@@ -14,6 +14,7 @@ import {
 } from "@/components/platform/PlatformPrimitives";
 import { runPlatformWorkflowActionRequest } from "@/lib/backend/api";
 import { platformStore } from "@/lib/domain/store";
+import { buildHodOperationalMetrics } from "@/lib/domain/hodOperationalMetrics";
 import type { PlatformState, ReportType } from "@/lib/domain/types";
 
 type HodReportType = Exclude<ReportType, "finance">;
@@ -150,7 +151,13 @@ function makeReportRows(
           log.actorId === scope.actorId ||
           log.entityType === "Course" ||
           log.entityType === "Assignment" ||
-          log.entityType === "Certificate"
+          log.entityType === "Certificate" ||
+          (log.entityType === "StudentIntervention" &&
+            state.studentInterventions.some(
+              item =>
+                item.id === log.entityId &&
+                scope.classGroupIds.has(item.classGroupId)
+            ))
       )
       .slice(0, 24)
       .map(log => ({
@@ -177,7 +184,7 @@ function makeReportRows(
         record: findStudentName(state, enrollment.studentId),
         detail: `${findCourseTitle(state, run?.courseId)} · ${classGroup?.name ?? "Class pending"}`,
         status: enrollment.status,
-        metric: `${enrollment.progress}% progress`,
+        metric: classGroup ? "Class assigned" : "Class assignment pending",
         date: formatDate(enrollment.createdAt),
       };
     });
@@ -191,6 +198,10 @@ export default function HodReportsPage() {
   const [sortKey, setSortKey] = useState<SortKey>("record");
   const [saving, setSaving] = useState(false);
   const scope = useMemo(() => getHodScope(state), [state]);
+  const operationalMetrics = useMemo(
+    () => buildHodOperationalMetrics(state, scope.actorId),
+    [scope.actorId, state]
+  );
   const rows = useMemo(
     () => makeReportRows(state, reportType),
     [reportType, state]
@@ -326,77 +337,136 @@ export default function HodReportsPage() {
           </div>
         }
         main={
-          <DataTableCard
-            title={`${reportOptions.find(option => option.value === reportType)?.label ?? "Academic"} report`}
-            subtitle={`${filteredRows.length} row(s)`}
-          >
-            <div
-              className="platform-report-table typed hod-report-table-v3"
-              data-testid="hod-reports-list"
+          <div className="hod-report-main-stack">
+            <section
+              className="hod-operational-metrics"
+              aria-labelledby="hod-operational-metrics-title"
+              data-testid="hod-operational-metrics"
             >
-              <div className="platform-report-row header" role="row">
-                <button
-                  type="button"
-                  aria-pressed={sortKey === "record"}
-                  onClick={() => setSortKey("record")}
-                >
-                  Record
-                </button>
-                <button
-                  type="button"
-                  aria-pressed={sortKey === "status"}
-                  onClick={() => setSortKey("status")}
-                >
-                  Status
-                </button>
-                <button
-                  type="button"
-                  aria-pressed={sortKey === "metric"}
-                  onClick={() => setSortKey("metric")}
-                >
-                  Detail
-                </button>
+              <div className="hod-report-section-heading">
+                <div>
+                  <h2 id="hod-operational-metrics-title">
+                    Department operations
+                  </h2>
+                  <p>Defined from Nile Learn classes, sessions, and rosters.</p>
+                </div>
+                <StatusBadge tone="green">Nile Learn data</StatusBadge>
               </div>
-              {filteredRows.length ? (
-                filteredRows.map(row => (
-                  <article key={row.id} className="platform-report-row">
-                    <div className="platform-report-row-main">
-                      <small>{row.date}</small>
-                      <strong>{row.record}</strong>
-                      <span>{row.detail}</span>
+              <div className="hod-operational-metric-list">
+                {operationalMetrics.metrics.map(metric => (
+                  <article key={metric.id} data-status={metric.status}>
+                    <div>
+                      <strong>{metric.label}</strong>
+                      <span>{metric.definition}</span>
                     </div>
-                    <StatusBadge tone={statusTone(row.status)}>
-                      {humanize(row.status)}
-                    </StatusBadge>
-                    <div className="platform-report-row-metric">
-                      <strong>{row.metric}</strong>
+                    <div className="hod-operational-metric-value">
+                      <strong>{metric.value}</strong>
+                      {metric.denominator !== undefined ? (
+                        <small>
+                          {metric.numerator} of {metric.denominator}
+                        </small>
+                      ) : (
+                        <small>{metric.numerator} record(s)</small>
+                      )}
                     </div>
                   </article>
-                ))
-              ) : (
-                <article className="platform-report-row empty">
-                  <div className="platform-report-row-main">
-                    <strong>No report rows found</strong>
-                    <span>Try a different filter.</span>
-                  </div>
-                </article>
-              )}
-            </div>
-          </DataTableCard>
+                ))}
+              </div>
+            </section>
+
+            <DataTableCard
+              title={`${reportOptions.find(option => option.value === reportType)?.label ?? "Academic"} report`}
+              subtitle={`${filteredRows.length} row(s)`}
+            >
+              <div
+                className="platform-report-table typed hod-report-table-v3"
+                data-testid="hod-reports-list"
+              >
+                <div className="platform-report-row header" role="row">
+                  <button
+                    type="button"
+                    aria-pressed={sortKey === "record"}
+                    onClick={() => setSortKey("record")}
+                  >
+                    Record
+                  </button>
+                  <button
+                    type="button"
+                    aria-pressed={sortKey === "status"}
+                    onClick={() => setSortKey("status")}
+                  >
+                    Status
+                  </button>
+                  <button
+                    type="button"
+                    aria-pressed={sortKey === "metric"}
+                    onClick={() => setSortKey("metric")}
+                  >
+                    Detail
+                  </button>
+                </div>
+                {filteredRows.length ? (
+                  filteredRows.map(row => (
+                    <article key={row.id} className="platform-report-row">
+                      <div className="platform-report-row-main">
+                        <small>{row.date}</small>
+                        <strong>{row.record}</strong>
+                        <span>{row.detail}</span>
+                      </div>
+                      <StatusBadge tone={statusTone(row.status)}>
+                        {humanize(row.status)}
+                      </StatusBadge>
+                      <div className="platform-report-row-metric">
+                        <strong>{row.metric}</strong>
+                      </div>
+                    </article>
+                  ))
+                ) : (
+                  <article className="platform-report-row empty">
+                    <div className="platform-report-row-main">
+                      <strong>No report rows found</strong>
+                      <span>Try a different filter.</span>
+                    </div>
+                  </article>
+                )}
+              </div>
+            </DataTableCard>
+          </div>
         }
         side={
-          <PortalInsight
-            compact
-            eyebrow="Academic signal"
-            title={`${activeReportLabel} status`}
-            value={filteredRows.length}
-            valueLabel="visible records"
-            description="Use the current status mix to decide where academic review is needed."
-            points={reportInsightPoints}
-            variant="distribution"
-            tone="purple"
-            testId="hod-reports-insight"
-          />
+          <div className="hod-report-side-stack">
+            <PortalInsight
+              compact
+              eyebrow="Operational signal"
+              title={`${activeReportLabel} status`}
+              value={filteredRows.length}
+              valueLabel="visible records"
+              description="Use the current status mix to decide where operational review is needed."
+              points={reportInsightPoints}
+              variant="distribution"
+              tone="purple"
+              testId="hod-reports-insight"
+            />
+            <section
+              className="hod-moodle-boundary"
+              aria-labelledby="hod-moodle-boundary-title"
+              data-testid="hod-moodle-outcomes"
+            >
+              <div className="hod-report-section-heading">
+                <div>
+                  <h2 id="hod-moodle-boundary-title">Learning outcomes</h2>
+                  <p>Moodle-owned academic measures.</p>
+                </div>
+                <StatusBadge tone="amber">Unavailable</StatusBadge>
+              </div>
+              {operationalMetrics.moodleOutcomes.map(outcome => (
+                <article key={outcome.id}>
+                  <strong>{outcome.label}</strong>
+                  <span>{outcome.reason}</span>
+                </article>
+              ))}
+            </section>
+          </div>
         }
       />
     </PlatformShell>

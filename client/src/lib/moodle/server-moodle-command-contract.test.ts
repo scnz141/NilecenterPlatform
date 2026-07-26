@@ -3,6 +3,7 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 
 import {
+  getMoodleRoleCapabilities,
   hashMoodleCommandPayload,
   MOODLE_COMMAND_OPERATIONS,
   MOODLE_NATIVE_LAUNCH_KINDS,
@@ -40,6 +41,22 @@ function command(overrides: Record<string, unknown> = {}) {
 }
 
 describe("Moodle command and local_nilelearn contracts", () => {
+  it("hashes payloads canonically regardless of object key order", () => {
+    expect(
+      hashMoodleCommandPayload({
+        visible: true,
+        title: "Synthetic page",
+        nested: { second: 2, first: 1 },
+      })
+    ).toBe(
+      hashMoodleCommandPayload({
+        nested: { first: 1, second: 2 },
+        title: "Synthetic page",
+        visible: true,
+      })
+    );
+  });
+
   it("accepts the exact complete versioned plugin capability manifest", () => {
     const parsed = parseMoodlePluginCapabilityManifest(manifest);
 
@@ -47,6 +64,28 @@ describe("Moodle command and local_nilelearn contracts", () => {
       MOODLE_COMMAND_OPERATIONS
     );
     expect(parsed.nativeLaunchKinds).toEqual(MOODLE_NATIVE_LAUNCH_KINDS);
+  });
+
+  it("keeps the closed role capability matrix explicit", () => {
+    expect(getMoodleRoleCapabilities("student")).toEqual({
+      operations: [],
+      nativeLaunchKinds: ["quiz_attempt", "assignment_submission"],
+    });
+    expect(getMoodleRoleCapabilities("teacher").operations).toHaveLength(16);
+    expect(getMoodleRoleCapabilities("teacher").operations).not.toContain(
+      "delivery_course.clone"
+    );
+    expect(getMoodleRoleCapabilities("headofdepartment").operations).toEqual(
+      MOODLE_COMMAND_OPERATIONS
+    );
+    expect(getMoodleRoleCapabilities("superadmin")).toEqual({
+      operations: [
+        "delivery_course.clone",
+        "delivery_course.archive",
+        "delivery_course.restore",
+      ],
+      nativeLaunchKinds: [],
+    });
   });
 
   it("rejects missing, duplicate, unknown, or malformed plugin capabilities", () => {

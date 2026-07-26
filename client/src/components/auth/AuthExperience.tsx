@@ -1,4 +1,5 @@
 import { useRef, type ReactNode } from "react";
+import "@/styles/auth-v2.css";
 import { ChevronDown, Globe2 } from "lucide-react";
 import { Link } from "wouter";
 import {

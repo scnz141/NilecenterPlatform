@@ -28,7 +28,7 @@ leaks, crowded UI, or ambiguous ownership.
 
 The protected internal-alpha baseline is:
 
-- Portal QA: 1,634 checks, 0 failures.
+- Portal QA: 1,663 checks, 0 failures.
 - TypeScript check, unit tests, and production build are required gates.
 - The accepted evidence is recorded in `docs/qa-baseline.md`.
 
@@ -855,9 +855,57 @@ Current status:
   replay, read-back, reconciliation, ordered cleanup, repeated cleanup, and
   credential teardown for every Moodle-owned operation family. It does not
   activate production portal writes or permit real student data.
+  The Phase 6L local foundation now contains the versioned Moodle 4.5 plugin
+  source, deterministic ZIP build, exact 19-operation and six-launch manifest,
+  provider-side idempotency contract, closed server DTOs, durable command
+  worker RPC package, single-use launch package, and authorized range-aware
+  Moodle file proxy. The local closure additionally verifies transport-owned
+  Moodle drafts by checksum, MIME type, size, and filename, stages the verified
+  file into the mapped actor's draft area, removes the transport draft after a
+  successful resource operation, exposes a closed role-capability endpoint,
+  keeps target scope enforcement on every command, and distinguishes provider
+  uncertainty from database completion failure. The fixture lifecycle executes
+  all 19 operations, while canonical file tickets reject equivalent textual
+  tampering. The ownership matrix maps all closed APIs exactly once. TypeScript,
+  987 unit tests, production build, portable Phase 6L apply/assert/rollback/
+  reapply, and the complete 1,634/0 portal suite pass. Redacted evidence is in
+  `docs/qa-attestations/integration-phase6l-local-closure-20260724.json`.
+  This is local closure, not Phase 6L acceptance. The Moodle admin installer
+  validated the ZIP component but aborted because `/var/www/html/local` is not
+  writable. Isolated-staging promotion is also blocked until the pinned staging
+  Data API and pooler credentials are supplied. Live upload mapping creation,
+  plugin PHPUnit, complete synthetic CRUD/read-back, native-launch proof,
+  cleanup, token retirement, staging rollback/reapply, and the final live
+  attestation remain required. Production project
+  `lkvyhevoommqnpwwmqgp` remains prohibited and unchanged.
+  On 2026-07-24 the product owner explicitly deferred that host-level plugin
+  installation gate and authorized bounded local work on Phases 7 through 10
+  and affected UI routes. That work corrects teacher and HOD learning routes to
+  Moodle ownership, adds an exact-class teacher learner-detail boundary,
+  replaces seeded integration-status claims with a server-derived Super Admin
+  health endpoint, and requires both explicit runtime approval and accepted
+  plugin evidence before a Moodle command can execute. Focused Teacher,
+  HOD/Branch, and Super Admin suites passed, and the complete validation passed
+  989 unit tests, the production build, and 1,637 portal checks with 0 failures.
+  Evidence is recorded in
+  `docs/qa-attestations/integration-phases7-10-local-boundaries-20260724.json`.
+  The subsequent bounded local completion adds teacher weekly availability,
+  durable exact-class learner interventions, defined Nile-owned HOD metrics,
+  durable branch schedule-conflict review, and a safe server-derived Super
+  Admin Moodle command queue. Moodle-owned outcomes remain fail-closed. The
+  accepted full gate now passes 1,004 unit tests, production build, all local
+  contracts, and 1,663 portal checks with 0 failures.
+  This checkpoint does not accept live Moodle CRUD, native launches,
+  isolated-staging promotion, production activation, substitute-history
+  normalization, or the complete route-by-route UI program.
+  The sequential post-checkpoint research, implementation, evidence, and
+  phase-transition roadmap is maintained in
+  `docs/REMAINING_PHASE_EXECUTION_PLAN.md`. That roadmap does not approve a
+  later production cutover; this checkpoint remains the only authority for the
+  active implementation slice.
 - Phase 0 is accepted: authority, legacy boundaries, architecture decisions,
   and its then-current 1,317/0 QA baseline are recorded. The current protected
-  baseline is 1,634/0.
+  baseline is 1,663/0.
 - Phase 1 is accepted as a local-only migration package. It is not approved for
   linked, shared, or remote Supabase promotion.
 - Phase 2A is accepted as a non-default local foundation. The repository

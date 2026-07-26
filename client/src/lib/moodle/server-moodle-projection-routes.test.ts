@@ -4,6 +4,7 @@ import type { ServerSession } from "../../../../server/auth";
 import type { MoodleClient } from "../../../../server/moodleClient";
 import { MoodleApiError } from "../../../../server/moodleClient";
 import { hashMoodleProjectionPayload } from "../../../../server/moodleProjectionFreshness";
+import { createMoodleFileAccessToken } from "../../../../server/moodleFileAccess";
 import { registerMoodleRoutes } from "../../../../server/moodleRoutes";
 import { setMoodleProjectionRepository } from "../../../../server/moodleProjectionRepository";
 import { seedPlatformState } from "../domain/seed";
@@ -77,12 +78,22 @@ function responseRecorder() {
     json(body: unknown) {
       result.body = body;
     },
+    send(body: Buffer) {
+      result.body = body;
+    },
   };
   return { response, result, headers };
 }
 
-function request(params?: Record<string, string>) {
-  return { headers: {}, params, get: () => undefined };
+function request(
+  params?: Record<string, string>,
+  requestHeaders: Record<string, string> = {}
+) {
+  return {
+    headers: {},
+    params,
+    get: (name: string) => requestHeaders[name.toLowerCase()],
+  };
 }
 
 function fakeClient() {
@@ -829,6 +840,85 @@ describe("Moodle read-only projection routes", () => {
     });
     expect(JSON.stringify(result.body)).not.toContain("private section text");
     expect(JSON.stringify(result.body)).not.toContain("private.example.test");
+  });
+
+  it("delivers an authorized Moodle resource through an opaque range-aware proxy", async () => {
+    const fileAccessSecret =
+      "synthetic-moodle-file-secret-for-route-tests";
+    const client = {
+      ...fakeClient(),
+      getCourseContents: vi.fn(async () => [
+        {
+          id: 7,
+          section: 1,
+          name: "Week 1",
+          visible: 1,
+          modules: [
+            {
+              id: 81,
+              instance: 91,
+              modname: "resource",
+              name: "Workbook",
+              visible: 1,
+              contents: [
+                {
+                  type: "file",
+                  filename: "workbook.pdf",
+                  fileurl:
+                    "https://moodle.example.test/pluginfile.php/81/mod_resource/content/1/workbook.pdf",
+                  filesize: 4,
+                  mimetype: "application/pdf",
+                },
+              ],
+            },
+          ],
+        },
+      ]),
+      downloadFile: vi.fn(async () => ({
+        status: 206,
+        body: Buffer.from("%PDF"),
+        contentType: "application/pdf",
+        contentRange: "bytes 0-3/4",
+        acceptRanges: "bytes",
+      })),
+    } as unknown as MoodleClient;
+    const routes = captureRoutes({
+      getSession: async () => baseSession,
+      getClient: () => client,
+      getStatus: () => configuredStatus,
+      getProjectionRepository: () =>
+        normalizedRepository({ authorizedCourseIds: ["course_ar_l3"] }),
+      fileAccessSecret,
+      now: () => new Date("2026-07-17T02:30:00.000Z"),
+    });
+    const fileMappingId = createMoodleFileAccessToken(
+      { courseId: "course_ar_l3", resourceId: "81:1" },
+      fileAccessSecret,
+      Date.parse("2026-07-17T02:30:00.000Z")
+    );
+    const fileResponse = responseRecorder();
+
+    await routes.get("/api/integrations/moodle/files/:fileMappingId")!(
+      request(
+        { fileMappingId },
+        { range: "bytes=0-3" }
+      ),
+      fileResponse.response
+    );
+
+    expect(fileResponse.result).toEqual({
+      status: 206,
+      body: Buffer.from("%PDF"),
+    });
+    expect(fileResponse.headers.get("content-type")).toBe("application/pdf");
+    expect(fileResponse.headers.get("content-range")).toBe("bytes 0-3/4");
+    expect(fileResponse.headers.get("cache-control")).toBe(
+      "private, no-store"
+    );
+    expect(client.downloadFile).toHaveBeenCalledWith(
+      expect.stringContaining("/pluginfile.php/81/"),
+      "bytes=0-3"
+    );
   });
 
   it("fails closed when an authorized course is not mapped", async () => {

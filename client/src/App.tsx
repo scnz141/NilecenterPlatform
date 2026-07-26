@@ -50,6 +50,9 @@ const AdminSettingsPage = lazy(
 const AdminIntegrationsPage = lazy(
   () => import("./pages/platform/AdminIntegrationsPage")
 );
+const AdminMoodleCommandsPage = lazy(
+  () => import("./pages/platform/AdminMoodleCommandsPage")
+);
 const AdminDirectoryPage = lazy(
   () => import("./pages/platform/AdminDirectoryPage")
 );
@@ -90,9 +93,6 @@ const BranchPaymentsPage = lazy(
 const BranchReportsPage = lazy(
   () => import("./pages/platform/BranchReportsPage")
 );
-const TeacherAssessmentPage = lazy(
-  () => import("./pages/platform/TeacherAssessmentPage")
-);
 const TeacherWorkPage = lazy(() => import("./pages/platform/TeacherWorkPage"));
 const TeacherClassesPage = lazy(
   () => import("./pages/platform/TeacherClassesPage")
@@ -102,6 +102,15 @@ const TeacherClassDetailPage = lazy(
 );
 const TeacherClassWorkspacePage = lazy(
   () => import("./pages/platform/TeacherClassWorkspacePage")
+);
+const TeacherStudentDetailPage = lazy(
+  () => import("./pages/platform/TeacherStudentDetailPage")
+);
+const TeacherAvailabilityPage = lazy(
+  () => import("./pages/platform/TeacherAvailabilityPage")
+);
+const TeacherMoodleLearningPage = lazy(
+  () => import("./pages/platform/TeacherMoodleLearningPage")
 );
 const MoodleSourcePage = lazy(
   () => import("./pages/platform/MoodleSourcePage")
@@ -153,6 +162,9 @@ const HodDirectoryPage = lazy(
 );
 const HodReportsPage = lazy(() => import("./pages/platform/HodReportsPage"));
 const HodWorkflowPage = lazy(() => import("./pages/platform/HodWorkflowPage"));
+const HodMoodleGovernancePage = lazy(
+  () => import("./pages/platform/HodMoodleGovernancePage")
+);
 const SimplePortalPage = lazy(
   () => import("./pages/platform/SimplePortalPage")
 );
@@ -911,6 +923,12 @@ function Router() {
           </ProtectedRoute>
         </Route>
 
+        <Route path="/app/admin/integrations/moodle-commands">
+          <ProtectedRoute role="superadmin" pageId="integrations">
+            <AdminMoodleCommandsPage />
+          </ProtectedRoute>
+        </Route>
+
         <Route path="/app/branch/rooms/new">
           <ProtectedRoute role="branchadmin" pageId="rooms">
             <BranchRoomsPage view="create" />
@@ -926,6 +944,12 @@ function Router() {
         <Route path="/app/branch/schedule/new">
           <ProtectedRoute role="branchadmin" pageId="schedule">
             <BranchSchedulePage view="create" />
+          </ProtectedRoute>
+        </Route>
+
+        <Route path="/app/branch/schedule/conflicts">
+          <ProtectedRoute role="branchadmin" pageId="schedule">
+            <BranchSchedulePage view="conflicts" />
           </ProtectedRoute>
         </Route>
 
@@ -1055,13 +1079,13 @@ function Router() {
 
         <Route path="/app/hod/curriculum/new">
           <ProtectedRoute role="headofdepartment" pageId="curriculum">
-            <HodWorkflowPage pageId="curriculum" mode="create" />
+            <HodMoodleGovernancePage area="curriculum" mode="create" />
           </ProtectedRoute>
         </Route>
 
         <Route path="/app/hod/curriculum">
           <ProtectedRoute role="headofdepartment" pageId="curriculum">
-            <HodWorkflowPage pageId="curriculum" />
+            <HodMoodleGovernancePage area="curriculum" />
           </ProtectedRoute>
         </Route>
 
@@ -1079,17 +1103,17 @@ function Router() {
 
         <Route path="/app/hod/assessments/new">
           <ProtectedRoute role="headofdepartment" pageId="assessments">
-            <HodWorkflowPage pageId="assessments" mode="create" />
+            <HodMoodleGovernancePage area="assessments" mode="create" />
           </ProtectedRoute>
         </Route>
 
         <Route path="/app/hod/assessments/review/:submissionId">
           {params => (
             <ProtectedRoute role="headofdepartment" pageId="assessments">
-              <HodWorkflowPage
-                pageId="assessments"
+              <HodMoodleGovernancePage
+                area="assessments"
                 mode="review-detail"
-                reviewSubmissionId={params.submissionId}
+                recordId={params.submissionId}
               />
             </ProtectedRoute>
           )}
@@ -1097,13 +1121,13 @@ function Router() {
 
         <Route path="/app/hod/assessments/review">
           <ProtectedRoute role="headofdepartment" pageId="assessments">
-            <HodWorkflowPage pageId="assessments" mode="review" />
+            <HodMoodleGovernancePage area="assessments" mode="review" />
           </ProtectedRoute>
         </Route>
 
         <Route path="/app/hod/assessments">
           <ProtectedRoute role="headofdepartment" pageId="assessments">
-            <HodWorkflowPage pageId="assessments" />
+            <HodMoodleGovernancePage area="assessments" />
           </ProtectedRoute>
         </Route>
 
@@ -1133,16 +1157,17 @@ function Router() {
 
         <Route path="/app/teacher/quizzes/new">
           <ProtectedRoute role="teacher" pageId="quizzes">
-            <TeacherAssessmentPage view="new-quiz" />
+            <TeacherMoodleLearningPage area="quizzes" mode="create" />
           </ProtectedRoute>
         </Route>
 
         <Route path="/app/teacher/quizzes/review/:attemptId">
           {params => (
             <ProtectedRoute role="teacher" pageId="quizzes">
-              <TeacherAssessmentPage
-                view="review-detail"
-                reviewAttemptId={params.attemptId}
+              <TeacherMoodleLearningPage
+                area="quizzes"
+                mode="review"
+                recordId={params.attemptId}
               />
             </ProtectedRoute>
           )}
@@ -1150,16 +1175,17 @@ function Router() {
 
         <Route path="/app/teacher/quizzes/review">
           <ProtectedRoute role="teacher" pageId="quizzes">
-            <TeacherAssessmentPage view="review" />
+            <TeacherMoodleLearningPage area="quizzes" mode="review" />
           </ProtectedRoute>
         </Route>
 
         <Route path="/app/teacher/quizzes/:quizId">
           {params => (
             <ProtectedRoute role="teacher" pageId="quizzes">
-              <TeacherAssessmentPage
-                view="quiz-detail"
-                quizId={params.quizId}
+              <TeacherMoodleLearningPage
+                area="quizzes"
+                mode="detail"
+                recordId={params.quizId}
               />
             </ProtectedRoute>
           )}
@@ -1167,34 +1193,35 @@ function Router() {
 
         <Route path="/app/teacher/quizzes">
           <ProtectedRoute role="teacher" pageId="quizzes">
-            <TeacherAssessmentPage view="quizzes" />
+            <TeacherMoodleLearningPage area="quizzes" />
           </ProtectedRoute>
         </Route>
 
         <Route path="/app/teacher/question-bank/new">
           <ProtectedRoute role="teacher" pageId="question-bank">
-            <TeacherAssessmentPage view="new-question" />
+            <TeacherMoodleLearningPage area="question-bank" mode="create" />
           </ProtectedRoute>
         </Route>
 
         <Route path="/app/teacher/question-bank">
           <ProtectedRoute role="teacher" pageId="question-bank">
-            <TeacherAssessmentPage view="question-bank" />
+            <TeacherMoodleLearningPage area="question-bank" />
           </ProtectedRoute>
         </Route>
 
         <Route path="/app/teacher/assignments/new">
           <ProtectedRoute role="teacher" pageId="assignments">
-            <TeacherWorkPage view="new-assignment" />
+            <TeacherMoodleLearningPage area="assignments" mode="create" />
           </ProtectedRoute>
         </Route>
 
         <Route path="/app/teacher/assignments/:assignmentId">
           {params => (
             <ProtectedRoute role="teacher" pageId="assignment-detail">
-              <TeacherWorkPage
-                view="assignment-detail"
-                assignmentId={params.assignmentId}
+              <TeacherMoodleLearningPage
+                area="assignments"
+                mode="detail"
+                recordId={params.assignmentId}
               />
             </ProtectedRoute>
           )}
@@ -1202,16 +1229,17 @@ function Router() {
 
         <Route path="/app/teacher/assignments">
           <ProtectedRoute role="teacher" pageId="assignments">
-            <TeacherWorkPage view="assignments" />
+            <TeacherMoodleLearningPage area="assignments" />
           </ProtectedRoute>
         </Route>
 
         <Route path="/app/teacher/grading/:submissionId">
           {params => (
             <ProtectedRoute role="teacher" pageId="grading">
-              <TeacherWorkPage
-                view="grading-detail"
-                submissionId={params.submissionId}
+              <TeacherMoodleLearningPage
+                area="grading"
+                mode="detail"
+                recordId={params.submissionId}
               />
             </ProtectedRoute>
           )}
@@ -1219,7 +1247,7 @@ function Router() {
 
         <Route path="/app/teacher/grading">
           <ProtectedRoute role="teacher" pageId="grading">
-            <TeacherWorkPage view="grading" />
+            <TeacherMoodleLearningPage area="grading" />
           </ProtectedRoute>
         </Route>
 
@@ -1232,6 +1260,12 @@ function Router() {
         <Route path="/app/teacher/calendar">
           <ProtectedRoute role="teacher" pageId="calendar">
             <TeacherWorkPage view="calendar" />
+          </ProtectedRoute>
+        </Route>
+
+        <Route path="/app/teacher/availability">
+          <ProtectedRoute role="teacher" pageId="availability">
+            <TeacherAvailabilityPage />
           </ProtectedRoute>
         </Route>
 
@@ -1294,6 +1328,17 @@ function Router() {
               <TeacherClassWorkspacePage
                 classId={params.classId}
                 view="students"
+              />
+            </ProtectedRoute>
+          )}
+        </Route>
+
+        <Route path="/app/teacher/classes/:classId/students/:studentId">
+          {params => (
+            <ProtectedRoute role="teacher" pageId="student-detail">
+              <TeacherStudentDetailPage
+                classId={params.classId}
+                studentId={params.studentId}
               />
             </ProtectedRoute>
           )}

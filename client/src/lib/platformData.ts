@@ -531,6 +531,11 @@ export const sidebarByRole: Record<Role, NavItem[]> = {
       icon: "Database",
     },
     { label: "Calendar", href: "/app/teacher/calendar", icon: "CalendarDays" },
+    {
+      label: "Availability",
+      href: "/app/teacher/availability",
+      icon: "CalendarDays",
+    },
     { label: "Forms", href: "/app/teacher/forms", icon: "ClipboardList" },
     {
       label: "Requests",

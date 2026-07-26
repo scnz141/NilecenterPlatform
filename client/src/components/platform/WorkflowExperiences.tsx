@@ -1,4 +1,5 @@
 import { requireActiveUser } from "@/lib/auth/session";
+import "@/styles/messages-v1.css";
 import { useEffect, useId, useMemo, useState, type ReactNode } from "react";
 import {
   Activity,

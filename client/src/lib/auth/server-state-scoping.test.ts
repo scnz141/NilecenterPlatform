@@ -76,6 +76,70 @@ describe("server platform state read scopes", () => {
     expect(scoped.students).toEqual([]);
     expect(scoped.courses).toEqual([]);
     expect(scoped.auditLogs).toEqual([]);
+    expect(
+      scoped.studentInterventions.every(
+        item => item.studentId === "stu_demo" && item.studentVisible
+      )
+    ).toBe(true);
+  });
+
+  it("keeps teacher interventions within exact assigned classes and student visibility", () => {
+    const state = structuredClone(seedPlatformState);
+    state.studentInterventions = [
+      ...state.studentInterventions,
+      {
+        id: "intervention_staff_only",
+        studentId: "stu_demo",
+        classGroupId: "class_ar_l3_a",
+        teacherId: "usr_teacher_demo",
+        category: "wellbeing",
+        priority: "normal",
+        summary: "Private staff intervention for scoped review only.",
+        nextStep: "Discuss the concern with the assigned support team.",
+        studentVisible: false,
+        status: "open",
+        createdAt: "2026-07-24T10:00:00.000Z",
+        updatedAt: "2026-07-24T10:00:00.000Z",
+        version: 1,
+      },
+      {
+        id: "intervention_other_branch",
+        studentId: "stu_alex_demo",
+        classGroupId: "class_ar_alex_l1",
+        teacherId: "usr_teacher_alex_demo",
+        category: "academic",
+        priority: "high",
+        summary: "Another branch intervention must remain private.",
+        nextStep: "Review only with the assigned Alexandria teacher.",
+        studentVisible: true,
+        status: "open",
+        createdAt: "2026-07-24T10:00:00.000Z",
+        updatedAt: "2026-07-24T10:00:00.000Z",
+        version: 1,
+      },
+    ];
+
+    const studentState = scopePlatformStateForSession(
+      state,
+      sessionFor("student")
+    );
+    expect(ids(studentState.studentInterventions)).not.toContain(
+      "intervention_staff_only"
+    );
+    expect(ids(studentState.studentInterventions)).not.toContain(
+      "intervention_other_branch"
+    );
+
+    const teacherState = scopePlatformStateForSession(
+      state,
+      sessionFor("teacher")
+    );
+    expect(ids(teacherState.studentInterventions)).toContain(
+      "intervention_staff_only"
+    );
+    expect(ids(teacherState.studentInterventions)).not.toContain(
+      "intervention_other_branch"
+    );
   });
 
   it("keeps memory-backed Supabase Auth sessions on the snapshot compatibility path", () => {

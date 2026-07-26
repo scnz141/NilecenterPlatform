@@ -1,6 +1,13 @@
 import { requireActiveUser } from "@/lib/auth/session";
 import { useEffect, useMemo, useState, type FormEvent } from "react";
-import { CalendarDays, Plus, Search } from "lucide-react";
+import {
+  AlertTriangle,
+  CalendarDays,
+  CheckCircle2,
+  Plus,
+  Search,
+  XCircle,
+} from "lucide-react";
 import { Link } from "wouter";
 import { toast } from "sonner";
 import PlatformShell from "@/components/platform/PlatformShell";
@@ -50,7 +57,7 @@ function statusTone(status: EntityStatus): "green" | "amber" | "red" | "slate" {
 }
 
 type BranchSchedulePageProps = {
-  view?: "list" | "create";
+  view?: "list" | "create" | "conflicts";
 };
 
 export default function BranchSchedulePage({
@@ -63,6 +70,10 @@ export default function BranchSchedulePage({
   );
   const [eventSaving, setEventSaving] = useState(false);
   const [eventResult, setEventResult] = useState<string | null>(null);
+  const [conflictSavingId, setConflictSavingId] = useState<string | null>(null);
+  const [conflictReasons, setConflictReasons] = useState<
+    Record<string, string>
+  >({});
   const [eventDraft, setEventDraft] = useState({
     title: "Focused live class",
     type: "live_session" as CalendarEventType,
@@ -100,6 +111,13 @@ export default function BranchSchedulePage({
     )
     .slice()
     .sort((first, second) => first.startsAt.localeCompare(second.startsAt));
+  const branchConflicts = (state.scheduleConflicts ?? [])
+    .filter(item => item.branchId === branch?.id)
+    .slice()
+    .sort(
+      (first, second) =>
+        Date.parse(second.detectedAt) - Date.parse(first.detectedAt)
+    );
   const branchClassKey = branchClasses
     .map(classGroup => classGroup.id)
     .join("|");
@@ -218,6 +236,41 @@ export default function BranchSchedulePage({
         : "Event scheduled"
     );
     return true;
+  };
+
+  const resolveConflict = async (
+    conflictId: string,
+    decision: "activate" | "cancel",
+    expectedVersion: number
+  ) => {
+    const reason = conflictReasons[conflictId]?.trim() ?? "";
+    if (reason.length < 10) {
+      toast.error("Add at least 10 characters explaining the decision");
+      return;
+    }
+    setConflictSavingId(conflictId);
+    const response = await runPlatformWorkflowActionRequest({
+      type: "calendar.conflict.resolve",
+      conflictId,
+      decision,
+      reason,
+      expectedVersion,
+    });
+    setConflictSavingId(null);
+    if (!response.ok || !response.data) {
+      toast.error("Conflict was not resolved", {
+        description:
+          response.error ??
+          "The event still conflicts with another schedule record.",
+      });
+      return;
+    }
+    platformStore.setState(response.data.state);
+    refresh();
+    setConflictReasons(value => ({ ...value, [conflictId]: "" }));
+    toast.success(
+      decision === "activate" ? "Event activated" : "Event cancelled"
+    );
   };
 
   const eventForm = (
@@ -405,6 +458,106 @@ export default function BranchSchedulePage({
     </DataTableCard>
   );
 
+  const conflictList = (
+    <DataTableCard
+      title="Conflict reviews"
+      subtitle={`${branchConflicts.filter(item => item.status === "open").length} open`}
+      className="branch-schedule-conflict-card"
+    >
+      <div
+        className="branch-schedule-conflict-list"
+        data-testid="branch-schedule-conflicts"
+      >
+        {branchConflicts.length ? (
+          branchConflicts.map(conflict => {
+            const event = state.events.find(
+              item => item.id === conflict.eventId
+            );
+            const closed = conflict.status !== "open";
+            return (
+              <article key={conflict.id} data-conflict-id={conflict.id}>
+                <div className="branch-schedule-conflict-copy">
+                  <span>
+                    {conflict.kinds.map(humanize).join(", ")} ·{" "}
+                    {formatDateTime(event?.startsAt ?? conflict.detectedAt)}
+                  </span>
+                  <strong>{event?.title ?? "Unavailable event"}</strong>
+                  <p>
+                    {closed
+                      ? conflict.resolutionReason
+                      : "Resolve the underlying timing or availability issue before activation."}
+                  </p>
+                  <StatusBadge
+                    tone={
+                      conflict.status === "resolved"
+                        ? "green"
+                        : conflict.status === "cancelled"
+                          ? "red"
+                          : "amber"
+                    }
+                  >
+                    {humanize(conflict.status)}
+                  </StatusBadge>
+                </div>
+                {!closed ? (
+                  <div className="branch-schedule-conflict-actions">
+                    <label>
+                      Resolution reason
+                      <textarea
+                        rows={2}
+                        value={conflictReasons[conflict.id] ?? ""}
+                        disabled={conflictSavingId === conflict.id}
+                        onChange={event =>
+                          setConflictReasons(value => ({
+                            ...value,
+                            [conflict.id]: event.target.value,
+                          }))
+                        }
+                        placeholder="Describe what changed or why this event is cancelled."
+                      />
+                    </label>
+                    <button
+                      type="button"
+                      className="platform-secondary-button"
+                      disabled={conflictSavingId === conflict.id}
+                      onClick={() =>
+                        resolveConflict(conflict.id, "cancel", conflict.version)
+                      }
+                    >
+                      <XCircle size={15} />
+                      Cancel event
+                    </button>
+                    <button
+                      type="button"
+                      className="platform-primary-button"
+                      disabled={conflictSavingId === conflict.id}
+                      onClick={() =>
+                        resolveConflict(
+                          conflict.id,
+                          "activate",
+                          conflict.version
+                        )
+                      }
+                    >
+                      <CheckCircle2 size={15} />
+                      Recheck and activate
+                    </button>
+                  </div>
+                ) : null}
+              </article>
+            );
+          })
+        ) : (
+          <div className="platform-empty-state">
+            <CheckCircle2 size={20} aria-hidden="true" />
+            <strong>No schedule conflicts</strong>
+            <span>Pending timing and availability reviews appear here.</span>
+          </div>
+        )}
+      </div>
+    </DataTableCard>
+  );
+
   if (view === "create") {
     return (
       <PlatformShell role="branchadmin" title="Create event">
@@ -441,6 +594,29 @@ export default function BranchSchedulePage({
     );
   }
 
+  if (view === "conflicts") {
+    return (
+      <PlatformShell role="branchadmin" title="Schedule conflicts">
+        <WorkspaceLayout
+          className="branch-schedule-page branch-schedule-conflicts-page"
+          title="Schedule conflicts"
+          description="Resolve pending timing and teacher availability reviews."
+          context={branch?.name ?? "Branch access"}
+          actions={
+            <Link
+              className="platform-secondary-button"
+              href="/app/branch/schedule"
+            >
+              <CalendarDays size={15} />
+              View schedule
+            </Link>
+          }
+          main={<div className="branch-workspace-main">{conflictList}</div>}
+        />
+      </PlatformShell>
+    );
+  }
+
   return (
     <PlatformShell role="branchadmin" title="Schedule">
       <WorkspaceLayout
@@ -449,13 +625,22 @@ export default function BranchSchedulePage({
         description="Review branch events and room or class timing."
         context={branch?.name ?? "Branch access"}
         actions={
-          <Link
-            className="platform-primary-button"
-            href="/app/branch/schedule/new"
-          >
-            <Plus size={15} />
-            Create event
-          </Link>
+          <>
+            <Link
+              className="platform-secondary-button"
+              href="/app/branch/schedule/conflicts"
+            >
+              <AlertTriangle size={15} />
+              Conflicts
+            </Link>
+            <Link
+              className="platform-primary-button"
+              href="/app/branch/schedule/new"
+            >
+              <Plus size={15} />
+              Create event
+            </Link>
+          </>
         }
         toolbar={
           <div

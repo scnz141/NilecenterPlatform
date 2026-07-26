@@ -432,6 +432,21 @@ export type CalendarEvent = {
   status: EntityStatus;
 };
 
+export type ScheduleConflictReview = {
+  id: string;
+  eventId: string;
+  branchId: string;
+  kinds: Array<"room" | "teacher" | "class" | "owner" | "availability">;
+  relatedEventIds: string[];
+  teacherIds: string[];
+  status: "open" | "resolved" | "cancelled";
+  detectedAt: string;
+  resolvedAt?: string;
+  resolvedBy?: string;
+  resolutionReason?: string;
+  version: number;
+};
+
 export type ClassSession = {
   id: string;
   classGroupId: string;
@@ -467,6 +482,8 @@ export type TeacherAvailability = {
   startsAt: string;
   endsAt: string;
   branchId: string;
+  updatedAt?: string;
+  updatedBy?: string;
 };
 
 export type Room = {
@@ -764,6 +781,24 @@ export type SupportTicket = {
   version?: number;
 };
 
+export type StudentIntervention = {
+  id: string;
+  studentId: string;
+  classGroupId: string;
+  teacherId: string;
+  category: "attendance" | "engagement" | "academic" | "wellbeing";
+  priority: "low" | "normal" | "high" | "urgent";
+  summary: string;
+  nextStep: string;
+  studentVisible: boolean;
+  status: "open" | "monitoring" | "resolved" | "cancelled";
+  createdAt: string;
+  updatedAt: string;
+  resolvedAt?: string;
+  resolutionNote?: string;
+  version: number;
+};
+
 export type AuditLog = {
   id: string;
   actorId: string;
@@ -868,6 +903,7 @@ export type PlatformState = {
   quizAttempts: QuizAttempt[];
   grades: Grade[];
   events: CalendarEvent[];
+  scheduleConflicts: ScheduleConflictReview[];
   classSessions: ClassSession[];
   teacherAvailability: TeacherAvailability[];
   rooms: Room[];
@@ -893,6 +929,7 @@ export type PlatformState = {
   documents: Document[];
   notifications: Notification[];
   supportTickets: SupportTicket[];
+  studentInterventions: StudentIntervention[];
   reportPresets: ReportPreset[];
   auditLogs: AuditLog[];
   integrations: IntegrationConfig[];

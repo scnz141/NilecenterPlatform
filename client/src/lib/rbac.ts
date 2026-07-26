@@ -120,6 +120,7 @@ export function getRequiredPermissionForPage(
   if (
     pageId === "schedule" ||
     pageId === "calendar" ||
+    pageId === "availability" ||
     pageId === "sessions" ||
     pageId === "live"
   )

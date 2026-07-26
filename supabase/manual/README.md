@@ -68,6 +68,56 @@ and service-role RPC behavior, and performs rollback/reapply. It does not contac
 Supabase. Keep `NILE_MOODLE_PROJECTION_REPOSITORY=disabled`; Phase 6I staging
 acceptance did not approve runtime activation.
 
+## Phase 6K And 6L Moodle Command Runtime - Staging Only
+
+Phase 6L is not standalone. `028_phase6l_moodle_command_runtime.sql` extends
+tables created by `027_phase6k_moodle_command_contract.sql`. Running `028`
+before `027` fails closed with:
+
+```text
+Phase 6L requires public.moodle_plugin_manifests
+```
+
+Both files are manual-only and must never be applied to production project
+`lkvyhevoommqnpwwmqgp`. They are approved only for the pinned isolated,
+fake-data staging project `xvgsypaatibntfocvvxn`. They are not included in
+`000_nile_learn_staging_bootstrap.sql`.
+
+Before applying either file, confirm the target and prerequisites through the
+guarded staging preflight. Do not substitute generic `SUPABASE_*` values or the
+currently linked production project:
+
+```bash
+npm run check:phase6-staging-db:dry-run
+```
+
+The required staging order is:
+
+1. Phase 1 identity/session foundation and Phase 2B session lifecycle.
+2. `015_phase6i_pgcrypto_schema_compatibility.sql`.
+3. Accepted read-only Phase 6 packages `006` through `014`, in the order pinned
+   by `docs/integration-phase6-staging-promotion.json`.
+4. `027_phase6k_moodle_command_contract.sql`.
+5. `227_phase6k_moodle_command_contract_assertions.sql`.
+6. `028_phase6l_moodle_command_runtime.sql`.
+7. `228_phase6l_moodle_command_runtime_assertions.sql`.
+
+Do not run fake seeds on a shared environment. Do not run rollback files except
+as part of an approved disposable rollback drill. Package `026` is retired and
+must never be applied.
+
+Validate the Phase 6K and Phase 6L packages locally without contacting
+Supabase:
+
+```bash
+npm run check:phase6k-moodle-command-contract:runtime
+npm run check:phase6l-moodle-command-runtime:runtime
+```
+
+If `028` fails at its initial dependency check, PostgreSQL rolls back that
+transaction. Correct the target and prerequisite order instead of creating the
+missing table by hand.
+
 ## Phase 6E Moodle User Mapping Authority Package - Outside Migration History
 
 This additive package establishes exact internal-user to Moodle-user mappings

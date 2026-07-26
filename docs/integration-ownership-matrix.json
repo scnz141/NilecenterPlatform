@@ -269,24 +269,22 @@
     },
     {
       "id": "academic_catalog_curriculum",
-      "name": "Programs, levels, course catalog, and Nile-native curriculum governance",
+      "name": "Programs, levels, and Nile delivery catalog governance",
       "nileLearnAuthority": "canonical_writable",
       "moodleAuthority": "none",
       "projectionDirection": "none",
       "externalId": "Moodle course mapping is separate from Nile Learn course identity",
-      "conflictRule": "Nile Learn owns catalog and delivery metadata; Moodle content is never copied into writable curriculum fields.",
+      "conflictRule": "Nile Learn owns institutional catalog and delivery metadata; Moodle owns sections, learning content, and assessment structure.",
       "permittedRoles": ["headofdepartment", "superadmin"],
       "auditOwner": "nile_learn_academic_governance_audit",
-      "failureBehavior": "Reject invalid status or curriculum transitions and retain the prior published version.",
+      "failureBehavior": "Reject invalid catalog status transitions and retain the prior institutional delivery configuration.",
       "futureWriteStatus": "nile_learn_writable",
       "selectors": {
         "clientRoutes": [
           "^/app/admin/(courses(?:/.*)?|programs)$",
-          "^/app/hod/(courses(?:/.*)?|curriculum(?:/.*)?|levels|programs)$"
+          "^/app/hod/(courses(?:/.*)?|levels|programs)$"
         ],
-        "workflowActions": [
-          "^(course[.]status[.]update|curriculum[.]module[.]create)$"
-        ]
+        "workflowActions": ["^course[.]status[.]update$"]
       }
     },
     {
@@ -314,11 +312,12 @@
           "^/app/hod/(classes(?:/.*)?|schedule(?:/.*)?)$",
           "^/app/registrar/(classes|schedule(?:/.*)?)$",
           "^/app/teacher/calendar(?:/.*)?$",
-          "^/app/teacher/classes(?:$|/:classId(?:$|/(sessions|students)))$",
+          "^/app/teacher/availability$",
+          "^/app/teacher/classes(?:$|/:classId(?:$|/sessions$|/students(?:$|/:studentId$)))$",
           "^/app/student/calendar$"
         ],
         "workflowActions": [
-          "^(calendar[.]create|class[.](create|session[.](cancel|reschedule)|status[.]update|update)|course-run[.]create|room[.](create|status[.]update)|teacher[.]assign)$"
+          "^(calendar[.](create|conflict[.]resolve)|class[.](create|session[.](cancel|reschedule)|status[.]update|update)|course-run[.]create|room[.](create|status[.]update)|teacher[.](assign|availability[.]update))$"
         ]
       }
     },
@@ -423,10 +422,11 @@
       "selectors": {
         "clientRoutes": [
           "^/app/student/(courses(?:/.*)?|grades)$",
-          "^/app/teacher/classes/:classId/materials$"
+          "^/app/teacher/classes/:classId/materials$",
+          "^/app/hod/curriculum(?:/.*)?$"
         ],
         "workflowActions": [
-          "^(lesson[.](complete|start)|material[.]publish[.]update)$"
+          "^(curriculum[.]module[.]create|lesson[.](complete|start)|material[.]publish[.]update)$"
         ]
       }
     },
@@ -568,7 +568,9 @@
       "futureWriteStatus": "nile_learn_writable",
       "selectors": {
         "clientRoutes": ["^/app/student/support(?:/new)?$"],
-        "workflowActions": ["^(record[.]save|support[.]ticket[.]create)$"]
+        "workflowActions": [
+          "^(record[.]save|student[.]intervention[.](create|status[.]update)|support[.]ticket[.]create)$"
+        ]
       }
     },
     {
@@ -591,6 +593,7 @@
           "^(integration[.](local_check|status[.]update)|settings[.]save)$"
         ],
         "serverApiRoutes": [
+          "^GET /api/integrations/health$",
           "^GET /api/integrations/(moodle|resend|supabase)/status$"
         ]
       }
@@ -810,6 +813,40 @@
         ],
         "moodleReadFunctions": [
           "^(gradereport_user_get_grade_items|mod_h5pactivity_get_(attempts|results)|mod_lesson_get_user_grade|mod_scorm_get_scorm_sco_tracks)$"
+        ]
+      }
+    },
+    {
+      "id": "moodle_command_launch_file_runtime",
+      "name": "Moodle commands, native launches, and authorized file delivery",
+      "nileLearnAuthority": "read_only_projection",
+      "moodleAuthority": "canonical_writable",
+      "projectionDirection": "none",
+      "externalId": "exact Moodle actor, course, module, file, and command mappings resolved server-side",
+      "conflictRule": "Nile Learn validates the authenticated actor and operational scope, persists an auditable command or single-use launch, and Moodle remains the sole authority for learning content and outcomes.",
+      "permittedRoles": [
+        "student",
+        "teacher",
+        "registrar",
+        "headofdepartment",
+        "branchadmin",
+        "superadmin"
+      ],
+      "auditOwner": "nile_learn_moodle_command_audit",
+      "failureBehavior": "Fail closed on missing mappings, stale authority, unsupported operations, provider uncertainty, expired launches, or unauthorized file access; unknown outcomes require reconciliation before retry.",
+      "futureWriteStatus": "isolated_staging_and_sandbox_only_production_write_blocked",
+      "selectors": {
+        "clientRoutes": ["^/app/admin/integrations/moodle-commands$"],
+        "serverApiRoutes": [
+          "^GET /api/integrations/moodle/capabilities$",
+          "^GET /api/integrations/moodle/commands$",
+          "^GET /api/integrations/moodle/commands/:commandId$",
+          "^GET /api/integrations/moodle/files/:fileMappingId$",
+          "^POST /api/integrations/moodle/commands$",
+          "^POST /api/integrations/moodle/commands/:commandId/reconcile$",
+          "^POST /api/integrations/moodle/launches$",
+          "^POST /api/internal/moodle-commands/process$",
+          "^POST /api/internal/moodle-launches/exchange$"
         ]
       }
     },

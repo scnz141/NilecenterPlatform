@@ -27,6 +27,53 @@ describe("server platform capability contract", () => {
     );
   });
 
+  it("keeps teacher availability self-scoped through schedule authority", () => {
+    expect(
+      roleCanRunPlatformAction("teacher", "teacher.availability.update")
+    ).toBe(true);
+    expect(
+      roleCanRunPlatformAction("branchadmin", "teacher.availability.update")
+    ).toBe(false);
+    expect(
+      requiredPermissionForPlatformAction("teacher", {
+        type: "teacher.availability.update",
+        teacherId: "usr_teacher_demo",
+        branchId: "br_online",
+        availabilityStatus: "available",
+        slots: [
+          { weekday: "Monday", startsAt: "09:00", endsAt: "12:00" },
+        ],
+      })
+    ).toBe("schedule:write");
+  });
+
+  it("keeps learner interventions teacher-scoped", () => {
+    expect(
+      roleCanRunPlatformAction("teacher", "student.intervention.create")
+    ).toBe(true);
+    expect(
+      roleCanRunPlatformAction("branchadmin", "student.intervention.create")
+    ).toBe(false);
+    expect(
+      roleCanRunPlatformAction(
+        "headofdepartment",
+        "student.intervention.status.update"
+      )
+    ).toBe(false);
+    expect(
+      requiredPermissionForPlatformAction("teacher", {
+        type: "student.intervention.create",
+        studentId: "stu_demo",
+        classGroupId: "class_ar_l3_a",
+        category: "academic",
+        priority: "normal",
+        summary: "A focused follow-up is required.",
+        nextStep: "Review the next two learning outcomes.",
+        studentVisible: true,
+      })
+    ).toBe("self_scoped");
+  });
+
   it("requires explicit global write permissions for accepted admin operations", () => {
     expect(
       requiredPermissionForPlatformAction("superadmin", {

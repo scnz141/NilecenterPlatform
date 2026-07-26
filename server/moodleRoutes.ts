@@ -37,6 +37,11 @@ import {
   resolveMoodleProjectionObservation,
   type ResolvedMoodleProjection,
 } from "./moodleProjectionFreshness.js";
+import {
+  decorateMoodleFileResources,
+  MoodleFileAccessError,
+  parseMoodleFileAccessToken,
+} from "./moodleFileAccess.js";
 import type { getPlatformStateSnapshot } from "./platformState.js";
 import { SessionRepositoryUnavailableError } from "./sessionRepository.js";
 
@@ -50,6 +55,7 @@ type MoodleRouteResponse = {
   status(code: number): MoodleRouteResponse;
   setHeader(name: string, value: string): void;
   json(body: unknown): void;
+  send(body: Buffer): void;
 };
 
 type MoodleRouteHandler = (
@@ -67,6 +73,7 @@ type MoodleRouteDependencies = {
   getStatus?: () => ReturnType<typeof getMoodleServerStatus>;
   getProjectionRepository?: () => MoodleProjectionRepository;
   now?: () => Date;
+  fileAccessSecret?: string;
   // Explicit compatibility hooks remain test-only. Runtime registration does
   // not provide them and can never fall back to snapshot/demo authority.
   getState?: () => ReturnType<typeof getPlatformStateSnapshot>;
@@ -74,6 +81,8 @@ type MoodleRouteDependencies = {
 };
 
 class MoodleProjectionAuthenticationError extends Error {}
+
+class MoodleFileNotFoundError extends Error {}
 
 function setProjectionResponsePrivacy(response: MoodleRouteResponse) {
   response.setHeader("Cache-Control", "private, no-store");
@@ -83,6 +92,14 @@ function setProjectionResponsePrivacy(response: MoodleRouteResponse) {
 function sendMoodleError(error: unknown, response: MoodleRouteResponse) {
   if (error instanceof MoodleProjectionAuthenticationError) {
     response.status(401).json({ error: "Sign in required." });
+    return;
+  }
+  if (error instanceof MoodleFileAccessError) {
+    response.status(403).json({ error: "Moodle file access expired." });
+    return;
+  }
+  if (error instanceof MoodleFileNotFoundError) {
+    response.status(404).json({ error: "Moodle file is unavailable." });
     return;
   }
   if (error instanceof SessionRepositoryUnavailableError) {
@@ -145,6 +162,10 @@ export function registerMoodleRoutes(
   const getProjectionRepository =
     dependencies.getProjectionRepository ?? getMoodleProjectionRepository;
   const now = dependencies.now ?? (() => new Date());
+  const fileAccessSecret =
+    dependencies.fileAccessSecret ??
+    process.env.NILE_MOODLE_FILE_PROXY_SECRET ??
+    "";
   const getState = dependencies.getState;
   const getCourseMappings = dependencies.getCourseMappings;
   const useCompatibilityRepository = Boolean(getState || getCourseMappings);
@@ -426,17 +447,22 @@ export function registerMoodleRoutes(
             Number(mapping.externalCourseId)
           );
           const sections = parseMoodleCourseContentsResponse(rawSections);
+          const projection = projectMoodleCourseContent({
+            session,
+            state: compatibility.state,
+            mappings,
+            internalCourseId,
+            sections,
+          });
           response.json({
             mode: "read_only",
             authority: "server_course_relationships",
             authorityObservedAt: authority.observedAt,
-            projection: projectMoodleCourseContent({
-              session,
-              state: compatibility.state,
-              mappings,
-              internalCourseId,
-              sections,
-            }),
+            projection: decorateMoodleFileResources(
+              projection,
+              fileAccessSecret,
+              now().getTime()
+            ),
           });
           return;
         }
@@ -478,14 +504,97 @@ export function registerMoodleRoutes(
             ? { reconciliationReason: stored.reconciliationReason }
             : {}),
           observation: resolved.observation,
-          projection: projectMoodleCourseContentFromAuthority({
-            activeRole: normalizedAuthority.activeRole,
-            authorizedCourseIds: normalizedAuthority.authorizedCourseIds,
-            mappings,
-            internalCourseId,
-            sections: resolved.payload,
-          }),
+          projection: decorateMoodleFileResources(
+            projectMoodleCourseContentFromAuthority({
+              activeRole: normalizedAuthority.activeRole,
+              authorizedCourseIds: normalizedAuthority.authorizedCourseIds,
+              mappings,
+              internalCourseId,
+              sections: resolved.payload,
+            }),
+            fileAccessSecret,
+            now().getTime()
+          ),
         });
+      } catch (error) {
+        sendMoodleError(error, response);
+      }
+    }
+  );
+
+  app.get(
+    "/api/integrations/moodle/files/:fileMappingId",
+    async (request, response) => {
+      setProjectionResponsePrivacy(response);
+      try {
+        if (!fileAccessSecret.trim()) {
+          throw new MoodleApiError(
+            "Moodle file delivery is not configured.",
+            503,
+            "configuration"
+          );
+        }
+        const session = await requireProjectionSession(request);
+        assertMoodleCatalogProjectionRole(session);
+        const access = parseMoodleFileAccessToken(
+          request.params?.fileMappingId?.trim() ?? "",
+          fileAccessSecret,
+          now().getTime()
+        );
+        const repository = getProjectionRepository();
+        const authority = await repository.resolveCourseAuthority(session);
+        if (!authority.authorizedCourseIds.includes(access.courseId)) {
+          throw new MoodleProjectionAuthorityError();
+        }
+        const mappings = await repository.listCourseMappings(
+          authority.connectionId,
+          [access.courseId]
+        );
+        const mapping = resolveMappedExternalCourseId(
+          access.courseId,
+          mappings
+        );
+        requireConfiguredProjection();
+        await requireMinimumPrivilege();
+        const rawSections = await getClient().getCourseContents(
+          Number(mapping.externalCourseId)
+        );
+        const [activityId, resourcePosition] = access.resourceId
+          .split(":")
+          .map(Number);
+        const module = rawSections
+          .flatMap(section => section.modules ?? [])
+          .find(item => item.id === activityId);
+        const resource = module?.contents?.[resourcePosition - 1];
+        if (
+          !resource ||
+          resource.isexternalfile ||
+          typeof resource.fileurl !== "string" ||
+          !resource.fileurl.trim()
+        ) {
+          throw new MoodleFileNotFoundError();
+        }
+        const range = request.get("range")?.trim() || undefined;
+        const file = await getClient().downloadFile(resource.fileurl, range);
+        const expectedMime = resource.mimetype?.toLowerCase();
+        const actualMime = file.contentType.split(";", 1)[0].trim().toLowerCase();
+        if (expectedMime && expectedMime !== actualMime) {
+          throw new MoodleApiError(
+            "Moodle file type differs from its verified metadata.",
+            502,
+            "invalid_response"
+          );
+        }
+        response.status(file.status);
+        response.setHeader("Content-Type", file.contentType);
+        response.setHeader("Content-Length", String(file.body.byteLength));
+        response.setHeader("Accept-Ranges", file.acceptRanges);
+        if (file.contentRange) {
+          response.setHeader("Content-Range", file.contentRange);
+        }
+        response.setHeader("Content-Security-Policy", "sandbox");
+        response.setHeader("X-Content-Type-Options", "nosniff");
+        response.send(file.body);
       } catch (error) {
         sendMoodleError(error, response);
       }

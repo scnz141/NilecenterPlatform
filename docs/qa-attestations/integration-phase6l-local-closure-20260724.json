@@ -1,0 +1,77 @@
+{
+  "version": 1,
+  "status": "local-closure-only",
+  "phase": "integration-stabilization-phase6l-moodle-runtime",
+  "checkedAt": "2026-07-24T15:15:00.000Z",
+  "scope": {
+    "protocolVersion": "1.0",
+    "pluginVersion": "0.2.0",
+    "commandOperations": 19,
+    "nativeLaunchKinds": 6,
+    "capabilityRoute": "GET /api/integrations/moodle/capabilities",
+    "productionMoodleWritesEnabled": false
+  },
+  "pluginArtifact": {
+    "command": "npm run build:moodle-plugin",
+    "archive": "output/moodle-plugin/local_nilelearn-0.2.0.zip",
+    "sha256": "f6b40ef126be8e0b4cbc9f5e08b50b22e1958756fb0432cdf3db7cf61e2e3f5d",
+    "serviceEnabledByDefault": false,
+    "installed": false
+  },
+  "localRuntime": {
+    "transportDraftVerification": true,
+    "mappedActorDraftStaging": true,
+    "transportDraftCleanupAfterSuccess": true,
+    "roleCapabilityMatrixClosed": true,
+    "scopeRevalidatedOnCommand": true,
+    "allOperationFixtureExecutions": 19,
+    "unknownOutcomeReconciliation": true,
+    "interruptedCompletionRecovery": true,
+    "canonicalFileAccessTokens": true
+  },
+  "focusedValidation": {
+    "commands": [
+      "npm run check:phase6l-moodle-plugin",
+      "npm run verify:phase6l-fast",
+      "npm run check",
+      "npm test -- --run",
+      "npm run build",
+      "git diff --check"
+    ],
+    "result": "passed",
+    "unitTestFiles": 75,
+    "unitTests": 987
+  },
+  "fullValidation": {
+    "command": "QA_OUTPUT_DIR=output/playwright/phase6l-local-closure-20260724 scripts/verify.sh",
+    "result": "passed",
+    "typescript": "passed",
+    "productionBuild": "passed",
+    "portalBaselineProtected": true
+  },
+  "fullPortalQa": {
+    "artifact": "output/playwright/phase6l-local-closure-20260724/portal-qa-summary.json",
+    "artifactSha256": "d17d17568aa5c5cfa26a42d52f28fd38a9ea308cac65764c21f7c904e51c5118",
+    "totalChecks": 1634,
+    "failedChecks": 0,
+    "elapsedMs": 865001,
+    "fullSuite": true,
+    "interrupted": false
+  },
+  "externalGates": {
+    "moodlePluginInstall": "blocked_host_local_directory_not_writable",
+    "isolatedStagingPromotion": "blocked_missing_pinned_staging_credentials",
+    "liveCrudFamiliesAccepted": false,
+    "nativeLaunchesAccepted": false,
+    "syntheticCleanupAccepted": false,
+    "temporaryCredentialTeardownAccepted": false
+  },
+  "boundaries": {
+    "manualSqlUnapplied": true,
+    "runtimeActivated": false,
+    "providerCalled": false,
+    "moodleWritePerformed": false,
+    "productionDatabaseContacted": false,
+    "productionProjectChanged": false
+  }
+}

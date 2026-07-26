@@ -104,6 +104,86 @@ describe("server-only Moodle read client", () => {
     ]);
   });
 
+  it("downloads approved Moodle files with a server token and byte range", async () => {
+    const fetchImpl = vi.fn<typeof fetch>(async (input, init) => {
+      const url = new URL(String(input));
+      expect(url.origin).toBe("https://moodle.example.test");
+      expect(url.pathname).toBe("/learning/pluginfile.php/1/mod_resource/content/1/book.pdf");
+      expect(url.searchParams.get("token")).toBe("server-only-test-token");
+      expect(url.searchParams.get("wstoken")).toBeNull();
+      expect(init?.method).toBe("GET");
+      expect(init?.headers).toEqual({ Range: "bytes=0-3" });
+      expect(init?.redirect).toBe("error");
+      return new Response(Uint8Array.from([37, 80, 68, 70]), {
+        status: 206,
+        headers: {
+          "Content-Type": "application/pdf",
+          "Content-Range": "bytes 0-3/4",
+          "Accept-Ranges": "bytes",
+        },
+      });
+    });
+    const client = configuredClient(fetchImpl);
+
+    await expect(
+      client.downloadFile(
+        "https://moodle.example.test/learning/pluginfile.php/1/mod_resource/content/1/book.pdf?token=browser-value",
+        "bytes=0-3"
+      )
+    ).resolves.toMatchObject({
+      status: 206,
+      body: Buffer.from("%PDF"),
+      contentType: "application/pdf",
+      contentRange: "bytes 0-3/4",
+      acceptRanges: "bytes",
+    });
+  });
+
+  it("rejects unapproved file hosts and malformed byte ranges before fetching", async () => {
+    const fetchImpl = vi.fn<typeof fetch>();
+    const client = configuredClient(fetchImpl);
+
+    await expect(
+      client.downloadFile(
+        "https://files.example.test/pluginfile.php/1/file.pdf"
+      )
+    ).rejects.toMatchObject({ statusCode: 403, code: "permission" });
+    await expect(
+      client.downloadFile(
+        "https://moodle.example.test/learning/pluginfile.php/1/file.pdf",
+        "items=0-1"
+      )
+    ).rejects.toMatchObject({ statusCode: 400, code: "invalid_response" });
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it("rejects Moodle files larger than the configured response limit", async () => {
+    const fetchImpl = vi.fn<typeof fetch>(async () =>
+      new Response(new Uint8Array(2_048), {
+        status: 200,
+        headers: {
+          "Content-Type": "application/octet-stream",
+          "Content-Length": "2048",
+        },
+      })
+    );
+    const client = createMoodleClient({
+      enabled: true,
+      baseUrl: "https://moodle.example.test/learning",
+      token: "server-only-test-token",
+      allowedHosts: ["moodle.example.test"],
+      maxResponseBytes: 1_024,
+      fetchImpl,
+      resolveHostname: resolvePublicHost,
+    });
+
+    await expect(
+      client.downloadFile(
+        "https://moodle.example.test/learning/pluginfile.php/1/file.bin"
+      )
+    ).rejects.toMatchObject({ statusCode: 413, code: "invalid_response" });
+  });
+
   it("fails closed for disabled, insecure, missing, and write-capable configuration", async () => {
     expect(() =>
       createMoodleClient({

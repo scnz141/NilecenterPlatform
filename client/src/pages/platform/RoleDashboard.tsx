@@ -1107,23 +1107,6 @@ function TeacherCommandDashboard() {
       tone: unreadMessages.length ? ("teal" as const) : ("green" as const),
     },
   ];
-  const classMomentumPoints: InsightPoint[] = teacherClasses
-    .slice(0, 6)
-    .map(classGroup => {
-      const classEnrollments = state.enrollments.filter(
-        enrollment => enrollment.classGroupId === classGroup.id
-      );
-      const value = classEnrollments.length
-        ? Math.round(
-            classEnrollments.reduce(
-              (sum, enrollment) => sum + enrollment.progress,
-              0
-            ) / classEnrollments.length
-          )
-        : 0;
-      return { label: classGroup.name, value };
-    });
-
   return (
     <PlatformShell role="teacher" title="Dashboard">
       <PlatformPageHeader
@@ -1151,7 +1134,7 @@ function TeacherCommandDashboard() {
       />
 
       <motion.div
-        className="platform-metric-grid"
+        className="platform-metric-grid teacher-dashboard-metrics"
         initial="hidden"
         animate="visible"
       >
@@ -1174,112 +1157,80 @@ function TeacherCommandDashboard() {
         custom={0.14}
         variants={dashboardReveal}
       >
-        <div className="platform-v2-role-stack teacher-dashboard-stack">
-          <section className="platform-v2-panel platform-v2-work-summary teacher-plan-panel">
-            <PlatformWorkspaceHeader
-              title="Today’s teaching plan"
-              description={`${teacherUser?.name ?? "Teacher"} · ${staffProfile?.subjects.join(", ") || teacherProfile?.subjects.join(", ") || "assigned classes"}`}
-            />
-            <div className="platform-v2-summary-body teacher-plan-body">
-              <div className="platform-v2-summary-copy teacher-plan-copy">
-                <span>Next class</span>
-                <h2>
-                  {nextClass?.title ??
-                    nextClassGroup?.name ??
-                    dashboard.spotlight.title}
-                </h2>
-                <p>{nextCourse?.title ?? dashboard.spotlight.description}</p>
-                <div className="platform-v2-summary-actions">
-                  <Link
-                    href={`/app/teacher/classes/${nextClassGroup?.id ?? "class_ar_l3_a"}/attendance`}
-                    className="platform-primary-button"
-                    style={{ background: meta.color }}
-                  >
-                    Mark attendance
-                  </Link>
-                  <Link
-                    href={`/app/teacher/classes/${nextClassGroup?.id ?? "class_ar_l3_a"}`}
-                    className="platform-secondary-button"
-                  >
-                    Class panel
-                  </Link>
-                </div>
-              </div>
-              <div className="platform-v2-summary-facts teacher-plan-facts">
-                <article>
-                  <span>Schedule</span>
-                  <strong>
-                    {nextClass
-                      ? formatStudentDate(nextClass.startsAt)
-                      : "No session"}
-                  </strong>
-                  <small>{nextClassGroup?.schedule ?? "Class schedule"}</small>
-                </article>
-                <article>
-                  <span>Roster</span>
-                  <strong>{nextClassGroup?.studentIds.length ?? 0}</strong>
-                  <small>learner(s)</small>
-                </article>
-                <article>
-                  <span>Progress</span>
-                  <strong>{averageProgress}%</strong>
-                  <small>class average</small>
-                </article>
+        <section className="platform-v2-panel platform-v2-work-summary teacher-plan-panel">
+          <PlatformWorkspaceHeader
+            title="Today’s teaching plan"
+            description={`${teacherUser?.name ?? "Teacher"} · ${staffProfile?.subjects.join(", ") || teacherProfile?.subjects.join(", ") || "assigned classes"}`}
+          />
+          <div className="platform-v2-summary-body teacher-plan-body">
+            <div className="platform-v2-summary-copy teacher-plan-copy">
+              <span>Next class</span>
+              <h2>
+                {nextClass?.title ??
+                  nextClassGroup?.name ??
+                  dashboard.spotlight.title}
+              </h2>
+              <p>{nextCourse?.title ?? dashboard.spotlight.description}</p>
+              <div className="platform-v2-summary-actions">
+                <Link
+                  href={`/app/teacher/classes/${nextClassGroup?.id ?? "class_ar_l3_a"}/attendance`}
+                  className="platform-primary-button"
+                  style={{ background: meta.color }}
+                >
+                  Mark attendance
+                </Link>
+                <Link
+                  href={`/app/teacher/classes/${nextClassGroup?.id ?? "class_ar_l3_a"}`}
+                  className="platform-secondary-button"
+                >
+                  Class panel
+                </Link>
               </div>
             </div>
-          </section>
-
-          <section className="platform-v2-panel teacher-delivery-panel">
-            <PlatformWorkspaceHeader
-              title="Class delivery"
-              description="The next sessions and the attendance state attached to them."
-            />
-            <div className="platform-v2-dashboard-list">
-              {visibleSessions.map(session => {
-                const group = teacherClasses.find(
-                  item => item.id === session.classGroupId
-                );
-                const run = teacherRuns.find(
-                  item => item.id === group?.courseRunId
-                );
-                const course = state.courses.find(
-                  item => item.id === run?.courseId
-                );
-                return (
-                  <Link
-                    key={session.id}
-                    href={`/app/teacher/classes/${group?.id ?? "class_ar_l3_a"}/attendance`}
-                    style={
-                      {
-                        "--item-color": session.attendanceSaved
-                          ? toneColor.green
-                          : toneColor.amber,
-                      } as CSSProperties
-                    }
-                  >
-                    <div>
-                      <strong>{session.title}</strong>
-                      <small>
-                        {group?.name ?? "Class group"} ·{" "}
-                        {course?.title ?? "Course"}
-                      </small>
-                    </div>
-                    <span>{session.attendanceSaved ? "saved" : "mark"}</span>
-                  </Link>
-                );
-              })}
-              {!visibleSessions.length ? (
-                <article>
-                  <div>
-                    <strong>No classes scheduled</strong>
-                    <small>Assigned sessions will appear here.</small>
-                  </div>
-                  <span>clear</span>
-                </article>
-              ) : null}
+            <div className="platform-v2-summary-facts teacher-plan-facts">
+              <article>
+                <span>Schedule</span>
+                <strong>
+                  {nextClass
+                    ? formatStudentDate(nextClass.startsAt)
+                    : "No session"}
+                </strong>
+                <small>{nextClassGroup?.schedule ?? "Class schedule"}</small>
+              </article>
+              <article>
+                <span>Roster</span>
+                <strong>{nextClassGroup?.studentIds.length ?? 0}</strong>
+                <small>learner(s)</small>
+              </article>
+              <article>
+                <span>Progress</span>
+                <strong>{averageProgress}%</strong>
+                <small>class average</small>
+              </article>
             </div>
-          </section>
-        </div>
+          </div>
+          <div className="teacher-plan-footer">
+            <div>
+              <strong>
+                {visibleSessions.length
+                  ? `${visibleSessions.length} upcoming session${visibleSessions.length === 1 ? "" : "s"}`
+                  : "No sessions scheduled"}
+              </strong>
+              <span>
+                {pendingAttendance.length
+                  ? `${pendingAttendance.length} still need attendance`
+                  : "Attendance is current"}
+              </span>
+            </div>
+            <Link
+              href="/app/teacher/classes"
+              className="platform-secondary-button"
+            >
+              View classes
+              <ArrowRight size={15} />
+            </Link>
+          </div>
+        </section>
 
         <aside className="platform-v2-panel teacher-attention-panel">
           <PlatformWorkspaceHeader
@@ -1305,40 +1256,9 @@ function TeacherCommandDashboard() {
                 <ArrowRight size={15} />
               </Link>
             ))}
-            {studentsNeedingAttention.slice(0, 2).map(row => (
-              <Link
-                key={row.student.id}
-                href={`/app/teacher/classes/${row.classGroupId ?? nextClassGroup?.id ?? "class_ar_l3_a"}/students`}
-                style={{ "--item-color": toneColor.amber } as CSSProperties}
-              >
-                <span>
-                  <Users size={16} />
-                </span>
-                <div>
-                  <strong>{row.user?.name ?? row.student.id}</strong>
-                  <small>
-                    Attendance {row.lowestAttendance}% · Grade {row.lowestGrade}
-                    %
-                  </small>
-                </div>
-                <ArrowRight size={15} />
-              </Link>
-            ))}
           </div>
         </aside>
       </motion.div>
-
-      <PortalInsight
-        eyebrow="Class progress"
-        title="Teaching momentum"
-        value={`${averageProgress}%`}
-        valueLabel="average learner progress"
-        description="Compare the learning pace across your assigned class groups."
-        points={classMomentumPoints}
-        variant="bars"
-        tone="navy"
-        testId="teacher-dashboard-insight"
-      />
     </PlatformShell>
   );
 }

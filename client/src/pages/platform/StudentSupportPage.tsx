@@ -1,6 +1,6 @@
 import { requireActiveUser } from "@/lib/auth/session";
 import { useMemo, useState, type FormEvent } from "react";
-import { CheckCircle2, Search, Send } from "lucide-react";
+import { BookOpenCheck, CheckCircle2, Search, Send } from "lucide-react";
 import { toast } from "sonner";
 import { Link } from "wouter";
 import PlatformShell from "@/components/platform/PlatformShell";
@@ -70,6 +70,20 @@ export default function StudentSupportPage({
   });
   const state = useMemo(() => platformStore.getState(), [version]);
   const user = requireActiveUser("student");
+  const student = state.students.find(item => item.userId === user.id);
+  const interventions = student
+    ? state.studentInterventions
+        .filter(
+          item =>
+            item.studentId === student.id &&
+            item.studentVisible &&
+            item.status !== "cancelled"
+        )
+        .sort(
+          (left, right) =>
+            Date.parse(right.updatedAt) - Date.parse(left.updatedAt)
+        )
+    : [];
   const tickets = state.supportTickets
     .filter(ticket => ticket.requesterId === user.id)
     .sort(
@@ -304,6 +318,56 @@ export default function StudentSupportPage({
         }
         main={
           <div className="student-support-main">
+            <DataTableCard
+              title="Learning support plans"
+              subtitle={`${interventions.filter(item => item.status !== "resolved").length} active`}
+              className="student-support-record-card"
+            >
+              {interventions.length ? (
+                <div className="student-support-record-list">
+                  {interventions.map(intervention => (
+                    <article key={intervention.id}>
+                      <div className="student-support-record-copy">
+                        <span>{humanize(intervention.category)}</span>
+                        <strong>{intervention.nextStep}</strong>
+                        {intervention.resolutionNote ? (
+                          <small>{intervention.resolutionNote}</small>
+                        ) : null}
+                      </div>
+                      <dl className="student-support-record-facts">
+                        <div>
+                          <dt>Priority</dt>
+                          <dd>{priorityLabel(intervention.priority)}</dd>
+                        </div>
+                        <div>
+                          <dt>Updated</dt>
+                          <dd>{formatUpdatedAt(intervention.updatedAt)}</dd>
+                        </div>
+                      </dl>
+                      <StatusBadge
+                        tone={
+                          intervention.status === "resolved"
+                            ? "green"
+                            : intervention.priority === "urgent"
+                              ? "red"
+                              : "amber"
+                        }
+                      >
+                        {humanize(intervention.status)}
+                      </StatusBadge>
+                    </article>
+                  ))}
+                </div>
+              ) : (
+                <div className="platform-empty-state">
+                  <BookOpenCheck size={20} aria-hidden="true" />
+                  <strong>No active learning support plan</strong>
+                  <span>
+                    Teacher-shared follow-up actions will appear here.
+                  </span>
+                </div>
+              )}
+            </DataTableCard>
             <DataTableCard
               title="Support requests"
               subtitle={`${filteredTickets.length} request(s)`}

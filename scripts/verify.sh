@@ -142,6 +142,9 @@ run_prettier_check() {
     scripts/validate-phase6h4-moodle-activity-outcome-pglite.mjs
     scripts/validate-phase6k-moodle-command-contract-schema.mjs
     scripts/validate-phase6k-moodle-command-contract-pglite.mjs
+    scripts/validate-phase6l-moodle-plugin.mjs
+    scripts/validate-phase6l-moodle-command-runtime-schema.mjs
+    scripts/validate-phase6l-moodle-command-runtime-pglite.mjs
     scripts/validate-phase1-pglite.mjs
     scripts/validate-phase2-session-schema.mjs
     scripts/validate-phase2-session-pglite.mjs
@@ -296,7 +299,7 @@ assert_portal_qa_baseline() {
       process.exit(1);
     }
     console.log(`Portal QA baseline protected: ${summary.totalChecks} checks, 0 failures.`);
-  ' "$summary_path" "1634"
+  ' "$summary_path" "1663"
 }
 
 run_portal_qa() {
@@ -521,6 +524,21 @@ fi
 if has_script "check:phase6k-moodle-command-contract:runtime"; then
   run_step "Phase 6K Moodle command contract PostgreSQL runtime" \
     run_package_script check:phase6k-moodle-command-contract:runtime
+fi
+
+if has_script "check:phase6l-moodle-plugin"; then
+  run_step "Phase 6L Moodle plugin contract" \
+    run_package_script check:phase6l-moodle-plugin
+fi
+
+if has_script "check:phase6l-moodle-command-runtime"; then
+  run_step "Phase 6L Moodle command runtime schema" \
+    run_package_script check:phase6l-moodle-command-runtime
+fi
+
+if has_script "check:phase6l-moodle-command-runtime:runtime"; then
+  run_step "Phase 6L Moodle command runtime PostgreSQL lifecycle" \
+    run_package_script check:phase6l-moodle-command-runtime:runtime
 fi
 
 if has_script "check:email-delivery"; then
