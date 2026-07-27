@@ -133,6 +133,30 @@ describe("platform repository boundary", () => {
     expect(state.enrollments).toEqual([]);
   });
 
+  it("upgrades additive collections missing from pre-stabilization snapshots", () => {
+    const persisted = cloneSeed() as unknown as Record<string, unknown>;
+    persisted.users = seedPlatformState.users.filter(
+      user => user.id === "usr_admin_demo"
+    );
+    delete persisted.scheduleConflicts;
+    delete persisted.studentInterventions;
+
+    const state = normalizePersistedPlatformState(persisted);
+
+    expect(state.users).toHaveLength(1);
+    expect(state.scheduleConflicts).toEqual([]);
+    expect(state.studentInterventions).toEqual([]);
+  });
+
+  it("rejects invalid additive collection values", () => {
+    const persisted = cloneSeed() as unknown as Record<string, unknown>;
+    persisted.scheduleConflicts = null;
+
+    expect(() => normalizePersistedPlatformState(persisted)).toThrow(
+      "persisted platform snapshot has invalid fields: scheduleConflicts"
+    );
+  });
+
   it("rejects incomplete persisted snapshots instead of filling them from code", () => {
     expect(() => normalizePersistedPlatformState({ users: [] })).toThrow(
       "persisted platform snapshot is incomplete"

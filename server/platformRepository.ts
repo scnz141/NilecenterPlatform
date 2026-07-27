@@ -12,6 +12,10 @@ const DATA_DIR = process.env.NILE_LOCAL_DATA_DIR?.trim()
 const STATE_FILE = path.join(DATA_DIR, "platform-state.json");
 const DEFAULT_STATE_ID = "nile-learn-demo";
 const NILE_FORMS_PERMISSION_CATALOG_VERSION = 1;
+const additiveSnapshotArrayDefaults = {
+  scheduleConflicts: [],
+  studentInterventions: [],
+} satisfies Pick<PlatformState, "scheduleConflicts" | "studentInterventions">;
 
 export type PersistenceMode = "supabase" | "local";
 
@@ -189,7 +193,13 @@ export function normalizePersistedPlatformState(value: unknown): PlatformState {
     throw new Error("The persisted platform snapshot is not an object.");
   }
 
-  const stored = value as Record<string, unknown>;
+  // These collections were added after compatibility snapshots entered
+  // production. Keep this allowlist explicit so other missing authority data
+  // still fails closed.
+  const stored: Record<string, unknown> = {
+    ...additiveSnapshotArrayDefaults,
+    ...(value as Record<string, unknown>),
+  };
   const requiredEntries = Object.entries(seedPlatformState);
   const missingKeys = requiredEntries
     .filter(([key]) => !(key in stored))
@@ -216,7 +226,7 @@ export function normalizePersistedPlatformState(value: unknown): PlatformState {
     );
   }
 
-  const state = JSON.parse(JSON.stringify(value)) as PlatformState;
+  const state = JSON.parse(JSON.stringify(stored)) as PlatformState;
   if (
     !Number.isInteger(state.permissionCatalogVersion) ||
     (state.permissionCatalogVersion ?? 0) <
