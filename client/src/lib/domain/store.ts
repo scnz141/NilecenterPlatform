@@ -264,7 +264,11 @@ class PlatformStore {
       } else {
         this.setState(previousState);
       }
-      if (typeof CustomEvent !== "undefined") {
+      if (
+        typeof window !== "undefined" &&
+        typeof window.dispatchEvent === "function" &&
+        typeof CustomEvent !== "undefined"
+      ) {
         window.dispatchEvent(
           new CustomEvent(PLATFORM_SYNC_ERROR_EVENT, {
             detail: {

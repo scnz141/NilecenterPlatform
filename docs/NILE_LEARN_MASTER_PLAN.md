@@ -113,6 +113,22 @@ The Phase 0 decisions are recorded under `docs/decisions/`:
 Implementation must follow these records. Any change requires a superseding ADR
 and the approval process defined in `docs/decisions/README.md`.
 
+### Frontend And External Backend Ownership
+
+As of 2026-08-04, the project is delivered by separate frontend and backend
+teams. This repository owns the Nile Learn frontend and its API adapters. The
+external NCC EMS team owns the production backend implementation and publishes
+its staging OpenAPI contract at
+`https://ncc-ems-staging.enesekremergunesh.com/api/docs`.
+
+The code-grounded endpoint parity contract is
+`docs/BACKEND_API_ENDPOINT_REQUIREMENTS.md`. Existing local server routes remain
+compatibility evidence during the transition; they are not permission to build
+a second production backend. A frontend route may cut over only after its
+external endpoint family documents authentication, scope, request and response
+schemas, errors, pagination, versioning, and allowed actions, then passes
+frontend contract and browser acceptance.
+
 ## Canonical Academic Model
 
 The new model must distinguish reusable academic design from delivery:
@@ -931,6 +947,36 @@ Current status:
   compatibility remains available under controlled configuration, Supabase
   Auth memory sessions still use the compatibility `app_metadata` role path,
   and normalized sessions cannot access legacy snapshot workflow routes.
+- The normalized-platform completion program has entered Phase 0 migration
+  control. `docs/normalized-platform-staging-control.json` records the exact
+  reviewed hashes and order for the identity, session, email, invitation,
+  admissions, enrollment, and teacher-attendance packages. The identity,
+  session, transactional-email, and account-invitation packages are ordered
+  migrations; the remaining dependent packages are explicitly
+  `manual_unreconciled` and cannot be replayed or remotely promoted. The
+  duplicate invitation bundle and retired native-assignment package are
+  excluded. `npm run check:normalized-staging-target` rejects the production
+  project and any target other than isolated staging. The current CLI link is
+  production, so no normalized remote apply is approved until it is separately
+  relinked and the manual packages receive ordered migrations, assertions, and
+  rollback evidence.
+- Phase 1 browser authority hardening has started. The client no longer
+  persists `nilelearn.auth.session` or `nilelearn.activeRole`; authenticated
+  identity is cached only in page memory after the HttpOnly application cookie
+  is resolved through `/api/auth/session`. Old compatibility keys are removed
+  when encountered. Portal QA now verifies the cookie-backed server session
+  directly and no longer injects a browser-stored identity. Active-role changes
+  now use `/api/auth/switch-role`: the server resolves the target grant, creates
+  a replacement role-bound session, revokes the prior session, and does not
+  update browser state until that sequence succeeds. Durable normalized sessions
+  remain staging-only until the migration and repository gates pass.
+- Phase 2 command-boundary extraction has started without changing route-family
+  ownership. `/api/platform/commands` accepts a strict normalized-only command
+  envelope, rejects browser-provided actor and scope claims, and returns closed
+  command evidence rather than a writable `PlatformState` snapshot. The
+  compatibility `/api/platform/state/actions` adapter remains available while
+  each repository family migrates and must not become a second normalized write
+  path.
 
 The UI V2 shell baseline is accepted. The product owner has explicitly approved
 a controlled continuation of **Phase 12 Route-By-Route UI Completion**. This is

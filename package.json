@@ -17,6 +17,8 @@
     "check:integration-freeze": "node scripts/validate-integration-feature-freeze.mjs",
     "check:integration-ownership": "node scripts/validate-integration-ownership.mjs",
     "check:integration-phase5-staging": "node scripts/validate-integration-phase5-staging.mjs",
+    "check:normalized-staging-control": "node scripts/validate-normalized-staging-control.mjs --static-preflight",
+    "check:normalized-staging-target": "node scripts/validate-normalized-staging-control.mjs --target-guard",
     "check:integration-phase6-projections": "node scripts/validate-integration-phase6-moodle-projections.mjs",
     "check:phase5-staging-db": "node scripts/verify-phase5-staging-db.mjs",
     "check:phase5-staging-db:static": "node scripts/verify-phase5-staging-db.mjs --static-preflight",

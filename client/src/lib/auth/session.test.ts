@@ -1,19 +1,41 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const backendMocks = vi.hoisted(() => ({
+  fetchSessionRequest: vi.fn(),
   logoutRequest: vi.fn(),
+  signInRequest: vi.fn(),
+  switchRoleRequest: vi.fn(),
 }));
 
 vi.mock("@/lib/backend/api", () => ({
-  fetchSessionRequest: vi.fn(),
+  fetchSessionRequest: backendMocks.fetchSessionRequest,
   logoutRequest: backendMocks.logoutRequest,
-  signInRequest: vi.fn(),
+  signInRequest: backendMocks.signInRequest,
+  switchRoleRequest: backendMocks.switchRoleRequest,
 }));
 
-import { clearStoredSession, getActiveUser } from "@/lib/auth/session";
+import {
+  clearStoredSession,
+  getActiveUser,
+  refreshServerSession,
+  setStoredRole,
+  signInWithPassword,
+} from "@/lib/auth/session";
 
 const AUTH_SESSION_KEY = "nilelearn.auth.session";
 const ACTIVE_ROLE_KEY = "nilelearn.activeRole";
+const studentSession = {
+  userId: "usr_student_demo",
+  email: "student.demo@nilelearn.local",
+  name: "Student Demo",
+  roles: ["student"] as const,
+  activeRole: "student" as const,
+  provider: "demo" as const,
+  authorizationModel: "snapshot" as const,
+  branchIds: [],
+  departmentIds: [],
+  expiresAt: "2099-01-01T00:00:00.000Z",
+};
 
 function installWindow() {
   const values = new Map<string, string>();
@@ -35,34 +57,38 @@ function installWindow() {
   return localStorage;
 }
 
-function seedSession(storage: Storage) {
-  storage.setItem(
-    AUTH_SESSION_KEY,
-    JSON.stringify({
-      userId: "usr_student_demo",
-      email: "student.demo@nilelearn.local",
-      name: "Student Demo",
-      roles: ["student"],
-      activeRole: "student",
-      provider: "demo",
-      expiresAt: "2099-01-01T00:00:00.000Z",
-    })
+async function seedSession() {
+  backendMocks.signInRequest.mockResolvedValue({
+    ok: true,
+    data: studentSession,
+  });
+  await signInWithPassword(
+    studentSession.email,
+    "irrelevant-test-password",
+    "student"
   );
-  storage.setItem(ACTIVE_ROLE_KEY, "student");
 }
 
 describe("clearStoredSession", () => {
   beforeEach(() => {
+    backendMocks.fetchSessionRequest.mockReset();
     backendMocks.logoutRequest.mockReset();
+    backendMocks.signInRequest.mockReset();
+    backendMocks.switchRoleRequest.mockReset();
   });
 
-  afterEach(() => {
+  afterEach(async () => {
+    backendMocks.logoutRequest.mockResolvedValue({
+      ok: true,
+      data: { ok: true },
+    });
+    await clearStoredSession();
     vi.unstubAllGlobals();
   });
 
-  it("clears local session state only after the server confirms logout", async () => {
+  it("clears in-memory session state only after the server confirms logout", async () => {
     const storage = installWindow();
-    seedSession(storage);
+    await seedSession();
     backendMocks.logoutRequest.mockResolvedValue({
       ok: true,
       data: { ok: true },
@@ -70,14 +96,16 @@ describe("clearStoredSession", () => {
 
     await expect(clearStoredSession()).resolves.toEqual({ ok: true });
 
+    expect(getActiveUser()).toBeNull();
     expect(storage.getItem(AUTH_SESSION_KEY)).toBeNull();
     expect(storage.getItem(ACTIVE_ROLE_KEY)).toBeNull();
-    expect(window.dispatchEvent).toHaveBeenCalledOnce();
+    expect(window.dispatchEvent).toHaveBeenCalledTimes(2);
   });
 
-  it("keeps local session state when the logout request cannot reach the server", async () => {
+  it("keeps in-memory session state when logout cannot reach the server", async () => {
     const storage = installWindow();
-    seedSession(storage);
+    await seedSession();
+    vi.mocked(window.dispatchEvent).mockClear();
     backendMocks.logoutRequest.mockResolvedValue({
       ok: false,
       error: "Failed to fetch",
@@ -88,14 +116,16 @@ describe("clearStoredSession", () => {
       error: "Failed to fetch",
     });
 
-    expect(storage.getItem(AUTH_SESSION_KEY)).not.toBeNull();
-    expect(storage.getItem(ACTIVE_ROLE_KEY)).toBe("student");
+    expect(getActiveUser()).toMatchObject({ id: "usr_student_demo" });
+    expect(storage.getItem(AUTH_SESSION_KEY)).toBeNull();
+    expect(storage.getItem(ACTIVE_ROLE_KEY)).toBeNull();
     expect(window.dispatchEvent).not.toHaveBeenCalled();
   });
 
-  it("keeps local session state when the server rejects logout", async () => {
+  it("keeps in-memory session state when the server rejects logout", async () => {
     const storage = installWindow();
-    seedSession(storage);
+    await seedSession();
+    vi.mocked(window.dispatchEvent).mockClear();
     backendMocks.logoutRequest.mockResolvedValue({
       ok: false,
       error: "Session revocation is unavailable.",
@@ -106,22 +136,35 @@ describe("clearStoredSession", () => {
       error: "Session revocation is unavailable.",
     });
 
-    expect(storage.getItem(AUTH_SESSION_KEY)).not.toBeNull();
-    expect(storage.getItem(ACTIVE_ROLE_KEY)).toBe("student");
+    expect(getActiveUser()).toMatchObject({ id: "usr_student_demo" });
+    expect(storage.getItem(AUTH_SESSION_KEY)).toBeNull();
+    expect(storage.getItem(ACTIVE_ROLE_KEY)).toBeNull();
     expect(window.dispatchEvent).not.toHaveBeenCalled();
   });
 });
 
 describe("getActiveUser", () => {
-  afterEach(() => {
+  beforeEach(() => {
+    backendMocks.fetchSessionRequest.mockReset();
+    backendMocks.logoutRequest.mockReset();
+    backendMocks.signInRequest.mockReset();
+    backendMocks.switchRoleRequest.mockReset();
+  });
+
+  afterEach(async () => {
+    backendMocks.logoutRequest.mockResolvedValue({
+      ok: true,
+      data: { ok: true },
+    });
+    await clearStoredSession();
     vi.unstubAllGlobals();
   });
 
-  it("uses the authenticated session identity instead of the role demo user", () => {
+  it("uses the server session identity instead of the role demo user", async () => {
     const storage = installWindow();
-    storage.setItem(
-      AUTH_SESSION_KEY,
-      JSON.stringify({
+    backendMocks.fetchSessionRequest.mockResolvedValue({
+      ok: true,
+      data: {
         userId: "usr_teacher_e2e",
         email: "teacher.e2e@nilelearn.local",
         name: "E2E Teacher",
@@ -132,8 +175,10 @@ describe("getActiveUser", () => {
         branchIds: ["branch-real"],
         departmentIds: ["department-real"],
         expiresAt: "2099-01-01T00:00:00.000Z",
-      })
-    );
+      },
+    });
+
+    await refreshServerSession();
 
     expect(getActiveUser()).toMatchObject({
       id: "usr_teacher_e2e",
@@ -145,11 +190,62 @@ describe("getActiveUser", () => {
       branch: "Assigned branch",
       department: "Assigned department",
     });
+    expect(storage.getItem(AUTH_SESSION_KEY)).toBeNull();
+    expect(storage.getItem(ACTIVE_ROLE_KEY)).toBeNull();
   });
 
-  it("does not substitute a demo identity when there is no authenticated session", () => {
+  it("does not substitute a demo identity without a server session", () => {
     installWindow();
 
     expect(getActiveUser()).toBeNull();
+  });
+
+  it("removes session authority left by older browser releases", () => {
+    const storage = installWindow();
+    storage.setItem(AUTH_SESSION_KEY, JSON.stringify(studentSession));
+    storage.setItem(ACTIVE_ROLE_KEY, "student");
+
+    expect(getActiveUser()).toBeNull();
+    expect(storage.getItem(AUTH_SESSION_KEY)).toBeNull();
+    expect(storage.getItem(ACTIVE_ROLE_KEY)).toBeNull();
+  });
+
+  it("changes role only after the server returns a replacement session", async () => {
+    installWindow();
+    await seedSession();
+    const adminSession = {
+      ...studentSession,
+      roles: ["superadmin"] as const,
+      activeRole: "superadmin" as const,
+    };
+    backendMocks.switchRoleRequest.mockResolvedValue({
+      ok: true,
+      data: adminSession,
+    });
+
+    await expect(setStoredRole("superadmin")).resolves.toMatchObject({
+      ok: true,
+      session: adminSession,
+    });
+    expect(backendMocks.switchRoleRequest).toHaveBeenCalledWith("superadmin");
+    expect(getActiveUser()).toMatchObject({
+      activeRole: "superadmin",
+      id: studentSession.userId,
+    });
+  });
+
+  it("preserves the current role when the server denies a switch", async () => {
+    installWindow();
+    await seedSession();
+    backendMocks.switchRoleRequest.mockResolvedValue({
+      ok: false,
+      error: "This account is not authorized for that role.",
+    });
+
+    await expect(setStoredRole("teacher")).resolves.toEqual({
+      ok: false,
+      error: "This account is not authorized for that role.",
+    });
+    expect(getActiveUser()).toMatchObject({ activeRole: "student" });
   });
 });

@@ -163,6 +163,174 @@ describe("API durable session outage handling", () => {
   });
 });
 
+describe("API normalized session and command boundaries", () => {
+  it("switches role through a replacement server session", async () => {
+    const create = vi.fn(async () => undefined);
+    const remove = vi.fn(async () => undefined);
+    const restore = setSessionStore({
+      kind: "supabase",
+      create,
+      get: async () => ({
+        id: "durable-token",
+        userId: "40000000-0000-4000-8000-000000000002",
+        authUserId: "10000000-0000-4000-8000-000000000002",
+        email: "staff@nilelearn.local",
+        name: "Scoped Staff",
+        roles: ["teacher"],
+        activeRole: "teacher",
+        activeRoleGrantId: "50000000-0000-4000-8000-000000000002",
+        branchIds: ["20000000-0000-4000-8000-000000000001"],
+        departmentIds: ["30000000-0000-4000-8000-000000000001"],
+        provider: "supabase",
+        authorizationModel: "normalized",
+        createdAt: "2026-07-22T00:00:00.000Z",
+        expiresAt: "2099-07-22T12:00:00.000Z",
+      }),
+      delete: remove,
+      clear: async () => undefined,
+      resolveSupabaseIdentity: async () => ({
+        userId: "40000000-0000-4000-8000-000000000002",
+        authUserId: "10000000-0000-4000-8000-000000000002",
+        email: "staff@nilelearn.local",
+        name: "Scoped Staff",
+        activeRole: "headofdepartment",
+        activeRoleGrantId: "50000000-0000-4000-8000-000000000003",
+        branchIds: ["20000000-0000-4000-8000-000000000001"],
+        departmentIds: ["30000000-0000-4000-8000-000000000001"],
+      }),
+    });
+    const { postRoutes } = captureRoutes();
+    const { headers, response, result } = responseRecorder();
+
+    await postRoutes.get("/api/auth/switch-role")?.(
+      request("POST", { role: "headofdepartment" }),
+      response
+    );
+
+    expect(result).toMatchObject({
+      status: 200,
+      body: {
+        activeRole: "headofdepartment",
+        authorizationModel: "normalized",
+      },
+    });
+    expect(create).toHaveBeenCalledOnce();
+    expect(remove).toHaveBeenCalledWith("durable-token");
+    expect(headers.get("Set-Cookie")).toContain("nilelearn_session=");
+    restore();
+  });
+
+  it("returns closed command evidence from the normalized endpoint", async () => {
+    const restoreSession = setSessionStore({
+      kind: "supabase",
+      create: async () => undefined,
+      get: async () => ({
+        id: "durable-token",
+        userId: "40000000-0000-4000-8000-000000000001",
+        authUserId: "10000000-0000-4000-8000-000000000001",
+        email: "student@nilelearn.local",
+        name: "Normalized Student",
+        roles: ["student"],
+        activeRole: "student",
+        activeRoleGrantId: "50000000-0000-4000-8000-000000000001",
+        branchIds: ["20000000-0000-4000-8000-000000000001"],
+        departmentIds: [],
+        provider: "supabase",
+        authorizationModel: "normalized",
+        createdAt: "2026-07-22T00:00:00.000Z",
+        expiresAt: "2099-07-22T12:00:00.000Z",
+      }),
+      delete: async () => undefined,
+      clear: async () => undefined,
+    });
+    const restoreWorkflow = setNormalizedWorkflowRepository({
+      readWorkspace: async () => structuredClone(seedPlatformState),
+      apply: async () => ({
+        state: structuredClone(seedPlatformState),
+        persistence: "supabase",
+        syncedAt: "2026-07-22T00:00:00.000Z",
+        result: {
+          action: "profile.updated",
+          entityType: "User",
+          entityId: "40000000-0000-4000-8000-000000000001",
+          summary: "Profile updated.",
+          result: {
+            commandId: "60000000-0000-4000-8000-000000000001",
+            version: 2,
+            replayed: false,
+          },
+        },
+      }),
+    });
+    const { postRoutes } = captureRoutes();
+    const { response, result } = responseRecorder();
+
+    await postRoutes.get("/api/platform/commands")?.(
+      request("POST", {
+        type: "profile.update",
+        expectedVersion: 1,
+        idempotencyKey: "profile:update:route-0001",
+        payload: { name: "Updated Student" },
+      }),
+      response
+    );
+
+    expect(result).toEqual({
+      status: 200,
+      body: {
+        commandId: "60000000-0000-4000-8000-000000000001",
+        entityId: "40000000-0000-4000-8000-000000000001",
+        version: 2,
+        status: "applied",
+        auditId: "60000000-0000-4000-8000-000000000001",
+        outboxEventIds: [],
+        allowedActions: [],
+      },
+    });
+    restoreWorkflow();
+    restoreSession();
+  });
+
+  it("rejects browser-provided actor authority in command payloads", async () => {
+    const restore = setSessionStore({
+      kind: "supabase",
+      create: async () => undefined,
+      get: async () => ({
+        id: "durable-token",
+        userId: "40000000-0000-4000-8000-000000000001",
+        email: "student@nilelearn.local",
+        name: "Normalized Student",
+        roles: ["student"],
+        activeRole: "student",
+        provider: "supabase",
+        authorizationModel: "normalized",
+        createdAt: "2026-07-22T00:00:00.000Z",
+        expiresAt: "2099-07-22T12:00:00.000Z",
+      }),
+      delete: async () => undefined,
+      clear: async () => undefined,
+    });
+    const { postRoutes } = captureRoutes();
+    const { response, result } = responseRecorder();
+
+    await postRoutes.get("/api/platform/commands")?.(
+      request("POST", {
+        type: "profile.update",
+        expectedVersion: 1,
+        idempotencyKey: "profile:update:forged-0001",
+        payload: { name: "Forged", actorId: "another-user" },
+      }),
+      response
+    );
+
+    expect(result).toEqual({
+      status: 400,
+      body: { error: "A valid platform command is required." },
+    });
+    restore();
+  });
+});
+
 describe("API normalized Super Admin compatibility workspace", () => {
   it("reads through the normalized repository while unsupported mutations remain blocked", async () => {
     vi.stubEnv("NILE_PLATFORM_STATE_LOCAL_ONLY", "1");
@@ -204,10 +372,7 @@ describe("API normalized Super Admin compatibility workspace", () => {
     const read = responseRecorder();
     const write = responseRecorder();
 
-    await getRoutes.get("/api/platform/state")?.(
-      request("GET"),
-      read.response
-    );
+    await getRoutes.get("/api/platform/state")?.(request("GET"), read.response);
     await postRoutes.get("/api/platform/state/actions")?.(
       request("POST", {
         type: "notification.read",

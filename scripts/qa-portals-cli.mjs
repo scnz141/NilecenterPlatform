@@ -724,9 +724,19 @@ function inspectSource(expectedPath) {
       const style = getComputedStyle(element);
       return rect.width > 0 && rect.height > 0 && style.visibility !== "hidden" && style.display !== "none" && style.opacity !== "0";
     };
-    const stored = localStorage.getItem("nilelearn.auth.session");
     let session = null;
-    try { session = stored ? JSON.parse(stored) : null; } catch {}
+    try {
+      const sessionResponse = await fetch("/api/auth/session", {
+        credentials: "include"
+      });
+      session = sessionResponse.ok
+        ? await sessionResponse.json().catch(() => null)
+        : null;
+    } catch {}
+    const browserSessionPersisted = Boolean(
+      localStorage.getItem("nilelearn.auth.session") ||
+      localStorage.getItem("nilelearn.activeRole")
+    );
     const controls = Array.from(document.querySelectorAll("a,button,input,select,textarea")).filter(isVisible);
     const controlName = (element) => {
       const id = element.getAttribute("id");
@@ -801,6 +811,7 @@ function inspectSource(expectedPath) {
       overflow: documentOverflow,
       sessionRole: session?.activeRole || null,
       provider: session?.provider || null,
+      browserSessionPersisted,
       heading: document.querySelector("h1")?.textContent?.trim() || "",
       quoteArabic: document.querySelector(".platform-context-quote strong")?.textContent?.trim() || "",
       quoteMeaning: document.querySelector(".platform-context-quote p")?.textContent?.trim() || "",
@@ -975,9 +986,6 @@ function inspectRouteMatrixSource(routes) {
       return rect.width > 0 && rect.height > 0 && style.visibility !== "hidden" && style.display !== "none" && style.opacity !== "0";
     };
     const inspect = (expectedPath) => {
-      const stored = localStorage.getItem("nilelearn.auth.session");
-      let session = null;
-      try { session = stored ? JSON.parse(stored) : null; } catch {}
       const controls = Array.from(document.querySelectorAll("a,button,input,select,textarea")).filter(isVisible);
       const controlName = (element) => {
         const id = element.getAttribute("id");
@@ -1019,8 +1027,6 @@ function inspectRouteMatrixSource(routes) {
         path: location.pathname,
         shell: Boolean(document.querySelector(".platform-shell")),
         overflow: documentOverflow,
-        sessionRole: session?.activeRole || null,
-        provider: session?.provider || null,
         heading: document.querySelector("h1")?.textContent?.trim() || "",
         quoteArabic: document.querySelector(".platform-context-quote strong")?.textContent?.trim() || "",
         quoteMeaning: document.querySelector(".platform-context-quote p")?.textContent?.trim() || "",
@@ -1125,8 +1131,23 @@ function loginSource(role, { resetPlatformState = false } = {}) {
     if (!response.ok) {
       return { ok: false, status: response.status, body: text.slice(0, 180) };
     }
-    localStorage.setItem("nilelearn.auth.session", JSON.stringify(payload));
-    localStorage.setItem("nilelearn.activeRole", ${JSON.stringify(role.role)});
+    const sessionResponse = await fetch("/api/auth/session", {
+      credentials: "include"
+    });
+    const verifiedSession = sessionResponse.ok
+      ? await sessionResponse.json().catch(() => null)
+      : null;
+    if (
+      !verifiedSession ||
+      verifiedSession.activeRole !== ${JSON.stringify(role.role)} ||
+      verifiedSession.userId !== payload?.userId
+    ) {
+      return {
+        ok: false,
+        status: sessionResponse.status,
+        body: "The server session did not match the authenticated identity."
+      };
+    }
     let reset = null;
     if (${JSON.stringify(resetPlatformState)}) {
       localStorage.removeItem(${JSON.stringify(platformStorageKey)});
@@ -5929,7 +5950,9 @@ try {
       dashboard,
       value =>
         Boolean(value?.provider) &&
-        value.provider === authenticatedProviders.get(role.role)
+        value.provider === authenticatedProviders.get(role.role) &&
+        value.sessionRole === role.role &&
+        value.browserSessionPersisted === false
     );
     await assertCheck(
       `${role.role} dashboard has contextual calligraphy quote`,

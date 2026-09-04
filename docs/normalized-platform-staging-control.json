@@ -1,0 +1,207 @@
+{
+  "version": 1,
+  "contractId": "normalized-platform-staging-control",
+  "phase": 0,
+  "targetRefHashes": {
+    "algorithm": "sha256",
+    "staging": "aa412ac2a6b666be6ad96683495e92778e2c70aae68891799d1f5754a050140c",
+    "production": "7728e57c3295ac6c1d964e067911e56d922fb6ed5319d1a9b3f00a13572db70f"
+  },
+  "packages": [
+    {
+      "id": "identity-scope-session-audit-mapping",
+      "order": 1,
+      "forward": {
+        "path": "supabase/manual/001_phase1_identity_scope_session_audit_mapping.sql",
+        "sha256": "fc08d23a1b12534e572ebeb50e9d32874e84b8d8e89c06c24abe4aff376a49d9"
+      },
+      "migration": {
+        "path": "supabase/migrations/20260710053837_phase1_identity_scope_session_audit_mapping.sql",
+        "sha256": "fc08d23a1b12534e572ebeb50e9d32874e84b8d8e89c06c24abe4aff376a49d9"
+      },
+      "rollback": {
+        "path": "supabase/manual/902_phase1_rollback.sql",
+        "sha256": "0bea9bd8e81f34fee8f3f253cb6520260dc0940a50fb2d5375432e7c676fa6e9"
+      },
+      "repositoryState": "ordered_migration",
+      "stagingState": "unverified"
+    },
+    {
+      "id": "atomic-session-lifecycle",
+      "order": 2,
+      "forward": {
+        "path": "supabase/manual/002_phase2b_atomic_session_lifecycle.sql",
+        "sha256": "4e1d37eee9c2898fad15491781812b65c3e4aad937263cd62ec740b4cd612325"
+      },
+      "migration": {
+        "path": "supabase/migrations/20260710132000_phase2b_atomic_session_lifecycle.sql",
+        "sha256": "4e1d37eee9c2898fad15491781812b65c3e4aad937263cd62ec740b4cd612325"
+      },
+      "rollback": {
+        "path": "supabase/manual/901_phase2b_rollback.sql",
+        "sha256": "ff703a00a7b91ef5c16a0a78ff8e6f40b95f234673fa19a8885e1c3c27fd72f7"
+      },
+      "repositoryState": "ordered_migration",
+      "stagingState": "unverified"
+    },
+    {
+      "id": "transactional-email-delivery",
+      "order": 3,
+      "forward": {
+        "path": "supabase/manual/016_transactional_email_delivery.sql",
+        "sha256": "29228cc43b988522dad4402b3df970de6d489c89bfed244a5a61769932df3eef"
+      },
+      "migration": {
+        "path": "supabase/migrations/20260727090000_transactional_email_delivery.sql",
+        "sha256": "29228cc43b988522dad4402b3df970de6d489c89bfed244a5a61769932df3eef"
+      },
+      "rollback": {
+        "path": "supabase/manual/916_transactional_email_delivery_rollback.sql",
+        "sha256": "41de61f7b9c771a60b1aee3ee7bad3a016f810253e757dbe54b551624dc432d4"
+      },
+      "repositoryState": "ordered_migration",
+      "stagingState": "unverified"
+    },
+    {
+      "id": "account-invitation-lifecycle",
+      "order": 4,
+      "forward": {
+        "path": "supabase/manual/017_account_invitation_lifecycle.sql",
+        "sha256": "6a4eec970bb31f57734e3e3e0141b4fb600ebed858f3fb968fc7355b1fa33437"
+      },
+      "migration": {
+        "path": "supabase/migrations/20260727090100_account_invitation_lifecycle.sql",
+        "sha256": "6a4eec970bb31f57734e3e3e0141b4fb600ebed858f3fb968fc7355b1fa33437"
+      },
+      "rollback": {
+        "path": "supabase/manual/917_account_invitation_lifecycle_rollback.sql",
+        "sha256": "bf3ad517cac891ad0e50c78e823918d95482277dde7ed22ff15e28c9ff72eeb6"
+      },
+      "repositoryState": "ordered_migration",
+      "stagingState": "unverified"
+    },
+    {
+      "id": "normalized-profile-support",
+      "order": 5,
+      "forward": {
+        "path": "supabase/manual/019_normalized_profile_support_foundation.sql",
+        "sha256": "56505963aeabe5fd5f7e71026a1c8e4963d0e76bf216cb20c06811634484af57"
+      },
+      "migration": null,
+      "rollback": {
+        "path": "supabase/manual/919_normalized_profile_support_foundation_rollback.sql",
+        "sha256": "44021328b29292f1ec89a791c38b17b534eae20b6bbd1b1497d8361d16c7ed67"
+      },
+      "repositoryState": "manual_unreconciled",
+      "stagingState": "unverified"
+    },
+    {
+      "id": "normalized-admissions-intake",
+      "order": 6,
+      "forward": {
+        "path": "supabase/manual/020_normalized_admissions_intake_foundation.sql",
+        "sha256": "6293d33f96df456403d94687398790fd2c078351e5279b99712cfb8dd17bea63"
+      },
+      "migration": null,
+      "rollback": {
+        "path": "supabase/manual/920_normalized_admissions_intake_foundation_rollback.sql",
+        "sha256": "8a39ced8184a652e79347802fe2e9a369a3663ddef1237afb3efd337ae8d477c"
+      },
+      "repositoryState": "manual_unreconciled",
+      "stagingState": "unverified"
+    },
+    {
+      "id": "normalized-application-conversion",
+      "order": 7,
+      "forward": {
+        "path": "supabase/manual/021_normalized_application_conversion_foundation.sql",
+        "sha256": "8ca8b5fbc23470646c3c91804240ff9b98d2823fcda70f85d25a0cf824a7acc3"
+      },
+      "migration": null,
+      "rollback": {
+        "path": "supabase/manual/921_normalized_application_conversion_foundation_rollback.sql",
+        "sha256": "a38c57dbdf49d970d101c7fa17ef1a7f9ad51d49891e0720033ea68ca3204cb3"
+      },
+      "repositoryState": "manual_unreconciled",
+      "stagingState": "unverified"
+    },
+    {
+      "id": "normalized-placement",
+      "order": 8,
+      "forward": {
+        "path": "supabase/manual/022_normalized_placement_foundation.sql",
+        "sha256": "fefc1ead58a4cfe4e0c3b27bace2f6677beb30daa080beca2bd3100fad34d541"
+      },
+      "migration": null,
+      "rollback": {
+        "path": "supabase/manual/922_normalized_placement_foundation_rollback.sql",
+        "sha256": "2bfb030a596cb3fab6c4013d5d185049dbe3360cf30701b0921d7e3d8858f80b"
+      },
+      "repositoryState": "manual_unreconciled",
+      "stagingState": "unverified"
+    },
+    {
+      "id": "normalized-admissions-delivery-read-model",
+      "order": 9,
+      "forward": {
+        "path": "supabase/manual/023_normalized_admissions_delivery_read_model.sql",
+        "sha256": "cff48a24d65ab5a9afc52a87f203245b3eb97a97015ab5a4d6c24031cb75b53b"
+      },
+      "migration": null,
+      "rollback": {
+        "path": "supabase/manual/923_normalized_admissions_delivery_read_model_rollback.sql",
+        "sha256": "5d905f9080778ccfb810cf16f01c1e9477bebba652ecd017bd1b156b9da9e1ce"
+      },
+      "repositoryState": "manual_unreconciled",
+      "stagingState": "unverified"
+    },
+    {
+      "id": "normalized-student-enrollment-invitation",
+      "order": 10,
+      "forward": {
+        "path": "supabase/manual/024_normalized_student_enrollment_invitation.sql",
+        "sha256": "7bd5035b76175a283306f1aecaec2cce7720070f98eeddf9df8c29e0f0311b13"
+      },
+      "migration": null,
+      "rollback": {
+        "path": "supabase/manual/924_normalized_student_enrollment_invitation_rollback.sql",
+        "sha256": "6c729d52d25fad75731a455e2d478571bae98fcf9d0569356521165e4879c126"
+      },
+      "repositoryState": "manual_unreconciled",
+      "stagingState": "unverified"
+    },
+    {
+      "id": "normalized-teacher-session-attendance",
+      "order": 11,
+      "forward": {
+        "path": "supabase/manual/025_normalized_teacher_session_attendance.sql",
+        "sha256": "0895f4be2cfedd599dc379a7628e5fa767e5949f221e2cbd3961c47d2e6e69fa"
+      },
+      "migration": null,
+      "rollback": {
+        "path": "supabase/manual/925_normalized_teacher_session_attendance_rollback.sql",
+        "sha256": "4d532bc4de1fd7734153d39d5dea66be87f153abe2c325028bb97875f5565313"
+      },
+      "repositoryState": "manual_unreconciled",
+      "stagingState": "unverified"
+    }
+  ],
+  "excludedPackages": [
+    {
+      "path": "supabase/manual/018_transactional_email_account_invitation_bundle.sql",
+      "reason": "duplicate_bundle_never_promote"
+    },
+    {
+      "path": "supabase/manual/026_normalized_native_assignment_authority.sql",
+      "reason": "retired_moodle_owned_learning_authority"
+    }
+  ],
+  "constraints": {
+    "isolatedStagingOnly": true,
+    "productionTargetingAllowed": false,
+    "remoteApplyEnabled": false,
+    "manualReplayAllowed": false,
+    "fakeIdentitiesOnly": true,
+    "runtimeDefaultsChanged": false
+  }
+}

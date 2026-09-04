@@ -421,6 +421,11 @@ if has_script "check:integration-phase5-staging"; then
     run_package_script check:integration-phase5-staging
 fi
 
+if has_script "check:normalized-staging-control"; then
+  run_step "Normalized platform staging control" \
+    run_package_script check:normalized-staging-control
+fi
+
 if has_script "check:integration-phase6-projections"; then
   run_step "Phase 6 read-only Moodle projection contract" \
     run_package_script check:integration-phase6-projections

@@ -124,6 +124,13 @@ export function fetchSessionRequest() {
   return apiJson<AuthSessionDto | null>("/api/auth/session");
 }
 
+export function switchRoleRequest(role: Role) {
+  return apiJson<AuthSessionDto>("/api/auth/switch-role", {
+    method: "POST",
+    body: JSON.stringify({ role }),
+  });
+}
+
 export type MoodleCommandCapabilitiesDto = {
   state: "available" | "disabled" | "normalized_session_required";
   operations: string[];

@@ -280,6 +280,73 @@ export async function endRequestSession(
   clearSessionCookie(res);
 }
 
+export async function switchSessionRole(
+  currentSession: ServerSession,
+  requestedRole: ServerRole
+) {
+  if (currentSession.activeRole === requestedRole) return currentSession;
+
+  const repository = getSessionRepository();
+  let nextSession: ServerSession;
+
+  if (currentSession.authorizationModel === "normalized") {
+    if (!currentSession.authUserId || !repository.resolveSupabaseIdentity) {
+      throw new AuthenticationAuthorityError();
+    }
+    const identity = await repository.resolveSupabaseIdentity(
+      currentSession.authUserId,
+      requestedRole
+    );
+    if (
+      !identity ||
+      identity.userId !== currentSession.userId ||
+      identity.authUserId !== currentSession.authUserId
+    ) {
+      throw new AuthenticationAuthorityError();
+    }
+    nextSession = await createSession({
+      userId: identity.userId,
+      authUserId: identity.authUserId,
+      email: identity.email,
+      name: identity.name,
+      roles: [identity.activeRole],
+      activeRole: identity.activeRole,
+      activeRoleGrantId: identity.activeRoleGrantId,
+      branchIds: identity.branchIds,
+      departmentIds: identity.departmentIds,
+      provider: "supabase",
+    });
+  } else {
+    if (
+      currentSession.provider !== "demo" ||
+      !currentSession.roles.includes(requestedRole)
+    ) {
+      throw new AuthenticationAuthorityError();
+    }
+    nextSession = await createSession({
+      userId: currentSession.userId,
+      email: currentSession.email,
+      name: currentSession.name,
+      roles: currentSession.roles,
+      activeRole: requestedRole,
+      provider: currentSession.provider,
+    });
+  }
+
+  try {
+    await repository.delete(currentSession.id);
+  } catch (error) {
+    try {
+      await repository.delete(nextSession.id);
+    } catch {
+      // Preserve the original revocation error; the replacement token was
+      // never sent to the browser and will expire independently.
+    }
+    throw error;
+  }
+  return nextSession;
+}
+
 type SupabaseAuthUser = {
   id: string;
   email?: string;
@@ -354,10 +421,7 @@ async function signInWithSupabase(
   if (!user) throw new AuthenticationProviderUnavailableError();
 
   const repository = getSessionRepository();
-  if (
-    repository.kind === "supabase" ||
-    repository.kind === "supabase_hybrid"
-  ) {
+  if (repository.kind === "supabase" || repository.kind === "supabase_hybrid") {
     let identity;
     try {
       identity = await repository.resolveSupabaseIdentity?.(

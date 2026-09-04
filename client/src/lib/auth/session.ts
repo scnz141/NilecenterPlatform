@@ -8,11 +8,13 @@ import {
   fetchSessionRequest,
   logoutRequest,
   signInRequest,
+  switchRoleRequest,
   type AuthSessionDto,
 } from "@/lib/backend/api";
 
 const ACTIVE_ROLE_KEY = "nilelearn.activeRole";
 const AUTH_SESSION_KEY = "nilelearn.auth.session";
+let activeSession: AuthSessionDto | null = null;
 
 function isRole(value: string | null): value is Role {
   return Boolean(value && value in roleMeta);
@@ -24,48 +26,47 @@ export function getStoredRole(): Role | null {
   return session?.activeRole ?? null;
 }
 
-export function setStoredRole(role: Role) {
-  if (typeof window === "undefined") return;
+export async function setStoredRole(role: Role) {
+  if (typeof window === "undefined")
+    return { ok: false as const, error: "Browser session is unavailable." };
   const session = getStoredAuthSession();
-  if (!session || !session.roles.includes(role)) {
-    window.localStorage.removeItem(ACTIVE_ROLE_KEY);
-    window.dispatchEvent(
-      new CustomEvent("nilelearn:session", { detail: null })
-    );
-    return;
+  if (!session)
+    return { ok: false as const, error: "Sign in before choosing a role." };
+  if (session.activeRole === role) return { ok: true as const, session };
+
+  const result = await switchRoleRequest(role);
+  if (!result.ok || !result.data) {
+    return {
+      ok: false as const,
+      error: result.error ?? "Role switching failed.",
+    };
   }
-  window.localStorage.setItem(
-    AUTH_SESSION_KEY,
-    JSON.stringify({ ...session, activeRole: role })
-  );
-  window.localStorage.setItem(ACTIVE_ROLE_KEY, role);
-  window.dispatchEvent(new CustomEvent("nilelearn:session", { detail: role }));
+  setStoredAuthSession(result.data);
+  return { ok: true as const, session: result.data };
 }
 
 export function getStoredAuthSession(): AuthSessionDto | null {
-  if (typeof window === "undefined") return null;
-  const raw = window.localStorage.getItem(AUTH_SESSION_KEY);
-  if (!raw) return null;
-  try {
-    const session = JSON.parse(raw) as AuthSessionDto;
-    if (
-      !isRole(session.activeRole) ||
-      Date.parse(session.expiresAt) <= Date.now()
-    ) {
+  if (
+    !activeSession ||
+    !isRole(activeSession.activeRole) ||
+    Date.parse(activeSession.expiresAt) <= Date.now()
+  ) {
+    activeSession = null;
+    if (typeof window !== "undefined") {
+      // Remove browser authority left by compatibility releases.
       window.localStorage.removeItem(AUTH_SESSION_KEY);
-      return null;
+      window.localStorage.removeItem(ACTIVE_ROLE_KEY);
     }
-    return session;
-  } catch {
-    window.localStorage.removeItem(AUTH_SESSION_KEY);
     return null;
   }
+  return activeSession;
 }
 
 function setStoredAuthSession(session: AuthSessionDto) {
   if (typeof window === "undefined") return;
-  window.localStorage.setItem(AUTH_SESSION_KEY, JSON.stringify(session));
-  window.localStorage.setItem(ACTIVE_ROLE_KEY, session.activeRole);
+  activeSession = session;
+  window.localStorage.removeItem(AUTH_SESSION_KEY);
+  window.localStorage.removeItem(ACTIVE_ROLE_KEY);
   window.dispatchEvent(
     new CustomEvent("nilelearn:session", { detail: session.activeRole })
   );
@@ -73,6 +74,7 @@ function setStoredAuthSession(session: AuthSessionDto) {
 
 function clearStoredSessionLocal() {
   if (typeof window === "undefined") return;
+  activeSession = null;
   window.localStorage.removeItem(AUTH_SESSION_KEY);
   window.localStorage.removeItem(ACTIVE_ROLE_KEY);
   window.dispatchEvent(new CustomEvent("nilelearn:session", { detail: null }));

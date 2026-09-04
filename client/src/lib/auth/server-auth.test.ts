@@ -8,6 +8,7 @@ import {
   requestDemoPasswordReset,
   resetDemoPasswordResetState,
   signIn,
+  switchSessionRole,
   type ServerSession,
   validateAuthConfiguration,
 } from "../../../../server/auth";
@@ -484,6 +485,112 @@ describe("server session store", () => {
 });
 
 describe("server durable session authority", () => {
+  it("issues a new role-bound session before revoking the previous session", async () => {
+    const create = vi.fn(async () => undefined);
+    const remove = vi.fn(async () => undefined);
+    const resolveSupabaseIdentity = vi.fn(async () => ({
+      userId: "40000000-0000-4000-8000-000000000002",
+      authUserId: "10000000-0000-4000-8000-000000000002",
+      email: "staff@nilelearn.local",
+      name: "Scoped Staff",
+      activeRole: "headofdepartment" as const,
+      activeRoleGrantId: "50000000-0000-4000-8000-000000000003",
+      branchIds: ["20000000-0000-4000-8000-000000000001"],
+      departmentIds: ["30000000-0000-4000-8000-000000000001"],
+    }));
+    const restoreStore = setSessionStore({
+      kind: "supabase",
+      create,
+      get: async () => null,
+      delete: remove,
+      clear: async () => undefined,
+      resolveSupabaseIdentity,
+    });
+    const current: ServerSession = {
+      id: "old-session-token",
+      userId: "40000000-0000-4000-8000-000000000002",
+      authUserId: "10000000-0000-4000-8000-000000000002",
+      email: "staff@nilelearn.local",
+      name: "Scoped Staff",
+      roles: ["teacher"],
+      activeRole: "teacher",
+      activeRoleGrantId: "50000000-0000-4000-8000-000000000002",
+      branchIds: ["20000000-0000-4000-8000-000000000001"],
+      departmentIds: ["30000000-0000-4000-8000-000000000001"],
+      provider: "supabase",
+      authorizationModel: "normalized",
+      createdAt: "2026-07-04T00:00:00.000Z",
+      expiresAt: "2099-01-01T00:00:00.000Z",
+    };
+
+    const next = await switchSessionRole(current, "headofdepartment");
+
+    expect(resolveSupabaseIdentity).toHaveBeenCalledWith(
+      current.authUserId,
+      "headofdepartment"
+    );
+    expect(next).toMatchObject({
+      userId: current.userId,
+      activeRole: "headofdepartment",
+      roles: ["headofdepartment"],
+      activeRoleGrantId: "50000000-0000-4000-8000-000000000003",
+      authorizationModel: "normalized",
+    });
+    expect(create).toHaveBeenCalledWith(next);
+    expect(remove).toHaveBeenCalledWith(current.id);
+
+    restoreStore();
+  });
+
+  it("does not return a replacement session when old-session revocation fails", async () => {
+    const remove = vi
+      .fn()
+      .mockRejectedValueOnce(new SessionRepositoryUnavailableError())
+      .mockResolvedValueOnce(undefined);
+    const restoreStore = setSessionStore({
+      kind: "supabase",
+      create: async () => undefined,
+      get: async () => null,
+      delete: remove,
+      clear: async () => undefined,
+      resolveSupabaseIdentity: async () => ({
+        userId: "40000000-0000-4000-8000-000000000002",
+        authUserId: "10000000-0000-4000-8000-000000000002",
+        email: "staff@nilelearn.local",
+        name: "Scoped Staff",
+        activeRole: "headofdepartment",
+        activeRoleGrantId: "50000000-0000-4000-8000-000000000003",
+        branchIds: ["20000000-0000-4000-8000-000000000001"],
+        departmentIds: ["30000000-0000-4000-8000-000000000001"],
+      }),
+    });
+    const current: ServerSession = {
+      id: "old-session-token",
+      userId: "40000000-0000-4000-8000-000000000002",
+      authUserId: "10000000-0000-4000-8000-000000000002",
+      email: "staff@nilelearn.local",
+      name: "Scoped Staff",
+      roles: ["teacher"],
+      activeRole: "teacher",
+      activeRoleGrantId: "50000000-0000-4000-8000-000000000002",
+      branchIds: ["20000000-0000-4000-8000-000000000001"],
+      departmentIds: ["30000000-0000-4000-8000-000000000001"],
+      provider: "supabase",
+      authorizationModel: "normalized",
+      createdAt: "2026-07-04T00:00:00.000Z",
+      expiresAt: "2099-01-01T00:00:00.000Z",
+    };
+
+    await expect(
+      switchSessionRole(current, "headofdepartment")
+    ).rejects.toBeInstanceOf(SessionRepositoryUnavailableError);
+    expect(remove).toHaveBeenCalledTimes(2);
+    expect(remove.mock.calls[0]?.[0]).toBe(current.id);
+    expect(remove.mock.calls[1]?.[0]).not.toBe(current.id);
+
+    restoreStore();
+  });
+
   it("uses a role-grant-clipped durable expiry for the session cookie", async () => {
     const now = Date.parse("2026-07-04T00:00:00.000Z");
     vi.spyOn(Date, "now").mockReturnValue(now);

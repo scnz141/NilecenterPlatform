@@ -619,6 +619,29 @@
       }
     },
     {
+      "id": "normalized_command_gateway",
+      "name": "Normalized typed platform command gateway",
+      "nileLearnAuthority": "canonical_writable",
+      "moodleAuthority": "none",
+      "projectionDirection": "none",
+      "externalId": "normalized command execution, audit, and outbox identifiers",
+      "conflictRule": "The authenticated server session supplies actor, role grant, and scope. Browser payloads cannot assert authority, and Moodle-owned learning writes are rejected.",
+      "permittedRoles": [
+        "student",
+        "teacher",
+        "registrar",
+        "headofdepartment",
+        "branchadmin",
+        "superadmin"
+      ],
+      "auditOwner": "underlying_normalized_domain_command_audit",
+      "failureBehavior": "Reject malformed, denied, stale, conflicting, or unavailable commands without mutating browser state.",
+      "futureWriteStatus": "staging_only_route_families_migrate_individually",
+      "selectors": {
+        "serverApiRoutes": ["^POST /api/platform/commands$"]
+      }
+    },
+    {
       "id": "compatibility_state_gateway",
       "name": "Alpha platform state compatibility gateway",
       "nileLearnAuthority": "compatibility_gateway",

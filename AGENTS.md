@@ -67,6 +67,22 @@ Current QA baseline:
 - Portal QA: 1,663 checks, 0 failures.
 - This baseline must not be broken.
 
+### Frontend And Backend Team Boundary
+
+The Nile Learn implementation is now split between separate frontend and
+backend teams. This repository's active product work is frontend integration.
+The external NCC EMS backend team owns the staging API documented at
+`https://ncc-ems-staging.enesekremergunesh.com/api/docs`.
+
+- Do not expand the compatibility server into a competing production backend.
+- Treat the published OpenAPI document as the transport contract, but validate
+  it against `docs/BACKEND_API_ENDPOINT_REQUIREMENTS.md` before wiring a route.
+- Existing `server/` code remains compatibility and contract evidence until an
+  external endpoint family reaches parity and passes frontend acceptance.
+- Do not change UI behavior merely to accommodate a missing backend endpoint.
+- Never send Moodle credentials, role scope, actor identity, or authorization
+  facts from browser-controlled state.
+
 Current priority:
 
 1. Preserve clean portal QA.

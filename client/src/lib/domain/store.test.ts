@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { platformStore } from "./store";
 import { applyPlatformWorkflowAction } from "./actions";
 import type { PendingMediaAttachment } from "./types";
+import { clearStoredSession, refreshServerSession } from "../auth/session";
 
 function createLocalStorageMock(): Storage {
   const values = new Map<string, string>();
@@ -36,7 +37,10 @@ function pendingMedia(
 }
 
 beforeEach(() => {
-  vi.stubGlobal("window", { localStorage: createLocalStorageMock() });
+  vi.stubGlobal("window", {
+    localStorage: createLocalStorageMock(),
+    dispatchEvent: vi.fn(),
+  });
   platformStore.reset();
 });
 
@@ -70,22 +74,25 @@ describe("platformStore workflow guards", () => {
     vi.stubGlobal("window", { localStorage: createLocalStorageMock() });
   });
 
-  it("rejects optimistic workflow writes for normalized sessions", () => {
-    window.localStorage.setItem(
-      "nilelearn.auth.session",
-      JSON.stringify({
-        userId: "60000000-0000-4000-8000-000000000001",
-        email: "registrar@example.test",
-        name: "Normalized Registrar",
-        roles: ["registrar"],
-        activeRole: "registrar",
-        provider: "supabase",
-        authorizationModel: "normalized",
-        branchIds: ["30000000-0000-4000-8000-000000000001"],
-        departmentIds: [],
-        expiresAt: "2099-01-01T00:00:00.000Z",
-      })
+  it("rejects optimistic workflow writes for a server-resolved normalized session", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        Response.json({
+          userId: "60000000-0000-4000-8000-000000000001",
+          email: "registrar@example.test",
+          name: "Normalized Registrar",
+          roles: ["registrar"],
+          activeRole: "registrar",
+          provider: "supabase",
+          authorizationModel: "normalized",
+          branchIds: ["30000000-0000-4000-8000-000000000001"],
+          departmentIds: [],
+          expiresAt: "2099-01-01T00:00:00.000Z",
+        })
+      )
     );
+    await refreshServerSession();
     const before = platformStore.getState();
 
     expect(() =>
@@ -99,6 +106,12 @@ describe("platformStore workflow guards", () => {
       "This action is unavailable until its normalized workflow repository is active."
     );
     expect(platformStore.getState()).toEqual(before);
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => Response.json({ ok: true }))
+    );
+    await clearStoredSession();
   });
 
   it("starts without hardcoded entity rows until the server snapshot hydrates it", () => {

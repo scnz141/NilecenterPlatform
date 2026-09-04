@@ -10,7 +10,7 @@ import {
   RefreshCw,
   ShieldCheck,
 } from "lucide-react";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import { AuthExperience } from "@/components/auth/AuthExperience";
 import { clearStoredSession, setStoredRole } from "@/lib/auth/session";
 import {
@@ -61,6 +61,7 @@ const reveal = {
 };
 
 export default function AuthFlowPage({ mode }: { mode: AuthFlowMode }) {
+  const [, setLocation] = useLocation();
   const currentSearch =
     typeof window === "undefined" ? "" : window.location.search;
   const query = useMemo(
@@ -112,6 +113,18 @@ export default function AuthFlowPage({ mode }: { mode: AuthFlowMode }) {
       return;
     }
     setLogoutStatus("success");
+  };
+
+  const chooseRole = async (selectedRole: Role, href: string) => {
+    setSubmitting(true);
+    setError("");
+    const result = await setStoredRole(selectedRole);
+    setSubmitting(false);
+    if (!result.ok) {
+      setError(result.error);
+      return;
+    }
+    setLocation(href);
   };
 
   useEffect(() => {
@@ -320,14 +333,15 @@ export default function AuthFlowPage({ mode }: { mode: AuthFlowMode }) {
             aria-label={ui("Choose your workspace")}
           >
             {roleOptions.map(option => (
-              <Link
+              <button
+                type="button"
                 key={option.value}
-                href={option.href}
-                onClick={() => setStoredRole(option.value)}
+                onClick={() => void chooseRole(option.value, option.href)}
+                disabled={submitting}
               >
                 <span>{ui(option.label)}</span>
                 <ArrowRight size={16} aria-hidden="true" />
-              </Link>
+              </button>
             ))}
           </nav>
         ) : mode === "forgot-password" ? (

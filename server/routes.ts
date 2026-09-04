@@ -10,6 +10,7 @@ import {
   isServerRole,
   requestDemoPasswordReset,
   signIn,
+  switchSessionRole,
   validateAuthConfiguration,
 } from "./auth.js";
 import { loadServerEnv } from "./env.js";
@@ -63,6 +64,10 @@ import {
   SupabaseInvitationProviderUnavailableError,
   SupabaseInvitationVerificationError,
 } from "./supabaseAuthInvitations.js";
+import {
+  parsePlatformCommand,
+  toPlatformCommandResult,
+} from "./platformCommand.js";
 
 const certificateVerifyAttempts = new Map<
   string,
@@ -467,6 +472,47 @@ export function registerApiRoutes(app: ApiApp) {
     });
   });
 
+  app.post("/api/auth/switch-role", async (req, res) => {
+    const session = await getApiRequestSession(req, res);
+    if (session === sessionRepositoryUnavailable) return;
+    if (!session) {
+      res.status(401).json({ error: "Sign in required." });
+      return;
+    }
+    const { role } = req.body ?? {};
+    if (!isServerRole(role)) {
+      res.status(400).json({ error: "A valid role is required." });
+      return;
+    }
+    try {
+      const nextSession = await switchSessionRole(session, role);
+      res.json(attachSession(res, nextSession));
+    } catch (error) {
+      if (
+        error instanceof AuthenticationAuthorityError ||
+        error instanceof SessionAuthorityDeniedError
+      ) {
+        res
+          .status(403)
+          .json({ error: "This account is not authorized for that role." });
+        return;
+      }
+      if (error instanceof SessionCommandConflictError) {
+        res
+          .status(409)
+          .json({ error: "Role switching could not be completed safely." });
+        return;
+      }
+      if (error instanceof SessionRepositoryUnavailableError) {
+        res
+          .status(503)
+          .json({ error: "Session service is temporarily unavailable." });
+        return;
+      }
+      throw error;
+    }
+  });
+
   app.post("/api/auth/logout", async (req, res) => {
     try {
       await endRequestSession(req, res);
@@ -719,6 +765,62 @@ export function registerApiRoutes(app: ApiApp) {
                 ? error.message
                 : "Platform action failed.",
         });
+    }
+  });
+
+  app.post("/api/platform/commands", async (req, res) => {
+    const session = await getApiRequestSession(req, res);
+    if (session === sessionRepositoryUnavailable) return;
+    if (!session) {
+      res.status(401).json({ error: "Sign in required." });
+      return;
+    }
+    if (session.authorizationModel !== "normalized") {
+      res.status(503).json({
+        error: "Normalized command persistence is not active for this session.",
+      });
+      return;
+    }
+    const command = parsePlatformCommand(req.body);
+    if (!command) {
+      res.status(400).json({ error: "A valid platform command is required." });
+      return;
+    }
+    const action = parsePlatformLearningAction({
+      type: command.type,
+      ...command.payload,
+      idempotencyKey: command.idempotencyKey,
+      expectedVersion: command.expectedVersion,
+    });
+    if (!action) {
+      res.status(422).json({ error: "The command payload is invalid." });
+      return;
+    }
+    try {
+      const response = await getNormalizedWorkflowRepository().apply(
+        action,
+        session
+      );
+      const result = toPlatformCommandResult(response.result);
+      if (!result) {
+        throw new NormalizedWorkflowUnavailableError(
+          "The normalized command returned incomplete evidence."
+        );
+      }
+      res.json(result);
+    } catch (error) {
+      if (
+        error instanceof NormalizedWorkflowDeniedError ||
+        error instanceof NormalizedWorkflowConflictError ||
+        error instanceof NormalizedWorkflowValidationError ||
+        error instanceof NormalizedWorkflowUnavailableError
+      ) {
+        res.status(normalizedWorkflowErrorStatus(error)).json({
+          error: normalizedWorkflowErrorMessage(error),
+        });
+        return;
+      }
+      throw error;
     }
   });
 

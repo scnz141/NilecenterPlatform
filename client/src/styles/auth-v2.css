@@ -386,7 +386,7 @@
 .auth-v2-back:focus-visible,
 .auth-v2-route-switch a:focus-visible,
 .auth-v2-secondary-action:focus-visible,
-.auth-v2-role-list a:focus-visible {
+.auth-v2-role-list button:focus-visible {
   outline: 3px solid rgba(45, 80, 22, 0.2);
   outline-offset: 3px;
 }
@@ -670,7 +670,7 @@
   gap: 8px;
 }
 
-.auth-v2-role-list a {
+.auth-v2-role-list button {
   min-height: 48px;
   border: 1px solid var(--auth-line);
   border-radius: 8px;
@@ -686,7 +686,7 @@
   font-weight: 700;
 }
 
-.auth-v2-role-list a:hover {
+.auth-v2-role-list button:hover {
   border-color: rgba(45, 80, 22, 0.55);
   background: var(--auth-soft);
 }
