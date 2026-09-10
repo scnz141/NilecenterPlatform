@@ -8,6 +8,7 @@
     "allowedProjectionDirections": [
       "none",
       "supabase_auth_to_nile_learn",
+      "ncc_ems_to_nile_learn",
       "moodle_to_nile_learn",
       "sandbox_test_only"
     ]
@@ -45,9 +46,9 @@
       "name": "Authentication and durable sessions",
       "nileLearnAuthority": "session_projection",
       "moodleAuthority": "none",
-      "projectionDirection": "supabase_auth_to_nile_learn",
-      "externalId": "auth_identity_id mapped to nile_learn user_id",
-      "conflictRule": "Authenticated identity and live role grants must both validate; mismatch fails closed.",
+      "projectionDirection": "ncc_ems_to_nile_learn",
+      "externalId": "NCC staff user and session identifiers; Student remains compatibility-only until its NCC contract",
+      "conflictRule": "NCC identity, active role, workspace, and live scopes must validate; mismatch fails closed.",
       "permittedRoles": [
         "student",
         "teacher",
@@ -56,9 +57,9 @@
         "branchadmin",
         "superadmin"
       ],
-      "auditOwner": "nile_learn_security_audit",
-      "failureBehavior": "Reject login or session resolution without demo fallback in production.",
-      "futureWriteStatus": "supabase_auth_identity_only",
+      "auditOwner": "ncc_ems_security_audit",
+      "failureBehavior": "Reject login or session resolution without compatibility fallback for staff when NCC auth is enabled.",
+      "futureWriteStatus": "ncc_staff_enabled_student_contract_pending",
       "selectors": {
         "clientRoutes": ["^/app$", "^/auth(?:/.*)?$", "^/login$"],
         "serverApiRoutes": ["^(GET|POST) /api/auth(?:/.*)?$"]
@@ -594,7 +595,9 @@
         ],
         "serverApiRoutes": [
           "^GET /api/integrations/health$",
-          "^GET /api/integrations/(moodle|resend|supabase)/status$"
+          "^GET /api/integrations/(moodle|resend|supabase)/status$",
+          "^GET /api/ems-staging/status$",
+          "^POST /api/ems-staging/(session|logout)$"
         ]
       }
     },

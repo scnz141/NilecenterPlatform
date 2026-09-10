@@ -28,7 +28,7 @@ leaks, crowded UI, or ambiguous ownership.
 
 The protected internal-alpha baseline is:
 
-- Portal QA: 1,663 checks, 0 failures.
+- Portal QA: 1,667 checks, 0 failures.
 - TypeScript check, unit tests, and production build are required gates.
 - The accepted evidence is recorded in `docs/qa-baseline.md`.
 
@@ -77,15 +77,15 @@ User
 
 | Data family                                                | Initial authority                | Nile Learn behavior                                   |
 | ---------------------------------------------------------- | -------------------------------- | ----------------------------------------------------- |
-| Authentication                                             | Supabase Auth                    | Verify identity and manage durable sessions           |
-| Roles, permissions, active role, scopes                    | Nile Learn                       | Canonical, server-authoritative                       |
-| Branches and departments                                   | Nile Learn                       | Canonical                                             |
-| Leads, applications, placement                             | Nile Learn                       | Canonical                                             |
-| Students, guardians, enrollments                           | Nile Learn                       | Canonical                                             |
-| Programs, levels, catalog metadata                         | Nile Learn                       | Canonical                                             |
-| Course offerings, classes, teachers, rooms, schedules      | Nile Learn                       | Canonical                                             |
-| Class sessions and attendance                              | Nile Learn                       | Canonical; Moodle writeback is a later optional phase |
-| Finance, certificates, messages, audit                     | Nile Learn                       | Canonical                                             |
+| Authentication                                             | NCC EMS                          | Verify identity and manage durable sessions           |
+| Roles, permissions, active role, scopes                    | NCC EMS                          | Canonical, server-authoritative                       |
+| Branches and departments                                   | NCC EMS                          | Canonical                                             |
+| Leads, applications, placement                             | NCC EMS                          | Canonical                                             |
+| Students, guardians, enrollments                           | NCC EMS                          | Canonical                                             |
+| Programs, levels, catalog metadata                         | NCC EMS                          | Canonical                                             |
+| Course offerings, classes, teachers, rooms, schedules      | NCC EMS                          | Canonical                                             |
+| Class sessions and attendance                              | NCC EMS                          | Canonical; Moodle writeback is a later optional phase |
+| Finance, certificates, messages, audit                     | NCC EMS                          | Canonical                                             |
 | Moodle course structure, content, and media                | Moodle                           | Full CRUD through verified commands or native launch  |
 | Moodle activities, assignments, quizzes, and questions     | Moodle                           | Full CRUD through verified commands or native launch  |
 | Moodle submissions, attempts, completion, grades, feedback | Moodle                           | Scoped CRUD, projection, and native interaction       |
@@ -108,26 +108,29 @@ The Phase 0 decisions are recorded under `docs/decisions/`:
 - ADR-004: finite legacy EMS migration;
 - ADR-005: atomic domain, audit, and outbox writes.
 - ADR-010: Moodle-owned learning authority and command boundary;
-- ADR-011: full synthetic Moodle sandbox CRUD authorization.
+- ADR-011: full synthetic Moodle sandbox CRUD authorization;
+- ADR-012: NCC EMS production backend and session authority.
 
 Implementation must follow these records. Any change requires a superseding ADR
 and the approval process defined in `docs/decisions/README.md`.
 
 ### Frontend And External Backend Ownership
 
-As of 2026-08-04, the project is delivered by separate frontend and backend
-teams. This repository owns the Nile Learn frontend and its API adapters. The
-external NCC EMS team owns the production backend implementation and publishes
-its staging OpenAPI contract at
-`https://ncc-ems-staging.enesekremergunesh.com/api/docs`.
+As of 2026-09-09, the project is delivered by separate frontend and backend
+teams. This repository owns the Nile Learn frontend and its thin same-origin API
+adapters. Under ADR-012, the external NCC EMS team owns the target production
+staff, session, and operational backend and publishes its staging OpenAPI
+contract at `https://ncc-ems-staging.enesekremergunesh.com/api/docs`.
 
 The code-grounded endpoint parity contract is
-`docs/BACKEND_API_ENDPOINT_REQUIREMENTS.md`. Existing local server routes remain
-compatibility evidence during the transition; they are not permission to build
-a second production backend. A frontend route may cut over only after its
-external endpoint family documents authentication, scope, request and response
-schemas, errors, pagination, versioning, and allowed actions, then passes
-frontend contract and browser acceptance.
+`docs/BACKEND_API_ENDPOINT_REQUIREMENTS.md`. Existing local server, Supabase, and
+snapshot routes remain compatibility and test evidence during the transition;
+they are not permission to build a second production backend. A frontend route
+may cut over only after its external endpoint family documents authentication,
+scope, request and response schemas, errors, pagination, idempotency,
+concurrency/versioning, and allowed actions, then passes frontend contract and
+browser acceptance. Student routes additionally require an NCC student session
+and own-scope API contract.
 
 ## Canonical Academic Model
 
@@ -169,13 +172,11 @@ Keep a modular monolith. Do not create microservices during stabilization.
 
 ```text
 React route and page-type layer
-  -> Typed query and command API
-  -> Application use cases
-  -> Domain rules and authorization policy
-  -> Granular repositories
-  -> Supabase/Postgres transactions
-  -> Audit and outbox records
-  -> Provider adapters and background synchronization
+  -> Typed same-origin query and command API
+  -> Thin Nile Learn backend-for-frontend
+  -> NCC EMS application and authorization API
+  -> NCC EMS persistence, audit, and outbox authority
+  -> Server-only provider adapters and background synchronization
 ```
 
 ### Client
@@ -187,46 +188,41 @@ React route and page-type layer
 
 ### Server
 
-- Resolve identity, active role, permissions, branch scope, department scope,
-  ownership, and provider authority from the authenticated session and database.
-- Use explicit application services for lifecycle transitions.
-- Commit domain mutation, audit event, and outbox event atomically.
-- Require an idempotency key for retried commands and integration writes.
-- Fail closed when production persistence is unavailable.
+- The Nile Learn server is a thin backend-for-frontend. It exchanges and rotates
+  NCC credentials behind Secure, HttpOnly, SameSite cookies, translates closed
+  DTOs, and never becomes a second operational store.
+- NCC EMS resolves identity, active role, permissions, branch scope, department
+  scope, ownership, and provider authority from the authenticated session and
+  its canonical database.
+- NCC EMS uses explicit application services for lifecycle transitions and
+  commits domain mutation, audit event, and outbox event atomically.
+- Mutations require idempotency and concurrency/version evidence before route
+  activation.
+- Both layers fail closed when session or production authority is unavailable.
 
 ### Repository
 
-The current snapshot repository remains a compatibility adapter during
-migration. It must not become the production model.
-
-Target repository families:
-
-- Identity and access
-- Organization
-- Admissions and students
-- Catalog and curriculum
-- Course delivery and scheduling
-- Attendance
-- Assessments and progress
-- Finance
-- Certificates
-- Communication
-- Audit and reporting
-- Integrations and migration
+The current snapshot and Supabase repositories remain compatibility and test
+adapters during migration. They must not become a competing production model.
+Target operational repository families are owned by NCC EMS; this repository
+retains only typed transport adapters, compatibility evidence, and
+provider-contract tests until each route family cuts over.
 
 ## Authentication And Authorization
 
-Supabase Auth authenticates the person. Nile Learn tables authorize the action.
+NCC EMS authenticates and authorizes staff. Its student contract must provide
+the same server-authoritative chain before Student routes cut over.
 
 Required chain:
 
 ```text
-auth.users
-  -> app_users
-  -> role_grants
+NCC identity
+  -> effective role grant
+  -> active role
   -> staff or student profile
-  -> branch and department scopes
+  -> branch, department, class, and ownership scope
   -> permission policy
+  -> durable revocable session
 ```
 
 Hard rules:
@@ -400,21 +396,24 @@ does not authorize linked/shared use or normalized workflow persistence.
 
 Deliverables:
 
-- Durable Supabase-backed session model.
-- Exact `auth.users -> app_users` mapping.
-- Active-role grant verification and revocation.
+- Durable NCC-backed staff session model behind the same-origin BFF.
+- Exact NCC identity, active-role grant, permission, and scope resolution.
+- Active-role/workspace verification, token rotation, and revocation.
 - Server-side scope refresh for sensitive actions.
+- Equivalent Student authority after the NCC student contract is delivered.
 
-Gate: no in-memory session dependency in production and no demo fallback.
+Gate: no in-memory session dependency, JavaScript-visible token, demo fallback,
+or Supabase production identity dependency.
 
 ### Phase 3: Repository Read Migration
 
 Deliverables:
 
-- Granular repository interfaces.
-- Normalized read adapter behind an explicit server flag.
-- Snapshot compatibility adapter remains default during parity testing.
-- Read-model parity tests.
+- Granular NCC query adapters with closed frontend DTOs.
+- Endpoint-family reads behind explicit server flags.
+- Snapshot/Supabase compatibility adapters remain available during measured
+  parity and rollback windows only.
+- Read-model parity, role/scope denial, outage, and contract tests.
 
 Gate: seeded route and workflow results remain equivalent and QA stays clean.
 
@@ -625,6 +624,52 @@ only approved next implementation slice. Companion plans and prompts must link
 here rather than restating this checkpoint.
 
 Current status:
+
+- On 2026-09-09 the product owner accepted ADR-012: NCC EMS is the target
+  production authority for staff identity, sessions, and Nile-owned operational
+  records; Supabase and snapshot persistence remain compatibility and test
+  foundations only. The only approved implementation program is the bounded,
+  family-by-family NCC cutover defined by
+  `.codex/prompts/21-ncc-ems-backend-cutover.md`. The authority and transport
+  foundation is accepted locally: the NCC client requires an allowlisted HTTPS
+  host and rejects redirects; the BFF seals token pairs in an AES-256-GCM,
+  HttpOnly, SameSite cookie tied to the current Nile session; status revalidates
+  `/auth/me`; logout revokes remotely; and System Health exposes passive,
+  redacted evidence only. Twenty-three focused tests, 1,042 unit tests,
+  TypeScript, the production build, all integration gates, focused System
+  Health QA at 6/0, and the complete protected portal gate at 1,663/0 pass. No
+  portal data family or production runtime default changed.
+
+  The NCC-backed staff sign-in and shell-session foundation is also accepted
+  locally behind the disabled `NILE_NCC_STAFF_AUTH_ENABLED` rollback flag.
+  Administration login sends no role claim in NCC mode; `/auth/me` supplies
+  identity, active and assigned role, workspace, and department scope; refresh,
+  role switch, workspace switch, and remote logout update or clear the sealed
+  session. Student authentication remains compatibility-only, and NCC sessions
+  reject every non-auth operational mutation while endpoint-family cutover is
+  disabled. TypeScript, 1,056 unit tests across 80 files, the production build,
+  all integration/database gates, desktop/mobile route QA, and the expanded
+  1,667/0 portal baseline pass. No live credential or runtime default was
+  activated.
+
+  The 2026-09-10 authorized live audit partially satisfies that gate. The old
+  domain passed Super Admin login, `/auth/me`, refresh rotation, old-refresh
+  denial, logout, post-logout denial, safe top-level reads, and an expected
+  Teacher-only route denial; the new domain still rejects login. The database
+  has no synthetic operational records, so other staff roles, workspaces,
+  cross-scope behavior, and nested delivery reads remain unaccepted. Direct
+  Moodle REST succeeds with the configured token, Moodle 4.5.12+ and enabled
+  Attendance plugin, but the NCC connector remains unreachable. Its external
+  service is open to All users and its service role has 581 allowed
+  capabilities, so least privilege is not proved.
+
+  The only approved next slice is backend remediation and repeat live
+  acceptance: rotate the pasted credentials, restrict the Moodle service to the
+  dedicated user, replace the broad Moodle role, repair NCC-to-Moodle
+  reachability, and seed every staff-role and operational fixture. No additional
+  frontend route family may cut over before that evidence passes. The new
+  domain, Student routes, operational data families, Moodle writes, and removal
+  of existing compatibility/Supabase adapters remain blocked.
 
 - On 2026-07-23 the product owner accepted ADR-010 and Phase 6J: Moodle is the
   sole writable authority for learning content, resources, assignments,
@@ -921,7 +966,7 @@ Current status:
   active implementation slice.
 - Phase 0 is accepted: authority, legacy boundaries, architecture decisions,
   and its then-current 1,317/0 QA baseline are recorded. The current protected
-  baseline is 1,663/0.
+  baseline is 1,667/0.
 - Phase 1 is accepted as a local-only migration package. It is not approved for
   linked, shared, or remote Supabase promotion.
 - Phase 2A is accepted as a non-default local foundation. The repository

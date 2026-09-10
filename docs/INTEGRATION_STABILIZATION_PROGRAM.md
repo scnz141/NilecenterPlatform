@@ -13,7 +13,7 @@ Modernization Checkpoint** in `docs/NILE_LEARN_MASTER_PLAN.md`.
 ## Non-Negotiable Boundaries
 
 - Preserve the six permanent Nile Learn roles and server-side role/scope gates.
-- Preserve the current portal QA baseline of 1,663 checks and 0 failures. Earlier
+- Preserve the current portal QA baseline of 1,667 checks and 0 failures. Earlier
   phase attestations retain their historical acceptance counts.
 - Use fake synthetic data only for provider and staging evidence.
 - Keep provider credentials server-only, expiring, minimum privilege, and out
@@ -78,7 +78,7 @@ command runs the ownership/evidence contracts first, then TypeScript, unit
 tests, and the production build concurrently. It intentionally omits database
 runtime drills and browser QA. Focused portal runs use `VERIFY_SCOPE=focused`
 with one exact role or workflow and isolated output/state directories. Only an
-unfiltered plain `scripts/verify.sh` may certify the protected `1,663/0`
+unfiltered plain `scripts/verify.sh` may certify the protected `1,667/0`
 baseline.
 
 Acceptance: every protected route and workflow action maps to exactly one

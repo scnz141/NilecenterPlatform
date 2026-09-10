@@ -16,8 +16,10 @@ export type AuthSessionDto = {
   name: string;
   roles: Role[];
   activeRole: Role;
-  provider: "supabase" | "demo";
-  authorizationModel: "snapshot" | "normalized";
+  assignedRole?: Role;
+  workspaceBranchId?: string | null;
+  provider: "supabase" | "demo" | "ncc";
+  authorizationModel: "snapshot" | "normalized" | "external";
   branchIds: string[];
   departmentIds: string[];
   expiresAt: string;
@@ -68,10 +70,18 @@ async function apiJson<T>(
   }
 }
 
+export type AuthModeDto = {
+  staffProvider: "ncc" | "compatibility";
+};
+
+export function fetchAuthModeRequest() {
+  return apiJson<AuthModeDto>("/api/auth/mode");
+}
+
 export function signInRequest(input: {
   email: string;
   password: string;
-  role: Role;
+  role?: Role;
 }) {
   return apiJson<AuthSessionDto>("/api/auth/login", {
     method: "POST",
@@ -128,6 +138,23 @@ export function switchRoleRequest(role: Role) {
   return apiJson<AuthSessionDto>("/api/auth/switch-role", {
     method: "POST",
     body: JSON.stringify({ role }),
+  });
+}
+
+export type AuthWorkspaceDto = {
+  id: string;
+  name: string;
+  timezone: string;
+};
+
+export function fetchAuthWorkspacesRequest() {
+  return apiJson<{ items: AuthWorkspaceDto[] }>("/api/auth/workspaces");
+}
+
+export function switchWorkspaceRequest(branchId: string) {
+  return apiJson<AuthSessionDto>("/api/auth/switch-workspace", {
+    method: "POST",
+    body: JSON.stringify({ branchId }),
   });
 }
 

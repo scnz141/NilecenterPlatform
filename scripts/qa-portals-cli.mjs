@@ -322,6 +322,7 @@ const authRoutes = [
   "/auth/forgot-password",
   "/auth/reset-password",
   "/auth/select-role",
+  "/auth/select-workspace",
   "/auth/logout",
 ];
 

@@ -18,15 +18,17 @@ UI work also requires `DESIGN.md`, `docs/DESIGN_V2.md`, and
 ## Non-Negotiables
 
 - Nile Learn remains in internal alpha stabilization and modernization.
-- Preserve the accepted portal QA baseline: exactly 1,663 checks and 0
+- Preserve the accepted portal QA baseline: exactly 1,667 checks and 0
   failures. A count change requires an intentional QA-scope decision and an
   updated accepted baseline.
 - Preserve server-derived identity and scope, RBAC, RLS, validation, action
   gates, audit logging, and fake-only demo data.
 - Full synthetic Moodle CRUD is approved only in the dedicated sandbox under
   ADR-011 and the current master-plan checkpoint. Production Moodle activation,
-  EMS, payment, email/SMS/WhatsApp, meeting, and production media integrations
-  remain prohibited until their master-plan phase is explicitly approved.
+  recurring legacy-EMS sync/writeback, payment gateways, email/SMS/WhatsApp,
+  meeting, and production media integrations remain prohibited until their
+  master-plan phase is explicitly approved. ADR-012 permits NCC EMS transport
+  and family-by-family frontend cutover only through the current checkpoint.
 - Legacy staff credentials and browser automation are discovery tools only.
   They are never production integration mechanisms.
 - A live provider requires server-only credentials, a threat and data design,
@@ -127,7 +129,7 @@ Completion requires:
 
 - command exit status 0;
 - a final portal summary that is not interrupted or in progress;
-- 1,663 checks and 0 failures, unless an approved QA-scope change establishes a
+- 1,667 checks and 0 failures, unless an approved QA-scope change establishes a
   new baseline;
 - no unresolved high-confidence reviewer finding.
 

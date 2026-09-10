@@ -3,6 +3,12 @@ import {
   getSessionRepository,
   SessionAuthorityDeniedError,
 } from "./sessionRepository.js";
+import {
+  getNccRequestSession,
+  hasNccAuthCookie,
+  nccStaffAuthEnabled,
+  validateNccAuthConfiguration,
+} from "./nccAuthSession.js";
 
 export class AuthenticationAuthorityError extends Error {
   constructor(
@@ -37,12 +43,14 @@ export type ServerSession = {
   name: string;
   roles: ServerRole[];
   activeRole: ServerRole;
+  assignedRole?: ServerRole;
+  workspaceBranchId?: string | null;
   authUserId?: string;
   activeRoleGrantId?: string;
   branchIds?: string[];
   departmentIds?: string[];
-  provider: "supabase" | "demo";
-  authorizationModel?: "snapshot" | "normalized";
+  provider: "supabase" | "demo" | "ncc";
+  authorizationModel?: "snapshot" | "normalized" | "external";
   createdAt: string;
   expiresAt: string;
 };
@@ -139,6 +147,7 @@ function localOnlySessionRuntime() {
 }
 
 export function validateAuthConfiguration() {
+  validateNccAuthConfiguration();
   const demoEnabled =
     (process.env.DEMO_AUTH_ENABLED ?? process.env.VITE_DEMO_AUTH_ENABLED) ===
     "true";
@@ -259,6 +268,9 @@ async function createSession(
 }
 
 export async function getRequestSession(req: SessionCookieRequest) {
+  if (nccStaffAuthEnabled() && hasNccAuthCookie(req)) {
+    return getNccRequestSession(req);
+  }
   const sessionId = parseCookies(req)[COOKIE_NAME];
   if (!sessionId) return null;
   const repository = getSessionRepository();
@@ -582,21 +594,27 @@ export async function signIn(
   throw new Error("Invalid email, password, or role.");
 }
 
-export function attachSession(
-  res: SessionCookieResponse,
-  session: ServerSession
-) {
-  writeSessionCookie(res, session.id, session.expiresAt);
+export function sessionDto(session: ServerSession) {
   return {
     userId: session.userId,
     email: session.email,
     name: session.name,
     roles: session.roles,
     activeRole: session.activeRole,
+    assignedRole: session.assignedRole,
+    workspaceBranchId: session.workspaceBranchId,
     provider: session.provider,
     authorizationModel: session.authorizationModel ?? "snapshot",
     branchIds: session.branchIds ?? [],
     departmentIds: session.departmentIds ?? [],
     expiresAt: session.expiresAt,
   };
+}
+
+export function attachSession(
+  res: SessionCookieResponse,
+  session: ServerSession
+) {
+  writeSessionCookie(res, session.id, session.expiresAt);
+  return sessionDto(session);
 }

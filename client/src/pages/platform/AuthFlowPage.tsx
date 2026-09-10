@@ -12,11 +12,18 @@ import {
 } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import { AuthExperience } from "@/components/auth/AuthExperience";
-import { clearStoredSession, setStoredRole } from "@/lib/auth/session";
+import {
+  clearStoredSession,
+  refreshServerSession,
+  setStoredRole,
+  setStoredWorkspace,
+} from "@/lib/auth/session";
 import {
   acceptUserInvitationRequest,
   confirmPasswordReset,
+  fetchAuthWorkspacesRequest,
   requestPasswordReset,
+  type AuthWorkspaceDto,
 } from "@/lib/backend/api";
 import { isSupportedLocale, translateUiLabel, type Locale } from "@/lib/i18n";
 import type { Role } from "@/lib/platformData";
@@ -26,6 +33,7 @@ type AuthFlowMode =
   | "reset-password"
   | "accept-invitation"
   | "select-role"
+  | "select-workspace"
   | "logout";
 
 const roleOptions: { label: string; value: Role; href: string }[] = [
@@ -97,6 +105,10 @@ export default function AuthFlowPage({ mode }: { mode: AuthFlowMode }) {
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [demoResetPath, setDemoResetPath] = useState("");
+  const [workspaces, setWorkspaces] = useState<AuthWorkspaceDto[]>([]);
+  const [workspaceStatus, setWorkspaceStatus] = useState<
+    "idle" | "loading" | "ready" | "error"
+  >(mode === "select-workspace" ? "loading" : "idle");
   const [logoutStatus, setLogoutStatus] = useState<
     "pending" | "success" | "error"
   >("pending");
@@ -124,13 +136,68 @@ export default function AuthFlowPage({ mode }: { mode: AuthFlowMode }) {
       setError(result.error);
       return;
     }
-    setLocation(href);
+    const needsWorkspace =
+      result.session.provider === "ncc" &&
+      ["branchadmin", "registrar"].includes(result.session.activeRole) &&
+      !result.session.workspaceBranchId;
+    setLocation(needsWorkspace ? "/auth/select-workspace" : href);
+  };
+
+  const chooseWorkspace = async (branchId: string) => {
+    setSubmitting(true);
+    setError("");
+    const result = await setStoredWorkspace(branchId);
+    setSubmitting(false);
+    if (!result.ok) {
+      setError(result.error);
+      return;
+    }
+    const destination =
+      roleOptions.find(option => option.value === result.session.activeRole)
+        ?.href ?? "/auth/login";
+    setLocation(destination);
   };
 
   useEffect(() => {
     if (mode !== "logout" || logoutStarted.current) return;
     logoutStarted.current = true;
     void performLogout();
+  }, [mode]);
+
+  useEffect(() => {
+    if (mode !== "select-workspace") return;
+    let cancelled = false;
+    setWorkspaceStatus("loading");
+    setError("");
+    void (async () => {
+      const session = await refreshServerSession();
+      if (cancelled) return;
+      if (!session) {
+        setWorkspaceStatus("error");
+        setError("Sign in before choosing a branch workspace.");
+        return;
+      }
+      if (
+        session.provider !== "ncc" ||
+        !["branchadmin", "registrar"].includes(session.activeRole)
+      ) {
+        setWorkspaceStatus("error");
+        setError("This account does not require a branch workspace.");
+        return;
+      }
+      const response = await fetchAuthWorkspacesRequest();
+      if (cancelled) return;
+      if (!response.ok || !response.data) {
+        setWorkspaceStatus("error");
+        setError(response.error ?? "Branch workspaces are unavailable.");
+        return;
+      }
+      setWorkspaces(response.data.items);
+      setWorkspaceStatus("ready");
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, [mode]);
 
   useEffect(() => {
@@ -182,6 +249,12 @@ export default function AuthFlowPage({ mode }: { mode: AuthFlowMode }) {
     "select-role": {
       title: "Choose your workspace",
       description: "Select the workspace you need for this session.",
+      action: "Continue",
+      icon: ShieldCheck,
+    },
+    "select-workspace": {
+      title: "Choose a branch",
+      description: "Select the branch you are working with now.",
       action: "Continue",
       icon: ShieldCheck,
     },
@@ -303,7 +376,11 @@ export default function AuthFlowPage({ mode }: { mode: AuthFlowMode }) {
   return (
     <AuthExperience
       variant={
-        mode === "select-role" || mode === "logout" ? "gateway" : variant
+        mode === "select-role" ||
+        mode === "select-workspace" ||
+        mode === "logout"
+          ? "gateway"
+          : variant
       }
       locale={locale}
       onLocaleChange={changeLocale}
@@ -344,6 +421,38 @@ export default function AuthFlowPage({ mode }: { mode: AuthFlowMode }) {
               </button>
             ))}
           </nav>
+        ) : mode === "select-workspace" ? (
+          <div className="auth-v2-form">
+            {workspaceStatus === "loading" ? (
+              <p className="auth-v2-status" role="status">
+                <span className="auth-v2-spinner" /> {ui("Loading branches")}
+              </p>
+            ) : null}
+            {workspaceStatus === "ready" && workspaces.length === 0 ? (
+              <p className="auth-v2-status" role="status">
+                {ui("No active branch is assigned to this account.")}
+              </p>
+            ) : null}
+            {workspaces.length > 0 ? (
+              <nav
+                className="auth-v2-role-list"
+                aria-label={ui("Choose a branch")}
+              >
+                {workspaces.map(workspace => (
+                  <button
+                    type="button"
+                    key={workspace.id}
+                    onClick={() => void chooseWorkspace(workspace.id)}
+                    disabled={submitting}
+                  >
+                    <span>{workspace.name}</span>
+                    <ArrowRight size={16} aria-hidden="true" />
+                  </button>
+                ))}
+              </nav>
+            ) : null}
+            <AuthStatus error={error} message={message} />
+          </div>
         ) : mode === "forgot-password" ? (
           <form className="auth-v2-form" onSubmit={requestReset}>
             <label className="auth-v2-field">

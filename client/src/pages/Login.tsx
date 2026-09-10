@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import {
   ArrowLeft,
@@ -13,8 +13,9 @@ import { Link, useLocation } from "wouter";
 import { toast } from "sonner";
 import { AuthExperience } from "@/components/auth/AuthExperience";
 import { signInWithPassword } from "@/lib/auth/session";
+import { fetchAuthModeRequest } from "@/lib/backend/api";
 import { isSupportedLocale, translateUiLabel, type Locale } from "@/lib/i18n";
-import type { Role } from "@/lib/platformData";
+import { roleMeta, type Role } from "@/lib/platformData";
 
 type LoginAudience = "gateway" | "student" | "administration";
 
@@ -215,8 +216,33 @@ function LoginForm({
   const [loading, setLoading] = useState(false);
   const [signedIn, setSignedIn] = useState(false);
   const [formError, setFormError] = useState("");
+  const [staffProvider, setStaffProvider] = useState<
+    "loading" | "ncc" | "compatibility" | "error"
+  >(audience === "administration" ? "loading" : "compatibility");
   const currentRole = roles.find(item => item.id === role) ?? roles[0];
   const ui = (label: string) => translateUiLabel(locale, label);
+
+  useEffect(() => {
+    if (audience !== "administration") return;
+    let cancelled = false;
+    void fetchAuthModeRequest().then(result => {
+      if (cancelled) return;
+      if (!result.ok || !result.data) {
+        setStaffProvider("error");
+        setFormError(result.error ?? "Sign-in configuration is unavailable.");
+        return;
+      }
+      setStaffProvider(result.data.staffProvider);
+      if (result.data.staffProvider === "ncc") {
+        setEmail(current =>
+          roles.some(item => item.email === current) ? "" : current
+        );
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [audience]);
 
   const pageTitle =
     audience === "student" ? "Student sign in" : "Administration sign in";
@@ -249,7 +275,15 @@ function LoginForm({
     event.preventDefault();
     setFormError("");
     setLoading(true);
-    const result = await signInWithPassword(email.trim(), password, role);
+    const requestedRole =
+      audience === "student" || staffProvider === "compatibility"
+        ? role
+        : undefined;
+    const result = await signInWithPassword(
+      email.trim(),
+      password,
+      requestedRole
+    );
 
     if (!result.ok) {
       setLoading(false);
@@ -258,9 +292,10 @@ function LoginForm({
       return;
     }
 
+    const signedInRole = result.session.activeRole;
     if (remember) {
       window.localStorage.setItem(REMEMBERED_EMAIL_KEY, email.trim());
-      window.localStorage.setItem(REMEMBERED_ROLE_KEY, role);
+      window.localStorage.setItem(REMEMBERED_ROLE_KEY, signedInRole);
     } else {
       window.localStorage.removeItem(REMEMBERED_EMAIL_KEY);
       window.localStorage.removeItem(REMEMBERED_ROLE_KEY);
@@ -271,7 +306,15 @@ function LoginForm({
       description: ui("Opening workspace"),
     });
     await new Promise(resolve => window.setTimeout(resolve, 180));
-    navigate(currentRole.route);
+    const needsWorkspace =
+      result.session.provider === "ncc" &&
+      ["branchadmin", "registrar"].includes(signedInRole) &&
+      !result.session.workspaceBranchId;
+    navigate(
+      needsWorkspace
+        ? "/auth/select-workspace"
+        : roleMeta[signedInRole].defaultRoute
+    );
   };
 
   const forgotParams = new URLSearchParams({ role, email: email.trim() });
@@ -311,7 +354,8 @@ function LoginForm({
           onSubmit={handleLogin}
           aria-busy={loading}
         >
-          {audience === "administration" ? (
+          {audience === "administration" &&
+          staffProvider === "compatibility" ? (
             <label className="auth-v2-field">
               <span>{ui("Workspace")}</span>
               <select
@@ -339,7 +383,9 @@ function LoginForm({
                 setEmail(event.target.value);
                 setEmailTouched(true);
               }}
-              placeholder={currentRole.email}
+              placeholder={
+                staffProvider === "ncc" ? "name@example.com" : currentRole.email
+              }
               required
             />
           </label>
@@ -347,9 +393,11 @@ function LoginForm({
           <label className="auth-v2-field">
             <span className="auth-v2-field-heading">
               <span>{ui("Password")}</span>
-              <Link href={`/auth/forgot-password?${forgotParams.toString()}`}>
-                {ui("Forgot password?")}
-              </Link>
+              {audience === "student" || staffProvider === "compatibility" ? (
+                <Link href={`/auth/forgot-password?${forgotParams.toString()}`}>
+                  {ui("Forgot password?")}
+                </Link>
+              ) : null}
             </span>
             <span className="auth-v2-password">
               <input
@@ -379,7 +427,13 @@ function LoginForm({
               onChange={event => handleRememberChange(event.target.checked)}
             />
             <span>
-              <strong>{ui("Remember email and workspace")}</strong>
+              <strong>
+                {ui(
+                  staffProvider === "ncc"
+                    ? "Remember email"
+                    : "Remember email and workspace"
+                )}
+              </strong>
               <small>{ui("Never saves your password.")}</small>
             </span>
           </label>
@@ -393,7 +447,12 @@ function LoginForm({
           <button
             type="submit"
             className="auth-v2-submit"
-            disabled={loading || signedIn}
+            disabled={
+              loading ||
+              signedIn ||
+              staffProvider === "loading" ||
+              staffProvider === "error"
+            }
           >
             {signedIn ? (
               <>

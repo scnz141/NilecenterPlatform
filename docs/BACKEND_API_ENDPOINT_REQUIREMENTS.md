@@ -9,7 +9,8 @@ not the legacy portal narrative.
 For the shorter feature-by-feature implementation sequence, use
 `docs/BACKEND_IMPLEMENTATION_FLOWS.md`.
 
-Sources inspected on 2026-08-04:
+Sources inspected initially on 2026-08-04 and revalidated against the live NCC
+contract on 2026-09-09:
 
 - `client/src/App.tsx`;
 - `client/src/lib/platformData.ts`;
@@ -53,38 +54,60 @@ proposed endpoint already exists.
 
 ## Live Staging API State
 
-The current OpenAPI title is `Stackforge API`, version `1.0.0`. It exposes four
-paths and five operations.
+The 2026-09-09 OpenAPI title is `NCC EMS API`, version `1.0.0`. Both supplied
+domains publish the same 92 paths, 116 operations, 117 schemas, and document
+hash. Their databases and environment configuration are not equivalent: the old
+domain is the current working authentication target, while the new domain has
+no accepted role fixtures and rejects the deployed frontend CORS origin.
 
-| Method | Path              | Observed state | Frontend assessment                                                                                   |
-| ------ | ----------------- | -------------- | ----------------------------------------------------------------------------------------------------- |
-| `GET`  | `/`               | `200`          | `AVAILABLE`; service fingerprint only.                                                                |
-| `GET`  | `/ping`           | `200`          | `AVAILABLE`; process liveness only.                                                                   |
-| `GET`  | `/health`         | `200`          | `AVAILABLE`; response is too small for dependency readiness.                                          |
-| `GET`  | `/moodle/config/` | `500`          | `INCOMPLETE`; response schema and safe redaction are missing.                                         |
-| `POST` | `/moodle/config/` | Not invoked    | `INCOMPLETE`; request accepts `url` and plaintext `ws_token`, but OpenAPI documents no authorization. |
+The contract defines 109 bearer-protected operations and seven intentionally
+public operations: liveness, login, refresh, and invitation validation/accept.
+The old domain now accepts the deployed frontend origin, but Nile Learn still
+uses a same-origin BFF so CORS is not the authorization or token-storage
+boundary.
 
-The OpenAPI document currently defines no global security requirement and no
-security scheme. It also provides no documented pagination, common error
-envelope, RBAC, versioning, idempotency, or audit metadata.
+| Endpoint family                                                        | Observed live surface                                                                                            | Frontend assessment                                                                                                                                                        |
+| ---------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Auth and sessions                                                      | Login, refresh, logout, logout-all, me, workspace/role switch, password change, invitations, session list/revoke | `INCOMPLETE`; the local HttpOnly BFF is accepted, but live role fixtures/acceptance, Student, password recovery, and explicit grant/permission summary are missing.        |
+| Users and organization                                                 | Staff users, branches, departments, custom fields                                                                | `INCOMPLETE`; no role/access-rule resource, programs, levels, pagination, allowed actions, or version preconditions.                                                       |
+| Admissions                                                             | Leads, students, placement tests, direct lead-to-student conversion                                              | `INCOMPLETE`; no application entity, guardian relationship resource, document flow, or complete conversion evidence.                                                       |
+| Delivery                                                               | Moodle-linked course overlays, classes, rosters, enroll/withdraw, rooms, generated sessions                      | `INCOMPLETE`; no offering/run separation, assignment history, full enrollment lifecycle, calendar/conflict API, or concurrency contract.                                   |
+| Learning and Moodle                                                    | Redacted site config/test, pickers, person/group bind, attendance/grade/learning reads                           | `INCOMPLETE`; current attendance and shared-course group authority conflicts with ADR-010/ADR-012, and full projections/commands/launches/files/reconciliation are absent. |
+| Notifications, audit, health                                           | Own notifications, scoped audit events, operator health                                                          | `INCOMPLETE`; no messages, reports, stable audit payload contract, readiness history, or correlation envelope.                                                             |
+| Finance, certificates, Forms, Quran/support, public API, private files | No matching operations                                                                                           | `MISSING`.                                                                                                                                                                 |
 
-The observed `/moodle/config/` schema is especially unsafe for integration: it
-accepts a required plaintext `ws_token`, has no documented authorization, and
-does not describe a redacted response. The frontend must not wire this shape.
-The replacement contract is the redacted, Super-Admin-only Moodle status and
-command contract in section 7 below.
+The OpenAPI correctly declares `BearerAuth`, protects staff operations, removes
+the old unsafe `/moodle/config/` shape, and never returns the Moodle token from
+site-status reads. It still has no `Idempotency-Key`, `If-Match`/expected
+version, `allowedActions`, correlation ID, cursor pagination, or freshness
+contract. Twenty successful collection responses are bare arrays.
 
 ### Immediate Backend Corrections
 
-1. Add the real API name, contact, version, environment, and server URL.
-2. Define the authentication security scheme on every protected operation.
-3. Make Moodle configuration Super-Admin-only.
-4. Never return a Moodle token. Return only `configured`, host, service name,
-   last verification, token age, and masked token suffix when necessary.
-5. Store Moodle credentials in server secret storage, not a browser-readable
-   database row or response.
-6. Make `/health` distinguish liveness from readiness and report dependencies
-   without exposing credentials or raw provider errors.
+1. Add Student identity and own-scope APIs or explicitly version a separate
+   Student service contract.
+2. Add explicit role grants, permission summaries, allowed role switches, and
+   positive/forbidden fixtures for all six Nile roles.
+3. Add idempotency, version/concurrency preconditions, stable error codes,
+   correlation IDs, `allowedActions`, bounded pagination, and authority/freshness
+   metadata.
+4. Align course-run, class isolation, teacher assignment, enrollment, schedule,
+   and attendance authority with ADR-010 and ADR-012.
+5. Complete applications and the lead-to-active-enrollment institutional loop
+   before portal cutover.
+6. Repair NCC staging Moodle reachability. The supplied URL/token pass direct
+   Moodle REST calls, while NCC confirms only that a stored token exists. Check
+   egress, DNS/TLS, stored-secret retrieval, HTTP handling, and parsing; expose
+   only a correlation ID and safe failure category.
+7. Restrict `Ems Web Service` to the dedicated authorized user and replace the
+   581-Allow Moodle role with an exact least-privilege capability set matching
+   the 25 service functions.
+8. Keep Moodle configuration Super-Admin-only and server-secret-backed; add the
+   approved projection, command, launch, file, and reconciliation contract.
+9. Make `/health` distinguish liveness from readiness and preserve redacted
+   dependency evidence.
+10. Seed and accept the new domain independently before changing the configured
+    staging target.
 
 ## Contract Required By Every Endpoint
 
@@ -302,7 +325,9 @@ write when the required external endpoint is absent.
 
 ### 1. Authentication, Invitations, And Self Profile
 
-**Current staging state: `MISSING`**
+**Current staging state: `INCOMPLETE`; the staff-only NCC auth/session surface
+and local same-origin HttpOnly BFF are present, but live staff-role acceptance,
+Student, password recovery, and explicit permissions are missing.**
 
 | Method and path                        | Required behavior                                                              | Roles               |
 | -------------------------------------- | ------------------------------------------------------------------------------ | ------------------- |
@@ -321,7 +346,9 @@ write when the required external endpoint is absent.
 
 ### 2. Users, Roles, Permissions, And Organization
 
-**Current staging state: `MISSING`**
+**Current staging state: `INCOMPLETE`; users, branches, departments, and custom
+fields are present, while explicit grants/access rules, programs, and levels are
+missing.**
 
 | Resource or operation                   | Required methods                                                                                 | Roles                                 |
 | --------------------------------------- | ------------------------------------------------------------------------------------------------ | ------------------------------------- |
@@ -341,7 +368,9 @@ allowing self-profile calls to change protected scope.
 
 ### 3. Leads, Applications, Placement, And Students
 
-**Current staging state: `MISSING`**
+**Current staging state: `INCOMPLETE`; leads, direct conversion, students, and
+placement tests are present, while applications, guardian resources, documents,
+and reconciliation are missing.**
 
 | Method and path                                            | Required behavior                                          | Roles                                               |
 | ---------------------------------------------------------- | ---------------------------------------------------------- | --------------------------------------------------- |
@@ -365,7 +394,9 @@ audit timeline through scoped read models.
 
 ### 4. Enrollment And Class Assignment
 
-**Current staging state: `MISSING`**
+**Current staging state: `INCOMPLETE`; class enrol and withdraw operations are
+present, but the draft/activate/transfer/pause/resume/cancel/complete lifecycle
+and membership history are missing.**
 
 | Method and path                      | Required behavior                                                      | Roles                           |
 | ------------------------------------ | ---------------------------------------------------------------------- | ------------------------------- |
@@ -383,7 +414,9 @@ must not accept a random direct teacher ID as the primary student relationship.
 
 ### 5. Offerings, Runs, Classes, Teachers, And Rosters
 
-**Current staging state: `MISSING`**
+**Current staging state: `INCOMPLETE`; course overlays, classes, current teacher
+IDs, and rosters are present, but offerings/runs, assignment history,
+substitutes, and the isolated Moodle delivery-course model are missing.**
 
 | Resource or operation                        | Required methods and transitions                                         | Roles                                         |
 | -------------------------------------------- | ------------------------------------------------------------------------ | --------------------------------------------- |
@@ -398,7 +431,10 @@ must not accept a random direct teacher ID as the primary student relationship.
 
 ### 6. Rooms, Scheduling, Sessions, And Attendance
 
-**Current staging state: `MISSING`**
+**Current staging state: `INCOMPLETE`; rooms, recurring class schedule fields,
+generated sessions, and Moodle attendance reads are present, while branch
+calendar, conflict/override evidence, teacher availability, and NCC-authoritative
+attendance writes are missing.**
 
 | Resource or operation                 | Required methods and transitions                | Roles                                            |
 | ------------------------------------- | ----------------------------------------------- | ------------------------------------------------ |
@@ -415,8 +451,10 @@ timezone, and overlapping sessions server-side.
 
 ### 7. Moodle-Owned Learning Projections
 
-**Current staging state: `MISSING`; only Moodle configuration is present and
-incomplete.**
+**Current staging state: `INCOMPLETE`; redacted Moodle site status/test,
+pickers, mappings, and bounded attendance/grade/learning reads are present, but
+the approved isolated-course projections, commands, launches, files, and
+reconciliation contract is missing.**
 
 | Method and path                                        | Required behavior                                                      | Roles                                                 |
 | ------------------------------------------------------ | ---------------------------------------------------------------------- | ----------------------------------------------------- |
@@ -473,7 +511,9 @@ being replaced with a local default.
 
 ### 9. Messaging, Notifications, And Attachments
 
-**Current staging state: `MISSING`**
+**Current staging state: `INCOMPLETE`; own-inbox notifications and read state
+are present, while conversations, messages, recipient scope, and attachments are
+missing.**
 
 | Method and path                        | Required behavior                                                        |
 | -------------------------------------- | ------------------------------------------------------------------------ |
@@ -540,8 +580,9 @@ Jotform is a finite import source, not a recurring writable authority.
 
 ### 13. Reports, Audit, Health, And Integration Operations
 
-**Current staging state: health is `AVAILABLE` only as liveness; all operational
-reports are `MISSING`.**
+**Current staging state: `INCOMPLETE`; scoped audit events and operator health
+are present, while operational reports, stable audit DTOs, correlation,
+integration history, and exports are missing.**
 
 | Endpoint family               | Required reports or behavior                                                |
 | ----------------------------- | --------------------------------------------------------------------------- |

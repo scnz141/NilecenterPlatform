@@ -299,7 +299,7 @@ assert_portal_qa_baseline() {
       process.exit(1);
     }
     console.log(`Portal QA baseline protected: ${summary.totalChecks} checks, 0 failures.`);
-  ' "$summary_path" "1663"
+  ' "$summary_path" "1667"
 }
 
 run_portal_qa() {

@@ -1,126 +1,307 @@
 # NCC EMS Staging — Live Integration Compatibility Report
 
-**Date:** 2026-08-26 (probes executed 2026-08-25 21:15–21:17 UTC)
+**Revalidated:** 2026-09-10
 
-**Target:** `https://ncc-ems-staging.enesekremergunesh.com/api` («NCC EMS API» v1.0.0, FastAPI behind nginx, spec at `/api/openapi.json`, 32.2 KB, docs UI at `/api/docs#/`)
+**Targets:**
 
-**Basis:** live HTTP probes against staging + full OpenAPI read + comparison against `docs/BACKEND_API_ENDPOINT_REQUIREMENTS.md` (14 required endpoint families, delivery priorities P0–P3, frontend integration acceptance).
-
-**Constraint honored:** read-only and negative-auth tests only. No staging credentials exist, so no successful authenticated call or data mutation was attempted. Everything below is verifiable at the URL above.
-
----
+- Current working environment: `https://ncc-ems-staging.enesekremergunesh.com/api`
+- Separate unaccepted environment: `https://ems-staging.nilecenter.site/api`
+- Staff workflow guide: `FRONTEND_API.md`
+- Frontend parity authority: `docs/BACKEND_API_ENDPOINT_REQUIREMENTS.md`
 
 ## 1. Verdict
 
-**The staging API is live and real, auth-guarded, and carries a meaningful first-inch of the contract — but it covers only families 1–2 (partially) of 14, and it does not yet meet the repo's Frontend Integration Acceptance criteria for any family. Do not wire frontend routes to it yet; keep the compatibility server (`server/`) as the working surface and feed the correction list in §7 back to the NCC EMS team.**
+The NCC EMS API is now a substantial staff backend and ADR-012 designates it as
+the target production authority for staff sessions and Nile-owned operational
+records. It is ready for a bounded same-origin transport and staff-session
+foundation, but **no complete portal is ready for broad cutover**.
 
-## 2. What I tested live (all evidence)
+The current contract is staff-only, omits required Nile Learn families, and
+does not yet satisfy mutation acceptance for idempotency, concurrency,
+`allowedActions`, stable errors/correlation, or bounded pagination. Student is a
+hard blocker because the API defines no Student identity or own-scope surface.
 
-| Probe | Request | Result | Finding |
-|---|---|---|---|
-| Liveness | `GET /api/ping` | **200** `{"pong":true}` 0.17s | Up; no auth needed |
-| Liveness | `GET /api/health` | **200** `{"status":"ok"}` 0.19s | Liveness only — no DB/queue/storage readiness (matches our §13 critique) |
-| Root | `GET /api/` | **200** `{"service":"backend","status":"ok","message":"NCC EMS API is running"}` | Confirms FastAPI identity behind nginx `/api` prefix |
-| OpenAPI | `GET /api/openapi.json` | **200**, OpenAPI 3.1, 25 paths / 28 operations | Full contract inventory (§3) |
-| Auth guard | `GET /api/auth/me` (no token) | **401** `{"detail":"Not authenticated"}` + `WWW-Authenticate: Bearer` | Protected ops are actually guarded |
-| Auth guard | `GET /api/users` (no token) | **401** same shape | Same |
-| Auth guard | `GET /api/custom-fields` (no token) | **401** same shape | Same |
-| Auth guard | `GET /api/users/{random-uuid}` (no token) | **401** | Guarded (no existence leak unauth'd) |
-| Auth guard | `POST /api/auth/change-password` (GET) | **405** | Method not allowed, as expected |
-| Login | `POST /api/auth/login` fake creds | **401** `{"detail":"Invalid email or password"}` | No user enumeration via login |
-| Login | `POST /api/auth/login` `{}` | **422** `{"detail":[{type,loc,msg,input}...]}` | Pydantic validation errors under `detail` |
-| Login | `POST /api/auth/login` wrong types | **422** same shape | Consistent 422 envelope |
-| Refresh | `POST /api/auth/refresh` `{}` | **422** missing `refresh_token` | Field-level validation |
-| Refresh | `POST /api/auth/refresh` garbage token | **401** `{"detail":"Not authenticated"}` | 401 on invalid refresh cred |
-| Invitation | `POST /api/auth/invitations/validate` fake token | **400** `{"detail":"Invitation is invalid or expired"}` | Deterministic, no enumeration leak |
-| Invitation | `POST /api/auth/invitations/accept` `{}` | **422** both fields required | Lifecycle direction exists |
-| CORS | `OPTIONS /api/auth/login` `Origin: https://nile-center-platform.vercel.app`, `Access-Control-Request-Headers: content-type,authorization` | **400** `Disallowed CORS origin` | Preflight **rejected** for our production origin |
-| CORS | `Origin: nile-center-platform.vercel.app` on `GET /api/ping` | 200 — but **no** `access-control-allow-origin` echo; only `access-control-allow-credentials: true` | Origin not whitelisted; browser cross-origin calls would fail |
-| Token shape | `GET /api/auth/me` `Authorization: Bearer abc` | **401** `Not authenticated` | No token-format leak; uniform 401 |
+## 2. Live Evidence
 
-## 3. Their live surface (28 operations, all under `/api`)
+Read-only probes and OpenAPI inspection established:
 
-**Public (no security):** `GET /`, `GET /ping`, `GET /health`, `POST /auth/login`, `POST /auth/refresh`, `POST /auth/invitations/validate`, `POST /auth/invitations/accept`.
+| Evidence                         | Old working domain                                                 | New domain                |
+| -------------------------------- | ------------------------------------------------------------------ | ------------------------- |
+| OpenAPI title/version            | `NCC EMS API` `1.0.0`                                              | Same                      |
+| Contract size                    | 92 paths, 116 operations, 117 schemas                              | Same                      |
+| OpenAPI SHA-256                  | `00d752f67088976b607a1bf9efb41fa25ef930442c8c241bbc72a1182bcbab33` | Same                      |
+| `GET /health`                    | `200 {"status":"ok"}`                                              | Same                      |
+| Deployed frontend CORS preflight | `200`, origin allowed                                              | `400`, origin not allowed |
+| Supplied staff fixture           | Authenticated Super Admin acceptance passed                        | Login remains `401`       |
 
-**Bearer JWT protected:** `POST /auth/logout`, `POST /auth/logout-all`, `POST /auth/switch-role`, `POST /auth/change-password`, `GET /auth/me`, `GET /auth/sessions`, `DELETE /auth/sessions/{session_id}` · `GET/POST /users`, `GET/PATCH /users/{user_id}`, `POST /users/{user_id}/invite|cancel-invitation|password|disable|enable` · `GET/POST /custom-fields`, `PATCH /custom-fields/{field_id}`, `POST /custom-fields/{field_id}/disable|enable`.
+Credential-bearing calls were explicitly authorized on 2026-09-10. Credentials
+and tokens remained ephemeral, were never printed or written to the repository,
+and each NCC session created by the audit was remotely logged out. They must
+still be rotated before deployed use because they were previously pasted into
+chat.
 
-**Security scheme:** `BearerAuth` (http, `bearerFormat: JWT`) — with description "Authorization uses EMS roles, not OAuth2 scopes."
+Identical OpenAPI documents prove code-contract parity only. They do not prove
+database migrations, seeds, users, provider configuration, or runtime parity.
+The old domain is therefore the current environment-variable-controlled staging
+target; the new domain requires independent acceptance.
 
-**Their role model (from `User_Role` enum):** `super_admin, branch_admin, hod, registrar, teacher` — privilege ordering defined server-side in `src/modules/auth/roles.py`. Scopes are first-class (`Scope_Response`, `Scope_Write`, `Scope_Kind`) and attached to users/sessions. User status lifecycle: `invited → active → disabled / canceled`, with documented transition rules.
+### 2.1 Authenticated Super Admin acceptance
 
-**Their identity/account concepts that overlap with ours:** `assigned_role` vs `active_role` + session-bound scopes (`Me_Response`), session list incl. `is_current`, `last_seen_at`, IP/UA (`Session_Response`), invitation token → validate/accept flow, `moodle_user_id` linkage on users, `custom_fields` per entity (Phase-4-marked in descriptions), `invitation_url` + `generated_password` returned only at creation ("present once and never on later GETs" — good practice).
+The working old-domain fixture passed:
 
-## 4. Family coverage vs. our 14 required families
+- login `200` with the documented token/user keys;
+- `/auth/me` `200` with `super_admin`, session, workspace, and scope fields;
+- refresh `200`, old-refresh replay `401`, and `/auth/me` with the replacement
+  access token `200`;
+- logout `204` and post-logout `/auth/me` `401`;
+- expected active-role denial: Super Admin calling Teacher-only
+  `/teacher/workspace` received `403`;
+- the same login on the new domain received `401`.
 
-Legend per requirements doc: **AVAILABLE** / **INCOMPLETE** / **MISSING** (the doc's section headers already carry the stale state — see §8).
+Safe Super Admin reads returned `200` for sessions, users, branches,
+departments, courses, classes, students, leads, placement tests, rooms,
+notifications/count, audit, system health, Moodle site/catalog/category
+responses, custom fields, and available organization detail records. The
+fixture currently contains two staff users, one branch, and one department, but
+zero courses, classes, students, leads, placement tests, rooms, and custom
+fields. Nested class, enrollment, roster, attendance, grade, student-learning,
+and schedule reads therefore remain untestable without synthetic operational
+fixtures.
 
-| # | Required family | Live verdict | Evidence |
-|---|---|---|---|
-| 1 | Auth, invitations, self profile | **INCOMPLETE** | `login/logout/logout-all/refresh/switch-role/change-password/me/sessions`, invitation `validate/accept` all present and tested. **Missing from ours:** session-resolution endpoint with expiry + permissions summary (`Me_Response` has no expiry/permissions), public `password-reset/request|confirm` (only admin `POST /users/{id}/password`), `PATCH /v1/me`, `PATCH /v1/me/preferences`, `GET /v1/me/activity` |
-| 2 | Users, roles, permissions, org | **INCOMPLETE** | Users CRUD + `invite/cancel-invitation/password/disable/enable` + sessions list/revoke exist and are guarded. **Missing:** `/roles` summaries, `/permissions` matrix, role-grants resource (scopes are embedded on users instead), branches, departments, programs, levels |
-| 3 | Leads, applications, placement, students | **MISSING** | No endpoints at all |
-| 4 | Enrollment and class assignment | **MISSING** | No endpoints at all |
-| 5 | Offerings, runs, classes, teachers, rosters | **MISSING** | No endpoints at all |
-| 6 | Rooms, scheduling, sessions, attendance | **MISSING** | No endpoints at all |
-| 7 | Moodle learning projections | **MISSING** | Only `moodle_user_id` linkage + scope fields; no learning/courses/assignments/quizzes/grades/completion/files/launches/commands |
-| 8 | Interventions and Quran | **MISSING** | No endpoints at all |
-| 9 | Messaging and notifications | **MISSING** | No endpoints at all |
-| 10 | Finance | **MISSING** | No endpoints at all |
-| 11 | Certificates | **MISSING** | No endpoints at all |
-| 12 | Forms and Jotform | **MISSING** | No endpoints at all |
-| 13 | Reports, audit, health, integrations | **INCOMPLETE** | Health liveness only (`{"status":"ok"}` — plus `GET /` info root). No readiness detail, no dashboards/reports/audit/integrations-health |
-| 14 | Private files | **MISSING** | No endpoints at all |
+### 2.2 Moodle sandbox and NCC connector acceptance
 
-**Net:** 0 families AVAILABLE, 2 INCOMPLETE (1, 2, 13 shallow), 12 MISSING. Families 3–14 — the institutional loop (admissions → enrollment → class → attendance → finance → certificates) — are entirely absent. Their current scope is essentially "staff identity + RBAC seeds": auth, users, scopes, custom-field definitions.
+Direct Moodle evidence established:
 
-Compared with the last documented snapshot (`docs/BACKEND_API_ENDPOINT_REQUIREMENTS.md` §"Live Staging API State"), the old unsafe `POST /moodle/config/` plaintext-ws-token endpoint is **gone**, and the surface grew from 1 auth path to 28 guarded operations — so the team is building the right way (auth-first, no secrets in specs), just not the families we need most.
+- Moodle `4.5.12+` build `20260708` is reachable;
+- service token site-info succeeds and identifies service user ID 34 with
+  username `web_service_ems`;
+- Attendance `mod_attendance` version `2024082403` is installed and enabled;
+- REST reads for courses, categories, and the exact service user succeed;
+- the `Ems Web Service` manifest exposes 25 functions, including course,
+  content, completion, user, enrollment, group, grade, and
+  `mod_attendance_get_session(s)` reads.
 
-## 5. Contract mismatches (our contract vs. their implementation)
+The NCC connector is not currently operational. `/moodle/site` reports the
+correct HTTPS host and a configured token, but two server-side connection tests
+recorded `reachable: false`; catalog/category responses contain `Moodle could
+not be reached`; Moodle user search returns `400` with the same message; and
+system health is `degraded` with only Moodle in error. The same token and site
+succeed directly with both server and browser-like user agents. NCC confirms
+only that a token is present, not that the stored value matches. The remaining
+failure boundary is NCC staging egress, DNS/TLS, stored-secret retrieval, HTTP
+client behavior, or response parsing—not Moodle availability, the supplied
+token, plugin, REST protocol, or Cloudflare user-agent handling.
 
-1. **Roles differ.** Theirs: `super_admin, branch_admin, hod, registrar, teacher` — **no `student`**; ours: `superadmin, branchadmin, headofdepartment, registrar, teacher, student`. Even the names diverge. Our student portal and all six-role acceptance criteria (seeds, examples) cannot be satisfied by their staff-only model.
-2. **Transport.** Bearer JWT with `refresh_token` rotation in the response body vs. our HttpOnly-cookie `app_session_id` session model (`docs/auth-session-hardening.md`). Our migration table explicitly makes `/api/auth/*` replacement conditional on cookie/session + error parity — that parity does not exist yet. Token-in-body also conflicts with our no-secret-in-browser-traffic posture (their own OpenAPI says "Paste the access JWT…" — a dev-ergonomics choice that is fine for machine clients, but not browser-first).
-3. **No list envelope.** Users/custom-fields return bare arrays (filters `assigned_role/status/search/entity_type/is_active` only) — no `{items, nextCursor, total, generatedAt, scope}`. Automated keyword scan of the whole spec: `page/cursor/offset/limit/total` = **0 occurrences**.
-4. **Error envelope.** FastAPI default `{detail: string | [{type, loc, msg, input}]}` — not our `{error: {code, message, fieldErrors, correlationId, retryable}}`. `type/loc/msg/input` is decent machine-readable validation detail, but there is no error code vocabulary, no correlationId to tie server logs to browser sessions, no retryable flag.
-5. **No mutation safety.** No `Idempotency-Key`, no `expectedVersion`/`If-Match`, no ETags. Scan: `idempot/if-match/etag/expectedVersion` = 0. PATCH /users is last-write-wins with no concurrency guard. Our acceptance criterion #5 (idempotency + concurrency) fails for every write.
-6. **No freshness/audit metadata.** `generatedAt`, `asOf`, `freshness`, `sourceUpdatedAt`, `projectedAt`, `allowedActions` = 0 occurrences. Even future families will need these for Moodle projections and reports.
-7. **Switch-role semantics differ.** Theirs: session keeps `assigned_role`/`active_role` and scopes, switching among roles the same session may view (our requirement: switch-role must **validate the grant, rotate the session, revoke the old role-bound session**). Their `switch-role` rotation behavior is not documented; their session list implies multiple simultaneous sessions (`logout-all`).
-8. **Invitations are admin-only creation.** `POST /users` requires `assigned_role` + `profile` + `provisioning` — no `student`, no self-service registration. Our invitation flow is for all six roles, student self-read profiles, etc.
-9. **Versioning/naming.** Ours: versioned `/v1/*` paths. Theirs: unversioned `/auth|users|custom-fields/*` with FastAPI-style `operationId`s (`post_login_auth_login_post`) — no stable, curated operation IDs (our P0 #4 asks for stable operation IDs and tags; tags exist, operation IDs are auto-generated).
+The Moodle security posture is not acceptable for production:
 
-## 6. What actually works and matches our direction (give them credit)
+- `Ems Web Service` is configured for **All users**, not Authorised users only;
+- the service user appears on the service-user page, but that restriction is not
+  enforced while the service remains All users;
+- the system role displayed as `Web Services` has 581 capabilities set to
+  Allow, including user/course deletion, role assignment, broad enrollment
+  administration, site-administration visibility, and Attendance mutation,
+  import, and export;
+- the 25-function service allowlist limits current transport calls, but the role
+  remains far broader than that allowlist and would make accidental service
+  expansion dangerous.
 
-- **It's real, guarded, and consistent.** Every protected op returns a uniform 401 with `WWW-Authenticate: Bearer`; login doesn't enumerate users; validation errors are structured.
-- **Invitation lifecycle direction matches ours:** validate → accept with password set, deterministic expired/invalid handling (`400` with one message), invitations stored server-side, tokens never in URLs, `invitation_url`/`generated_password` returned exactly once.
-- **User lifecycle is careful:** explicit status machine (`invited→active→disabled/canceled`) with valid-transition documentation; disable/enable/password-reset as separate auditable actions — close in spirit to our versioned-transition style.
-- **Session awareness exists:** session enumeration, current-session flag, revocation (`logout-all`, `DELETE /auth/sessions/{id}`) — a real step toward our session authority (though cookie-based, not JWT-based).
-- **Scopes are server-side and explicit** (`Scope_Response`/`Scope_Write`) — aligns with our "server resolves relationship and scope for every record" rule.
-- **No secrets in the spec** — response examples carry no tokens; old plaintext ws_token endpoint is gone.
+## 3. Current Surface
 
-## 7. Corrections to feed back to the NCC EMS team
+The OpenAPI defines 109 bearer-protected operations and seven intentionally
+public operations. Endpoint tags and operation counts are:
 
-Priority-ordered, mapped to our P0–P3:
+| Tag             | Operations | Tag              | Operations |
+| --------------- | ---------: | ---------------- | ---------: |
+| auth            |         13 | users            |         11 |
+| branches        |          6 | departments      |          6 |
+| courses         |          8 | classes          |         16 |
+| students        |         10 | leads            |          5 |
+| placement-tests |          6 | rooms            |          6 |
+| sessions        |          4 | teacher          |          1 |
+| moodle          |         10 | notifications    |          4 |
+| custom-fields   |          5 | audit            |          1 |
+| system          |          1 | default/liveness |          3 |
 
-1. **P0 — Add the `student` role (or define a separate student identity API).** Without it, the student portal, six-role seeds/acceptance, and our role model cannot be tested against staging at all. If EMS intends staff-only, say so explicitly and we keep students on the compatibility server.
-2. **P0 — Define the common envelope:** error `{code, message, fieldErrors, correlationId, retryable}`, list `{items, nextCursor, total, generatedAt, scope}`, and `allowedActions` on authoritative reads. Add correlationId to every response (it already returns `cf-ray`, so a server-side correlationId is trivial to add).
-3. **P0 — Mutation safety:** accept `Idempotency-Key` on all POSTs; `If-Match`/`expectedVersion` on PATCH; document concurrency behavior.
-4. **P0 — Readiness:** `GET /health` should report app/db/queue/storage readiness, not just liveness, since our fallback depends on it.
-5. **P1 — Version the API:** put it under `/v1` and curate stable `operationId`s; keep the nginx `/api` prefix.
-6. **P1 — Add the auth-session resolution endpoint** returning expiry + permissions summary (our `GET /v1/auth/session` semantics), and public password reset (request/confirm), `PATCH /me`, `/me/preferences`, `/me/activity`.
-7. **P1 — Implement the institutional loop next:** leads → applications → placement → students → enrollments → classes → teacher assignment → schedules → attendance (families 3–6), with conflict validation and versioned attendance writes.
-8. **P2/P3 — Then:** finance, certificates, messaging, reports/audit, private files, then Moodle projections with `sourceUpdatedAt`/`projectedAt`/`freshness` and command/reconcile flows.
-9. **CORS:** when browser wiring is intended, whitelist `https://nile-center-platform.vercel.app` (and any local preview origins) — preflight currently returns **400 Disallowed CORS origin** for our production origin. Note: if the platform proxies `/api` server-side (our current gateway pattern via `api.ts` same-origin), CORS is moot for browsers — decide the transport boundary and document it.
+The protected surface includes:
 
-## 8. Doc-drift warning (for the user to decide, not silently fixed)
+- staff login, token rotation, logout, session revocation, invitation accept,
+  self profile, active-role switching, and branch workspace switching;
+- staff users, branch and department catalogs, and staff custom fields;
+- Moodle site status/configuration/test and course/category/user/group pickers;
+- Moodle-linked course overlays, classes, current teacher assignment, groups,
+  rosters, enroll/withdraw, rooms, recurring schedule fields, and generated
+  sessions;
+- students, leads, direct lead conversion, and placement tests;
+- scoped read-only Moodle attendance, grades, and per-student learning state;
+- Teacher workspace, own notifications, scoped audit events, and operator
+  health.
 
-`docs/BACKEND_API_ENDPOINT_REQUIREMENTS.md`:
+## 4. Portal And Family Compatibility
 
-- §"Live Staging API State" is **stale** — it describes the old Stackforge API with the unsafe `POST /moodle/config/`; the live surface is the 28-operation spec above.
-- Every family section header says `MISSING` while family 1 and 2 have real (partial) coverage — the "Current staging state" lines under §1, §2, and §13 should be updated to match this report.
+| Family              | Status       | Present                                                                       | Blocking gaps                                                                                                                  |
+| ------------------- | ------------ | ----------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| Auth/RBAC           | `INCOMPLETE` | Complete staff token lifecycle and workspace basics                           | Student, explicit grants/permission summary, password recovery, accepted HttpOnly BFF session design                           |
+| Users/organization  | `INCOMPLETE` | Users, branches, departments, custom fields                                   | Roles/access rules, programs, levels, allowed actions, pagination/versioning                                                   |
+| Admissions          | `INCOMPLETE` | Leads, students, placement, direct conversion                                 | Applications, guardians as relationships, documents, reconciliation                                                            |
+| Enrollment/delivery | `INCOMPLETE` | Course overlays, classes, rosters, enroll/withdraw, rooms, sessions           | Offerings/runs, full enrollment state machine, assignment history, substitutes, conflicts                                      |
+| Attendance          | `INCOMPLETE` | Moodle read-only sessions and marks                                           | NCC-authoritative write/correction/exception history and cross-portal read-back                                                |
+| Moodle learning     | `INCOMPLETE` | Config and documented pickers/binds/reads; direct Moodle service proof passes | NCC connector reachability, least privilege, isolated delivery courses, projections, commands, launches, files, reconciliation |
+| Notifications       | `INCOMPLETE` | Own inbox/read state                                                          | Conversations, messages, recipients, attachments                                                                               |
+| Audit/health        | `INCOMPLETE` | Scoped events and current operator snapshot                                   | Stable audit payload, correlation, reports, exports, readiness history                                                         |
+| Finance             | `MISSING`    | —                                                                             | Invoices, payments, balances, reports                                                                                          |
+| Certificates        | `MISSING`    | —                                                                             | Eligibility, approval, issue/revoke, verification/artifacts                                                                    |
+| Quran/support       | `MISSING`    | —                                                                             | Plans, recitations, reviews, interventions, support cases                                                                      |
+| Forms/files/public  | `MISSING`    | —                                                                             | Forms, private files, public catalog/intake/verification                                                                       |
+| Student portal      | `MISSING`    | Staff may administer Student records                                          | Student login and every own-scope portal operation                                                                             |
 
-I did not edit the doc (working tree is already dirty with an unrelated slice). If you approve, I'll update those state lines to match the live surface.
+### Portal summary
 
-## 9. Recommendation (per repo authority rules, AGENTS.md L70–108)
+- **Super Admin:** useful organization, people, Moodle status, audit, and health
+  reads exist. Roles/access rules, programs/levels, settings, reports, and
+  reconciliation remain incomplete.
+- **Registrar:** much of lead/student/placement/class setup exists, but the
+  application and complete enrollment/payment/message/report lifecycle does
+  not.
+- **Branch Admin:** scoped people/class/room/session operations exist; attendance
+  writes, conflict review, finance, reports, and messaging do not.
+- **HOD:** scoped class/course/roster reads exist; academic governance,
+  curriculum, programs/levels, moderation, certificates, and reports do not.
+- **Teacher:** assigned classes/upcoming sessions, rosters, and read-only
+  learning data exist; Nile attendance writes, availability, interventions,
+  communication, and Moodle authoring/grading commands do not.
+- **Student:** no direct contract exists.
 
-- **Do not wire any frontend route to this staging API yet.** No family meets all 10 Frontend Integration Acceptance criteria (roles complete, closed error schemas, pagination, idempotency, `allowedActions`, seeds for all six roles, positive examples, contract tests). Families 3–14 are simply absent.
-- **Keep `server/` as compatibility evidence** until parity is proven; existing routes stay on compatibility adapters and show unavailable/dev state rather than fabricating writes.
-- **Next practical step:** send §7 as a concrete correction list to the EMS team, prioritizing the student role + common envelopes + the families 3–6 loop. Re-probe after they ship, then re-run this matrix.
+## 5. Contract Findings
+
+What is strong:
+
+- Every non-public operation declares `BearerAuth`.
+- Login does not need a browser-provided authoritative role.
+- Active role, assigned role, workspace, and scopes are server-returned.
+- The old unsafe Moodle config route has been replaced by Super-Admin-only
+  redacted status; responses do not include the Moodle service token.
+- User, branch, class, student, lead, placement, and session lifecycles use
+  explicit status endpoints and scoped 401/403/404 behavior.
+- One-time invitation and generated-password fields are documented as
+  response-only and transient.
+
+Blocking production gaps found by scanning the full OpenAPI:
+
+- `Idempotency-Key`: 0 occurrences.
+- `If-Match`, ETag, or expected-version input: 0 occurrences.
+- `allowedActions`: 0 occurrences.
+- correlation ID: 0 occurrences.
+- cursor/next-cursor: 0 occurrences.
+- freshness contract: 0 occurrences.
+- Twenty 200-response collections are bare arrays.
+- Errors remain FastAPI `{detail: string | validation[]}` without stable domain
+  codes or retryability.
+- The role enum contains five staff roles only:
+  `super_admin`, `branch_admin`, `hod`, `registrar`, `teacher`.
+
+## 6. Authority Conflicts To Correct
+
+### Attendance
+
+`FRONTEND_API.md` currently says Teachers write attendance in Moodle and EMS
+only reads it. ADR-010 and ADR-012 keep operational attendance in the NCC
+backend because it belongs to the timetable, exception, reporting, certificate,
+and audit lifecycle. Moodle may receive or expose a projection; it must not be a
+second writable authority.
+
+### Moodle class isolation
+
+The current API links one EMS course to one existing Moodle course and maps Nile
+classes to groups in that shared course. Nile Learn requires one isolated Moodle
+delivery course per class, cloned from an approved versioned template. This
+prevents cross-class content, roster, teacher, grade, and file leakage. Groups
+may still exist inside one delivery course but are not the primary class
+boundary.
+
+### Staff roles and Student
+
+A fixed assigned-role hierarchy is not enough for the final permission model.
+NCC must expose effective grants, permission summary, permitted role switches,
+and current scope. Student requires its own server-authoritative session and
+own-scope API before cutover.
+
+## 7. Frontend Transport Decision
+
+Do not store NCC access or refresh tokens in JavaScript-accessible storage and
+do not call Moodle directly from the browser.
+
+The existing Express/Vercel API remains a thin same-origin BFF that:
+
+1. exchanges credentials with NCC;
+2. rotates/revokes NCC tokens;
+3. exposes Secure, HttpOnly, SameSite session cookies;
+4. maps role names and snake_case DTOs into closed frontend contracts;
+5. preserves 401/403/404/409/422 meaning;
+6. applies family-level cutover flags and fail-closed rollback;
+7. stores no competing operational business state.
+
+The initial uncommitted `emsStaging` probe used a process-memory token map,
+did not remotely revoke on unlink, could report stale link status, and exposed
+three open-ended list proxies. The transport foundation replaces that design
+with a sealed session cookie, verified status, remote logout, and no portal data
+proxy. Credential entry belongs in real staff sign-in, not System Health.
+
+The local staff-auth foundation now uses that BFF behind a disabled rollback
+flag. Administration login derives NCC authority without a browser role claim;
+session resolution, role/workspace changes, and remote logout update the sealed
+cookie; Student remains on compatibility auth; and every NCC-session operational
+mutation fails closed. Live acceptance still requires rotated credentials and
+staff-role fixtures.
+
+## 8. Backend-Team Delivery Order
+
+Immediate acceptance blockers:
+
+1. Diagnose NCC staging outbound DNS/TLS/network handling, stored-token
+   retrieval, HTTP client behavior, and response parsing for the exact Moodle
+   host. Log a server-side correlation ID and safe failure category; do not
+   return a raw exception or token.
+2. Change `Ems Web Service` to Authorised users only and retain only service user
+   ID 34.
+3. Replace the 581-Allow `Web Services` role with a reviewed least-privilege role
+   containing only capabilities required by the 25-function manifest; explicitly
+   deny deletion, role assignment, unrelated enrollment plugins, and Attendance
+   mutations not used by the current read-only contract.
+4. Rotate the pasted EMS password and Moodle token, update protected server
+   secret storage, rerun site-info, and prove retired-secret rejection.
+5. Seed synthetic Teacher, Registrar, HOD, Branch Admin, course, class, student,
+   enrollment, room, session, Attendance, and grade fixtures so positive and
+   cross-scope reads can be accepted.
+
+Then continue the product contract:
+
+1. **P0:** Student contract, explicit grants/permissions, secure browser-session
+   mode, idempotency, versioning, error/correlation envelope, allowed actions,
+   pagination, and six-role positive/negative fixtures.
+2. **P1:** applications, programs/levels/offerings, complete enrollment,
+   teacher assignment history, schedule conflicts/availability, and NCC-owned
+   attendance writes.
+3. **P2:** messages, finance, certificates, reports, support/Quran, Forms,
+   public APIs, and private files.
+4. **P3:** exact Moodle mappings, isolated delivery-course cloning, role-scoped
+   projections, commands, launches, files, attempts, reconciliation, and
+   cleanup evidence.
+
+## 9. Cutover Gate
+
+An endpoint family may replace compatibility behavior only when it:
+
+1. appears in the accepted staging OpenAPI;
+2. documents authentication, role, relationship, and scope behavior;
+3. has closed request, success, and error schemas;
+4. has bounded filtering/pagination where data grows;
+5. proves idempotency and concurrency for writes;
+6. returns allowed actions and authority timestamps;
+7. has positive plus forbidden-scope examples and synthetic fixtures;
+8. passes BFF contract tests, direct API denial tests, and focused portal QA;
+9. exposes no NCC or Moodle secret to browser JavaScript; and
+10. preserves the complete 1,667/0 protected portal baseline.
+
+Until then, the affected route remains on an explicitly non-production
+compatibility adapter or renders an honest unavailable state. It must never
+fabricate a successful NCC write.

@@ -9,11 +9,23 @@ import {
   getRequestSession,
   isServerRole,
   requestDemoPasswordReset,
+  sessionDto,
   signIn,
   switchSessionRole,
   validateAuthConfiguration,
 } from "./auth.js";
 import { loadServerEnv } from "./env.js";
+import {
+  hasNccAuthCookie,
+  listNccWorkspaces,
+  loginNccStaff,
+  logoutNccSession,
+  nccStaffAuthEnabled,
+  NccAuthError,
+  resolveNccAuthSession,
+  switchNccRole,
+  switchNccWorkspace,
+} from "./nccAuthSession.js";
 import {
   getPlatformBackendState,
   savePlatformBackendRecord,
@@ -49,6 +61,7 @@ import { registerNileRequestsRoutes } from "./nileRequestsRoutes.js";
 import { registerMoodleRoutes } from "./moodleRoutes.js";
 import { registerMoodleCommandRoutes } from "./moodleCommandRoutes.js";
 import { registerIntegrationHealthRoutes } from "./integrationHealthRoutes.js";
+import { registerEmsStagingRoutes } from "./emsStagingRoutes.js";
 import { registerEmailRoutes } from "./emailRoutes.js";
 import { getEmailIntegrationStatus } from "./emailDeliveryService.js";
 import { registerUserInvitationRoutes } from "./userInvitationRoutes.js";
@@ -103,6 +116,7 @@ function canUsePlatformStateFixtureForQa(req: ApiRequest) {
 
 type ApiRequest = {
   method: string;
+  path?: string;
   body?: Record<string, unknown>;
   rawBody?: Buffer;
   query: Record<string, unknown>;
@@ -114,7 +128,7 @@ type ApiRequest = {
 };
 
 type ApiResponse = {
-  setHeader(name: string, value: string): void;
+  setHeader(name: string, value: string | string[]): void;
   status(code: number): ApiResponse;
   json(body: unknown): void;
   send(body: Buffer): void;
@@ -124,11 +138,19 @@ function rejectDurableSnapshotWorkflow(
   session: Awaited<ReturnType<typeof getRequestSession>>,
   res: ApiResponse
 ) {
-  if (session?.authorizationModel !== "normalized") return false;
-  res.status(503).json({
-    error: "Normalized workflow persistence is not active.",
-  });
-  return true;
+  if (session?.authorizationModel === "normalized") {
+    res.status(503).json({
+      error: "Normalized workflow persistence is not active.",
+    });
+    return true;
+  }
+  if (session?.authorizationModel === "external") {
+    res.status(503).json({
+      error: "NCC workflow cutover is not active.",
+    });
+    return true;
+  }
+  return false;
 }
 
 function normalizedWorkflowErrorStatus(error: unknown) {
@@ -151,7 +173,11 @@ function normalizedWorkflowErrorMessage(error: unknown) {
 }
 
 type ApiNext = () => void;
-type ApiMiddleware = (req: ApiRequest, res: ApiResponse, next: ApiNext) => void;
+type ApiMiddleware = (
+  req: ApiRequest,
+  res: ApiResponse,
+  next: ApiNext
+) => void | Promise<void>;
 type ApiRouteHandler = (
   req: ApiRequest,
   res: ApiResponse
@@ -177,6 +203,21 @@ async function getApiRequestSession(req: ApiRequest, res: ApiResponse) {
     }
     throw error;
   }
+}
+
+function sendNccAuthError(error: unknown, res: ApiResponse) {
+  if (!(error instanceof NccAuthError)) return false;
+  const body: Record<string, unknown> = {
+    error:
+      error.status >= 500
+        ? "NCC EMS is temporarily unavailable."
+        : error.message,
+  };
+  if (error.status === 422 && error.details !== undefined) {
+    body.details = error.details;
+  }
+  res.status(error.status).json(body);
+  return true;
 }
 
 function isPlatformRecordType(value: unknown): value is PlatformRecordType {
@@ -277,12 +318,25 @@ export function registerApiRoutes(app: ApiApp) {
     }
     res.status(403).json({ error: "Missing first-party request header." });
   });
+  app.use("/api", (req, res, next) => {
+    if (
+      ["GET", "HEAD", "OPTIONS"].includes(req.method) ||
+      !nccStaffAuthEnabled() ||
+      !hasNccAuthCookie(req) ||
+      (req.path ?? "").startsWith("/auth/")
+    ) {
+      next();
+      return;
+    }
+    res.status(503).json({ error: "NCC workflow cutover is not active." });
+  });
 
   registerNileFormsRoutes(app);
   registerNileRequestsRoutes(app);
   registerMoodleRoutes(app);
   registerMoodleCommandRoutes(app);
   registerIntegrationHealthRoutes(app);
+  registerEmsStagingRoutes(app);
   registerUserInvitationRoutes(app);
 
   app.get("/api/integrations/supabase/status", async (req, res) => {
@@ -309,12 +363,20 @@ export function registerApiRoutes(app: ApiApp) {
     res.json(getEmailIntegrationStatus());
   });
 
+  app.get("/api/auth/mode", (_req, res) => {
+    res.setHeader("Cache-Control", "private, no-store");
+    res.json({
+      staffProvider: nccStaffAuthEnabled() ? "ncc" : "compatibility",
+    });
+  });
+
   app.post("/api/auth/login", async (req, res) => {
     const { email, password, role } = req.body ?? {};
+    const useNcc = nccStaffAuthEnabled() && role !== "student";
     if (
       typeof email !== "string" ||
       typeof password !== "string" ||
-      !isServerRole(role)
+      (!useNcc && !isServerRole(role))
     ) {
       res
         .status(400)
@@ -323,9 +385,19 @@ export function registerApiRoutes(app: ApiApp) {
     }
 
     try {
+      if (useNcc) {
+        const session = await loginNccStaff(email, password, res);
+        res.json(sessionDto(session));
+        return;
+      }
+      if (!isServerRole(role)) {
+        res.status(400).json({ error: "A valid role is required." });
+        return;
+      }
       const session = await signIn(email, password, role);
       res.json(attachSession(res, session));
     } catch (error) {
+      if (sendNccAuthError(error, res)) return;
       if (
         error instanceof SessionRepositoryUnavailableError ||
         error instanceof AuthenticationProviderUnavailableError
@@ -356,6 +428,12 @@ export function registerApiRoutes(app: ApiApp) {
 
   app.post("/api/auth/password-reset/request", (req, res) => {
     const { email, role } = req.body ?? {};
+    if (nccStaffAuthEnabled() && role !== "student") {
+      res.status(503).json({
+        error: "NCC staff password recovery is not available yet.",
+      });
+      return;
+    }
     if (typeof email !== "string") {
       res.status(400).json({ error: "Email is required." });
       return;
@@ -452,24 +530,18 @@ export function registerApiRoutes(app: ApiApp) {
   });
 
   app.get("/api/auth/session", async (req, res) => {
-    const session = await getApiRequestSession(req, res);
-    if (session === sessionRepositoryUnavailable) return;
-    if (!session) {
-      res.json(null);
+    if (nccStaffAuthEnabled() && hasNccAuthCookie(req)) {
+      try {
+        const session = await resolveNccAuthSession(req, res);
+        res.json(session ? sessionDto(session) : null);
+      } catch (error) {
+        if (!sendNccAuthError(error, res)) throw error;
+      }
       return;
     }
-    res.json({
-      userId: session.userId,
-      email: session.email,
-      name: session.name,
-      roles: session.roles,
-      activeRole: session.activeRole,
-      provider: session.provider,
-      authorizationModel: session.authorizationModel ?? "snapshot",
-      branchIds: session.branchIds ?? [],
-      departmentIds: session.departmentIds ?? [],
-      expiresAt: session.expiresAt,
-    });
+    const session = await getApiRequestSession(req, res);
+    if (session === sessionRepositoryUnavailable) return;
+    res.json(session ? sessionDto(session) : null);
   });
 
   app.post("/api/auth/switch-role", async (req, res) => {
@@ -485,9 +557,15 @@ export function registerApiRoutes(app: ApiApp) {
       return;
     }
     try {
+      if (session.provider === "ncc") {
+        const nextSession = await switchNccRole(req, res, role);
+        res.json(sessionDto(nextSession));
+        return;
+      }
       const nextSession = await switchSessionRole(session, role);
       res.json(attachSession(res, nextSession));
     } catch (error) {
+      if (sendNccAuthError(error, res)) return;
       if (
         error instanceof AuthenticationAuthorityError ||
         error instanceof SessionAuthorityDeniedError
@@ -513,11 +591,66 @@ export function registerApiRoutes(app: ApiApp) {
     }
   });
 
+  app.get("/api/auth/workspaces", async (req, res) => {
+    const session = await getApiRequestSession(req, res);
+    if (session === sessionRepositoryUnavailable) return;
+    if (!session) {
+      res.status(401).json({ error: "Sign in required." });
+      return;
+    }
+    if (session.provider !== "ncc") {
+      res.status(404).json({ error: "Workspace selection is unavailable." });
+      return;
+    }
+    try {
+      res.json({ items: await listNccWorkspaces(req, res) });
+    } catch (error) {
+      if (!sendNccAuthError(error, res)) throw error;
+    }
+  });
+
+  app.post("/api/auth/switch-workspace", async (req, res) => {
+    const session = await getApiRequestSession(req, res);
+    if (session === sessionRepositoryUnavailable) return;
+    if (!session) {
+      res.status(401).json({ error: "Sign in required." });
+      return;
+    }
+    if (session.provider !== "ncc") {
+      res.status(404).json({ error: "Workspace selection is unavailable." });
+      return;
+    }
+    const branchId = req.body?.branchId;
+    if (
+      branchId !== null &&
+      (typeof branchId !== "string" || !branchId.trim())
+    ) {
+      res.status(400).json({ error: "A valid branch is required." });
+      return;
+    }
+    try {
+      const nextSession = await switchNccWorkspace(
+        req,
+        res,
+        typeof branchId === "string" ? branchId.trim() : null
+      );
+      res.json(sessionDto(nextSession));
+    } catch (error) {
+      if (!sendNccAuthError(error, res)) throw error;
+    }
+  });
+
   app.post("/api/auth/logout", async (req, res) => {
     try {
+      if (nccStaffAuthEnabled() && hasNccAuthCookie(req)) {
+        await logoutNccSession(req, res);
+        res.json({ ok: true });
+        return;
+      }
       await endRequestSession(req, res);
       res.json({ ok: true });
     } catch (error) {
+      if (sendNccAuthError(error, res)) return;
       if (error instanceof SessionRepositoryUnavailableError) {
         res
           .status(503)

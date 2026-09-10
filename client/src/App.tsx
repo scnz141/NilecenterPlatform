@@ -279,6 +279,9 @@ function Router() {
         <Route path="/auth/select-role">
           <AuthFlowPage mode="select-role" />
         </Route>
+        <Route path="/auth/select-workspace">
+          <AuthFlowPage mode="select-workspace" />
+        </Route>
         <Route path="/auth/logout">
           <AuthFlowPage mode="logout" />
         </Route>

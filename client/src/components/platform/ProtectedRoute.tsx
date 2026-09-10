@@ -1,17 +1,34 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { Link } from "wouter";
 import { LockKeyhole, ShieldAlert } from "lucide-react";
-import { canAccessRole, getStoredRole, refreshServerSession } from "@/lib/auth/session";
+import {
+  canAccessRole,
+  getStoredRole,
+  refreshServerSession,
+} from "@/lib/auth/session";
 import { fetchPlatformStateRequest } from "@/lib/backend/api";
 import { platformStore } from "@/lib/domain/store";
 import { roleMeta, type Role } from "@/lib/platformData";
 import { canOpenPage, getRequiredPermissionForPage } from "@/lib/rbac";
 
-export default function ProtectedRoute({ role, pageId = "dashboard", children }: { role: Role; pageId?: string; children: ReactNode }) {
-  const [activeRole, setActiveRole] = useState<Role | null>(() => getStoredRole());
+export default function ProtectedRoute({
+  role,
+  pageId = "dashboard",
+  children,
+}: {
+  role: Role;
+  pageId?: string;
+  children: ReactNode;
+}) {
+  const [activeRole, setActiveRole] = useState<Role | null>(() =>
+    getStoredRole()
+  );
   const [checkedSession, setCheckedSession] = useState(false);
-  const [scopeStatus, setScopeStatus] = useState<"loading" | "ready" | "error">("loading");
+  const [scopeStatus, setScopeStatus] = useState<"loading" | "ready" | "error">(
+    "loading"
+  );
   const [scopeError, setScopeError] = useState("");
+  const [workspaceRequired, setWorkspaceRequired] = useState(false);
   const [hydratedRole, setHydratedRole] = useState<Role | null>(null);
   const [retryVersion, setRetryVersion] = useState(0);
 
@@ -23,6 +40,7 @@ export default function ProtectedRoute({ role, pageId = "dashboard", children }:
     const hydrateScope = async () => {
       setScopeStatus("loading");
       setScopeError("");
+      setWorkspaceRequired(false);
       setHydratedRole(null);
       const session = await refreshServerSession();
       if (cancelled) return;
@@ -32,17 +50,30 @@ export default function ProtectedRoute({ role, pageId = "dashboard", children }:
       if (!session) {
         if (storedRole) {
           setScopeStatus("error");
-          setScopeError("The authenticated server session could not be verified.");
+          setScopeError(
+            "The authenticated server session could not be verified."
+          );
         } else {
           setScopeStatus("ready");
         }
+        return;
+      }
+      if (
+        session.provider === "ncc" &&
+        ["branchadmin", "registrar"].includes(session.activeRole) &&
+        !session.workspaceBranchId
+      ) {
+        setWorkspaceRequired(true);
+        setScopeStatus("ready");
         return;
       }
       const response = await fetchPlatformStateRequest();
       if (cancelled) return;
       if (!response.ok || !response.data) {
         setScopeStatus("error");
-        setScopeError(response.error ?? "The scoped workspace could not be loaded.");
+        setScopeError(
+          response.error ?? "The scoped workspace could not be loaded."
+        );
         return;
       }
       platformStore.setState(response.data.state);
@@ -60,13 +91,44 @@ export default function ProtectedRoute({ role, pageId = "dashboard", children }:
   if (
     !checkedSession ||
     (activeRole &&
+      !workspaceRequired &&
       (scopeStatus === "loading" ||
         (scopeStatus === "ready" && hydratedRole !== activeRole)))
   ) {
     return (
       <main className="platform-route-loading" aria-live="polite">
         <span />
-        <strong>{checkedSession ? "Loading scoped workspace" : "Checking session"}</strong>
+        <strong>
+          {checkedSession ? "Loading scoped workspace" : "Checking session"}
+        </strong>
+      </main>
+    );
+  }
+
+  if (activeRole && workspaceRequired) {
+    return (
+      <main className="auth-flow-page">
+        <section className="platform-access-denied" role="status">
+          <span>
+            <ShieldAlert size={26} />
+          </span>
+          <h1>Choose a branch</h1>
+          <p>
+            Select the branch you are working with before opening this
+            workspace.
+          </p>
+          <div>
+            <Link
+              href="/auth/select-workspace"
+              className="platform-primary-button"
+            >
+              Choose branch
+            </Link>
+            <Link href="/auth/logout" className="platform-secondary-button">
+              Sign out
+            </Link>
+          </div>
+        </section>
       </main>
     );
   }

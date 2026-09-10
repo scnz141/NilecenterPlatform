@@ -9,6 +9,7 @@ import {
   logoutRequest,
   signInRequest,
   switchRoleRequest,
+  switchWorkspaceRequest,
   type AuthSessionDto,
 } from "@/lib/backend/api";
 
@@ -39,6 +40,21 @@ export async function setStoredRole(role: Role) {
     return {
       ok: false as const,
       error: result.error ?? "Role switching failed.",
+    };
+  }
+  setStoredAuthSession(result.data);
+  return { ok: true as const, session: result.data };
+}
+
+export async function setStoredWorkspace(branchId: string) {
+  if (typeof window === "undefined") {
+    return { ok: false as const, error: "Browser session is unavailable." };
+  }
+  const result = await switchWorkspaceRequest(branchId);
+  if (!result.ok || !result.data) {
+    return {
+      ok: false as const,
+      error: result.error ?? "Workspace selection failed.",
     };
   }
   setStoredAuthSession(result.data);
@@ -95,7 +111,7 @@ export async function clearStoredSession() {
 export async function signInWithPassword(
   email: string,
   password: string,
-  role: Role
+  role?: Role
 ) {
   const result = await signInRequest({ email, password, role });
   if (result.ok && result.data) {

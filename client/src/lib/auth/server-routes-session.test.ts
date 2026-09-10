@@ -26,8 +26,27 @@ type RouteHandler = (
 function captureRoutes() {
   const getRoutes = new Map<string, RouteHandler>();
   const postRoutes = new Map<string, RouteHandler>();
+  const middlewares: Array<{
+    path?: string;
+    handler: (request: unknown, response: unknown, next: () => void) => unknown;
+  }> = [];
   const app = {
-    use: vi.fn(),
+    use(
+      pathOrHandler:
+        | string
+        | ((request: unknown, response: unknown, next: () => void) => unknown),
+      maybeHandler?: (
+        request: unknown,
+        response: unknown,
+        next: () => void
+      ) => unknown
+    ) {
+      middlewares.push(
+        typeof pathOrHandler === "string"
+          ? { path: pathOrHandler, handler: maybeHandler! }
+          : { handler: pathOrHandler }
+      );
+    },
     get(path: string, handler: RouteHandler) {
       getRoutes.set(path, handler);
     },
@@ -36,7 +55,7 @@ function captureRoutes() {
     },
   };
   registerApiRoutes(app as never);
-  return { getRoutes, postRoutes };
+  return { getRoutes, postRoutes, middlewares };
 }
 
 function request(method: string, body: Record<string, unknown> = {}) {
@@ -580,6 +599,151 @@ describe("API login outcome classification", () => {
       status: 503,
       body: { error: "Sign in is temporarily unavailable." },
     });
+  });
+});
+
+describe("API NCC staff authentication boundary", () => {
+  function configureNccAuth() {
+    vi.stubEnv("NILE_NCC_STAFF_AUTH_ENABLED", "1");
+    vi.stubEnv("EMS_STAGING_BASE_URL", "https://staging.example/api");
+    vi.stubEnv("EMS_STAGING_ALLOWED_HOSTS", "staging.example");
+    vi.stubEnv(
+      "EMS_SESSION_SEAL_KEY",
+      "test-only-ncc-auth-session-key-32-characters"
+    );
+    vi.stubEnv("SUPABASE_URL", "");
+    vi.stubEnv("VITE_SUPABASE_URL", "");
+    vi.stubEnv("SUPABASE_PUBLISHABLE_KEY", "");
+    vi.stubEnv("VITE_SUPABASE_PUBLISHABLE_KEY", "");
+  }
+
+  it("reports the NCC staff provider without exposing configuration", async () => {
+    configureNccAuth();
+    const { getRoutes } = captureRoutes();
+    const { response, result } = responseRecorder();
+
+    await getRoutes.get("/api/auth/mode")?.(request("GET"), response);
+
+    expect(result).toEqual({
+      status: 200,
+      body: { staffProvider: "ncc" },
+    });
+  });
+
+  it("blocks non-auth mutations while NCC workflow families are disabled", async () => {
+    configureNccAuth();
+    const { middlewares } = captureRoutes();
+    const nccBoundary = middlewares.filter(item => item.path === "/api")[1];
+    const { response, result } = responseRecorder();
+    const next = vi.fn();
+
+    await nccBoundary?.handler(
+      {
+        ...request("POST"),
+        path: "/platform/state/actions",
+        headers: { cookie: "nilelearn_ncc_session=sealed" },
+      },
+      response,
+      next
+    );
+
+    expect(next).not.toHaveBeenCalled();
+    expect(result).toEqual({
+      status: 503,
+      body: { error: "NCC workflow cutover is not active." },
+    });
+  });
+
+  it("derives the staff role from NCC and returns no browser token", async () => {
+    configureNccAuth();
+    const fetcher = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            access_token: "ncc-access-token",
+            refresh_token: "ncc-refresh-token",
+            access_token_expires_at: "2099-01-01T00:15:00Z",
+            refresh_token_expires_at: "2099-02-01T00:00:00Z",
+            session_id: "ncc-session-1",
+            user: {},
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } }
+        )
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            session_id: "ncc-session-1",
+            user: {
+              id: "ncc-user-1",
+              email: "admin@example.test",
+              assigned_role: "super_admin",
+              status: "active",
+              is_active: true,
+              profile: { first_name: "NCC", last_name: "Admin" },
+              departments: null,
+            },
+            assigned_role: "super_admin",
+            active_role: "super_admin",
+            workspace_branch_id: null,
+            scopes: [{ scope_type: "global", scope_id: null, is_live: true }],
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } }
+        )
+      );
+    vi.stubGlobal("fetch", fetcher);
+    const { postRoutes } = captureRoutes();
+    const { headers, response, result } = responseRecorder();
+
+    await postRoutes.get("/api/auth/login")?.(
+      request("POST", {
+        email: "admin@example.test",
+        password: "test-password",
+        role: "teacher",
+      }),
+      response
+    );
+
+    expect(result).toMatchObject({
+      status: 200,
+      body: {
+        userId: "ncc-user-1",
+        activeRole: "superadmin",
+        assignedRole: "superadmin",
+        provider: "ncc",
+        authorizationModel: "external",
+      },
+    });
+    expect(result.body).not.toHaveProperty("accessToken");
+    expect(result.body).not.toHaveProperty("refreshToken");
+    expect(JSON.stringify(headers.get("Set-Cookie"))).not.toContain(
+      "ncc-access-token"
+    );
+  });
+
+  it("keeps Student login on the compatibility boundary", async () => {
+    configureNccAuth();
+    vi.stubEnv("DEMO_AUTH_ENABLED", "true");
+    vi.stubEnv("NILE_DEMO_PASSWORD", "test-password");
+    vi.stubEnv("NILE_PLATFORM_STATE_LOCAL_ONLY", "1");
+    const { postRoutes } = captureRoutes();
+    const { headers, response, result } = responseRecorder();
+
+    await postRoutes.get("/api/auth/login")?.(
+      request("POST", {
+        email: "s@nl.test",
+        password: "test-password",
+        role: "student",
+      }),
+      response
+    );
+
+    expect(result).toMatchObject({
+      status: 200,
+      body: { activeRole: "student", provider: "demo" },
+    });
+    expect(headers.get("Set-Cookie")).toContain("nilelearn_session=");
   });
 });
 

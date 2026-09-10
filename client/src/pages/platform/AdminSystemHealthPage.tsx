@@ -12,6 +12,10 @@ import {
   type InsightPoint,
 } from "@/components/platform/PortalInsights";
 import { runPlatformWorkflowActionRequest } from "@/lib/backend/api";
+import {
+  emsStagingStatusRequest,
+  type EmsStagingStatus,
+} from "@/lib/backend/emsStaging";
 import { platformStore } from "@/lib/domain/store";
 import type { IntegrationStatus } from "@/lib/domain/types";
 
@@ -35,6 +39,11 @@ export default function AdminSystemHealthPage() {
   const [version, setVersion] = useState(0);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [stagingStatus, setStagingStatus] = useState<EmsStagingStatus | null>(
+    null
+  );
+  const [stagingChecking, setStagingChecking] = useState(false);
+  const [stagingError, setStagingError] = useState("");
   const state = useMemo(() => platformStore.getState(), [version]);
   const integrations = state.integrations;
 
@@ -140,6 +149,19 @@ export default function AdminSystemHealthPage() {
       description: `System health check scored ${healthScore}%.`,
     });
   };
+  const probeStaging = async () => {
+    if (stagingChecking) return;
+    setStagingChecking(true);
+    setStagingError("");
+    const response = await emsStagingStatusRequest();
+    setStagingChecking(false);
+    if (!response.ok || !response.data) {
+      const message = response.error ?? "Staging probe failed.";
+      setStagingError(message);
+      return;
+    }
+    setStagingStatus(response.data);
+  };
 
   return (
     <PlatformShell role="superadmin" title="System health">
@@ -215,6 +237,67 @@ export default function AdminSystemHealthPage() {
                     </div>
                   </article>
                 ))}
+              </div>
+            </DataTableCard>
+            <DataTableCard
+              title="NCC EMS staging"
+              subtitle={
+                stagingStatus
+                  ? stagingStatus.configured
+                    ? stagingStatus.reachable
+                      ? "API reachable"
+                      : "Configured but unavailable"
+                    : "Server configuration required"
+                  : "Server-derived transport readiness"
+              }
+              className="admin-health-staging-card"
+            >
+              <div
+                className="admin-health-staging"
+                data-testid="admin-health-staging"
+              >
+                {stagingError ? (
+                  <div className="admin-system-result error" role="alert">
+                    <strong>Staging probe failed</strong>
+                    <span>{stagingError}</span>
+                  </div>
+                ) : null}
+                <button
+                  type="button"
+                  className="platform-secondary-button"
+                  onClick={() => void probeStaging()}
+                  disabled={stagingChecking}
+                >
+                  {stagingChecking ? "Probing" : "Probe staging"}
+                </button>
+                {stagingStatus ? (
+                  <dl className="admin-record-list-facts">
+                    <div>
+                      <dt>API configuration</dt>
+                      <dd>{stagingStatus.configured ? "Ready" : "Not set"}</dd>
+                    </div>
+                    <div>
+                      <dt>Transport</dt>
+                      <dd>
+                        {stagingStatus.reachable ? "Reachable" : "Unavailable"}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>Session protection</dt>
+                      <dd>
+                        {stagingStatus.sessionProtectionConfigured
+                          ? "Ready"
+                          : "Not set"}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>Staff session</dt>
+                      <dd>
+                        {stagingStatus.linked ? "Verified" : "Not verified"}
+                      </dd>
+                    </div>
+                  </dl>
+                ) : null}
               </div>
             </DataTableCard>
           </div>

@@ -6,12 +6,12 @@ describe that run's evidence and do not restrict the current sandbox order.
 
 Nile Learn is currently in internal alpha stabilization. The protected portal QA baseline is:
 
-- Portal QA: 1,663 checks, 0 failures.
-- Checked at: `2026-07-24T21:13:02.768Z`.
-- Validation command:
-  `QA_OUTPUT_DIR=output/playwright/phases7-10-acceptance-20260724 scripts/verify.sh`.
-- QA summary artifact:
-  `output/playwright/phases7-10-acceptance-20260724/portal-qa-summary.json`.
+- Portal QA: 1,667 checks, 0 failures.
+- Checked at: `2026-09-10T12:26:03.547Z`.
+- Validation command: `scripts/verify.sh`.
+- QA summary artifact: `output/playwright/portal-qa-summary.json`.
+- Artifact SHA-256:
+  `d2b2075d35adb6e8298b48cf04844e9c56f038905739642eeb967fd4f11f64db`.
 
 `docs/NILE_LEARN_MASTER_PLAN.md` defines the next architecture phases, and
 `docs/MODERNIZATION_EXECUTION_CONTRACT.md` defines how this baseline is
@@ -19,7 +19,35 @@ protected during each slice.
 
 ## Latest Preservation Evidence
 
-The bounded Phase 7-10 authority and UI checkpoint is accepted locally:
+The bounded NCC staff-auth and shell-session foundation is accepted locally:
+
+- Staff authentication is disabled by default behind
+  `NILE_NCC_STAFF_AUTH_ENABLED` and uses only an allowlisted HTTPS NCC host.
+- Administration login submits no browser role claim in NCC mode. Identity,
+  active role, assigned role, branch workspace, and department scope come from
+  the verified NCC `/auth/me` response.
+- NCC access and rotating refresh tokens are AES-256-GCM sealed in a Secure,
+  HttpOnly, SameSite cookie and never enter JavaScript-accessible storage or API
+  response DTOs.
+- Session resolution revalidates `/auth/me`; role and workspace switches update
+  the sealed authority; logout revokes remotely before clearing the cookie.
+- Student authentication remains on the compatibility boundary. NCC-authenticated
+  operational writes fail closed until an endpoint family receives a separate
+  cutover approval.
+- The dedicated branch selection route adds four protected auth-route checks and
+  intentionally establishes the 1,667/0 baseline.
+- TypeScript, 1,056 unit tests across 80 files, the production build, every local
+  integration/database contract, desktop/mobile route QA, and 1,667 portal checks
+  pass with 0 failures.
+- Checked at: `2026-09-10T12:26:03.547Z`.
+- QA summary artifact: `output/playwright/portal-qa-summary.json`.
+- Artifact SHA-256:
+  `d2b2075d35adb6e8298b48cf04844e9c56f038905739642eeb967fd4f11f64db`.
+- No live NCC credential, portal data family, operational write, Moodle write, or
+  production runtime default was activated.
+
+The earlier bounded Phase 7-10 authority and UI checkpoint remains accepted
+historical evidence:
 
 - Teacher assessment, quiz, question-bank, and grading routes now state and
   enforce Moodle ownership instead of presenting Nile-native learning writes.

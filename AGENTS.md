@@ -64,17 +64,19 @@ Do not duplicate or infer that status in companion files.
 
 Current QA baseline:
 
-- Portal QA: 1,663 checks, 0 failures.
+- Portal QA: 1,667 checks, 0 failures.
 - This baseline must not be broken.
 
 ### Frontend And Backend Team Boundary
 
 The Nile Learn implementation is now split between separate frontend and
 backend teams. This repository's active product work is frontend integration.
-The external NCC EMS backend team owns the staging API documented at
+Under ADR-012, the external NCC EMS backend team owns the target production
+staff, session, and operational backend exposed through the staging API at
 `https://ncc-ems-staging.enesekremergunesh.com/api/docs`.
 
-- Do not expand the compatibility server into a competing production backend.
+- Keep the local server as a thin same-origin transport adapter; do not expand
+  it into a competing production backend.
 - Treat the published OpenAPI document as the transport contract, but validate
   it against `docs/BACKEND_API_ENDPOINT_REQUIREMENTS.md` before wiring a route.
 - Existing `server/` code remains compatibility and contract evidence until an
@@ -86,18 +88,22 @@ The external NCC EMS backend team owns the staging API documented at
 Current priority:
 
 1. Preserve clean portal QA.
-2. Finalize authority, architecture, migration, and agent contracts.
-3. Normalize identity, role grants, scopes, audit, and external mappings.
-4. Make production sessions durable before normalized workflow writes.
-5. Migrate repositories and workflows in small verified slices.
-6. Implement full Moodle sandbox CRUD through the approved command contract,
-   while keeping production activation phase-gated.
-7. Improve UI route by route after each workflow is stable.
+2. Apply ADR-012: use NCC EMS as the target staff/session/operational backend
+   without turning this repository into a competing production backend.
+3. Replace the diagnostic process-memory EMS token bridge with a durable,
+   same-origin, HttpOnly staff-session boundary.
+4. Prove endpoint-family parity, role/scope denial, idempotency, concurrency,
+   audit, and rollback before each route-family cutover.
+5. Migrate Super Admin, Registrar, Branch Admin, HOD, Teacher, and then Student
+   workflows in small verified slices; Student waits for the NCC student API.
+6. Preserve Moodle ownership and complete Moodle sandbox CRUD through the
+   approved command contract while production activation remains phase-gated.
+7. Improve UI route by route only after each authoritative workflow is stable.
 
 Do not implement outside an explicitly approved master-plan phase:
 
 - unreviewed production Moodle activation or direct browser-to-Moodle writes
-- recurring/live EMS sync or EMS writeback
+- recurring legacy-EMS sync or legacy-EMS writeback
 - payment gateway
 - real email/SMS/WhatsApp sending
 - meeting provider
@@ -202,6 +208,7 @@ Supported roles:
 - Never commit `.env` files.
 - Treat `VITE_*` values as browser-public.
 - Server-only keys and external provider tokens must stay server-side.
+- NCC access and refresh tokens must not enter JavaScript-accessible browser storage; staff sessions use the approved same-origin HttpOnly boundary.
 - Current client role selection/localStorage guards are demo UX only, not a production authorization boundary.
 - Every protected route must enforce RBAC.
 - Every server action/API endpoint must check permissions.
@@ -364,7 +371,7 @@ Use the commands that exist in `package.json`:
   drills rollback/reapply, invalidates the temporary fake login, and writes
   redacted evidence. It must never target production or enable Moodle calls,
   Moodle writes, or the normalized runtime.
-- Plain `scripts/verify.sh` is the final gate. It rejects portal filters/skips and asserts the protected `1,663/0` summary.
+- Plain `scripts/verify.sh` is the final gate. It rejects portal filters/skips and asserts the protected `1,667/0` summary.
 - `FULL_FORMAT_CHECK=1 scripts/verify.sh` runs the repo-wide Prettier audit. Use this intentionally because the current app has existing formatting drift.
 - `npm run qa:portals` for portal route QA when browser/runtime context is available.
 - `npm run seed:supabase` only when explicitly working on Supabase demo seeding.

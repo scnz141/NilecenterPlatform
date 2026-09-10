@@ -5,6 +5,7 @@ const backendMocks = vi.hoisted(() => ({
   logoutRequest: vi.fn(),
   signInRequest: vi.fn(),
   switchRoleRequest: vi.fn(),
+  switchWorkspaceRequest: vi.fn(),
 }));
 
 vi.mock("@/lib/backend/api", () => ({
@@ -12,6 +13,7 @@ vi.mock("@/lib/backend/api", () => ({
   logoutRequest: backendMocks.logoutRequest,
   signInRequest: backendMocks.signInRequest,
   switchRoleRequest: backendMocks.switchRoleRequest,
+  switchWorkspaceRequest: backendMocks.switchWorkspaceRequest,
 }));
 
 import {
@@ -19,6 +21,7 @@ import {
   getActiveUser,
   refreshServerSession,
   setStoredRole,
+  setStoredWorkspace,
   signInWithPassword,
 } from "@/lib/auth/session";
 
@@ -75,6 +78,7 @@ describe("clearStoredSession", () => {
     backendMocks.logoutRequest.mockReset();
     backendMocks.signInRequest.mockReset();
     backendMocks.switchRoleRequest.mockReset();
+    backendMocks.switchWorkspaceRequest.mockReset();
   });
 
   afterEach(async () => {
@@ -149,6 +153,7 @@ describe("getActiveUser", () => {
     backendMocks.logoutRequest.mockReset();
     backendMocks.signInRequest.mockReset();
     backendMocks.switchRoleRequest.mockReset();
+    backendMocks.switchWorkspaceRequest.mockReset();
   });
 
   afterEach(async () => {
@@ -231,6 +236,52 @@ describe("getActiveUser", () => {
     expect(getActiveUser()).toMatchObject({
       activeRole: "superadmin",
       id: studentSession.userId,
+    });
+  });
+
+  it("updates the active NCC workspace only after server confirmation", async () => {
+    installWindow();
+    backendMocks.fetchSessionRequest.mockResolvedValue({
+      ok: true,
+      data: {
+        ...studentSession,
+        userId: "ncc-registrar",
+        roles: ["registrar"],
+        activeRole: "registrar",
+        assignedRole: "registrar",
+        workspaceBranchId: null,
+        provider: "ncc",
+        authorizationModel: "external",
+      },
+    });
+    await refreshServerSession();
+    const nextSession = {
+      ...studentSession,
+      userId: "ncc-registrar",
+      roles: ["registrar"] as const,
+      activeRole: "registrar" as const,
+      assignedRole: "registrar" as const,
+      workspaceBranchId: "branch-1",
+      provider: "ncc" as const,
+      authorizationModel: "external" as const,
+      branchIds: ["branch-1"],
+    };
+    backendMocks.switchWorkspaceRequest.mockResolvedValue({
+      ok: true,
+      data: nextSession,
+    });
+
+    await expect(setStoredWorkspace("branch-1")).resolves.toMatchObject({
+      ok: true,
+      session: nextSession,
+    });
+    expect(backendMocks.switchWorkspaceRequest).toHaveBeenCalledWith(
+      "branch-1"
+    );
+    expect(getActiveUser()).toMatchObject({
+      id: "ncc-registrar",
+      activeRole: "registrar",
+      branch: "Assigned branch",
     });
   });
 
