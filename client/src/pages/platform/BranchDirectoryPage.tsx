@@ -1,7 +1,8 @@
-import { requireActiveUser } from "@/lib/auth/session";
-import { useMemo, useState } from "react";
+import { getStoredAuthSession, requireActiveUser } from "@/lib/auth/session";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { ArrowRight, Plus, Search } from "lucide-react";
 import { Link } from "wouter";
+import NccReadStatus from "@/components/platform/NccReadStatus";
 import OperationalDirectoryTable from "@/components/platform/OperationalDirectoryTable";
 import PlatformShell from "@/components/platform/PlatformShell";
 import { WorkspaceLayout } from "@/components/platform/PlatformLayouts";
@@ -9,6 +10,16 @@ import {
   DataTableCard,
   StatusBadge,
 } from "@/components/platform/PlatformPrimitives";
+import {
+  fetchNccClassesRequest,
+  fetchNccDirectoryBranchesRequest,
+  fetchNccDirectoryUsersRequest,
+  fetchNccStudentsRequest,
+} from "@/lib/backend/api";
+import {
+  classifyNccFailure,
+  type NccReadState,
+} from "@/lib/backend/nccReadState";
 import { platformStore } from "@/lib/domain/store";
 
 type BranchDirectoryView = "students" | "teachers" | "classes";
@@ -66,6 +77,240 @@ function statusTone(status: string): "green" | "amber" | "red" | "slate" {
 }
 
 export default function BranchDirectoryPage({
+  view,
+}: {
+  view: BranchDirectoryView;
+}) {
+  return getStoredAuthSession()?.provider === "ncc" ? (
+    <NccBranchDirectoryPage view={view} />
+  ) : (
+    <CompatibilityBranchDirectoryPage view={view} />
+  );
+}
+
+function NccBranchDirectoryPage({ view }: { view: BranchDirectoryView }) {
+  const [query, setQuery] = useState("");
+  const [status, setStatus] = useState("all");
+  const [readState, setReadState] = useState<NccReadState<DirectoryRow[]>>({
+    status: "loading",
+  });
+  const load = useCallback(async () => {
+    setReadState({ status: "loading" });
+    if (view === "students") {
+      const result = await fetchNccStudentsRequest();
+      setReadState(
+        result.ok && result.data
+          ? {
+              status: "ready",
+              data: result.data.items.map(student => ({
+                id: student.id,
+                name: student.name,
+                detail: student.email,
+                scope: student.branchName,
+                status: student.status,
+                metric: student.moodleLinked
+                  ? "Moodle linked"
+                  : "No Moodle account",
+              })),
+            }
+          : classifyNccFailure(result)
+      );
+      return;
+    }
+    if (view === "teachers") {
+      const [usersResult, branchesResult] = await Promise.all([
+        fetchNccDirectoryUsersRequest(),
+        fetchNccDirectoryBranchesRequest(),
+      ]);
+      const failed = [usersResult, branchesResult].find(result => !result.ok);
+      if (failed || !usersResult.data || !branchesResult.data) {
+        setReadState(
+          classifyNccFailure(
+            failed ?? { error: "EMS teacher data returned no records." }
+          )
+        );
+        return;
+      }
+      const branches = branchesResult.data.items;
+      setReadState({
+        status: "ready",
+        data: usersResult.data.items
+          .filter(user => user.role === "teacher")
+          .map(user => {
+            const branchNames = branches
+              .filter(branch => user.branchIds.includes(branch.id))
+              .map(branch => branch.name)
+              .join(", ");
+            return {
+              id: user.id,
+              name: user.name,
+              detail: user.email,
+              scope: branchNames || "Assigned branch",
+              status: user.status,
+              metric: user.lastLoginAt
+                ? `Signed in ${new Date(user.lastLoginAt).toLocaleDateString()}`
+                : "Never signed in",
+            };
+          }),
+      });
+      return;
+    }
+    const result = await fetchNccClassesRequest();
+    setReadState(
+      result.ok && result.data
+        ? {
+            status: "ready",
+            data: result.data.items.map(item => ({
+              id: item.id,
+              name: item.name,
+              detail: item.courseName,
+              scope: item.defaultRoomName ?? item.branchName,
+              status: item.status,
+              metric: `${item.activeEnrolmentCount}/${item.capacity} enrolled`,
+            })),
+          }
+        : classifyNccFailure(result)
+    );
+  }, [view]);
+  useEffect(() => {
+    void load();
+  }, [load]);
+  const rows = readState.status === "ready" ? readState.data : [];
+  const statuses = Array.from(new Set(rows.map(row => row.status)));
+  const filteredRows = rows.filter(row => {
+    const text =
+      `${row.name} ${row.detail} ${row.scope} ${row.status} ${row.metric}`.toLowerCase();
+    return (
+      (!query.trim() || text.includes(query.trim().toLowerCase())) &&
+      (status === "all" || row.status === status)
+    );
+  });
+  const copy = viewCopy[view];
+  const action =
+    view === "classes" ? (
+      <div className="platform-page-actions">
+        <Link className="platform-secondary-button" href="/app/branch/schedule">
+          Open schedule
+          <ArrowRight size={15} />
+        </Link>
+        <Link className="platform-primary-button" href="/app/branch/classes/new">
+          <Plus size={15} />
+          New class
+        </Link>
+      </div>
+    ) : null;
+
+  return (
+    <PlatformShell role="branchadmin" title={copy.title}>
+      <WorkspaceLayout
+        className="branch-directory-page"
+        title={copy.title}
+        description={copy.description}
+        context="EMS"
+        actions={action}
+        toolbar={
+          readState.status === "ready" ? (
+            <div
+              className="branch-compact-toolbar branch-directory-toolbar-v3"
+              data-testid={`branch-${view}-toolbar`}
+            >
+              <label>
+                Search
+                <span>
+                  <Search size={15} />
+                  <input
+                    value={query}
+                    onChange={event => setQuery(event.target.value)}
+                    placeholder={`Search ${copy.title.toLowerCase()}`}
+                  />
+                </span>
+              </label>
+              <label>
+                Status
+                <select
+                  value={status}
+                  onChange={event => setStatus(event.target.value)}
+                >
+                  <option value="all">All statuses</option>
+                  {statuses.map(item => (
+                    <option key={item} value={item}>
+                      {humanize(item)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+          ) : undefined
+        }
+        main={
+          readState.status !== "ready" ? (
+            <NccReadStatus state={readState} onRetry={() => void load()} />
+          ) : (
+            <DataTableCard
+              title={copy.title}
+              subtitle={`${filteredRows.length} records`}
+              className="platform-directory-card branch-directory-card-v2"
+            >
+              <div
+                className="platform-directory-table-wrap"
+                data-testid={`branch-${view}-list`}
+              >
+                {filteredRows.length ? (
+                  <OperationalDirectoryTable
+                    rows={filteredRows}
+                    rowKey={row => row.id}
+                    columns={[
+                      {
+                        key: "name",
+                        label: "Name",
+                        render: row => <strong>{row.name}</strong>,
+                      },
+                      {
+                        key: "detail",
+                        label: "Details",
+                        render: row => row.detail,
+                      },
+                      {
+                        key: "scope",
+                        label: "Scope",
+                        render: row => row.scope,
+                      },
+                      {
+                        key: "status",
+                        label: "Status",
+                        render: row => (
+                          <StatusBadge tone={statusTone(row.status)}>
+                            {humanize(row.status)}
+                          </StatusBadge>
+                        ),
+                      },
+                      {
+                        key: "metric",
+                        label: "Summary",
+                        render: row => row.metric,
+                      },
+                    ]}
+                    action={{
+                      href: () => undefined,
+                      label: row => row.name,
+                    }}
+                  />
+                ) : (
+                  <div className="platform-empty-state">
+                    <strong>{copy.empty}</strong>
+                    <span>Try a different search or status filter.</span>
+                  </div>
+                )}
+              </div>
+            </DataTableCard>
+          )
+        }
+      />
+    </PlatformShell>
+  );
+}
+
+function CompatibilityBranchDirectoryPage({
   view,
 }: {
   view: BranchDirectoryView;

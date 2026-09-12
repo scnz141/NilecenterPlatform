@@ -5,8 +5,15 @@ import {
   extractTokens,
   mapEmsRoleToLocal,
   mapLocalRoleToEms,
+  normalizeEmsClass,
+  normalizeEmsLead,
   normalizeEmsMe,
+  normalizeEmsPlacementTest,
+  normalizeEmsRooms,
   normalizeEmsStaffUsers,
+  normalizeEmsStudent,
+  normalizeEmsStudentEnrolments,
+  normalizeEmsTeacherWorkspace,
   resolveEmsStagingConfig,
   translateEmsError,
 } from "../../../../server/emsStagingClient";
@@ -302,6 +309,230 @@ describe("EMS staging payload guards", () => {
     ]);
     expect(
       normalizeEmsStaffUsers([{ ...row, departments: "x" }])
+    ).toBeNull();
+  });
+});
+
+describe("EMS operational payload guards", () => {
+  const student = {
+    id: "student-1",
+    first_name: "Nile",
+    last_name: "Student",
+    email: "student@example.test",
+    branch_id: "branch-1",
+    branch_name: "Cairo",
+    status: "active",
+    created_at: "2026-09-01T10:00:00Z",
+    updated_at: "2026-09-12T10:00:00Z",
+  };
+
+  const lead = {
+    id: "lead-1",
+    first_name: "Nile",
+    last_name: "Lead",
+    email: "lead@example.test",
+    branch_id: "branch-1",
+    branch_name: "Cairo",
+    status: "new",
+    created_at: "2026-09-01T10:00:00Z",
+    updated_at: "2026-09-12T10:00:00Z",
+  };
+
+  const placement = {
+    id: "placement-1",
+    branch_id: "branch-1",
+    branch_name: "Cairo",
+    subject: {
+      subject_type: "lead",
+      subject_id: "lead-1",
+      first_name: "Nile",
+      last_name: "Lead",
+      email: "lead@example.test",
+    },
+    scheduled_at: null,
+    status: "scheduled",
+    created_at: null,
+    updated_at: null,
+  };
+
+  const classRow = {
+    id: "class-1",
+    name: "Arabic A",
+    course_id: "course-1",
+    course_name: "Arabic",
+    department_id: "department-1",
+    department_name: "Languages",
+    branch_id: "branch-1",
+    branch_name: "Cairo",
+    capacity: 20,
+    start_at: "2026-09-01T10:00:00Z",
+    end_at: "2026-12-01T10:00:00Z",
+    teachers: [
+      {
+        id: "teacher-1",
+        first_name: "Nile",
+        last_name: "Teacher",
+        email: "teacher@example.test",
+      },
+      {
+        id: "teacher-2",
+        first_name: "Second",
+        last_name: "Teacher",
+        email: "teacher2@example.test",
+      },
+    ],
+    schedule_days_of_week: null,
+    status: "active",
+    active_enrolment_count: 8,
+    created_at: "2026-09-01T10:00:00Z",
+    updated_at: "2026-09-12T10:00:00Z",
+  };
+
+  it("normalizes students with absent optionals and rejects wrong field types", () => {
+    expect(normalizeEmsStudent(student)).toMatchObject({
+      name: "Nile Student",
+      phone: null,
+      dateOfBirth: null,
+      moodleLinked: false,
+      guardian: null,
+    });
+    expect(normalizeEmsStudent({ ...student, email: 4 })).toBeNull();
+  });
+
+  it("normalizes enrolment class summaries and rejects malformed summaries", () => {
+    const enrolment = {
+      student_id: "student-1",
+      class_id: "class-1",
+      status: "active",
+      class_summary: {
+        class_name: "Arabic A",
+        branch_id: "branch-1",
+        branch_name: "Cairo",
+        course_id: "course-1",
+        course_name: "Arabic",
+        start_at: "2026-09-01T10:00:00Z",
+        end_at: "2026-12-01T10:00:00Z",
+        class_status: "active",
+      },
+    };
+    expect(normalizeEmsStudentEnrolments([enrolment])).toEqual([
+      {
+        classId: "class-1",
+        className: "Arabic A",
+        courseName: "Arabic",
+        status: "active",
+        enrolledAt: null,
+        withdrawnAt: null,
+      },
+    ]);
+    expect(
+      normalizeEmsStudentEnrolments([
+        { ...enrolment, class_summary: "invalid" },
+      ])
+    ).toBeNull();
+  });
+
+  it("normalizes leads with absent optionals and rejects unknown status", () => {
+    expect(normalizeEmsLead(lead)).toMatchObject({
+      name: "Nile Lead",
+      phone: null,
+      preferredCourseId: null,
+      source: null,
+      studentId: null,
+    });
+    expect(normalizeEmsLead({ ...lead, status: "bogus" })).toBeNull();
+  });
+
+  it("normalizes placement subjects and nullable dates", () => {
+    expect(normalizeEmsPlacementTest(placement)).toMatchObject({
+      subject: {
+        type: "lead",
+        id: "lead-1",
+        name: "Nile Lead",
+        email: "lead@example.test",
+      },
+      createdAt: null,
+      updatedAt: null,
+    });
+    expect(
+      normalizeEmsPlacementTest({
+        ...placement,
+        subject: { ...placement.subject, subject_type: "guardian" },
+      })
+    ).toBeNull();
+  });
+
+  it("normalizes classes with teachers and nullable schedule", () => {
+    expect(normalizeEmsClass(classRow)).toMatchObject({
+      teachers: [
+        { id: "teacher-1", name: "Nile Teacher" },
+        { id: "teacher-2", name: "Second Teacher" },
+      ],
+      schedule: { daysOfWeek: null, startTime: null, endTime: null },
+      moodleGroupId: null,
+      defaultRoomId: null,
+    });
+    expect(normalizeEmsClass({ ...classRow, capacity: "20" })).toBeNull();
+  });
+
+  it("normalizes rooms with absent capacity and rejects invalid status", () => {
+    const room = {
+      id: "room-1",
+      branch_id: "branch-1",
+      branch_name: "Cairo",
+      name: "Room 1",
+      status: "active",
+    };
+    expect(normalizeEmsRooms([room])).toEqual([
+      {
+        id: "room-1",
+        branchId: "branch-1",
+        branchName: "Cairo",
+        name: "Room 1",
+        capacity: null,
+        status: "active",
+      },
+    ]);
+    expect(normalizeEmsRooms([{ ...room, status: "closed" }])).toBeNull();
+  });
+
+  it("normalizes teacher workspace URLs and rejects wrong item types", () => {
+    const workspace = {
+      moodle_site_url: "http://moodle.example.test",
+      classes: [
+        {
+          id: "class-1",
+          name: "Arabic A",
+          course_name: "Arabic",
+          status: "active",
+          active_enrolment_count: 8,
+          moodle_course_url: "http://moodle.example.test/course/1",
+        },
+      ],
+      upcoming_sessions: [
+        {
+          id: "session-1",
+          class_id: "class-1",
+          class_name: "Arabic A",
+          starts_at: "2026-09-13T10:00:00Z",
+          ends_at: "2026-09-13T11:00:00Z",
+          room_name: null,
+          status: "scheduled",
+        },
+      ],
+    };
+    expect(normalizeEmsTeacherWorkspace(workspace)).toMatchObject({
+      moodleSiteUrl: null,
+      classes: [{ moodleCourseUrl: null }],
+      upcomingSessions: [{ classId: "class-1", roomName: null }],
+    });
+    expect(
+      normalizeEmsTeacherWorkspace({
+        ...workspace,
+        classes: [
+          { ...workspace.classes[0], active_enrolment_count: "eight" },
+        ],
+      })
     ).toBeNull();
   });
 });

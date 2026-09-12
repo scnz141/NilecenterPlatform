@@ -1,13 +1,20 @@
-import { requireActiveUser } from "@/lib/auth/session";
-import { useMemo, useState } from "react";
+import { getStoredAuthSession, requireActiveUser } from "@/lib/auth/session";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { ArrowRight, Search } from "lucide-react";
 import { Link } from "wouter";
+import NccReadStatus from "@/components/platform/NccReadStatus";
+import OperationalDirectoryTable from "@/components/platform/OperationalDirectoryTable";
 import PlatformShell from "@/components/platform/PlatformShell";
 import { WorkspaceLayout } from "@/components/platform/PlatformLayouts";
 import {
   DataTableCard,
   StatusBadge,
 } from "@/components/platform/PlatformPrimitives";
+import { fetchNccClassesRequest, type NccClassDto } from "@/lib/backend/api";
+import {
+  classifyNccFailure,
+  type NccReadState,
+} from "@/lib/backend/nccReadState";
 import { platformStore } from "@/lib/domain/store";
 import type { EntityStatus } from "@/lib/domain/types";
 
@@ -41,6 +48,143 @@ function humanize(value: string) {
 }
 
 export default function RegistrarClassesPage() {
+  return getStoredAuthSession()?.provider === "ncc" ? (
+    <NccRegistrarClassesPage />
+  ) : (
+    <CompatibilityRegistrarClassesPage />
+  );
+}
+
+function NccRegistrarClassesPage() {
+  const [query, setQuery] = useState("");
+  const [status, setStatus] = useState("all");
+  const [readState, setReadState] = useState<NccReadState<NccClassDto[]>>({
+    status: "loading",
+  });
+  const load = useCallback(async () => {
+    setReadState({ status: "loading" });
+    const result = await fetchNccClassesRequest();
+    setReadState(
+      result.ok && result.data
+        ? { status: "ready", data: result.data.items }
+        : classifyNccFailure(result)
+    );
+  }, []);
+  useEffect(() => {
+    void load();
+  }, [load]);
+  const classes = readState.status === "ready" ? readState.data : [];
+  const statuses = Array.from(new Set(classes.map(row => row.status)));
+  const rows = classes.filter(row => {
+    const text = `${row.name} ${row.courseName} ${row.departmentName} ${row.teachers.map(teacher => teacher.name).join(" ")} ${row.status}`.toLowerCase();
+    return (
+      (!query.trim() || text.includes(query.trim().toLowerCase())) &&
+      (status === "all" || row.status === status)
+    );
+  });
+
+  return (
+    <PlatformShell role="registrar" title="Registrar classes">
+      <WorkspaceLayout
+        className="registrar-classes-page"
+        title="Classes"
+        description="Find class capacity before assigning students."
+        context="Registrar"
+        actions={
+          <Link className="platform-primary-button" href="/app/registrar/enrollments">
+            Open enrollments
+            <ArrowRight size={15} />
+          </Link>
+        }
+        toolbar={
+          readState.status === "ready" ? (
+            <div className="registrar-list-toolbar-v3">
+              <label className="registrar-list-search">
+                <span className="sr-only">Search classes</span>
+                <Search size={15} />
+                <input
+                  value={query}
+                  onChange={event => setQuery(event.target.value)}
+                  placeholder="Search classes"
+                />
+              </label>
+              <label className="registrar-list-select">
+                <span>Status</span>
+                <select
+                  value={status}
+                  onChange={event => setStatus(event.target.value)}
+                >
+                  <option value="all">All statuses</option>
+                  {statuses.map(value => (
+                    <option key={value} value={value}>
+                      {humanize(value)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+          ) : undefined
+        }
+        main={
+          readState.status !== "ready" ? (
+            <NccReadStatus state={readState} onRetry={() => void load()} />
+          ) : (
+            <DataTableCard
+              title="Class capacity"
+              subtitle={`${rows.length} classes`}
+              className="registrar-record-card registrar-classes-record-card"
+            >
+              {rows.length ? (
+                <div className="platform-directory-table-wrap">
+                  <OperationalDirectoryTable
+                    rows={rows}
+                    rowKey={row => row.id}
+                    columns={[
+                      { key: "class", label: "Class", render: row => <strong>{row.name}</strong> },
+                      { key: "course", label: "Course", render: row => row.courseName },
+                      { key: "department", label: "Department", render: row => row.departmentName },
+                      {
+                        key: "teachers",
+                        label: "Teachers",
+                        render: row =>
+                          row.teachers.map(teacher => teacher.name).join(", ") ||
+                          "No teacher",
+                      },
+                      {
+                        key: "enrolled",
+                        label: "Enrolled",
+                        render: row =>
+                          `${row.activeEnrolmentCount}/${row.capacity}`,
+                      },
+                      {
+                        key: "status",
+                        label: "Status",
+                        render: row => (
+                          <StatusBadge
+                            tone={row.status === "active" ? "green" : "slate"}
+                          >
+                            {humanize(row.status)}
+                          </StatusBadge>
+                        ),
+                      },
+                    ]}
+                    action={{ href: () => undefined, label: row => row.name }}
+                  />
+                </div>
+              ) : (
+                <div className="platform-empty-state">
+                  <strong>No classes found</strong>
+                </div>
+              )}
+            </DataTableCard>
+          )
+        }
+      />
+    </PlatformShell>
+  );
+}
+
+function CompatibilityRegistrarClassesPage() {
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState<"all" | EntityStatus>("all");
   const state = useMemo(() => platformStore.getState(), []);

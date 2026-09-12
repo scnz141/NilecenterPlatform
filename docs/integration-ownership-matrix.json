@@ -269,7 +269,10 @@
         "workflowActions": [
           "^(application[.](convert|create)|enrollment[.](activate|status[.]update|transfer)|lead[.](convert|create)|placement[.](create|result[.]record)|student[.](create|document[.]add|status[.]update))$"
         ],
-        "serverApiRoutes": ["^POST /api/registrar/student-invitations$"]
+        "serverApiRoutes": [
+          "^POST /api/registrar/student-invitations$",
+          "^GET /api/ncc/admissions/(students(?:/[^/]+(?:/enrolments)?)?|leads(?:/[^/]+)?|placement-tests(?:/[^/]+)?)$"
+        ]
       }
     },
     {
@@ -323,6 +326,9 @@
         ],
         "workflowActions": [
           "^(calendar[.](create|conflict[.]resolve)|class[.](create|session[.](cancel|reschedule)|status[.]update|update)|course-run[.]create|room[.](create|status[.]update)|teacher[.](assign|availability[.]update))$"
+        ],
+        "serverApiRoutes": [
+          "^GET /api/ncc/delivery/(classes(?:/[^/]+)?|rooms|teacher-workspace)$"
         ]
       }
     },

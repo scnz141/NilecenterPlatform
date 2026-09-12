@@ -1,7 +1,8 @@
-import { requireActiveUser } from "@/lib/auth/session";
-import { useMemo, useState } from "react";
+import { getStoredAuthSession, requireActiveUser } from "@/lib/auth/session";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { ArrowRight, Plus, Search } from "lucide-react";
 import { Link } from "wouter";
+import NccReadStatus from "@/components/platform/NccReadStatus";
 import OperationalDirectoryTable from "@/components/platform/OperationalDirectoryTable";
 import PlatformShell from "@/components/platform/PlatformShell";
 import { WorkspaceLayout } from "@/components/platform/PlatformLayouts";
@@ -9,6 +10,11 @@ import {
   DataTableCard,
   StatusBadge,
 } from "@/components/platform/PlatformPrimitives";
+import { fetchNccClassesRequest, type NccClassDto } from "@/lib/backend/api";
+import {
+  classifyNccFailure,
+  type NccReadState,
+} from "@/lib/backend/nccReadState";
 import { platformStore } from "@/lib/domain/store";
 
 type HodDirectoryView =
@@ -95,6 +101,137 @@ function actionHref(view: HodDirectoryView) {
 }
 
 export default function HodDirectoryPage({ view }: { view: HodDirectoryView }) {
+  return getStoredAuthSession()?.provider === "ncc" && view === "classes" ? (
+    <NccHodClassesPage />
+  ) : (
+    <CompatibilityHodDirectoryPage view={view} />
+  );
+}
+
+function NccHodClassesPage() {
+  const [query, setQuery] = useState("");
+  const [status, setStatus] = useState("all");
+  const [readState, setReadState] = useState<NccReadState<NccClassDto[]>>({
+    status: "loading",
+  });
+  const load = useCallback(async () => {
+    setReadState({ status: "loading" });
+    const result = await fetchNccClassesRequest();
+    setReadState(
+      result.ok && result.data
+        ? { status: "ready", data: result.data.items }
+        : classifyNccFailure(result)
+    );
+  }, []);
+  useEffect(() => {
+    void load();
+  }, [load]);
+  const classes = readState.status === "ready" ? readState.data : [];
+  const statuses = Array.from(new Set(classes.map(row => row.status)));
+  const rows = classes.filter(row => {
+    const text = `${row.name} ${row.courseName} ${row.departmentName} ${row.teachers.map(teacher => teacher.name).join(" ")} ${row.status}`.toLowerCase();
+    return (
+      (!query.trim() || text.includes(query.trim().toLowerCase())) &&
+      (status === "all" || row.status === status)
+    );
+  });
+  const copy = viewCopy.classes;
+
+  return (
+    <PlatformShell role="headofdepartment" title={copy.title}>
+      <WorkspaceLayout
+        className="hod-directory-page"
+        title={copy.title}
+        description={copy.description}
+        context="Academic"
+        toolbar={
+          readState.status === "ready" ? (
+            <div className="hod-compact-toolbar hod-directory-toolbar-v3">
+              <label>
+                Search
+                <span>
+                  <Search size={15} />
+                  <input
+                    value={query}
+                    onChange={event => setQuery(event.target.value)}
+                    placeholder="Search classes"
+                  />
+                </span>
+              </label>
+              <label>
+                Status
+                <select
+                  value={status}
+                  onChange={event => setStatus(event.target.value)}
+                >
+                  <option value="all">All statuses</option>
+                  {statuses.map(value => (
+                    <option key={value} value={value}>
+                      {humanize(value)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+          ) : undefined
+        }
+        main={
+          readState.status !== "ready" ? (
+            <NccReadStatus state={readState} onRetry={() => void load()} />
+          ) : (
+            <DataTableCard
+              title="Classes"
+              subtitle={`${rows.length} records`}
+              className="platform-directory-card hod-directory-card-v2"
+            >
+              {rows.length ? (
+                <div className="platform-directory-table-wrap">
+                  <OperationalDirectoryTable
+                    rows={rows}
+                    rowKey={row => row.id}
+                    columns={[
+                      { key: "class", label: "Class", render: row => <strong>{row.name}</strong> },
+                      { key: "course", label: "Course", render: row => row.courseName },
+                      { key: "department", label: "Department", render: row => row.departmentName },
+                      {
+                        key: "teachers",
+                        label: "Teachers",
+                        render: row =>
+                          row.teachers.map(teacher => teacher.name).join(", ") ||
+                          "No teacher",
+                      },
+                      {
+                        key: "enrolled",
+                        label: "Enrolled",
+                        render: row => `${row.activeEnrolmentCount}/${row.capacity}`,
+                      },
+                      {
+                        key: "status",
+                        label: "Status",
+                        render: row => (
+                          <StatusBadge tone={statusTone(row.status)}>
+                            {humanize(row.status)}
+                          </StatusBadge>
+                        ),
+                      },
+                    ]}
+                    action={{ href: () => undefined, label: row => row.name }}
+                  />
+                </div>
+              ) : (
+                <div className="platform-empty-state">
+                  <strong>No classes found.</strong>
+                </div>
+              )}
+            </DataTableCard>
+          )
+        }
+      />
+    </PlatformShell>
+  );
+}
+
+function CompatibilityHodDirectoryPage({ view }: { view: HodDirectoryView }) {
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState("all");
   const state = useMemo(() => platformStore.getState(), []);

@@ -1,15 +1,29 @@
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { ArrowRight, Search } from "lucide-react";
 import { Link } from "wouter";
+import NccReadStatus from "@/components/platform/NccReadStatus";
 import PlatformShell from "@/components/platform/PlatformShell";
 import { WorkspaceLayout } from "@/components/platform/PlatformLayouts";
 import {
   DataTableCard,
   StatusBadge,
 } from "@/components/platform/PlatformPrimitives";
+import { getStoredAuthSession } from "@/lib/auth/session";
+import {
+  fetchNccDirectoryBranchesRequest,
+  fetchNccDirectoryDepartmentsRequest,
+} from "@/lib/backend/api";
+import {
+  classifyNccFailure,
+  type NccReadState,
+} from "@/lib/backend/nccReadState";
 import { platformStore } from "@/lib/domain/store";
 
-type AdminDirectoryView = "departments" | "programs" | "certificates";
+type AdminDirectoryView =
+  | "branches"
+  | "departments"
+  | "programs"
+  | "certificates";
 
 type DirectoryRow = {
   id: string;
@@ -30,6 +44,13 @@ const viewCopy: Record<
     href: string;
   }
 > = {
+  branches: {
+    title: "Branches",
+    description: "Review the EMS branch catalog.",
+    empty: "No branches found.",
+    action: "",
+    href: "/app/admin/branches",
+  },
   departments: {
     title: "Departments",
     description: "Review academic departments and their programs.",
@@ -74,6 +95,176 @@ function statusTone(status: string): "green" | "amber" | "red" | "slate" {
 }
 
 export default function AdminDirectoryPage({
+  view,
+}: {
+  view: AdminDirectoryView;
+}) {
+  if (getStoredAuthSession()?.provider === "ncc") {
+    return view === "departments" || view === "branches" ? (
+      <NccAdminDirectoryPage view={view} />
+    ) : (
+      <NccAdminUnavailablePage view={view} />
+    );
+  }
+  return <CompatibilityAdminDirectoryPage view={view} />;
+}
+
+function NccAdminUnavailablePage({ view }: { view: AdminDirectoryView }) {
+  const copy = viewCopy[view];
+  return (
+    <PlatformShell role="superadmin" title={copy.title}>
+      <WorkspaceLayout
+        className="admin-directory-page"
+        title={copy.title}
+        description={copy.description}
+        context="Admin"
+        main={
+          <div className="platform-empty-state" role="status">
+            <strong>Not available in EMS yet.</strong>
+          </div>
+        }
+      />
+    </PlatformShell>
+  );
+}
+
+function NccAdminDirectoryPage({
+  view,
+}: {
+  view: "branches" | "departments";
+}) {
+  const [query, setQuery] = useState("");
+  const [status, setStatus] = useState("all");
+  const [readState, setReadState] = useState<NccReadState<DirectoryRow[]>>({
+    status: "loading",
+  });
+  const load = useCallback(async () => {
+    setReadState({ status: "loading" });
+    if (view === "branches") {
+      const result = await fetchNccDirectoryBranchesRequest();
+      setReadState(
+        result.ok && result.data
+          ? {
+              status: "ready",
+              data: result.data.items.map(branch => ({
+                id: branch.id,
+                name: branch.name,
+                detail: branch.code ?? "No code",
+                scope: branch.timezone,
+                status: branch.status,
+                metric: "",
+              })),
+            }
+          : classifyNccFailure(result)
+      );
+      return;
+    }
+    const result = await fetchNccDirectoryDepartmentsRequest();
+    setReadState(
+      result.ok && result.data
+        ? {
+            status: "ready",
+            data: result.data.items.map(department => ({
+              id: department.id,
+              name: department.name,
+              detail: department.code ?? "No code",
+              scope: "Catalog",
+              status: department.status,
+              metric: "",
+            })),
+          }
+        : classifyNccFailure(result)
+    );
+  }, [view]);
+  useEffect(() => {
+    void load();
+  }, [load]);
+  const rows = readState.status === "ready" ? readState.data : [];
+  const statusOptions = Array.from(new Set(rows.map(row => row.status)));
+  const filteredRows = rows.filter(row => {
+    const text = `${row.name} ${row.detail} ${row.scope} ${row.status}`.toLowerCase();
+    return (
+      (!query.trim() || text.includes(query.trim().toLowerCase())) &&
+      (status === "all" || row.status === status)
+    );
+  });
+  const copy = viewCopy[view];
+
+  return (
+    <PlatformShell role="superadmin" title={copy.title}>
+      <WorkspaceLayout
+        className="admin-directory-page"
+        title={copy.title}
+        description={copy.description}
+        context="Admin"
+        toolbar={
+          readState.status === "ready" ? (
+            <div className="admin-compact-toolbar admin-directory-toolbar">
+              <label>
+                Search
+                <span>
+                  <Search size={15} />
+                  <input
+                    value={query}
+                    onChange={event => setQuery(event.target.value)}
+                    placeholder={`Search ${copy.title.toLowerCase()}`}
+                  />
+                </span>
+              </label>
+              <label>
+                Status
+                <select
+                  value={status}
+                  onChange={event => setStatus(event.target.value)}
+                >
+                  <option value="all">All statuses</option>
+                  {statusOptions.map(value => (
+                    <option key={value} value={value}>
+                      {humanize(value)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+          ) : undefined
+        }
+        main={
+          readState.status !== "ready" ? (
+            <NccReadStatus state={readState} onRetry={() => void load()} />
+          ) : (
+            <DataTableCard title={copy.title} subtitle={`${filteredRows.length} records`}>
+              <div className="admin-record-list admin-directory-record-list">
+                {filteredRows.length ? (
+                  filteredRows.map(row => (
+                    <article key={row.id}>
+                      <div className="admin-record-list-copy">
+                        <span>{row.detail}</span>
+                        <strong>{row.name}</strong>
+                        <p>{row.scope}</p>
+                      </div>
+                      <div className="admin-record-list-meta">
+                        <StatusBadge tone={statusTone(row.status)}>
+                          {humanize(row.status)}
+                        </StatusBadge>
+                        <small>{row.metric}</small>
+                      </div>
+                    </article>
+                  ))
+                ) : (
+                  <div className="platform-empty-state">
+                    <strong>{copy.empty}</strong>
+                  </div>
+                )}
+              </div>
+            </DataTableCard>
+          )
+        }
+      />
+    </PlatformShell>
+  );
+}
+
+function CompatibilityAdminDirectoryPage({
   view,
 }: {
   view: AdminDirectoryView;

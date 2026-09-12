@@ -1,5 +1,12 @@
 import { getStoredAuthSession, requireActiveUser } from "@/lib/auth/session";
-import { useMemo, useRef, useState, type FormEvent } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type FormEvent,
+} from "react";
 import {
   ArrowRight,
   BookOpen,
@@ -14,6 +21,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { Link } from "wouter";
+import NccReadStatus from "@/components/platform/NccReadStatus";
 import OperationalDirectoryTable from "@/components/platform/OperationalDirectoryTable";
 import PlatformShell from "@/components/platform/PlatformShell";
 import PendingMediaField from "@/components/platform/PendingMediaField";
@@ -28,9 +36,18 @@ import {
 } from "@/components/platform/PlatformPrimitives";
 import {
   createStudentEnrollmentInvitationRequest,
+  fetchNccStudentEnrolmentsRequest,
+  fetchNccStudentRequest,
+  fetchNccStudentsRequest,
   fetchPlatformStateRequest,
   runPlatformWorkflowActionRequest,
+  type NccStudentDto,
+  type NccStudentEnrolmentDto,
 } from "@/lib/backend/api";
+import {
+  classifyNccFailure,
+  type NccReadState,
+} from "@/lib/backend/nccReadState";
 import { platformStore } from "@/lib/domain/store";
 import type {
   PendingMediaAttachment,
@@ -94,6 +111,313 @@ function statusTone(status: string): "green" | "amber" | "red" | "slate" {
 }
 
 export default function RegistrarStudentsPage({
+  view = "list",
+  studentId,
+}: RegistrarStudentsPageProps) {
+  return getStoredAuthSession()?.provider === "ncc" ? (
+    <NccRegistrarStudentsPage view={view} studentId={studentId} />
+  ) : (
+    <CompatibilityRegistrarStudentsPage view={view} studentId={studentId} />
+  );
+}
+
+type NccStudentReadData =
+  | { view: "list"; students: NccStudentDto[] }
+  | {
+      view: "detail";
+      student: NccStudentDto;
+      enrolments: NccStudentEnrolmentDto[];
+    };
+
+function NccRegistrarStudentsPage({
+  view,
+  studentId,
+}: Required<Pick<RegistrarStudentsPageProps, "view">> & {
+  studentId?: string;
+}) {
+  const [search, setSearch] = useState("");
+  const [readState, setReadState] = useState<
+    NccReadState<NccStudentReadData>
+  >({ status: "loading" });
+  const load = useCallback(async () => {
+    if (view === "create") return;
+    setReadState({ status: "loading" });
+    if (view === "list") {
+      const result = await fetchNccStudentsRequest();
+      setReadState(
+        result.ok && result.data
+          ? { status: "ready", data: { view, students: result.data.items } }
+          : classifyNccFailure(result)
+      );
+      return;
+    }
+    if (!studentId) {
+      setReadState({ status: "unavailable" });
+      return;
+    }
+    const [studentResult, enrolmentsResult] = await Promise.all([
+      fetchNccStudentRequest(studentId),
+      fetchNccStudentEnrolmentsRequest(studentId),
+    ]);
+    const failed = [studentResult, enrolmentsResult].find(
+      result => !result.ok
+    );
+    if (failed || !studentResult.data || !enrolmentsResult.data) {
+      setReadState(
+        classifyNccFailure(
+          failed ?? { error: "EMS student data returned no record." }
+        )
+      );
+      return;
+    }
+    setReadState({
+      status: "ready",
+      data: {
+        view,
+        student: studentResult.data.student,
+        enrolments: enrolmentsResult.data.items,
+      },
+    });
+  }, [studentId, view]);
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  if (view === "create") {
+    return (
+      <PlatformShell role="registrar" title="New student">
+        <FormFlowLayout
+          className="portal-ia-page registrar-workspace registrar-students-page registrar-create-page registrar-student-create-page"
+          title="New student"
+          description="Student accounts are created in EMS for now."
+          context="Registrar"
+          main={
+            <section className="platform-empty-state" role="status">
+              <strong>Student creation is not connected yet</strong>
+              <span>
+                Create the student in EMS; the account will appear in this
+                directory.
+              </span>
+              <Link className="platform-secondary-button" href="/app/registrar/students">
+                Back to students
+              </Link>
+            </section>
+          }
+        />
+      </PlatformShell>
+    );
+  }
+
+  if (readState.status !== "ready") {
+    return (
+      <PlatformShell role="registrar" title={view === "list" ? "Students" : "Student detail"}>
+        <WorkspaceLayout
+          className="portal-ia-page registrar-workspace registrar-students-page"
+          title={view === "list" ? "Students" : "Student detail"}
+          description="Read student records from EMS."
+          context="Registrar"
+          main={<NccReadStatus state={readState} onRetry={() => void load()} />}
+        />
+      </PlatformShell>
+    );
+  }
+
+  if (readState.data.view === "detail") {
+    const { student, enrolments } = readState.data;
+    const guardian = student.guardian;
+    return (
+      <PlatformShell role="registrar" title="Student detail">
+        <DetailLayout
+          className="portal-ia-page registrar-workspace registrar-students-page"
+          title={student.name}
+          description={`${student.email} · ${student.branchName} · ${student.status}`}
+          context="Registrar"
+          actions={
+            <Link className="platform-secondary-button" href="/app/registrar/students">
+              Back to students
+            </Link>
+          }
+          main={
+            <div className="registrar-student-detail-workspace">
+              <section className="registrar-panel">
+                <div className="registrar-student-fact-list">
+                  {[
+                    ["Phone", student.phone ?? "—"],
+                    ["Date of birth", student.dateOfBirth ?? "—"],
+                    ["Guardian", guardian?.name ?? "—"],
+                    ["Guardian phone", guardian?.phone ?? "—"],
+                    ["Guardian email", guardian?.email ?? "—"],
+                    ["Relationship", guardian?.relationship ?? "—"],
+                    [
+                      "Moodle account",
+                      student.moodleLinked ? "Linked" : "Not linked",
+                    ],
+                    ["Created", new Date(student.createdAt).toLocaleDateString()],
+                  ].map(([label, value]) => (
+                    <article key={label}>
+                      <span>{label}</span>
+                      <strong>{value}</strong>
+                    </article>
+                  ))}
+                </div>
+              </section>
+              <DataTableCard
+                title="Class enrolments"
+                subtitle={`${enrolments.length} records`}
+              >
+                {enrolments.length ? (
+                  <div className="platform-directory-table-wrap">
+                    <OperationalDirectoryTable
+                      rows={enrolments}
+                      rowKey={row => row.classId}
+                      columns={[
+                        {
+                          key: "class",
+                          label: "Class",
+                          render: row => <strong>{row.className}</strong>,
+                        },
+                        {
+                          key: "course",
+                          label: "Course",
+                          render: row => row.courseName ?? "—",
+                        },
+                        {
+                          key: "status",
+                          label: "Status",
+                          render: row => (
+                            <StatusBadge tone={statusTone(row.status)}>
+                              {humanize(row.status)}
+                            </StatusBadge>
+                          ),
+                        },
+                        {
+                          key: "enrolled",
+                          label: "Enrolled",
+                          render: row => row.enrolledAt ?? "—",
+                        },
+                      ]}
+                      action={{
+                        href: () => undefined,
+                        label: row => row.className,
+                      }}
+                    />
+                  </div>
+                ) : (
+                  <div className="platform-empty-state">
+                    <strong>No class enrolments yet</strong>
+                  </div>
+                )}
+              </DataTableCard>
+            </div>
+          }
+        />
+      </PlatformShell>
+    );
+  }
+
+  const students = readState.data.students.filter(student =>
+    [
+      student.name,
+      student.email,
+      student.phone,
+      student.branchName,
+      student.guardian?.name,
+    ]
+      .filter(Boolean)
+      .join(" ")
+      .toLowerCase()
+      .includes(search.trim().toLowerCase())
+  );
+  return (
+    <PlatformShell role="registrar" title="Students">
+      <WorkspaceLayout
+        className="portal-ia-page registrar-workspace registrar-students-page registrar-students-list-page"
+        title="Students"
+        description="Find a student and open their record."
+        actions={
+          <Link className="platform-primary-button" href="/app/registrar/students/new">
+            <UserPlus size={15} />
+            New student
+          </Link>
+        }
+        toolbar={
+          <div className="portal-ia-toolbar">
+            <label className="portal-ia-search">
+              <Search size={16} />
+              <input
+                value={search}
+                onChange={event => setSearch(event.target.value)}
+                placeholder="Search students"
+                aria-label="Search students"
+              />
+            </label>
+          </div>
+        }
+        main={
+          <DataTableCard
+            title="Student records"
+            subtitle={`${students.length} student(s)`}
+            className="registrar-record-card registrar-students-record-card platform-directory-card registrar-directory-card-v2"
+          >
+            {students.length ? (
+              <div className="platform-directory-table-wrap">
+                <OperationalDirectoryTable
+                  rows={students}
+                  rowKey={row => row.id}
+                  columns={[
+                    {
+                      key: "student",
+                      label: "Student",
+                      render: row => (
+                        <div className="platform-directory-person">
+                          <span aria-hidden="true">{initials(row.name)}</span>
+                          <span>
+                            <strong>{row.name}</strong>
+                            <small>{row.email}</small>
+                          </span>
+                        </div>
+                      ),
+                    },
+                    { key: "branch", label: "Branch", render: row => row.branchName },
+                    {
+                      key: "guardian",
+                      label: "Guardian",
+                      render: row => row.guardian?.name ?? "—",
+                    },
+                    {
+                      key: "moodle",
+                      label: "Moodle account",
+                      render: row => (row.moodleLinked ? "Linked" : "Not linked"),
+                    },
+                    {
+                      key: "status",
+                      label: "Status",
+                      render: row => (
+                        <StatusBadge tone={statusTone(row.status)}>
+                          {humanize(row.status)}
+                        </StatusBadge>
+                      ),
+                    },
+                  ]}
+                  action={{
+                    href: row => `/app/registrar/students/${row.id}`,
+                    label: row => row.name,
+                  }}
+                />
+              </div>
+            ) : (
+              <div className="platform-empty-state">
+                <strong>No students found</strong>
+              </div>
+            )}
+          </DataTableCard>
+        }
+      />
+    </PlatformShell>
+  );
+}
+
+function CompatibilityRegistrarStudentsPage({
   view = "list",
   studentId,
 }: RegistrarStudentsPageProps) {

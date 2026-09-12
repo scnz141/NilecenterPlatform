@@ -200,6 +200,7 @@ export type EmsStagingMe = {
 export type EmsStagingBranch = {
   id: string;
   name: string;
+  code?: string | null;
   status: "active" | "disabled";
   timezone: string;
 };
@@ -232,6 +233,137 @@ export type EmsStagingDepartment = {
   name: string;
   code: string | null;
   status: "active" | "disabled";
+};
+
+export type EmsStagingStudent = {
+  id: string;
+  firstName: string;
+  lastName: string;
+  name: string;
+  email: string;
+  phone: string | null;
+  dateOfBirth: string | null;
+  branchId: string;
+  branchName: string;
+  status: "active" | "disabled";
+  moodleLinked: boolean;
+  guardian: {
+    name: string | null;
+    phone: string | null;
+    email: string | null;
+    relationship: string | null;
+  } | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type EmsStagingStudentEnrolment = {
+  classId: string;
+  className: string;
+  courseName: string | null;
+  status: string;
+  enrolledAt: string | null;
+  withdrawnAt: string | null;
+};
+
+export type EmsStagingLead = {
+  id: string;
+  firstName: string;
+  lastName: string;
+  name: string;
+  email: string;
+  phone: string | null;
+  branchId: string;
+  branchName: string;
+  preferredCourseId: string | null;
+  preferredCourseName: string | null;
+  source: string | null;
+  notes: string | null;
+  status: "new" | "contacted" | "qualified" | "converted" | "lost";
+  studentId: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type EmsStagingPlacementTest = {
+  id: string;
+  branchId: string;
+  branchName: string;
+  subject: {
+    type: "lead" | "student";
+    id: string;
+    name: string;
+    email: string;
+  };
+  scheduledAt: string | null;
+  roomId: string | null;
+  roomName: string | null;
+  status: "scheduled" | "completed" | "cancelled" | "no_show";
+  recommendedCourseId: string | null;
+  recommendedCourseName: string | null;
+  resultScore: string | null;
+  resultNotes: string | null;
+  completedAt: string | null;
+  cancelledAt: string | null;
+  createdAt: string | null;
+  updatedAt: string | null;
+};
+
+export type EmsStagingClass = {
+  id: string;
+  name: string;
+  courseId: string;
+  courseName: string;
+  departmentId: string;
+  departmentName: string;
+  branchId: string;
+  branchName: string;
+  capacity: number;
+  startAt: string;
+  endAt: string;
+  teachers: Array<{ id: string; name: string; email: string }>;
+  moodleGroupId: number | null;
+  schedule: {
+    daysOfWeek: number[] | null;
+    startTime: string | null;
+    endTime: string | null;
+  };
+  defaultRoomId: string | null;
+  defaultRoomName: string | null;
+  status: "active" | "disabled";
+  activeEnrolmentCount: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type EmsStagingRoom = {
+  id: string;
+  branchId: string;
+  branchName: string;
+  name: string;
+  capacity: number | null;
+  status: "active" | "disabled";
+};
+
+export type EmsStagingTeacherWorkspace = {
+  moodleSiteUrl: string | null;
+  classes: Array<{
+    id: string;
+    name: string;
+    courseName: string | null;
+    status: string;
+    activeEnrolmentCount: number;
+    moodleCourseUrl: string | null;
+  }>;
+  upcomingSessions: Array<{
+    id: string;
+    classId: string | null;
+    className: string | null;
+    startsAt: string;
+    endsAt: string;
+    roomName: string | null;
+    status: string;
+  }>;
 };
 
 function normalizeEmsScopes(payload: unknown): EmsStagingMe["scopes"] | null {
@@ -330,6 +462,9 @@ export function normalizeEmsBranches(
       !record.id ||
       typeof record.name !== "string" ||
       !record.name ||
+      (record.code !== null &&
+        record.code !== undefined &&
+        typeof record.code !== "string") ||
       (record.status !== "active" && record.status !== "disabled") ||
       typeof record.timezone !== "string" ||
       !record.timezone
@@ -339,6 +474,9 @@ export function normalizeEmsBranches(
     return {
       id: record.id,
       name: record.name,
+      ...(record.code !== undefined
+        ? { code: record.code as string | null }
+        : {}),
       status: record.status,
       timezone: record.timezone,
     };
@@ -517,6 +655,500 @@ export function normalizeEmsDepartments(
     : (departments as EmsStagingDepartment[]);
 }
 
+function isNullableString(value: unknown) {
+  return value === null || value === undefined || typeof value === "string";
+}
+
+function nullableString(value: unknown) {
+  return typeof value === "string" ? value : null;
+}
+
+function isPositiveIntegerOrNull(value: unknown) {
+  return (
+    value === null ||
+    value === undefined ||
+    (Number.isSafeInteger(value) && (value as number) > 0)
+  );
+}
+
+function isNonNegativeInteger(value: unknown) {
+  return Number.isSafeInteger(value) && (value as number) >= 0;
+}
+
+function httpsUrl(value: unknown) {
+  if (typeof value !== "string") return null;
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" ? url.toString() : null;
+  } catch {
+    return null;
+  }
+}
+
+function normalizeRows<T>(
+  payload: unknown,
+  normalize: (value: unknown) => T | null
+): T[] | null {
+  if (!Array.isArray(payload)) return null;
+  const rows = payload.map(normalize);
+  return rows.some(row => row === null) ? null : (rows as T[]);
+}
+
+export function normalizeEmsStudent(
+  payload: unknown
+): EmsStagingStudent | null {
+  if (!payload || typeof payload !== "object") return null;
+  const record = payload as Record<string, unknown>;
+  const guardianValues = [
+    record.guardian_name,
+    record.guardian_phone,
+    record.guardian_email,
+    record.guardian_relationship,
+  ];
+  if (
+    typeof record.id !== "string" ||
+    !record.id ||
+    typeof record.first_name !== "string" ||
+    typeof record.last_name !== "string" ||
+    typeof record.email !== "string" ||
+    !record.email ||
+    !isNullableString(record.phone) ||
+    !isNullableString(record.date_of_birth) ||
+    typeof record.branch_id !== "string" ||
+    !record.branch_id ||
+    typeof record.branch_name !== "string" ||
+    !record.branch_name ||
+    (record.status !== "active" && record.status !== "disabled") ||
+    !isPositiveIntegerOrNull(record.moodle_user_id) ||
+    !guardianValues.every(isNullableString) ||
+    typeof record.created_at !== "string" ||
+    !record.created_at ||
+    typeof record.updated_at !== "string" ||
+    !record.updated_at
+  ) {
+    return null;
+  }
+  const firstName = record.first_name.trim();
+  const lastName = record.last_name.trim();
+  const guardian = guardianValues.some(
+    value => typeof value === "string" && value.length > 0
+  )
+    ? {
+        name: nullableString(record.guardian_name),
+        phone: nullableString(record.guardian_phone),
+        email: nullableString(record.guardian_email),
+        relationship: nullableString(record.guardian_relationship),
+      }
+    : null;
+  return {
+    id: record.id,
+    firstName,
+    lastName,
+    name: [firstName, lastName].filter(Boolean).join(" ") || record.email,
+    email: record.email,
+    phone: nullableString(record.phone),
+    dateOfBirth: nullableString(record.date_of_birth),
+    branchId: record.branch_id,
+    branchName: record.branch_name,
+    status: record.status,
+    moodleLinked:
+      record.moodle_user_id !== null && record.moodle_user_id !== undefined,
+    guardian,
+    createdAt: record.created_at,
+    updatedAt: record.updated_at,
+  };
+}
+
+export function normalizeEmsStudents(
+  payload: unknown
+): EmsStagingStudent[] | null {
+  return normalizeRows(payload, normalizeEmsStudent);
+}
+
+function normalizeEmsStudentEnrolment(
+  payload: unknown
+): EmsStagingStudentEnrolment | null {
+  if (!payload || typeof payload !== "object") return null;
+  const record = payload as Record<string, unknown>;
+  const summary =
+    record.class_summary && typeof record.class_summary === "object"
+      ? (record.class_summary as Record<string, unknown>)
+      : null;
+  if (
+    typeof record.class_id !== "string" ||
+    !record.class_id ||
+    typeof record.status !== "string" ||
+    !record.status ||
+    !isNullableString(record.enrolled_at) ||
+    !isNullableString(record.withdrawn_at) ||
+    !summary ||
+    typeof summary.class_name !== "string" ||
+    !summary.class_name ||
+    !isNullableString(summary.course_name)
+  ) {
+    return null;
+  }
+  return {
+    classId: record.class_id,
+    className: summary.class_name,
+    courseName: nullableString(summary.course_name),
+    status: record.status,
+    enrolledAt: nullableString(record.enrolled_at),
+    withdrawnAt: nullableString(record.withdrawn_at),
+  };
+}
+
+export function normalizeEmsStudentEnrolments(
+  payload: unknown
+): EmsStagingStudentEnrolment[] | null {
+  return normalizeRows(payload, normalizeEmsStudentEnrolment);
+}
+
+export function normalizeEmsLead(payload: unknown): EmsStagingLead | null {
+  if (!payload || typeof payload !== "object") return null;
+  const record = payload as Record<string, unknown>;
+  const optionalValues = [
+    record.phone,
+    record.preferred_course_id,
+    record.preferred_course_name,
+    record.source,
+    record.notes,
+    record.student_id,
+  ];
+  if (
+    typeof record.id !== "string" ||
+    !record.id ||
+    typeof record.first_name !== "string" ||
+    typeof record.last_name !== "string" ||
+    typeof record.email !== "string" ||
+    !record.email ||
+    typeof record.branch_id !== "string" ||
+    !record.branch_id ||
+    typeof record.branch_name !== "string" ||
+    !record.branch_name ||
+    !optionalValues.every(isNullableString) ||
+    (record.status !== "new" &&
+      record.status !== "contacted" &&
+      record.status !== "qualified" &&
+      record.status !== "converted" &&
+      record.status !== "lost") ||
+    typeof record.created_at !== "string" ||
+    !record.created_at ||
+    typeof record.updated_at !== "string" ||
+    !record.updated_at
+  ) {
+    return null;
+  }
+  const firstName = record.first_name.trim();
+  const lastName = record.last_name.trim();
+  return {
+    id: record.id,
+    firstName,
+    lastName,
+    name: [firstName, lastName].filter(Boolean).join(" ") || record.email,
+    email: record.email,
+    phone: nullableString(record.phone),
+    branchId: record.branch_id,
+    branchName: record.branch_name,
+    preferredCourseId: nullableString(record.preferred_course_id),
+    preferredCourseName: nullableString(record.preferred_course_name),
+    source: nullableString(record.source),
+    notes: nullableString(record.notes),
+    status: record.status,
+    studentId: nullableString(record.student_id),
+    createdAt: record.created_at,
+    updatedAt: record.updated_at,
+  };
+}
+
+export function normalizeEmsLeads(
+  payload: unknown
+): EmsStagingLead[] | null {
+  return normalizeRows(payload, normalizeEmsLead);
+}
+
+export function normalizeEmsPlacementTest(
+  payload: unknown
+): EmsStagingPlacementTest | null {
+  if (!payload || typeof payload !== "object") return null;
+  const record = payload as Record<string, unknown>;
+  const subject =
+    record.subject && typeof record.subject === "object"
+      ? (record.subject as Record<string, unknown>)
+      : null;
+  const optionalValues = [
+    record.scheduled_at,
+    record.room_id,
+    record.room_name,
+    record.recommended_course_id,
+    record.recommended_course_name,
+    record.result_score,
+    record.result_notes,
+    record.completed_at,
+    record.cancelled_at,
+    record.created_at,
+    record.updated_at,
+  ];
+  if (
+    typeof record.id !== "string" ||
+    !record.id ||
+    typeof record.branch_id !== "string" ||
+    !record.branch_id ||
+    typeof record.branch_name !== "string" ||
+    !record.branch_name ||
+    !subject ||
+    (subject.subject_type !== "lead" && subject.subject_type !== "student") ||
+    typeof subject.subject_id !== "string" ||
+    !subject.subject_id ||
+    typeof subject.first_name !== "string" ||
+    typeof subject.last_name !== "string" ||
+    typeof subject.email !== "string" ||
+    !subject.email ||
+    !optionalValues.every(isNullableString) ||
+    (record.status !== "scheduled" &&
+      record.status !== "completed" &&
+      record.status !== "cancelled" &&
+      record.status !== "no_show")
+  ) {
+    return null;
+  }
+  const subjectName = [subject.first_name.trim(), subject.last_name.trim()]
+    .filter(Boolean)
+    .join(" ");
+  return {
+    id: record.id,
+    branchId: record.branch_id,
+    branchName: record.branch_name,
+    subject: {
+      type: subject.subject_type,
+      id: subject.subject_id,
+      name: subjectName || subject.email,
+      email: subject.email,
+    },
+    scheduledAt: nullableString(record.scheduled_at),
+    roomId: nullableString(record.room_id),
+    roomName: nullableString(record.room_name),
+    status: record.status,
+    recommendedCourseId: nullableString(record.recommended_course_id),
+    recommendedCourseName: nullableString(record.recommended_course_name),
+    resultScore: nullableString(record.result_score),
+    resultNotes: nullableString(record.result_notes),
+    completedAt: nullableString(record.completed_at),
+    cancelledAt: nullableString(record.cancelled_at),
+    createdAt: nullableString(record.created_at),
+    updatedAt: nullableString(record.updated_at),
+  };
+}
+
+export function normalizeEmsPlacementTests(
+  payload: unknown
+): EmsStagingPlacementTest[] | null {
+  return normalizeRows(payload, normalizeEmsPlacementTest);
+}
+
+function normalizeClassTeacher(
+  payload: unknown
+): EmsStagingClass["teachers"][number] | null {
+  if (!payload || typeof payload !== "object") return null;
+  const record = payload as Record<string, unknown>;
+  if (
+    typeof record.id !== "string" ||
+    !record.id ||
+    typeof record.first_name !== "string" ||
+    typeof record.last_name !== "string" ||
+    typeof record.email !== "string" ||
+    !record.email
+  ) {
+    return null;
+  }
+  const name = [record.first_name.trim(), record.last_name.trim()]
+    .filter(Boolean)
+    .join(" ");
+  return { id: record.id, name: name || record.email, email: record.email };
+}
+
+export function normalizeEmsClass(payload: unknown): EmsStagingClass | null {
+  if (!payload || typeof payload !== "object") return null;
+  const record = payload as Record<string, unknown>;
+  const teachers = normalizeRows(record.teachers, normalizeClassTeacher);
+  const days = record.schedule_days_of_week;
+  if (
+    typeof record.id !== "string" ||
+    !record.id ||
+    typeof record.name !== "string" ||
+    !record.name ||
+    typeof record.course_id !== "string" ||
+    !record.course_id ||
+    typeof record.course_name !== "string" ||
+    !record.course_name ||
+    typeof record.department_id !== "string" ||
+    !record.department_id ||
+    typeof record.department_name !== "string" ||
+    !record.department_name ||
+    typeof record.branch_id !== "string" ||
+    !record.branch_id ||
+    typeof record.branch_name !== "string" ||
+    !record.branch_name ||
+    !isNonNegativeInteger(record.capacity) ||
+    typeof record.start_at !== "string" ||
+    !record.start_at ||
+    typeof record.end_at !== "string" ||
+    !record.end_at ||
+    !teachers ||
+    !isPositiveIntegerOrNull(record.moodle_group_id) ||
+    (days !== null &&
+      days !== undefined &&
+      (!Array.isArray(days) || !days.every(Number.isSafeInteger))) ||
+    !isNullableString(record.schedule_start_time) ||
+    !isNullableString(record.schedule_end_time) ||
+    !isNullableString(record.default_room_id) ||
+    !isNullableString(record.default_room_name) ||
+    (record.status !== "active" && record.status !== "disabled") ||
+    !isNonNegativeInteger(record.active_enrolment_count) ||
+    typeof record.created_at !== "string" ||
+    !record.created_at ||
+    typeof record.updated_at !== "string" ||
+    !record.updated_at
+  ) {
+    return null;
+  }
+  return {
+    id: record.id,
+    name: record.name,
+    courseId: record.course_id,
+    courseName: record.course_name,
+    departmentId: record.department_id,
+    departmentName: record.department_name,
+    branchId: record.branch_id,
+    branchName: record.branch_name,
+    capacity: record.capacity as number,
+    startAt: record.start_at,
+    endAt: record.end_at,
+    teachers,
+    moodleGroupId:
+      typeof record.moodle_group_id === "number"
+        ? record.moodle_group_id
+        : null,
+    schedule: {
+      daysOfWeek: Array.isArray(days) ? days : null,
+      startTime: nullableString(record.schedule_start_time),
+      endTime: nullableString(record.schedule_end_time),
+    },
+    defaultRoomId: nullableString(record.default_room_id),
+    defaultRoomName: nullableString(record.default_room_name),
+    status: record.status,
+    activeEnrolmentCount: record.active_enrolment_count as number,
+    createdAt: record.created_at,
+    updatedAt: record.updated_at,
+  };
+}
+
+export function normalizeEmsClasses(
+  payload: unknown
+): EmsStagingClass[] | null {
+  return normalizeRows(payload, normalizeEmsClass);
+}
+
+function normalizeEmsRoom(payload: unknown): EmsStagingRoom | null {
+  if (!payload || typeof payload !== "object") return null;
+  const record = payload as Record<string, unknown>;
+  if (
+    typeof record.id !== "string" ||
+    !record.id ||
+    typeof record.branch_id !== "string" ||
+    !record.branch_id ||
+    typeof record.branch_name !== "string" ||
+    !record.branch_name ||
+    typeof record.name !== "string" ||
+    !record.name ||
+    (record.capacity !== null &&
+      record.capacity !== undefined &&
+      !isNonNegativeInteger(record.capacity)) ||
+    (record.status !== "active" && record.status !== "disabled")
+  ) {
+    return null;
+  }
+  return {
+    id: record.id,
+    branchId: record.branch_id,
+    branchName: record.branch_name,
+    name: record.name,
+    capacity: typeof record.capacity === "number" ? record.capacity : null,
+    status: record.status,
+  };
+}
+
+export function normalizeEmsRooms(
+  payload: unknown
+): EmsStagingRoom[] | null {
+  return normalizeRows(payload, normalizeEmsRoom);
+}
+
+export function normalizeEmsTeacherWorkspace(
+  payload: unknown
+): EmsStagingTeacherWorkspace | null {
+  if (!payload || typeof payload !== "object") return null;
+  const record = payload as Record<string, unknown>;
+  const classes = normalizeRows(record.classes, value => {
+    if (!value || typeof value !== "object") return null;
+    const item = value as Record<string, unknown>;
+    if (
+      typeof item.id !== "string" ||
+      !item.id ||
+      typeof item.name !== "string" ||
+      !item.name ||
+      !isNullableString(item.course_name) ||
+      typeof item.status !== "string" ||
+      !item.status ||
+      !isNonNegativeInteger(item.active_enrolment_count)
+    ) {
+      return null;
+    }
+    return {
+      id: item.id,
+      name: item.name,
+      courseName: nullableString(item.course_name),
+      status: item.status,
+      activeEnrolmentCount: item.active_enrolment_count as number,
+      moodleCourseUrl: httpsUrl(item.moodle_course_url),
+    };
+  });
+  const upcomingSessions = normalizeRows(record.upcoming_sessions, value => {
+    if (!value || typeof value !== "object") return null;
+    const item = value as Record<string, unknown>;
+    if (
+      typeof item.id !== "string" ||
+      !item.id ||
+      !isNullableString(item.class_id) ||
+      !isNullableString(item.class_name) ||
+      typeof item.starts_at !== "string" ||
+      !item.starts_at ||
+      typeof item.ends_at !== "string" ||
+      !item.ends_at ||
+      !isNullableString(item.room_name) ||
+      typeof item.status !== "string" ||
+      !item.status
+    ) {
+      return null;
+    }
+    return {
+      id: item.id,
+      classId: nullableString(item.class_id),
+      className: nullableString(item.class_name),
+      startsAt: item.starts_at,
+      endsAt: item.ends_at,
+      roomName: nullableString(item.room_name),
+      status: item.status,
+    };
+  });
+  if (!classes || !upcomingSessions) return null;
+  return {
+    moodleSiteUrl: httpsUrl(record.moodle_site_url),
+    classes,
+    upcomingSessions,
+  };
+}
+
 export function createEmsStagingClient(options: EmsStagingClientOptions) {
   const baseUrl = options.baseUrl.replace(/\/+$/, "");
   const timeoutMs = options.timeoutMs ?? EMS_STAGING_DEFAULT_TIMEOUT_MS;
@@ -616,6 +1248,49 @@ export function createEmsStagingClient(options: EmsStagingClientOptions) {
     },
     departments(token: string) {
       return request<unknown>("/departments", { token });
+    },
+    students(token: string) {
+      return request<unknown>("/students", { token });
+    },
+    student(token: string, studentId: string) {
+      return request<unknown>(`/students/${encodeURIComponent(studentId)}`, {
+        token,
+      });
+    },
+    studentEnrolments(token: string, studentId: string) {
+      return request<unknown>(
+        `/students/${encodeURIComponent(studentId)}/enrolments`,
+        { token }
+      );
+    },
+    leads(token: string) {
+      return request<unknown>("/leads", { token });
+    },
+    lead(token: string, leadId: string) {
+      return request<unknown>(`/leads/${encodeURIComponent(leadId)}`, { token });
+    },
+    placementTests(token: string) {
+      return request<unknown>("/placement-tests", { token });
+    },
+    placementTest(token: string, placementTestId: string) {
+      return request<unknown>(
+        `/placement-tests/${encodeURIComponent(placementTestId)}`,
+        { token }
+      );
+    },
+    classes(token: string) {
+      return request<unknown>("/classes", { token });
+    },
+    class(token: string, classId: string) {
+      return request<unknown>(`/classes/${encodeURIComponent(classId)}`, {
+        token,
+      });
+    },
+    rooms(token: string) {
+      return request<unknown>("/rooms", { token });
+    },
+    teacherWorkspace(token: string) {
+      return request<unknown>("/teacher/workspace", { token });
     },
   };
 }

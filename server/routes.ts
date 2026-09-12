@@ -63,6 +63,7 @@ import { registerMoodleCommandRoutes } from "./moodleCommandRoutes.js";
 import { registerIntegrationHealthRoutes } from "./integrationHealthRoutes.js";
 import { registerEmsStagingRoutes } from "./emsStagingRoutes.js";
 import { registerNccDirectoryRoutes } from "./nccDirectoryRoutes.js";
+import { registerNccOperationalRoutes } from "./nccOperationalRoutes.js";
 import { registerEmailRoutes } from "./emailRoutes.js";
 import { getEmailIntegrationStatus } from "./emailDeliveryService.js";
 import { registerUserInvitationRoutes } from "./userInvitationRoutes.js";
@@ -324,6 +325,7 @@ export function registerApiRoutes(app: ApiApp) {
   registerIntegrationHealthRoutes(app);
   registerEmsStagingRoutes(app);
   registerNccDirectoryRoutes(app);
+  registerNccOperationalRoutes(app);
   registerUserInvitationRoutes(app);
 
   app.get("/api/integrations/supabase/status", async (req, res) => {

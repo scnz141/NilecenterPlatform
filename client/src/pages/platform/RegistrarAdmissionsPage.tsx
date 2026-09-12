@@ -1,5 +1,11 @@
-import { requireActiveUser } from "@/lib/auth/session";
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { getStoredAuthSession, requireActiveUser } from "@/lib/auth/session";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type FormEvent,
+} from "react";
 import {
   AlertCircle,
   ArrowRight,
@@ -12,6 +18,8 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { Link } from "wouter";
+import NccReadStatus from "@/components/platform/NccReadStatus";
+import OperationalDirectoryTable from "@/components/platform/OperationalDirectoryTable";
 import PlatformShell from "@/components/platform/PlatformShell";
 import {
   DetailLayout,
@@ -22,7 +30,19 @@ import {
   DataTableCard,
   StatusBadge,
 } from "@/components/platform/PlatformPrimitives";
-import { runPlatformWorkflowActionRequest } from "@/lib/backend/api";
+import {
+  fetchNccLeadRequest,
+  fetchNccLeadsRequest,
+  fetchNccPlacementTestRequest,
+  fetchNccPlacementTestsRequest,
+  runPlatformWorkflowActionRequest,
+  type NccLeadDto,
+  type NccPlacementTestDto,
+} from "@/lib/backend/api";
+import {
+  classifyNccFailure,
+  type NccReadState,
+} from "@/lib/backend/nccReadState";
 import { platformStore } from "@/lib/domain/store";
 import type { Lead } from "@/lib/domain/types";
 
@@ -84,6 +104,16 @@ function statusTone(status?: string): "green" | "amber" | "red" | "slate" {
   return "slate";
 }
 
+function nccStatusTone(
+  status: string
+): "green" | "amber" | "slate" {
+  if (["active", "completed", "converted"].includes(status)) return "green";
+  if (["scheduled", "new", "contacted", "qualified"].includes(status)) {
+    return "amber";
+  }
+  return "slate";
+}
+
 function formatDate(value?: string) {
   if (!value) return "No date";
   const date = new Date(value);
@@ -106,6 +136,406 @@ function defaultPlacementDate() {
 }
 
 export default function RegistrarAdmissionsPage({
+  view,
+  leadId,
+  applicationId,
+  bookingId,
+}: RegistrarAdmissionsPageProps) {
+  return getStoredAuthSession()?.provider === "ncc" ? (
+    <NccRegistrarAdmissionsPage
+      view={view}
+      leadId={leadId}
+      bookingId={bookingId}
+    />
+  ) : (
+    <CompatibilityRegistrarAdmissionsPage
+      view={view}
+      leadId={leadId}
+      applicationId={applicationId}
+      bookingId={bookingId}
+    />
+  );
+}
+
+type NccAdmissionsData =
+  | { kind: "leads"; items: NccLeadDto[] }
+  | { kind: "lead"; item: NccLeadDto }
+  | { kind: "placements"; items: NccPlacementTestDto[] }
+  | { kind: "placement"; item: NccPlacementTestDto };
+
+function NccRegistrarAdmissionsPage({
+  view,
+  leadId,
+  bookingId,
+}: Pick<RegistrarAdmissionsPageProps, "view" | "leadId" | "bookingId">) {
+  const [search, setSearch] = useState("");
+  const [readState, setReadState] = useState<NccReadState<NccAdmissionsData>>({
+    status: "loading",
+  });
+  const load = useCallback(async () => {
+    if (view === "leads") {
+      setReadState({ status: "loading" });
+      const result = await fetchNccLeadsRequest();
+      setReadState(
+        result.ok && result.data
+          ? { status: "ready", data: { kind: "leads", items: result.data.items } }
+          : classifyNccFailure(result)
+      );
+      return;
+    }
+    if (view === "lead-detail" && leadId) {
+      setReadState({ status: "loading" });
+      const result = await fetchNccLeadRequest(leadId);
+      setReadState(
+        result.ok && result.data
+          ? { status: "ready", data: { kind: "lead", item: result.data.lead } }
+          : classifyNccFailure(result)
+      );
+      return;
+    }
+    if (view === "placement-tests") {
+      setReadState({ status: "loading" });
+      const result = await fetchNccPlacementTestsRequest();
+      setReadState(
+        result.ok && result.data
+          ? {
+              status: "ready",
+              data: { kind: "placements", items: result.data.items },
+            }
+          : classifyNccFailure(result)
+      );
+      return;
+    }
+    if (view === "placement-detail" && bookingId) {
+      setReadState({ status: "loading" });
+      const result = await fetchNccPlacementTestRequest(bookingId);
+      setReadState(
+        result.ok && result.data
+          ? {
+              status: "ready",
+              data: { kind: "placement", item: result.data.placementTest },
+            }
+          : classifyNccFailure(result)
+      );
+    }
+  }, [bookingId, leadId, view]);
+  useEffect(() => {
+    void load();
+  }, [load]);
+  const navigation = (
+    <nav className="portal-simple-tabs" aria-label="Admissions work areas">
+      <Link
+        className={view === "leads" || view === "lead-detail" ? "active" : ""}
+        href="/app/registrar/leads"
+      >
+        Leads
+      </Link>
+      <Link
+        className={view.startsWith("application") ? "active" : ""}
+        href="/app/registrar/applications"
+      >
+        Applications
+      </Link>
+      <Link
+        className={
+          view === "placement-tests" || view === "placement-detail"
+            ? "active"
+            : ""
+        }
+        href="/app/registrar/placement-tests"
+      >
+        Placement
+      </Link>
+    </nav>
+  );
+
+  if (view.startsWith("application")) {
+    return (
+      <PlatformShell role="registrar" title="Applications">
+        <WorkspaceLayout
+          title="Applications"
+          description="Review admissions work in EMS."
+          context="Registrar"
+          toolbar={navigation}
+          main={
+            <div className="platform-empty-state" role="status">
+              <strong>
+                Applications are not available in EMS yet — leads convert
+                directly to students.
+              </strong>
+            </div>
+          }
+        />
+      </PlatformShell>
+    );
+  }
+
+  if (view === "lead-create" || view === "placement-create") {
+    const leadCreate = view === "lead-create";
+    return (
+      <PlatformShell
+        role="registrar"
+        title={leadCreate ? "New lead" : "Book placement"}
+      >
+        <FormFlowLayout
+          title={leadCreate ? "New lead" : "Book placement"}
+          description="Create this record in EMS for now."
+          context="Registrar"
+          main={
+            <div className="platform-empty-state" role="status">
+              <strong>
+                {leadCreate
+                  ? "Lead creation is not connected yet"
+                  : "Placement booking is not connected yet"}
+              </strong>
+              <Link
+                className="platform-secondary-button"
+                href={
+                  leadCreate
+                    ? "/app/registrar/leads"
+                    : "/app/registrar/placement-tests"
+                }
+              >
+                Back
+              </Link>
+            </div>
+          }
+        />
+      </PlatformShell>
+    );
+  }
+
+  if (readState.status !== "ready") {
+    return (
+      <PlatformShell role="registrar" title="Admissions">
+        <WorkspaceLayout
+          title="Admissions"
+          description="Read admissions records from EMS."
+          context="Registrar"
+          toolbar={navigation}
+          main={<NccReadStatus state={readState} onRetry={() => void load()} />}
+        />
+      </PlatformShell>
+    );
+  }
+
+  if (readState.data.kind === "lead") {
+    const lead = readState.data.item;
+    return (
+      <PlatformShell role="registrar" title="Lead detail">
+        <DetailLayout
+          title={lead.name}
+          description={`${lead.email} · ${lead.branchName}`}
+          context="Registrar"
+          actions={
+            <Link className="platform-secondary-button" href="/app/registrar/leads">
+              Back to leads
+            </Link>
+          }
+          main={
+            <section className="registrar-panel registrar-detail-focus">
+              <div className="registrar-detail-grid">
+                {[
+                  ["Status", statusLabel(lead.status)],
+                  ["Phone", lead.phone ?? "—"],
+                  ["Branch", lead.branchName],
+                  ["Source", lead.source ?? "—"],
+                  ["Preferred course", lead.preferredCourseName ?? "—"],
+                  ["Notes", lead.notes ?? "—"],
+                  ["Created", formatDate(lead.createdAt)],
+                ].map(([label, value]) => (
+                  <article key={label}>
+                    <span>{label}</span>
+                    <strong>{value}</strong>
+                  </article>
+                ))}
+                {lead.studentId ? (
+                  <Link
+                    className="registrar-row-link"
+                    href={`/app/registrar/students/${lead.studentId}`}
+                  >
+                    Converted student
+                  </Link>
+                ) : null}
+              </div>
+            </section>
+          }
+        />
+      </PlatformShell>
+    );
+  }
+
+  if (readState.data.kind === "placement") {
+    const placement = readState.data.item;
+    return (
+      <PlatformShell role="registrar" title="Placement detail">
+        <DetailLayout
+          title={placement.subject.name}
+          description={`${placement.subject.email} · ${placement.branchName}`}
+          context="Registrar"
+          actions={
+            <Link
+              className="platform-secondary-button"
+              href="/app/registrar/placement-tests"
+            >
+              Back to placement
+            </Link>
+          }
+          main={
+            <section className="registrar-panel registrar-detail-focus">
+              <div className="registrar-detail-grid">
+                {[
+                  ["Subject type", statusLabel(placement.subject.type)],
+                  ["Status", statusLabel(placement.status)],
+                  ["Scheduled", formatDate(placement.scheduledAt ?? undefined)],
+                  ["Room", placement.roomName ?? "—"],
+                  ["Branch", placement.branchName],
+                  ["Recommended course", placement.recommendedCourseName ?? "—"],
+                  ["Result score", placement.resultScore ?? "—"],
+                  ["Result notes", placement.resultNotes ?? "—"],
+                  ["Completed", formatDate(placement.completedAt ?? undefined)],
+                  ["Cancelled", formatDate(placement.cancelledAt ?? undefined)],
+                ].map(([label, value]) => (
+                  <article key={label}>
+                    <span>{label}</span>
+                    <strong>{value}</strong>
+                  </article>
+                ))}
+              </div>
+            </section>
+          }
+        />
+      </PlatformShell>
+    );
+  }
+
+  const items = readState.data.items.filter(item => {
+    const text =
+      readState.data.kind === "leads"
+        ? `${(item as NccLeadDto).name} ${(item as NccLeadDto).email} ${(item as NccLeadDto).phone ?? ""} ${(item as NccLeadDto).branchName} ${(item as NccLeadDto).source ?? ""}`
+        : `${(item as NccPlacementTestDto).subject.name} ${(item as NccPlacementTestDto).subject.email} ${(item as NccPlacementTestDto).branchName} ${(item as NccPlacementTestDto).roomName ?? ""}`;
+    return text.toLowerCase().includes(search.trim().toLowerCase());
+  });
+  const isLeadList = readState.data.kind === "leads";
+  return (
+    <PlatformShell role="registrar" title={isLeadList ? "Leads" : "Placement tests"}>
+      <WorkspaceLayout
+        title={isLeadList ? "Leads" : "Placement tests"}
+        description={
+          isLeadList
+            ? "Review enquiries from EMS."
+            : "Review placement tests from EMS."
+        }
+        context="Registrar"
+        toolbar={
+          <div className="registrar-admissions-toolbar-v3">
+            {navigation}
+            <label className="platform-search-field">
+              <Search size={16} />
+              <input
+                value={search}
+                onChange={event => setSearch(event.target.value)}
+                placeholder="Search admissions records"
+                aria-label="Search admissions records"
+              />
+            </label>
+          </div>
+        }
+        main={
+          <DataTableCard
+            title={isLeadList ? "Lead records" : "Placement bookings"}
+            subtitle={`${items.length} visible record(s)`}
+          >
+            {items.length ? (
+              <div className="platform-directory-table-wrap">
+                {isLeadList ? (
+                  <OperationalDirectoryTable
+                    rows={items as NccLeadDto[]}
+                    rowKey={row => row.id}
+                    columns={[
+                      {
+                        key: "lead",
+                        label: "Lead",
+                        render: row => (
+                          <div>
+                            <strong>{row.name}</strong>
+                            <small>{row.email}</small>
+                          </div>
+                        ),
+                      },
+                      { key: "phone", label: "Phone", render: row => row.phone ?? "—" },
+                      { key: "branch", label: "Branch", render: row => row.branchName },
+                      { key: "source", label: "Source", render: row => row.source ?? "—" },
+                      {
+                        key: "status",
+                        label: "Status",
+                        render: row => (
+                          <StatusBadge tone={nccStatusTone(row.status)}>
+                            {statusLabel(row.status)}
+                          </StatusBadge>
+                        ),
+                      },
+                    ]}
+                    action={{
+                      href: row => `/app/registrar/leads/${row.id}`,
+                      label: row => row.name,
+                    }}
+                  />
+                ) : (
+                  <OperationalDirectoryTable
+                    rows={items as NccPlacementTestDto[]}
+                    rowKey={row => row.id}
+                    columns={[
+                      {
+                        key: "subject",
+                        label: "Subject",
+                        render: row => (
+                          <div>
+                            <strong>{row.subject.name}</strong>
+                            <small>{row.subject.email}</small>
+                            <StatusBadge tone="amber">
+                              {row.subject.type}
+                            </StatusBadge>
+                          </div>
+                        ),
+                      },
+                      {
+                        key: "scheduled",
+                        label: "Scheduled at",
+                        render: row => formatDate(row.scheduledAt ?? undefined),
+                      },
+                      { key: "room", label: "Room", render: row => row.roomName ?? "—" },
+                      { key: "branch", label: "Branch", render: row => row.branchName },
+                      {
+                        key: "status",
+                        label: "Status",
+                        render: row => (
+                          <StatusBadge tone={nccStatusTone(row.status)}>
+                            {statusLabel(row.status)}
+                          </StatusBadge>
+                        ),
+                      },
+                    ]}
+                    action={{
+                      href: row => `/app/registrar/placement-tests/${row.id}`,
+                      label: row => row.subject.name,
+                    }}
+                  />
+                )}
+              </div>
+            ) : (
+              <div className="platform-empty-state">
+                <strong>No records found</strong>
+              </div>
+            )}
+          </DataTableCard>
+        }
+      />
+    </PlatformShell>
+  );
+}
+
+function CompatibilityRegistrarAdmissionsPage({
   view,
   leadId,
   applicationId,

@@ -688,6 +688,21 @@ Current status:
   recorded in the implementation report; the deployed environment is
   unchanged.
 
+  The second accepted read family is **NCC operational reads** behind the
+  disabled `NILE_NCC_ADMISSIONS_READS_ENABLED` and
+  `NILE_NCC_DELIVERY_READS_ENABLED` flags: students, student enrolments, leads,
+  placement tests, classes, rooms, and the Teacher workspace are proxied
+  through the sealed session with closed DTOs, NCC's workspace and scope
+  decisions passed through, and no compatibility fallback. Registrar
+  students/leads/placement lists and read-only records, Branch Admin
+  students/teachers/classes lists, HOD and Registrar class lists, the Teacher
+  classes list, and the Super Admin departments page render NCC data with
+  honest loading, unavailable, denied, and empty states; every create/edit
+  surface in NCC mode reports that it is not connected. The cross-portal live
+  acceptance run of 2026-09-12 (105 checks: 92 + 13 passed, 3 blocked on the
+  EMS→Moodle connector, 1 contract-documentation mismatch) is recorded in the
+  implementation report.
+
 - On 2026-07-23 the product owner accepted ADR-010 and Phase 6J: Moodle is the
   sole writable authority for learning content, resources, assignments,
   submissions, quizzes, questions, attempts, completion, grades, and feedback.

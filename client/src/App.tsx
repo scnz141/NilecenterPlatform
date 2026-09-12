@@ -7,6 +7,7 @@ import { ThemeProvider } from "./contexts/ThemeContext";
 import ProtectedRoute from "./components/platform/ProtectedRoute";
 import LegacyRouteRedirect from "./components/platform/LegacyRouteRedirect";
 import { nileFormsCutoverEnabled } from "./lib/forms/cutover";
+import { getStoredAuthSession } from "./lib/auth/session";
 import type { Role } from "./lib/platformData";
 
 // Public
@@ -214,6 +215,14 @@ const NileRequestCreatePage = lazy(
   () => import("./pages/platform/NileRequestCreatePage")
 );
 const NotFound = lazy(() => import("./pages/NotFound"));
+
+function AdminBranchesRoute() {
+  return getStoredAuthSession()?.provider === "ncc" ? (
+    <AdminDirectoryPage view="branches" />
+  ) : (
+    <SimplePortalPage role="superadmin" pageId="branches" />
+  );
+}
 
 const dashboardRoutes: { path: string; role: Role }[] = [
   { path: "/app/student/dashboard", role: "student" },
@@ -1744,7 +1753,11 @@ function Router() {
         {simplePortalRoutes.map(route => (
           <Route key={route.path} path={route.path}>
             <ProtectedRoute role={route.role} pageId={route.pageId}>
-              <SimplePortalPage role={route.role} pageId={route.pageId} />
+              {route.pageId === "branches" ? (
+                <AdminBranchesRoute />
+              ) : (
+                <SimplePortalPage role={route.role} pageId={route.pageId} />
+              )}
             </ProtectedRoute>
           </Route>
         ))}

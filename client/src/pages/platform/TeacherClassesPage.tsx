@@ -1,13 +1,23 @@
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { ArrowRight, Search } from "lucide-react";
 import { Link } from "wouter";
+import NccReadStatus from "@/components/platform/NccReadStatus";
+import OperationalDirectoryTable from "@/components/platform/OperationalDirectoryTable";
 import PlatformShell from "@/components/platform/PlatformShell";
 import { WorkspaceLayout } from "@/components/platform/PlatformLayouts";
 import {
   DataTableCard,
   StatusBadge,
 } from "@/components/platform/PlatformPrimitives";
-import { requireActiveUser } from "@/lib/auth/session";
+import { getStoredAuthSession, requireActiveUser } from "@/lib/auth/session";
+import {
+  fetchNccTeacherWorkspaceRequest,
+  type NccTeacherWorkspaceDto,
+} from "@/lib/backend/api";
+import {
+  classifyNccFailure,
+  type NccReadState,
+} from "@/lib/backend/nccReadState";
 import { platformStore } from "@/lib/domain/store";
 import type { ClassGroup, CourseRun, EntityStatus } from "@/lib/domain/types";
 
@@ -44,6 +54,158 @@ function formatDateTime(value?: string) {
 }
 
 export default function TeacherClassesPage() {
+  return getStoredAuthSession()?.provider === "ncc" ? (
+    <NccTeacherClassesPage />
+  ) : (
+    <CompatibilityTeacherClassesPage />
+  );
+}
+
+function NccTeacherClassesPage() {
+  const [search, setSearch] = useState("");
+  const [status, setStatus] = useState("all");
+  const [readState, setReadState] = useState<
+    NccReadState<NccTeacherWorkspaceDto>
+  >({ status: "loading" });
+  const load = useCallback(async () => {
+    setReadState({ status: "loading" });
+    const result = await fetchNccTeacherWorkspaceRequest();
+    setReadState(
+      result.ok && result.data
+        ? { status: "ready", data: result.data.workspace }
+        : classifyNccFailure(result)
+    );
+  }, []);
+  useEffect(() => {
+    void load();
+  }, [load]);
+  const classes = readState.status === "ready" ? readState.data.classes : [];
+  const statuses = Array.from(new Set(classes.map(row => row.status)));
+  const rows = classes.filter(row => {
+    const text = `${row.name} ${row.courseName ?? ""} ${row.status}`.toLowerCase();
+    return (
+      (!search.trim() || text.includes(search.trim().toLowerCase())) &&
+      (status === "all" || row.status === status)
+    );
+  });
+
+  return (
+    <PlatformShell role="teacher" title="Classes">
+      <WorkspaceLayout
+        className="teacher-classes-page portal-simple-page"
+        title="Classes"
+        description="Choose one assigned class."
+        context="Teacher"
+        toolbar={
+          readState.status === "ready" ? (
+            <div className="teacher-classes-toolbar-v4">
+              <label>
+                <Search size={15} />
+                <span className="sr-only">Search classes</span>
+                <input
+                  value={search}
+                  onChange={event => setSearch(event.target.value)}
+                  placeholder="Search classes"
+                />
+              </label>
+              <label>
+                <span>Status</span>
+                <select
+                  value={status}
+                  onChange={event => setStatus(event.target.value)}
+                >
+                  <option value="all">All classes</option>
+                  {statuses.map(value => (
+                    <option key={value} value={value}>
+                      {value}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+          ) : undefined
+        }
+        main={
+          readState.status !== "ready" ? (
+            <NccReadStatus state={readState} onRetry={() => void load()} />
+          ) : (
+            <DataTableCard
+              title="Assigned classes"
+              subtitle={`${rows.length} classes`}
+              className="teacher-classes-record-card"
+            >
+              {rows.length ? (
+                <div className="platform-directory-table-wrap">
+                  <OperationalDirectoryTable
+                    rows={rows}
+                    rowKey={row => row.id}
+                    columns={[
+                      {
+                        key: "class",
+                        label: "Class",
+                        render: row => <strong>{row.name}</strong>,
+                      },
+                      {
+                        key: "course",
+                        label: "Course",
+                        render: row => row.courseName ?? "No course",
+                      },
+                      {
+                        key: "learners",
+                        label: "Learners",
+                        render: row => row.activeEnrolmentCount,
+                      },
+                      {
+                        key: "status",
+                        label: "Status",
+                        render: row => (
+                          <StatusBadge
+                            tone={row.status === "active" ? "green" : "slate"}
+                          >
+                            {row.status}
+                          </StatusBadge>
+                        ),
+                      },
+                      {
+                        key: "moodle",
+                        label: "Moodle",
+                        render: row =>
+                          row.moodleCourseUrl ? (
+                            <a
+                              href={row.moodleCourseUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                            >
+                              Open in Moodle
+                            </a>
+                          ) : (
+                            "Not linked"
+                          ),
+                      },
+                    ]}
+                    action={{
+                      href: () => undefined,
+                      label: row => row.name,
+                    }}
+                  />
+                </div>
+              ) : (
+                <div className="platform-empty-state">
+                  <strong>No assigned classes yet</strong>
+                  <span>
+                    Classes appear after an administrator assigns you.
+                  </span>
+                </div>
+              )}
+            </DataTableCard>
+          )
+        }
+      />
+    </PlatformShell>
+  );
+}
+
+function CompatibilityTeacherClassesPage() {
   const state = useMemo(() => platformStore.getState(), []);
   const teacherId = requireActiveUser("teacher").id;
   const [search, setSearch] = useState("");
