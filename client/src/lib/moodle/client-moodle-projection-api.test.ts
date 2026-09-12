@@ -67,6 +67,7 @@ describe("Moodle catalog projection client", () => {
     await expect(fetchMoodleCourseCatalogProjectionRequest()).resolves.toEqual({
       ok: false,
       error: "Moodle projection repository is temporarily unavailable.",
+      status: 503,
     });
   });
 
@@ -244,7 +245,7 @@ describe("Moodle course-content projection client", () => {
 
       await expect(
         fetchMoodleCourseContentProjectionRequest("course_ar_l3")
-      ).resolves.toEqual({ ok: false, error });
+      ).resolves.toEqual({ ok: false, error, status });
       expect(fetchMock).toHaveBeenCalledTimes(1);
       expect(fetchMock.mock.calls[0]?.[0]).toBe(
         "/api/integrations/moodle/projections/courses/course_ar_l3/content"

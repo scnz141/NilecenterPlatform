@@ -204,6 +204,62 @@ export type EmsStagingBranch = {
   timezone: string;
 };
 
+export type EmsStagingStaffUser = {
+  id: string;
+  email: string;
+  name: string;
+  firstName: string;
+  lastName: string;
+  phone: string | null;
+  role: EmsStagingLocalRole;
+  status: "invited" | "active" | "disabled" | "canceled";
+  isActive: boolean;
+  scopeType: "global" | "branch";
+  branchIds: string[];
+  departments: Array<{
+    id: string;
+    name: string;
+    status: "active" | "disabled";
+  }>;
+  moodleLinked: boolean;
+  lastLoginAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type EmsStagingDepartment = {
+  id: string;
+  name: string;
+  code: string | null;
+  status: "active" | "disabled";
+};
+
+function normalizeEmsScopes(payload: unknown): EmsStagingMe["scopes"] | null {
+  if (!Array.isArray(payload)) return null;
+  const scopes = payload.map(scope => {
+    if (!scope || typeof scope !== "object") return null;
+    const entry = scope as Record<string, unknown>;
+    const scopeType = entry.scope_type;
+    const scopeId = entry.scope_id;
+    const isLive = entry.is_live;
+    if (
+      (scopeType !== "global" && scopeType !== "branch") ||
+      (scopeId !== null && scopeId !== undefined && typeof scopeId !== "string") ||
+      (isLive !== undefined && typeof isLive !== "boolean")
+    ) {
+      return null;
+    }
+    return {
+      scopeType,
+      scopeId: typeof scopeId === "string" ? scopeId : null,
+      isLive: isLive ?? true,
+    };
+  });
+  return scopes.some(scope => scope === null)
+    ? null
+    : (scopes as EmsStagingMe["scopes"]);
+}
+
 function normalizeMe(payload: unknown): EmsStagingMe | null {
   if (!payload || typeof payload !== "object") return null;
   const record = payload as Record<string, unknown>;
@@ -233,24 +289,8 @@ function normalizeMe(payload: unknown): EmsStagingMe | null {
   ) {
     return null;
   }
-  const scopes = record.scopes.map(scope => {
-    if (!scope || typeof scope !== "object") return null;
-    const entry = scope as Record<string, unknown>;
-    const scopeType = entry.scope_type;
-    const scopeId = entry.scope_id;
-    if (
-      (scopeType !== "global" && scopeType !== "branch") ||
-      (scopeId !== null && scopeId !== undefined && typeof scopeId !== "string")
-    ) {
-      return null;
-    }
-    return {
-      scopeType,
-      scopeId: typeof scopeId === "string" ? scopeId : null,
-      isLive: entry.is_live !== false,
-    };
-  });
-  if (scopes.some(scope => scope === null)) return null;
+  const scopes = normalizeEmsScopes(record.scopes);
+  if (!scopes) return null;
   const departments = Array.isArray(user?.departments) ? user.departments : [];
   const departmentIds = departments.map(department => {
     if (!department || typeof department !== "object") return null;
@@ -306,6 +346,175 @@ export function normalizeEmsBranches(
   return branches.some(branch => branch === null)
     ? null
     : (branches as EmsStagingBranch[]);
+}
+
+function normalizeStaffDepartments(
+  payload: unknown
+): EmsStagingStaffUser["departments"] | null {
+  if (payload === null || payload === undefined) return [];
+  if (!Array.isArray(payload)) return null;
+  const departments = payload.map(value => {
+    if (!value || typeof value !== "object") return null;
+    const record = value as Record<string, unknown>;
+    if (
+      typeof record.department_id !== "string" ||
+      !record.department_id ||
+      typeof record.name !== "string" ||
+      !record.name ||
+      (record.status !== "active" && record.status !== "disabled")
+    ) {
+      return null;
+    }
+    return {
+      id: record.department_id,
+      name: record.name,
+      status: record.status,
+    };
+  });
+  return departments.some(department => department === null)
+    ? null
+    : (departments as EmsStagingStaffUser["departments"]);
+}
+
+export function normalizeEmsStaffUser(
+  payload: unknown
+): EmsStagingStaffUser | null {
+  if (!payload || typeof payload !== "object") return null;
+  const record = payload as Record<string, unknown>;
+  const profileValue = record.profile;
+  if (
+    profileValue !== null &&
+    profileValue !== undefined &&
+    typeof profileValue !== "object"
+  ) {
+    return null;
+  }
+  const profile =
+    profileValue && typeof profileValue === "object"
+      ? (profileValue as Record<string, unknown>)
+      : null;
+  if (
+    (profile?.first_name !== undefined &&
+      typeof profile.first_name !== "string") ||
+    (profile?.last_name !== undefined && typeof profile.last_name !== "string") ||
+    (profile?.phone !== undefined &&
+      profile.phone !== null &&
+      typeof profile.phone !== "string")
+  ) {
+    return null;
+  }
+  const role =
+    typeof record.assigned_role === "string"
+      ? mapEmsRoleToLocal(record.assigned_role)
+      : null;
+  const scopes = normalizeEmsScopes(record.scopes);
+  const departments = normalizeStaffDepartments(record.departments);
+  const lastLoginAt = record.last_login_at;
+  if (
+    typeof record.id !== "string" ||
+    !record.id ||
+    typeof record.email !== "string" ||
+    !record.email ||
+    !role ||
+    (record.status !== "invited" &&
+      record.status !== "active" &&
+      record.status !== "disabled" &&
+      record.status !== "canceled") ||
+    typeof record.is_active !== "boolean" ||
+    !scopes ||
+    !departments ||
+    (record.moodle_user_id !== null &&
+      record.moodle_user_id !== undefined &&
+      (!Number.isSafeInteger(record.moodle_user_id) ||
+        (record.moodle_user_id as number) < 1)) ||
+    (lastLoginAt !== null &&
+      lastLoginAt !== undefined &&
+      (typeof lastLoginAt !== "string" ||
+        !Number.isFinite(Date.parse(lastLoginAt)))) ||
+    typeof record.created_at !== "string" ||
+    !Number.isFinite(Date.parse(record.created_at)) ||
+    typeof record.updated_at !== "string" ||
+    !Number.isFinite(Date.parse(record.updated_at))
+  ) {
+    return null;
+  }
+  const firstName =
+    typeof profile?.first_name === "string" ? profile.first_name.trim() : "";
+  const lastName =
+    typeof profile?.last_name === "string" ? profile.last_name.trim() : "";
+  const phone =
+    typeof profile?.phone === "string" && profile.phone.trim()
+      ? profile.phone.trim()
+      : null;
+  return {
+    id: record.id,
+    email: record.email,
+    name: [firstName, lastName].filter(Boolean).join(" ") || record.email,
+    firstName,
+    lastName,
+    phone,
+    role,
+    status: record.status,
+    isActive: record.is_active,
+    scopeType: scopes.some(scope => scope.scopeType === "global")
+      ? "global"
+      : "branch",
+    branchIds: Array.from(
+      new Set(
+        scopes
+          .filter(
+            scope =>
+              scope.scopeType === "branch" && scope.isLive && scope.scopeId
+          )
+          .map(scope => scope.scopeId as string)
+      )
+    ),
+    departments,
+    moodleLinked:
+      record.moodle_user_id !== null && record.moodle_user_id !== undefined,
+    lastLoginAt: typeof lastLoginAt === "string" ? lastLoginAt : null,
+    createdAt: record.created_at,
+    updatedAt: record.updated_at,
+  };
+}
+
+export function normalizeEmsStaffUsers(
+  payload: unknown
+): EmsStagingStaffUser[] | null {
+  if (!Array.isArray(payload)) return null;
+  const users = payload.map(normalizeEmsStaffUser);
+  return users.some(user => user === null)
+    ? null
+    : (users as EmsStagingStaffUser[]);
+}
+
+export function normalizeEmsDepartments(
+  payload: unknown
+): EmsStagingDepartment[] | null {
+  if (!Array.isArray(payload)) return null;
+  const departments = payload.map(value => {
+    if (!value || typeof value !== "object") return null;
+    const record = value as Record<string, unknown>;
+    if (
+      typeof record.id !== "string" ||
+      !record.id ||
+      typeof record.name !== "string" ||
+      !record.name ||
+      (record.code !== null && typeof record.code !== "string") ||
+      (record.status !== "active" && record.status !== "disabled")
+    ) {
+      return null;
+    }
+    return {
+      id: record.id,
+      name: record.name,
+      code: record.code,
+      status: record.status,
+    };
+  });
+  return departments.some(department => department === null)
+    ? null
+    : (departments as EmsStagingDepartment[]);
 }
 
 export function createEmsStagingClient(options: EmsStagingClientOptions) {
@@ -398,6 +607,15 @@ export function createEmsStagingClient(options: EmsStagingClientOptions) {
     },
     branches(token: string) {
       return request<unknown>("/branches", { token });
+    },
+    users(token: string) {
+      return request<unknown>("/users", { token });
+    },
+    user(token: string, userId: string) {
+      return request<unknown>(`/users/${encodeURIComponent(userId)}`, { token });
+    },
+    departments(token: string) {
+      return request<unknown>("/departments", { token });
     },
   };
 }

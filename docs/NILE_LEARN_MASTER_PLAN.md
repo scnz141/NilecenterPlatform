@@ -671,6 +671,23 @@ Current status:
   domain, Student routes, operational data families, Moodle writes, and removal
   of existing compatibility/Supabase adapters remain blocked.
 
+  On 2026-09-12 the product owner authorized continued interconnection work with
+  the existing real EMS staff fixtures. Authenticated website checks with the
+  Super Admin, Teacher, Registrar, HOD, and Branch Admin accounts showed NCC
+  sign-in, branch workspace selection, and role routing working, while every
+  portal page still read the compatibility snapshot and rendered empty or
+  fabricated data for unmapped NCC identities. The first accepted cutover
+  family is therefore **NCC directory reads**:
+  `GET /api/ncc/directory/{users,users/:id,branches,departments}` behind the
+  disabled `NILE_NCC_DIRECTORY_READS_ENABLED` flag, translated through closed
+  DTOs, passing NCC's own 403/404 scope decisions through, and rendered by the
+  Super Admin Users list and detail pages with honest loading, unavailable,
+  denied, and empty states. Staff creation, access edits, and every other
+  operational family remain blocked; the Teacher dashboard no longer links to
+  a fabricated class when no class is assigned. Local acceptance evidence is
+  recorded in the implementation report; the deployed environment is
+  unchanged.
+
 - On 2026-07-23 the product owner accepted ADR-010 and Phase 6J: Moodle is the
   sole writable authority for learning content, resources, assignments,
   submissions, quizzes, questions, attempts, completion, grades, and feedback.

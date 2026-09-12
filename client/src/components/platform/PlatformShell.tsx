@@ -59,7 +59,10 @@ import {
   roleMeta,
   type Role,
 } from "@/lib/platformData";
-import { requireActiveUser } from "@/lib/auth/session";
+import {
+  getStoredAuthSession,
+  requireActiveUser,
+} from "@/lib/auth/session";
 import { getSidebarForRole } from "@/lib/rbac";
 import {
   getDirection,
@@ -406,7 +409,13 @@ export default function PlatformShell({ role, children, title }: ShellProps) {
   const userScopeLabel = useMemo(() => {
     const state = platformStore.getState();
     const platformUser = state.users.find(item => item.id === user.id);
-    if (!platformUser) return meta.branchLabel;
+    if (!platformUser) {
+      return getStoredAuthSession()?.provider === "ncc"
+        ? role === "headofdepartment"
+          ? user.department
+          : user.branch
+        : meta.branchLabel;
+    }
 
     const branch = state.branches.find(
       item => item.id === platformUser.branchId

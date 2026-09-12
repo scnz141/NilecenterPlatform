@@ -4589,9 +4589,7 @@
   .admin-users-simple-toolbar {
     width: 100%;
     display: grid;
-    grid-template-columns:
-      minmax(260px, 1fr) minmax(140px, 180px) minmax(150px, 200px)
-      minmax(130px, 170px);
+    grid-template-columns: minmax(220px, 1.4fr) repeat(3, minmax(140px, 1fr));
     gap: 10px;
     align-items: end;
   }
@@ -4605,13 +4603,13 @@
     font-weight: 850;
   }
 
-  .admin-users-simple-toolbar label > span {
+  .admin-users-simple-toolbar label > span:first-child {
     padding-left: 2px;
   }
 
-  .admin-users-simple-toolbar select,
-  .admin-users-simple-toolbar input {
+  .admin-users-simple-toolbar select {
     min-width: 0;
+    width: 100%;
     min-height: 40px;
     border: 1px solid var(--border);
     border-radius: 10px;
@@ -4622,6 +4620,10 @@
   }
 
   .admin-users-simple-search {
+    flex: none;
+    width: 100%;
+    min-width: 0;
+    height: 40px;
     margin: 0;
   }
 
@@ -17368,6 +17370,16 @@
     }
   }
 
+  @media (max-width: 1150px) {
+    .admin-users-simple-toolbar {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .admin-users-simple-search-field {
+      grid-column: 1 / -1;
+    }
+  }
+
   @media (max-width: 900px) {
     .admin-user-detail-hero,
     .admin-user-detail-grid {
@@ -17377,14 +17389,6 @@
     .admin-user-detail-status,
     .admin-user-detail-actions {
       justify-content: flex-start;
-    }
-
-    .admin-users-simple-toolbar {
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
-
-    .admin-users-simple-search {
-      grid-column: 1 / -1;
     }
 
     .admin-users-simple-form {
@@ -22483,6 +22487,19 @@
   width: fit-content;
 }
 
+@media (max-width: 1150px) {
+  /* Lazy-loaded role sheets re-set align-items/flex; html prefix keeps these. */
+  html .admin-ia-control-row {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  html .admin-ia-control-row .admin-ia-toolbar {
+    flex: 0 1 auto;
+    justify-content: flex-start;
+  }
+}
+
 @media (max-width: 980px) {
   .student-assessment-page .platform-v2-layout-grid {
     grid-template-columns: minmax(0, 1fr);
@@ -22490,15 +22507,6 @@
 
   .student-assessment-side {
     grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
-
-  .admin-ia-control-row {
-    align-items: stretch;
-    flex-direction: column;
-  }
-
-  .admin-ia-control-row .admin-ia-toolbar {
-    justify-content: flex-start;
   }
 }
 

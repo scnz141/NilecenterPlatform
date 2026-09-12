@@ -19,7 +19,7 @@ const associatedData = Buffer.from("nile-learn:ncc-auth-session:v1", "utf8");
 
 type Request = { headers: { cookie?: string } };
 type Response = { setHeader(name: string, value: string | string[]): void };
-type RemoteResult =
+export type RemoteResult =
   | { ok: true; data: unknown }
   | {
       ok: false;
@@ -44,6 +44,26 @@ export class NccAuthError extends Error {
     this.status = status;
     this.details = details;
   }
+}
+
+export function sendNccAuthError(
+  error: unknown,
+  response: {
+    status(code: number): { json(body: unknown): void };
+  }
+) {
+  if (!(error instanceof NccAuthError)) return false;
+  const body: Record<string, unknown> = {
+    error:
+      error.status >= 500
+        ? "NCC EMS is temporarily unavailable."
+        : error.message,
+  };
+  if (error.status === 422 && error.details !== undefined) {
+    body.details = error.details;
+  }
+  response.status(error.status).json(body);
+  return true;
 }
 
 export function nccStaffAuthEnabled(env: NodeJS.ProcessEnv = process.env) {
@@ -438,19 +458,22 @@ export async function switchNccRole(
   return next.session;
 }
 
-export async function listNccWorkspaces(
+export async function runNccRead(
   request: Request,
   response: Response,
+  operation: (
+    api: EmsStagingClient,
+    token: string
+  ) => Promise<RemoteResult>,
   dependencies: NccAuthDependencies = {}
 ) {
   const env = dependencies.env ?? process.env;
   const value = openEnvelope(request, env);
   if (!value) throw new NccAuthError(401, "Sign in required.");
   const api = client(env, dependencies.createClient);
-  const result = await runWithRefresh(value, api, token => api.branches(token));
-  const branches = normalizeEmsBranches(result.result.data);
-  if (!branches)
-    throw new NccAuthError(502, "NCC EMS returned invalid branches.");
+  const result = await runWithRefresh(value, api, token =>
+    operation(api, token)
+  );
   if (result.refreshed) {
     const meResult = await api.me(result.tokens.accessToken);
     if (!meResult.ok) remoteError(meResult);
@@ -466,6 +489,24 @@ export async function listNccWorkspaces(
       env
     );
   }
+  return result.result.data;
+}
+
+export async function listNccWorkspaces(
+  request: Request,
+  response: Response,
+  dependencies: NccAuthDependencies = {}
+) {
+  const branches = normalizeEmsBranches(
+    await runNccRead(
+      request,
+      response,
+      (api, token) => api.branches(token),
+      dependencies
+    )
+  );
+  if (!branches)
+    throw new NccAuthError(502, "NCC EMS returned invalid branches.");
   return branches
     .filter(branch => branch.status === "active")
     .map(({ id, name, timezone }) => ({ id, name, timezone }));

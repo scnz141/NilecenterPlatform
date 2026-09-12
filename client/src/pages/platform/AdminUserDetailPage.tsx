@@ -1,4 +1,11 @@
-import { useMemo, useState, type FormEvent, type ReactElement } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type FormEvent,
+  type ReactElement,
+} from "react";
 import {
   ArrowLeft,
   Edit3,
@@ -15,7 +22,14 @@ import {
   DataTableCard,
   StatusBadge,
 } from "@/components/platform/PlatformPrimitives";
-import { runPlatformWorkflowActionRequest } from "@/lib/backend/api";
+import {
+  fetchNccDirectoryBranchesRequest,
+  fetchNccDirectoryUserRequest,
+  runPlatformWorkflowActionRequest,
+  type NccBranchDto,
+  type NccStaffUserDto,
+} from "@/lib/backend/api";
+import { getStoredAuthSession } from "@/lib/auth/session";
 import type { PlatformWorkflowAction } from "@/lib/domain/actions";
 import { platformStore } from "@/lib/domain/store";
 import type { EntityStatus } from "@/lib/domain/types";
@@ -52,6 +66,25 @@ function statusTone(status: EntityStatus): "green" | "amber" | "slate" {
   return "slate";
 }
 
+function nccStatusTone(
+  status: NccStaffUserDto["status"]
+): "green" | "amber" | "slate" {
+  if (status === "active") return "green";
+  if (status === "invited") return "amber";
+  return "slate";
+}
+
+function formatNccDate(value: string | null, fallback: string) {
+  if (!value) return fallback;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return fallback;
+  return new Intl.DateTimeFormat("en", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  }).format(date);
+}
+
 function splitListInput(value: string) {
   return value
     .split(/[,\n]/)
@@ -74,14 +107,60 @@ export default function AdminUserDetailPage({
   userId,
   view = "overview",
 }: AdminUserDetailPageProps) {
+  const isNccMode = getStoredAuthSession()?.provider === "ncc";
   const [version, setVersion] = useState(0);
   const [editMode, setEditMode] = useState(view === "access");
   const [savingAccess, setSavingAccess] = useState(false);
   const [savingTeacher, setSavingTeacher] = useState(false);
   const [accessError, setAccessError] = useState("");
   const [teacherError, setTeacherError] = useState("");
+  const [nccUser, setNccUser] = useState<NccStaffUserDto | null>(null);
+  const [nccBranches, setNccBranches] = useState<NccBranchDto[]>([]);
+  const [nccLoading, setNccLoading] = useState(isNccMode);
+  const [nccError, setNccError] = useState<{
+    message: string;
+    status?: number;
+  } | null>(null);
   const state = useMemo(() => platformStore.getState(), [version]);
   const refresh = () => setVersion(value => value + 1);
+  const loadNccUser = useCallback(async () => {
+    if (!userId) {
+      setNccLoading(false);
+      setNccError({ message: "User not found", status: 404 });
+      return;
+    }
+    setNccLoading(true);
+    setNccError(null);
+    const [userResponse, branchesResponse] = await Promise.all([
+      fetchNccDirectoryUserRequest(userId),
+      fetchNccDirectoryBranchesRequest(),
+    ]);
+    const failedResponse = [userResponse, branchesResponse].find(
+      response => !response.ok
+    );
+    if (failedResponse) {
+      setNccUser(null);
+      setNccError({
+        message: failedResponse.error ?? "The EMS staff account could not load.",
+        status: failedResponse.status,
+      });
+      setNccLoading(false);
+      return;
+    }
+    if (!userResponse.data || !branchesResponse.data) {
+      setNccUser(null);
+      setNccError({ message: "The EMS staff account returned no data." });
+      setNccLoading(false);
+      return;
+    }
+    setNccUser(userResponse.data.user);
+    setNccBranches(branchesResponse.data.items);
+    setNccLoading(false);
+  }, [userId]);
+
+  useEffect(() => {
+    if (isNccMode) void loadNccUser();
+  }, [isNccMode, loadNccUser]);
 
   const user = state.users.find(item => item.id === userId);
   const [accessDraft, setAccessDraft] = useState({
@@ -181,6 +260,182 @@ export default function AdminUserDetailPage({
   const previousTeacher = state.users.find(
     item => item.id === selectedRun?.teacherId
   );
+
+  if (isNccMode) {
+    if (nccLoading) {
+      return (
+        <PlatformShell role="superadmin" title="User">
+          <DetailLayout
+            className="admin-user-detail-page"
+            title="Account overview"
+            description="Read identity and school scope from EMS."
+            main={
+              <section className="platform-empty-state" role="status">
+                <strong>Loading user from EMS</strong>
+              </section>
+            }
+          />
+        </PlatformShell>
+      );
+    }
+
+    if (nccError?.status === 404) {
+      return (
+        <PlatformShell role="superadmin" title="User not found">
+          <DetailLayout
+            className="admin-user-detail-page"
+            title="User not found"
+            description="This account could not be found in the Nile Learn directory."
+            actions={
+              <Link className="platform-secondary-button" href="/app/admin/users">
+                <ArrowLeft size={15} />
+                Back to users
+              </Link>
+            }
+            main={
+              <section className="platform-empty-state">
+                <strong>No matching user</strong>
+                <span>Return to the users list and open a current account.</span>
+              </section>
+            }
+          />
+        </PlatformShell>
+      );
+    }
+
+    if (nccError?.status === 503) {
+      return (
+        <PlatformShell role="superadmin" title="User">
+          <DetailLayout
+            className="admin-user-detail-page"
+            title="Account overview"
+            description="Read identity and school scope from EMS."
+            main={
+              <section className="platform-empty-state" role="status">
+                <strong>
+                  The EMS staff directory is not connected in this environment
+                  yet.
+                </strong>
+              </section>
+            }
+          />
+        </PlatformShell>
+      );
+    }
+
+    if (nccError || !nccUser) {
+      return (
+        <PlatformShell role="superadmin" title="User">
+          <DetailLayout
+            className="admin-user-detail-page"
+            title="Account overview"
+            description="Read identity and school scope from EMS."
+            main={
+              <section className="platform-empty-state" role="alert">
+                <strong>User could not be loaded from EMS</strong>
+                <span>
+                  {nccError?.message ?? "The EMS staff account returned no data."}
+                </span>
+                <button
+                  type="button"
+                  className="platform-secondary-button"
+                  onClick={() => void loadNccUser()}
+                >
+                  Retry
+                </button>
+              </section>
+            }
+          />
+        </PlatformShell>
+      );
+    }
+
+    const nccRole = roleMeta[nccUser.role];
+    const branchAccess =
+      nccUser.scopeType === "global"
+        ? "All branches"
+        : nccBranches
+            .filter(item => nccUser.branchIds.includes(item.id))
+            .map(item => item.name)
+            .join(", ") || "No branch";
+    const departments =
+      nccUser.departments.map(item => item.name).join(", ") || "No department";
+    const nccHeader = (
+      <section className="admin-access-panel selected-user admin-user-detail-hero">
+        <div className="admin-user-detail-identity">
+          <span style={{ background: nccRole.tint, color: nccRole.color }}>
+            {nccRole.shortLabel}
+          </span>
+          <div>
+            <Link href="/app/admin/users">
+              <ArrowLeft size={14} />
+              Users
+            </Link>
+            <h2>{nccUser.name}</h2>
+            <p>
+              {nccRole.label} · {branchAccess} · {departments}
+            </p>
+          </div>
+        </div>
+        <dl className="admin-user-detail-facts">
+          <div>
+            <dt>Status</dt>
+            <dd>
+              <StatusBadge tone={nccStatusTone(nccUser.status)}>
+                {nccUser.status}
+              </StatusBadge>
+            </dd>
+          </div>
+          <div>
+            <dt>Email</dt>
+            <dd>{nccUser.email}</dd>
+          </div>
+          <div>
+            <dt>Branch access</dt>
+            <dd>{branchAccess}</dd>
+          </div>
+          <div>
+            <dt>Departments</dt>
+            <dd>{departments}</dd>
+          </div>
+          <div>
+            <dt>Moodle account</dt>
+            <dd>{nccUser.moodleLinked ? "Linked" : "Not linked"}</dd>
+          </div>
+          <div>
+            <dt>Last sign-in</dt>
+            <dd>{formatNccDate(nccUser.lastLoginAt, "Never")}</dd>
+          </div>
+          <div>
+            <dt>Created</dt>
+            <dd>{formatNccDate(nccUser.createdAt, "Unknown")}</dd>
+          </div>
+        </dl>
+      </section>
+    );
+
+    return (
+      <PlatformShell role="superadmin" title={nccUser.name}>
+        <DetailLayout
+          className="admin-user-detail-page"
+          title="Account overview"
+          description="Read identity and school scope from EMS."
+          main={
+            <>
+              {nccHeader}
+              <section className="platform-empty-state" role="status">
+                <strong>Account changes are managed in EMS</strong>
+                <span>
+                  Editing access, pausing accounts, and teacher assignment are
+                  not connected to EMS from Nile Learn yet.
+                </span>
+              </section>
+            </>
+          }
+        />
+      </PlatformShell>
+    );
+  }
 
   const updateUserAccess = async (
     action: Extract<PlatformWorkflowAction, { type: "user.update" }>,

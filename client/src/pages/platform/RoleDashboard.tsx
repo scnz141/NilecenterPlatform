@@ -921,7 +921,6 @@ function RegistrarCommandDashboard() {
 }
 
 function TeacherCommandDashboard() {
-  const dashboard = dashboardByRole.teacher;
   const meta = roleMeta.teacher;
   const state = useMemo(() => platformStore.getState(), []);
   const actorId = requireActiveUser("teacher").id;
@@ -1031,6 +1030,15 @@ function TeacherCommandDashboard() {
   const nextCourse = state.courses.find(
     course => course.id === nextRun?.courseId
   );
+  const nextClassPath = nextClassGroup
+    ? `/app/teacher/classes/${nextClassGroup.id}`
+    : "/app/teacher/classes";
+  const nextAttendancePath = nextClassGroup
+    ? `${nextClassPath}/attendance`
+    : nextClassPath;
+  const nextStudentsPath = nextClassGroup
+    ? `${nextClassPath}/students`
+    : nextClassPath;
   const todayKey = new Date().toISOString().slice(0, 10);
   const todaySessions = sessions.filter(
     session => session.startsAt.slice(0, 10) === todayKey
@@ -1044,8 +1052,8 @@ function TeacherCommandDashboard() {
   const dashboardStats: Stat[] = [
     {
       label: "Today’s classes",
-      value: String(todaySessions.length || visibleSessions.length),
-      change: todaySessions.length ? "scheduled today" : "next scheduled",
+      value: String(todaySessions.length),
+      change: todaySessions.length ? "scheduled today" : "none scheduled today",
       tone: "teal",
     },
     {
@@ -1073,7 +1081,7 @@ function TeacherCommandDashboard() {
       detail: pendingAttendance.length
         ? `${pendingAttendance.length} session(s) need attendance.`
         : "Attendance is saved for current sessions.",
-      href: `/app/teacher/classes/${nextClassGroup?.id ?? "class_ar_l3_a"}/attendance`,
+      href: nextAttendancePath,
       Icon: CheckCircle2,
       tone: pendingAttendance.length ? ("amber" as const) : ("green" as const),
     },
@@ -1091,7 +1099,7 @@ function TeacherCommandDashboard() {
       detail: studentsNeedingAttention.length
         ? `${studentsNeedingAttention.length} learner(s) need review.`
         : "Progress and attendance are stable.",
-      href: `/app/teacher/classes/${nextClassGroup?.id ?? "class_ar_l3_a"}/students`,
+      href: nextStudentsPath,
       Icon: Users,
       tone: studentsNeedingAttention.length
         ? ("amber" as const)
@@ -1122,12 +1130,12 @@ function TeacherCommandDashboard() {
               Reports
             </Link>
             <Link
-              href={`/app/teacher/classes/${nextClassGroup?.id ?? "class_ar_l3_a"}/attendance`}
+              href={nextAttendancePath}
               className="platform-primary-button"
               style={{ background: meta.color }}
             >
               <CheckCircle2 size={15} />
-              Mark attendance
+              {nextClassGroup ? "Mark attendance" : "View classes"}
             </Link>
           </>
         }
@@ -1168,21 +1176,21 @@ function TeacherCommandDashboard() {
               <h2>
                 {nextClass?.title ??
                   nextClassGroup?.name ??
-                  dashboard.spotlight.title}
+                  "No class assigned yet"}
               </h2>
-              <p>{nextCourse?.title ?? dashboard.spotlight.description}</p>
+              <p>
+                {nextCourse?.title ??
+                  "Classes appear here after an administrator assigns you to a class."}
+              </p>
               <div className="platform-v2-summary-actions">
                 <Link
-                  href={`/app/teacher/classes/${nextClassGroup?.id ?? "class_ar_l3_a"}/attendance`}
+                  href={nextAttendancePath}
                   className="platform-primary-button"
                   style={{ background: meta.color }}
                 >
-                  Mark attendance
+                  {nextClassGroup ? "Mark attendance" : "View classes"}
                 </Link>
-                <Link
-                  href={`/app/teacher/classes/${nextClassGroup?.id ?? "class_ar_l3_a"}`}
-                  className="platform-secondary-button"
-                >
+                <Link href={nextClassPath} className="platform-secondary-button">
                   Class panel
                 </Link>
               </div>

@@ -29,6 +29,7 @@ type ApiResult<T> = {
   ok: boolean;
   data?: T;
   error?: string;
+  status?: number;
 };
 
 async function apiJson<T>(
@@ -59,7 +60,7 @@ async function apiJson<T>(
         ? data.error
         : `Request failed with ${response.status}`;
     if (!response.ok) {
-      return { ok: false, error: errorMessage };
+      return { ok: false, error: errorMessage, status: response.status };
     }
     return { ok: true, data: data as T };
   } catch (error) {
@@ -156,6 +157,63 @@ export function switchWorkspaceRequest(branchId: string) {
     method: "POST",
     body: JSON.stringify({ branchId }),
   });
+}
+
+export type NccStaffUserDto = {
+  id: string;
+  email: string;
+  name: string;
+  firstName: string;
+  lastName: string;
+  phone: string | null;
+  role: Exclude<Role, "student">;
+  status: "invited" | "active" | "disabled" | "canceled";
+  isActive: boolean;
+  scopeType: "global" | "branch";
+  branchIds: string[];
+  departments: Array<{
+    id: string;
+    name: string;
+    status: "active" | "disabled";
+  }>;
+  moodleLinked: boolean;
+  lastLoginAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type NccBranchDto = {
+  id: string;
+  name: string;
+  status: "active" | "disabled";
+  timezone: string;
+};
+
+export type NccDepartmentDto = {
+  id: string;
+  name: string;
+  code: string | null;
+  status: "active" | "disabled";
+};
+
+export function fetchNccDirectoryUsersRequest() {
+  return apiJson<{ items: NccStaffUserDto[] }>("/api/ncc/directory/users");
+}
+
+export function fetchNccDirectoryUserRequest(userId: string) {
+  return apiJson<{ user: NccStaffUserDto }>(
+    `/api/ncc/directory/users/${encodeURIComponent(userId)}`
+  );
+}
+
+export function fetchNccDirectoryBranchesRequest() {
+  return apiJson<{ items: NccBranchDto[] }>("/api/ncc/directory/branches");
+}
+
+export function fetchNccDirectoryDepartmentsRequest() {
+  return apiJson<{ items: NccDepartmentDto[] }>(
+    "/api/ncc/directory/departments"
+  );
 }
 
 export type MoodleCommandCapabilitiesDto = {

@@ -1,4 +1,10 @@
-import { useMemo, useState, type FormEvent } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type FormEvent,
+} from "react";
 import {
   ArrowLeft,
   ArrowRight,
@@ -19,8 +25,15 @@ import {
 } from "@/components/platform/PlatformPrimitives";
 import {
   createUserInvitationRequest,
+  fetchNccDirectoryBranchesRequest,
+  fetchNccDirectoryDepartmentsRequest,
+  fetchNccDirectoryUsersRequest,
   runPlatformWorkflowActionRequest,
+  type NccBranchDto,
+  type NccDepartmentDto,
+  type NccStaffUserDto,
 } from "@/lib/backend/api";
+import { getStoredAuthSession } from "@/lib/auth/session";
 import { platformStore } from "@/lib/domain/store";
 import type {
   EntityStatus,
@@ -183,6 +196,18 @@ function statusTone(status: EntityStatus): "green" | "amber" | "slate" {
   return "slate";
 }
 
+function nccStatusTone(
+  status: NccStaffUserDto["status"]
+): "green" | "amber" | "slate" {
+  if (status === "active") return "green";
+  if (status === "invited") return "amber";
+  return "slate";
+}
+
+function formatNccActivity(value: string | null) {
+  return value ? formatActivity(value) : "Never";
+}
+
 function roleInitials(role: Role) {
   return roleMeta[role].label
     .split(/\s+/)
@@ -200,6 +225,7 @@ function compactEmail(email: string) {
 }
 
 export default function AdminUsersPage({ mode = "list" }: AdminUsersPageProps) {
+  const isNccMode = getStoredAuthSession()?.provider === "ncc";
   const [version, setVersion] = useState(0);
   const [query, setQuery] = useState("");
   const [roleFilter, setRoleFilter] = useState("all");
@@ -216,6 +242,14 @@ export default function AdminUsersPage({ mode = "list" }: AdminUsersPageProps) {
   } | null>(null);
   const [creatingAccount, setCreatingAccount] = useState(false);
   const [createAccountError, setCreateAccountError] = useState("");
+  const [nccUsers, setNccUsers] = useState<NccStaffUserDto[]>([]);
+  const [nccBranches, setNccBranches] = useState<NccBranchDto[]>([]);
+  const [nccDepartments, setNccDepartments] = useState<NccDepartmentDto[]>([]);
+  const [nccLoading, setNccLoading] = useState(isNccMode);
+  const [nccError, setNccError] = useState<{
+    message: string;
+    status?: number;
+  } | null>(null);
   const [, navigate] = useLocation();
   const [newUser, setNewUser] = useState({
     name: "",
@@ -242,6 +276,80 @@ export default function AdminUsersPage({ mode = "list" }: AdminUsersPageProps) {
   const statusOptions = Array.from(
     new Set(state.users.map(user => user.status))
   ).sort();
+  const loadNccDirectory = useCallback(async () => {
+    setNccLoading(true);
+    setNccError(null);
+    const [usersResponse, branchesResponse, departmentsResponse] =
+      await Promise.all([
+        fetchNccDirectoryUsersRequest(),
+        fetchNccDirectoryBranchesRequest(),
+        fetchNccDirectoryDepartmentsRequest(),
+      ]);
+    const failedResponse = [
+      usersResponse,
+      branchesResponse,
+      departmentsResponse,
+    ].find(response => !response.ok);
+    if (failedResponse) {
+      setNccError({
+        message: failedResponse.error ?? "The EMS staff directory could not load.",
+        status: failedResponse.status,
+      });
+      setNccLoading(false);
+      return;
+    }
+    if (
+      !usersResponse.data ||
+      !branchesResponse.data ||
+      !departmentsResponse.data
+    ) {
+      setNccError({ message: "The EMS staff directory returned no data." });
+      setNccLoading(false);
+      return;
+    }
+    setNccUsers(usersResponse.data.items);
+    setNccBranches(branchesResponse.data.items);
+    setNccDepartments(departmentsResponse.data.items);
+    setNccLoading(false);
+  }, []);
+
+  useEffect(() => {
+    if (isNccMode) void loadNccDirectory();
+  }, [isNccMode, loadNccDirectory]);
+
+  const nccVisibleUsers = useMemo(() => {
+    const normalizedQuery = query.trim().toLowerCase();
+    return nccUsers.filter(user => {
+      const branchNames = nccBranches
+        .filter(
+          branch =>
+            user.scopeType === "global" || user.branchIds.includes(branch.id)
+        )
+        .map(branch => branch.name);
+      const departmentNames = nccDepartments
+        .filter(department =>
+          user.departments.some(item => item.id === department.id)
+        )
+        .map(department => department.name);
+      const text = `${user.name} ${user.email} ${roleMeta[user.role].label} ${branchNames.join(" ")} ${departmentNames.join(" ")}`.toLowerCase();
+      return (
+        text.includes(normalizedQuery) &&
+        (roleFilter === "all" || user.role === roleFilter) &&
+        (branchFilter === "all" ||
+          user.scopeType === "global" ||
+          user.branchIds.includes(branchFilter)) &&
+        (statusFilter === "all" || user.status === statusFilter)
+      );
+    });
+  }, [
+    branchFilter,
+    nccBranches,
+    nccDepartments,
+    nccUsers,
+    query,
+    roleFilter,
+    statusFilter,
+  ]);
 
   const visibleUsers = state.users.filter(user => {
     const branch = state.branches.find(item => item.id === user.branchId);
@@ -282,6 +390,244 @@ export default function AdminUsersPage({ mode = "list" }: AdminUsersPageProps) {
     });
     return activity;
   }, [state.auditLogs, state.staffProfiles, state.users]);
+
+  if (isNccMode && mode === "create") {
+    return (
+      <PlatformShell role="superadmin" title="Create user">
+        <FormFlowLayout
+          className="admin-users-create-page"
+          title="Create user"
+          description="Staff accounts are created in EMS for now."
+          main={
+            <section className="platform-empty-state" role="status">
+              <strong>Account creation is not connected yet</strong>
+              <span>
+                Nile Learn can show EMS staff accounts but cannot create them
+                from this page yet. Create the account in EMS; it will appear in
+                this directory.
+              </span>
+              <Link className="platform-secondary-button" href="/app/admin/users">
+                <ArrowLeft size={15} />
+                Back to users
+              </Link>
+            </section>
+          }
+        />
+      </PlatformShell>
+    );
+  }
+
+  if (isNccMode) {
+    const branchAccess = (user: NccStaffUserDto) => {
+      if (user.scopeType === "global") return "All branches";
+      const names = nccBranches
+        .filter(branch => user.branchIds.includes(branch.id))
+        .map(branch => branch.name);
+      return names.join(", ") || "No branch";
+    };
+    const toolbar = (
+      <div
+        className="admin-users-simple-toolbar"
+        aria-label="User directory filters"
+      >
+        <label className="admin-users-simple-search-field">
+          <span>Search</span>
+          <span className="platform-toolbar-search admin-users-simple-search">
+            <Search size={15} />
+            <input
+              aria-label="Search users"
+              value={query}
+              onChange={event => setQuery(event.target.value)}
+              placeholder="Search by name, email, role, branch"
+            />
+          </span>
+        </label>
+        <label>
+          <span>Role</span>
+          <select
+            value={roleFilter}
+            onChange={event => setRoleFilter(event.target.value)}
+          >
+            <option value="all">All roles</option>
+            {staffRoleOptions.map(role => (
+              <option key={role} value={role}>
+                {roleMeta[role].label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          <span>Branch</span>
+          <select
+            value={branchFilter}
+            onChange={event => setBranchFilter(event.target.value)}
+          >
+            <option value="all">All branches</option>
+            {nccBranches.map(branch => (
+              <option key={branch.id} value={branch.id}>
+                {branch.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          <span>Status</span>
+          <select
+            value={statusFilter}
+            onChange={event => setStatusFilter(event.target.value)}
+          >
+            <option value="all">All status</option>
+            {(["invited", "active", "disabled", "canceled"] as const).map(
+              status => (
+                <option key={status} value={status}>
+                  {status}
+                </option>
+              )
+            )}
+          </select>
+        </label>
+      </div>
+    );
+    const directory = nccLoading ? (
+      <div className="platform-empty-state" role="status">
+        <strong>Loading users from EMS</strong>
+      </div>
+    ) : nccError?.status === 503 || nccError?.status === 404 ? (
+      <div className="platform-empty-state" role="status">
+        <strong>
+          The EMS staff directory is not connected in this environment yet.
+        </strong>
+      </div>
+    ) : nccError ? (
+      <div className="platform-empty-state" role="alert">
+        <strong>Users could not be loaded from EMS</strong>
+        <span>{nccError.message}</span>
+        <button
+          type="button"
+          className="platform-secondary-button"
+          onClick={() => void loadNccDirectory()}
+        >
+          Retry
+        </button>
+      </div>
+    ) : (
+      <DataTableCard
+        title="User directory · EMS"
+        subtitle={`${nccVisibleUsers.length} people`}
+        className="admin-users-simple-card"
+      >
+        {nccVisibleUsers.length ? (
+          <div className="admin-users-simple-table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th className="admin-users-col-name" scope="col">
+                    User
+                  </th>
+                  <th className="admin-users-col-role" scope="col">
+                    Role
+                  </th>
+                  <th className="admin-users-col-branch" scope="col">
+                    Branch access
+                  </th>
+                  <th className="admin-users-col-department" scope="col">
+                    Departments
+                  </th>
+                  <th className="admin-users-col-status" scope="col">
+                    Status
+                  </th>
+                  <th className="admin-users-col-activity" scope="col">
+                    Last sign-in
+                  </th>
+                  <th className="admin-users-col-actions" scope="col">
+                    <span className="platform-sr-only">Actions</span>
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {nccVisibleUsers.map(user => {
+                  const userMeta = roleMeta[user.role];
+                  return (
+                    <tr key={user.id} data-testid={`admin-user-row-${user.id}`}>
+                      <td>
+                        <Link
+                          className="admin-users-simple-person"
+                          href={`/app/admin/users/${user.id}`}
+                          aria-label={`Open ${user.name}`}
+                        >
+                          <span
+                            style={{
+                              background: userMeta.tint,
+                              color: userMeta.color,
+                            }}
+                          >
+                            {roleInitials(user.role)}
+                          </span>
+                          <span>
+                            <strong>{user.name}</strong>
+                            <small title={user.email}>
+                              {compactEmail(user.email)}
+                            </small>
+                          </span>
+                        </Link>
+                      </td>
+                      <td>{userMeta.label}</td>
+                      <td>{branchAccess(user)}</td>
+                      <td>
+                        {user.departments.map(item => item.name).join(", ") ||
+                          "—"}
+                      </td>
+                      <td>
+                        <StatusBadge tone={nccStatusTone(user.status)}>
+                          {user.status}
+                        </StatusBadge>
+                      </td>
+                      <td>{formatNccActivity(user.lastLoginAt)}</td>
+                      <td>
+                        <div className="platform-row-actions">
+                          <Link
+                            className="simple-portal-row-action admin-users-open-link"
+                            href={`/app/admin/users/${user.id}`}
+                            aria-label={`Open ${user.name}`}
+                          >
+                            <span>Open</span>
+                            <ArrowRight size={14} aria-hidden="true" />
+                          </Link>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <div className="platform-empty-state">
+            <strong>No users found</strong>
+            <span>Try a different search or clear one of the filters.</span>
+          </div>
+        )}
+      </DataTableCard>
+    );
+
+    return (
+      <PlatformShell role="superadmin" title="Users">
+        <WorkspaceLayout
+          className="admin-users-simple-page"
+          title="Users"
+          description="Manage people who can access Nile Learn."
+          actions={
+            <Link className="platform-primary-button" href="/app/admin/users/new">
+              <UserPlus size={15} />
+              Create user
+            </Link>
+          }
+          toolbar={!nccLoading && !nccError ? toolbar : undefined}
+          main={directory}
+        />
+      </PlatformShell>
+    );
+  }
 
   const applyRoleDefaults = (roleValue: unknown) => {
     const role = safeStaffRole(roleValue);
@@ -628,14 +974,17 @@ export default function AdminUsersPage({ mode = "list" }: AdminUsersPageProps) {
       className="admin-users-simple-toolbar"
       aria-label="User directory filters"
     >
-      <label className="platform-toolbar-search admin-users-simple-search">
-        <Search size={15} />
-        <input
-          aria-label="Search users"
-          value={query}
-          onChange={event => setQuery(event.target.value)}
-          placeholder="Search by name, email, role, branch"
-        />
+      <label className="admin-users-simple-search-field">
+        <span>Search</span>
+        <span className="platform-toolbar-search admin-users-simple-search">
+          <Search size={15} />
+          <input
+            aria-label="Search users"
+            value={query}
+            onChange={event => setQuery(event.target.value)}
+            placeholder="Search by name, email, role, branch"
+          />
+        </span>
       </label>
       <label>
         <span>Role</span>

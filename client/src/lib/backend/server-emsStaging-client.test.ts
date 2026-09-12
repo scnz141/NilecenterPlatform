@@ -6,6 +6,7 @@ import {
   mapEmsRoleToLocal,
   mapLocalRoleToEms,
   normalizeEmsMe,
+  normalizeEmsStaffUsers,
   resolveEmsStagingConfig,
   translateEmsError,
 } from "../../../../server/emsStagingClient";
@@ -171,6 +172,136 @@ describe("EMS staging payload guards", () => {
     });
     expect(
       normalizeEmsMe({ assigned_role: "student", active_role: "student" })
+    ).toBeNull();
+    expect(
+      normalizeEmsMe({
+        ...mePayload(),
+        scopes: [
+          { scope_type: "branch", scope_id: "branch-1", is_live: "false" },
+        ],
+      })
+    ).toBeNull();
+  });
+
+  it("normalizes closed staff user rows and rejects malformed live scope flags", () => {
+    const base = {
+      id: "user-1",
+      email: "hod@example.test",
+      assigned_role: "hod",
+      status: "active",
+      is_active: true,
+      moodle_user_id: 42,
+      last_login_at: "2026-09-12T10:00:00Z",
+      created_at: "2026-09-01T10:00:00Z",
+      updated_at: "2026-09-12T10:00:00Z",
+      profile: {
+        first_name: "NCC",
+        last_name: "HOD",
+        phone: null,
+        custom_fields: { private: true },
+      },
+      scopes: [
+        { scope_type: "branch", scope_id: "branch-1", is_live: true },
+      ],
+      departments: [
+        {
+          department_id: "department-1",
+          name: "Academic",
+          status: "active",
+        },
+      ],
+      custom_fields: { ignored: true },
+    };
+    const users = normalizeEmsStaffUsers([
+      base,
+      {
+        ...base,
+        id: "user-2",
+        email: "teacher@example.test",
+        assigned_role: "teacher",
+        moodle_user_id: null,
+        last_login_at: null,
+        profile: null,
+        scopes: [{ scope_type: "branch", scope_id: "branch-2" }],
+        departments: null,
+      },
+    ]);
+
+    expect(users).toEqual([
+      {
+        id: "user-1",
+        email: "hod@example.test",
+        name: "NCC HOD",
+        firstName: "NCC",
+        lastName: "HOD",
+        phone: null,
+        role: "headofdepartment",
+        status: "active",
+        isActive: true,
+        scopeType: "branch",
+        branchIds: ["branch-1"],
+        departments: [
+          { id: "department-1", name: "Academic", status: "active" },
+        ],
+        moodleLinked: true,
+        lastLoginAt: "2026-09-12T10:00:00Z",
+        createdAt: "2026-09-01T10:00:00Z",
+        updatedAt: "2026-09-12T10:00:00Z",
+      },
+      {
+        id: "user-2",
+        email: "teacher@example.test",
+        name: "teacher@example.test",
+        firstName: "",
+        lastName: "",
+        phone: null,
+        role: "teacher",
+        status: "active",
+        isActive: true,
+        scopeType: "branch",
+        branchIds: ["branch-2"],
+        departments: [],
+        moodleLinked: false,
+        lastLoginAt: null,
+        createdAt: "2026-09-01T10:00:00Z",
+        updatedAt: "2026-09-12T10:00:00Z",
+      },
+    ]);
+    expect(
+      normalizeEmsStaffUsers([
+        {
+          ...base,
+          scopes: [
+            { scope_type: "branch", scope_id: "branch-1", is_live: "false" },
+          ],
+        },
+      ])
+    ).toBeNull();
+  });
+
+  it("accepts omitted optional staff fields and rejects invalid departments", () => {
+    const row = {
+      id: "user-optional",
+      email: "teacher@example.test",
+      assigned_role: "teacher",
+      status: "active",
+      is_active: true,
+      created_at: "2026-09-01T10:00:00Z",
+      updated_at: "2026-09-12T10:00:00Z",
+      profile: null,
+      scopes: [{ scope_type: "branch", scope_id: "branch-1" }],
+    };
+
+    expect(normalizeEmsStaffUsers([row])).toEqual([
+      expect.objectContaining({
+        id: "user-optional",
+        departments: [],
+        moodleLinked: false,
+        lastLoginAt: null,
+      }),
+    ]);
+    expect(
+      normalizeEmsStaffUsers([{ ...row, departments: "x" }])
     ).toBeNull();
   });
 });

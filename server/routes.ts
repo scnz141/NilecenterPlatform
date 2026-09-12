@@ -21,8 +21,8 @@ import {
   loginNccStaff,
   logoutNccSession,
   nccStaffAuthEnabled,
-  NccAuthError,
   resolveNccAuthSession,
+  sendNccAuthError,
   switchNccRole,
   switchNccWorkspace,
 } from "./nccAuthSession.js";
@@ -62,6 +62,7 @@ import { registerMoodleRoutes } from "./moodleRoutes.js";
 import { registerMoodleCommandRoutes } from "./moodleCommandRoutes.js";
 import { registerIntegrationHealthRoutes } from "./integrationHealthRoutes.js";
 import { registerEmsStagingRoutes } from "./emsStagingRoutes.js";
+import { registerNccDirectoryRoutes } from "./nccDirectoryRoutes.js";
 import { registerEmailRoutes } from "./emailRoutes.js";
 import { getEmailIntegrationStatus } from "./emailDeliveryService.js";
 import { registerUserInvitationRoutes } from "./userInvitationRoutes.js";
@@ -205,21 +206,6 @@ async function getApiRequestSession(req: ApiRequest, res: ApiResponse) {
   }
 }
 
-function sendNccAuthError(error: unknown, res: ApiResponse) {
-  if (!(error instanceof NccAuthError)) return false;
-  const body: Record<string, unknown> = {
-    error:
-      error.status >= 500
-        ? "NCC EMS is temporarily unavailable."
-        : error.message,
-  };
-  if (error.status === 422 && error.details !== undefined) {
-    body.details = error.details;
-  }
-  res.status(error.status).json(body);
-  return true;
-}
-
 function isPlatformRecordType(value: unknown): value is PlatformRecordType {
   return (
     typeof value === "string" &&
@@ -337,6 +323,7 @@ export function registerApiRoutes(app: ApiApp) {
   registerMoodleCommandRoutes(app);
   registerIntegrationHealthRoutes(app);
   registerEmsStagingRoutes(app);
+  registerNccDirectoryRoutes(app);
   registerUserInvitationRoutes(app);
 
   app.get("/api/integrations/supabase/status", async (req, res) => {
