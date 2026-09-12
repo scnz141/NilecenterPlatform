@@ -11,6 +11,7 @@ type RouteHandler = (request: Request, response: Response) => Promise<void> | vo
 type Request = {
   headers: { cookie?: string };
   params?: Record<string, string>;
+  body?: Record<string, unknown>;
 };
 type Response = {
   setHeader(name: string, value: string | string[]): void;
@@ -22,6 +23,7 @@ function env(overrides: NodeJS.ProcessEnv = {}) {
   return {
     NILE_NCC_STAFF_AUTH_ENABLED: "1",
     NILE_NCC_DIRECTORY_READS_ENABLED: "1",
+    NILE_NCC_DIRECTORY_WRITES_ENABLED: "1",
     EMS_STAGING_BASE_URL: "https://staging.example/api",
     EMS_STAGING_ALLOWED_HOSTS: "staging.example",
     EMS_SESSION_SEAL_KEY: sealKey,
@@ -97,6 +99,12 @@ function captureRoutes(options: {
     get(path: string, handler: RouteHandler) {
       routes.set(path, handler);
     },
+    post(path: string, handler: RouteHandler) {
+      routes.set(`POST ${path}`, handler);
+    },
+    patch(path: string, handler: RouteHandler) {
+      routes.set(`PATCH ${path}`, handler);
+    },
   };
   registerNccDirectoryRoutes(app, {
     env: options.env,
@@ -123,8 +131,12 @@ function responseRecorder() {
   return { headers, result, response };
 }
 
-function request(cookie = "", params?: Record<string, string>): Request {
-  return { headers: cookie ? { cookie } : {}, params };
+function request(
+  cookie = "",
+  params?: Record<string, string>,
+  body?: Record<string, unknown>
+): Request {
+  return { headers: cookie ? { cookie } : {}, params, body };
 }
 
 function sessionCookie(headers: Map<string, string | string[]>) {
@@ -216,6 +228,7 @@ describe("NCC directory routes", () => {
           role: "superadmin",
           scopeType: "global",
           branchIds: [],
+          customFields: { private: true },
         }),
         expect.objectContaining({
           id: "staff-user-2",
@@ -475,6 +488,314 @@ describe("NCC directory routes", () => {
             name: "Academic",
             code: "ACA",
             status: "active",
+          },
+        ],
+      },
+    });
+  });
+
+  it("keeps directory writes behind their own flag", async () => {
+    const cookie = await login();
+    const routes = captureRoutes({
+      env: env({ NILE_NCC_DIRECTORY_WRITES_ENABLED: "0" }),
+      api: {},
+    });
+    const { response, result } = responseRecorder();
+
+    await routes.get("POST /api/ncc/directory/users")?.(
+      request(cookie, undefined, {}),
+      response
+    );
+
+    expect(result).toEqual({
+      status: 503,
+      body: { error: "NCC directory writes are not active." },
+    });
+  });
+
+  it("translates teacher, superadmin, and HOD create bodies and one-time values", async () => {
+    const cookie = await login();
+    const createUser = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        data: {
+          ...staffUser({
+            assigned_role: "teacher",
+            scopes: [
+              { scope_type: "branch", scope_id: "branch-1" },
+              { scope_type: "branch", scope_id: "branch-2" },
+            ],
+            departments: null,
+          }),
+          generated_password: "temporary-password",
+          invitation_url: null,
+        },
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        data: {
+          ...staffUser(),
+          invitation_url: "https://ems.example/invite/accept?token=abc",
+          generated_password: null,
+        },
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        data: staffUser({ assigned_role: "hod" }),
+      });
+    const routes = captureRoutes({ env: env(), api: { createUser } });
+    const teacher = responseRecorder();
+    const admin = responseRecorder();
+    const hod = responseRecorder();
+
+    await routes.get("POST /api/ncc/directory/users")?.(
+      request(cookie, undefined, {
+        email: "teacher@example.test",
+        role: "teacher",
+        provisioning: "manual",
+        profile: { firstName: "NCC", lastName: "Teacher" },
+        branchIds: ["branch-1", "branch-2"],
+        customFields: { employee_number: "T-1" },
+      }),
+      teacher.response
+    );
+    await routes.get("POST /api/ncc/directory/users")?.(
+      request(cookie, undefined, {
+        email: "admin@example.test",
+        role: "superadmin",
+        provisioning: "invitation",
+        profile: { firstName: "NCC", lastName: "Admin" },
+        callerPassword: "current-password",
+      }),
+      admin.response
+    );
+    await routes.get("POST /api/ncc/directory/users")?.(
+      request(cookie, undefined, {
+        email: "hod@example.test",
+        role: "headofdepartment",
+        provisioning: "invitation",
+        profile: { firstName: "NCC", lastName: "HOD" },
+        branchIds: ["branch-1"],
+        departmentIds: ["department-1"],
+      }),
+      hod.response
+    );
+
+    expect(createUser.mock.calls[0]?.[1]).toEqual({
+      email: "teacher@example.test",
+      assigned_role: "teacher",
+      provisioning: "manual",
+      profile: { first_name: "NCC", last_name: "Teacher" },
+      scopes: [
+        { scope_type: "branch", scope_id: "branch-1" },
+        { scope_type: "branch", scope_id: "branch-2" },
+      ],
+      custom_fields: { employee_number: "T-1" },
+    });
+    expect(createUser.mock.calls[0]?.[1]).not.toHaveProperty("departments");
+    expect(createUser.mock.calls[1]?.[1]).toMatchObject({
+      assigned_role: "super_admin",
+      scopes: [{ scope_type: "global" }],
+      caller_password: "current-password",
+    });
+    expect(createUser.mock.calls[2]?.[1]).toMatchObject({
+      assigned_role: "hod",
+      departments: ["department-1"],
+    });
+    expect(teacher.result).toMatchObject({
+      status: 200,
+      body: { oneTime: { generatedPassword: "temporary-password" } },
+    });
+    expect(admin.result).toMatchObject({
+      status: 200,
+      body: {
+        oneTime: {
+          invitationPath: "/auth/accept-invitation?token=abc",
+          invitationUrlUnparseable: false,
+        },
+      },
+    });
+    expect(JSON.stringify(admin.result.body)).not.toContain("invitation_url");
+  });
+
+  it("rejects unknown create keys and missing first name", async () => {
+    const cookie = await login();
+    const routes = captureRoutes({ env: env(), api: {} });
+    const unknown = responseRecorder();
+    const missing = responseRecorder();
+
+    await routes.get("POST /api/ncc/directory/users")?.(
+      request(cookie, undefined, { unknown: true }),
+      unknown.response
+    );
+    await routes.get("POST /api/ncc/directory/users")?.(
+      request(cookie, undefined, {
+        email: "teacher@example.test",
+        role: "teacher",
+        provisioning: "manual",
+        profile: { firstName: "", lastName: "Teacher" },
+      }),
+      missing.response
+    );
+
+    expect(unknown.result.status).toBe(400);
+    expect(missing.result).toEqual({
+      status: 400,
+      body: { error: "First name is required." },
+    });
+  });
+
+  it("passes through create conflicts", async () => {
+    const cookie = await login();
+    const routes = captureRoutes({
+      env: env(),
+      api: {
+        createUser: vi.fn(async () => ({
+          ok: false,
+          error: { error: "Account already exists", status: 409 },
+        })),
+      },
+    });
+    const { response, result } = responseRecorder();
+
+    await routes.get("POST /api/ncc/directory/users")?.(
+      request(cookie, undefined, {
+        email: "teacher@example.test",
+        role: "teacher",
+        provisioning: "manual",
+        profile: { firstName: "NCC", lastName: "Teacher" },
+      }),
+      response
+    );
+
+    expect(result).toEqual({
+      status: 409,
+      body: { error: "Account already exists" },
+    });
+  });
+
+  it("sends only provided PATCH fields", async () => {
+    const cookie = await login();
+    const patchUser = vi.fn(async () => ({ ok: true, data: staffUser() }));
+    const routes = captureRoutes({ env: env(), api: { patchUser } });
+    const { response, result } = responseRecorder();
+
+    await routes.get("PATCH /api/ncc/directory/users/:userId")?.(
+      request(cookie, { userId: "staff-user-1" }, {
+        profile: { firstName: "Updated", lastName: "Admin", phone: null },
+        customFields: { employee_number: "A-2" },
+      }),
+      response
+    );
+
+    expect(patchUser).toHaveBeenCalledWith(
+      "access-ncc-session-1",
+      "staff-user-1",
+      {
+        profile: {
+          first_name: "Updated",
+          last_name: "Admin",
+          phone: null,
+        },
+        custom_fields: { employee_number: "A-2" },
+      }
+    );
+    expect(result.status).toBe(200);
+  });
+
+  it("passes lifecycle writes through closed one-time responses", async () => {
+    const cookie = await login();
+    const api = {
+      disableUser: vi.fn(async () => ({ ok: true, data: staffUser() })),
+      enableUser: vi.fn(async () => ({ ok: true, data: staffUser() })),
+      resetUserPassword: vi.fn(async () => ({
+        ok: true,
+        data: { generated_password: "reset-password" },
+      })),
+      inviteUser: vi.fn(async () => ({
+        ok: true,
+        data: { invitation_url: "https://ems.example/invite?token=next" },
+      })),
+      cancelUserInvitation: vi.fn(async () => ({
+        ok: true,
+        data: staffUser(),
+      })),
+    };
+    const routes = captureRoutes({ env: env(), api });
+    const actions = [
+      ["disable", responseRecorder()],
+      ["enable", responseRecorder()],
+      ["password", responseRecorder()],
+      ["invite", responseRecorder()],
+      ["cancel-invitation", responseRecorder()],
+    ] as const;
+
+    for (const [action, recorder] of actions) {
+      await routes.get(`POST /api/ncc/directory/users/:userId/${action}`)?.(
+        request(cookie, { userId: "staff-user-1" }, {}),
+        recorder.response
+      );
+    }
+
+    expect(actions.every(([, recorder]) => recorder.result.status === 200)).toBe(
+      true
+    );
+    expect(actions[2][1].result.body).toEqual({
+      oneTime: { generatedPassword: "reset-password" },
+    });
+    expect(actions[3][1].result.body).toEqual({
+      oneTime: {
+        invitationPath: "/auth/accept-invitation?token=next",
+        invitationUrlUnparseable: false,
+      },
+    });
+  });
+
+  it("translates active user-profile custom fields", async () => {
+    const cookie = await login();
+    const routes = captureRoutes({
+      env: env(),
+      api: {
+        customFields: vi.fn(async () => ({
+          ok: true,
+          data: [
+            {
+              id: "field-1",
+              entity_type: "user_profile",
+              field_key: "employee_number",
+              label: "Employee number",
+              field_type: "text",
+              is_required: true,
+              is_active: true,
+              sort_order: 1,
+              options_json: null,
+              help_text: null,
+            },
+          ],
+        })),
+      },
+    });
+    const { response, result } = responseRecorder();
+
+    await routes.get("/api/ncc/directory/custom-fields")?.(
+      request(cookie),
+      response
+    );
+
+    expect(result).toEqual({
+      status: 200,
+      body: {
+        items: [
+          {
+            id: "field-1",
+            fieldKey: "employee_number",
+            label: "Employee number",
+            fieldType: "text",
+            isRequired: true,
+            helpText: null,
+            options: null,
+            sortOrder: 1,
           },
         ],
       },

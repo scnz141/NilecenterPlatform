@@ -226,6 +226,18 @@ export type EmsStagingStaffUser = {
   lastLoginAt: string | null;
   createdAt: string;
   updatedAt: string;
+  customFields: Record<string, string | number | boolean | null>;
+};
+
+export type EmsStagingCustomFieldDefinition = {
+  id: string;
+  fieldKey: string;
+  label: string;
+  fieldType: "text" | "textarea" | "number" | "date" | "boolean" | "select";
+  isRequired: boolean;
+  helpText: string | null;
+  options: string[] | null;
+  sortOrder: number;
 };
 
 export type EmsStagingDepartment = {
@@ -486,6 +498,33 @@ export function normalizeEmsBranches(
     : (branches as EmsStagingBranch[]);
 }
 
+function normalizeCustomFieldValues(
+  payload: unknown
+): EmsStagingStaffUser["customFields"] | null {
+  if (
+    !payload ||
+    typeof payload !== "object" ||
+    Array.isArray(payload) ||
+    (Object.getPrototypeOf(payload) !== Object.prototype &&
+      Object.getPrototypeOf(payload) !== null)
+  ) {
+    return null;
+  }
+  const entries = Object.entries(payload as Record<string, unknown>);
+  if (
+    entries.some(
+      ([, value]) =>
+        value !== null &&
+        typeof value !== "string" &&
+        typeof value !== "number" &&
+        typeof value !== "boolean"
+    )
+  ) {
+    return null;
+  }
+  return Object.fromEntries(entries) as EmsStagingStaffUser["customFields"];
+}
+
 function normalizeStaffDepartments(
   payload: unknown
 ): EmsStagingStaffUser["departments"] | null {
@@ -547,6 +586,10 @@ export function normalizeEmsStaffUser(
       : null;
   const scopes = normalizeEmsScopes(record.scopes);
   const departments = normalizeStaffDepartments(record.departments);
+  const customFields =
+    record.custom_fields === undefined
+      ? {}
+      : normalizeCustomFieldValues(record.custom_fields);
   const lastLoginAt = record.last_login_at;
   if (
     typeof record.id !== "string" ||
@@ -561,6 +604,7 @@ export function normalizeEmsStaffUser(
     typeof record.is_active !== "boolean" ||
     !scopes ||
     !departments ||
+    !customFields ||
     (record.moodle_user_id !== null &&
       record.moodle_user_id !== undefined &&
       (!Number.isSafeInteger(record.moodle_user_id) ||
@@ -613,6 +657,7 @@ export function normalizeEmsStaffUser(
     lastLoginAt: typeof lastLoginAt === "string" ? lastLoginAt : null,
     createdAt: record.created_at,
     updatedAt: record.updated_at,
+    customFields,
   };
 }
 
@@ -653,6 +698,58 @@ export function normalizeEmsDepartments(
   return departments.some(department => department === null)
     ? null
     : (departments as EmsStagingDepartment[]);
+}
+
+export function normalizeEmsCustomFieldDefinitions(
+  payload: unknown
+): EmsStagingCustomFieldDefinition[] | null {
+  if (!Array.isArray(payload)) return null;
+  const definitions = payload.map(value => {
+    if (!value || typeof value !== "object") return null;
+    const record = value as Record<string, unknown>;
+    const options = record.options_json;
+    if (
+      typeof record.id !== "string" ||
+      !record.id ||
+      record.entity_type !== "user_profile" ||
+      typeof record.field_key !== "string" ||
+      !record.field_key ||
+      typeof record.label !== "string" ||
+      !record.label ||
+      (record.field_type !== "text" &&
+        record.field_type !== "textarea" &&
+        record.field_type !== "number" &&
+        record.field_type !== "date" &&
+        record.field_type !== "boolean" &&
+        record.field_type !== "select") ||
+      typeof record.is_required !== "boolean" ||
+      typeof record.is_active !== "boolean" ||
+      !record.is_active ||
+      !Number.isSafeInteger(record.sort_order) ||
+      (record.help_text !== null &&
+        record.help_text !== undefined &&
+        typeof record.help_text !== "string") ||
+      (options !== null &&
+        options !== undefined &&
+        (!Array.isArray(options) ||
+          !options.every(option => typeof option === "string")))
+    ) {
+      return null;
+    }
+    return {
+      id: record.id,
+      fieldKey: record.field_key,
+      label: record.label,
+      fieldType: record.field_type,
+      isRequired: record.is_required,
+      helpText: typeof record.help_text === "string" ? record.help_text : null,
+      options: Array.isArray(options) ? options : null,
+      sortOrder: record.sort_order as number,
+    };
+  });
+  return definitions.some(definition => definition === null)
+    ? null
+    : (definitions as EmsStagingCustomFieldDefinition[]);
 }
 
 function isNullableString(value: unknown) {
@@ -1242,6 +1339,69 @@ export function createEmsStagingClient(options: EmsStagingClientOptions) {
     },
     users(token: string) {
       return request<unknown>("/users", { token });
+    },
+    createUser(token: string, body: Record<string, unknown>) {
+      return request<unknown>("/users", { method: "POST", token, body });
+    },
+    patchUser(token: string, userId: string, body: Record<string, unknown>) {
+      return request<unknown>(`/users/${encodeURIComponent(userId)}`, {
+        method: "PATCH",
+        token,
+        body,
+      });
+    },
+    disableUser(token: string, userId: string) {
+      return request<unknown>(`/users/${encodeURIComponent(userId)}/disable`, {
+        method: "POST",
+        token,
+      });
+    },
+    enableUser(token: string, userId: string) {
+      return request<unknown>(`/users/${encodeURIComponent(userId)}/enable`, {
+        method: "POST",
+        token,
+      });
+    },
+    resetUserPassword(
+      token: string,
+      userId: string,
+      body: Record<string, unknown>
+    ) {
+      return request<unknown>(`/users/${encodeURIComponent(userId)}/password`, {
+        method: "POST",
+        token,
+        body,
+      });
+    },
+    inviteUser(token: string, userId: string) {
+      return request<unknown>(`/users/${encodeURIComponent(userId)}/invite`, {
+        method: "POST",
+        token,
+      });
+    },
+    cancelUserInvitation(token: string, userId: string) {
+      return request<unknown>(
+        `/users/${encodeURIComponent(userId)}/cancel-invitation`,
+        { method: "POST", token }
+      );
+    },
+    validateInvitation(token: string) {
+      return request<unknown>("/auth/invitations/validate", {
+        method: "POST",
+        body: { token },
+      });
+    },
+    acceptInvitation(token: string, password: string) {
+      return request<unknown>("/auth/invitations/accept", {
+        method: "POST",
+        body: { token, password },
+      });
+    },
+    customFields(token: string) {
+      return request<unknown>(
+        "/custom-fields?entity_type=user_profile&is_active=true",
+        { token }
+      );
     },
     user(token: string, userId: string) {
       return request<unknown>(`/users/${encodeURIComponent(userId)}`, { token });

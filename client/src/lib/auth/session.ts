@@ -5,6 +5,7 @@ import {
   type Role,
 } from "@/lib/platformData";
 import {
+  acceptNccInvitationRequest,
   fetchSessionRequest,
   logoutRequest,
   signInRequest,
@@ -119,6 +120,21 @@ export async function signInWithPassword(
     return { ok: true as const, session: result.data };
   }
   return { ok: false as const, error: result.error ?? "Sign in failed." };
+}
+
+export async function acceptInvitationAndSignIn(
+  token: string,
+  password: string
+) {
+  const result = await acceptNccInvitationRequest(token, password);
+  if (result.ok && result.data) {
+    setStoredAuthSession(result.data);
+    return { ok: true as const, session: result.data };
+  }
+  return {
+    ok: false as const,
+    error: result.error ?? "Account activation failed.",
+  };
 }
 
 export async function refreshServerSession() {

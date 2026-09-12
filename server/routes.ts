@@ -16,6 +16,7 @@ import {
 } from "./auth.js";
 import { loadServerEnv } from "./env.js";
 import {
+  acceptNccInvitation,
   hasNccAuthCookie,
   listNccWorkspaces,
   loginNccStaff,
@@ -25,6 +26,7 @@ import {
   sendNccAuthError,
   switchNccRole,
   switchNccWorkspace,
+  validateNccInvitation,
 } from "./nccAuthSession.js";
 import {
   getPlatformBackendState,
@@ -189,6 +191,7 @@ type ApiApp = {
   use(path: string, handler: ApiMiddleware): void;
   get(path: string, handler: ApiRouteHandler): void;
   post(path: string, handler: ApiRouteHandler): void;
+  patch(path: string, handler: ApiRouteHandler): void;
 };
 type HeaderRequest = Pick<ApiRequest, "get" | "ip">;
 const sessionRepositoryUnavailable = Symbol("session-repository-unavailable");
@@ -310,7 +313,8 @@ export function registerApiRoutes(app: ApiApp) {
       ["GET", "HEAD", "OPTIONS"].includes(req.method) ||
       !nccStaffAuthEnabled() ||
       !hasNccAuthCookie(req) ||
-      (req.path ?? "").startsWith("/auth/")
+      (req.path ?? "").startsWith("/auth/") ||
+      (req.path ?? "").startsWith("/ncc/")
     ) {
       next();
       return;
@@ -357,6 +361,44 @@ export function registerApiRoutes(app: ApiApp) {
     res.json({
       staffProvider: nccStaffAuthEnabled() ? "ncc" : "compatibility",
     });
+  });
+
+  app.post("/api/ncc/invitations/validate", async (req, res) => {
+    if (!nccStaffAuthEnabled()) {
+      res.status(404).json({ error: "Invitation activation is unavailable." });
+      return;
+    }
+    const token = req.body?.token;
+    if (typeof token !== "string" || !token.trim()) {
+      res.status(400).json({ error: "Invitation token is required." });
+      return;
+    }
+    try {
+      res.json(await validateNccInvitation(token));
+    } catch (error) {
+      if (!sendNccAuthError(error, res)) throw error;
+    }
+  });
+
+  app.post("/api/ncc/invitations/accept", async (req, res) => {
+    if (!nccStaffAuthEnabled()) {
+      res.status(404).json({ error: "Invitation activation is unavailable." });
+      return;
+    }
+    const { token, password } = req.body ?? {};
+    if (typeof token !== "string" || !token.trim()) {
+      res.status(400).json({ error: "Invitation token is required." });
+      return;
+    }
+    if (typeof password !== "string" || !password) {
+      res.status(400).json({ error: "Password is required." });
+      return;
+    }
+    try {
+      res.json(sessionDto(await acceptNccInvitation(token, password, res)));
+    } catch (error) {
+      if (!sendNccAuthError(error, res)) throw error;
+    }
   });
 
   app.post("/api/auth/login", async (req, res) => {

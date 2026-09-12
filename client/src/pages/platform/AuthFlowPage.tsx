@@ -13,6 +13,7 @@ import {
 import { Link, useLocation } from "wouter";
 import { AuthExperience } from "@/components/auth/AuthExperience";
 import {
+  acceptInvitationAndSignIn,
   clearStoredSession,
   refreshServerSession,
   setStoredRole,
@@ -21,8 +22,10 @@ import {
 import {
   acceptUserInvitationRequest,
   confirmPasswordReset,
+  fetchAuthModeRequest,
   fetchAuthWorkspacesRequest,
   requestPasswordReset,
+  validateNccInvitationRequest,
   type AuthWorkspaceDto,
 } from "@/lib/backend/api";
 import { isSupportedLocale, translateUiLabel, type Locale } from "@/lib/i18n";
@@ -101,6 +104,11 @@ export default function AuthFlowPage({ mode }: { mode: AuthFlowMode }) {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [verificationCode, setVerificationCode] = useState("");
   const [acceptedRole, setAcceptedRole] = useState<Role | null>(null);
+  const [nccInvitationStatus, setNccInvitationStatus] = useState<
+    "idle" | "loading" | "ready" | "error"
+  >("idle");
+  const [nccInvitationEmail, setNccInvitationEmail] = useState("");
+  const [nccInvitationExpiresAt, setNccInvitationExpiresAt] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
@@ -199,6 +207,36 @@ export default function AuthFlowPage({ mode }: { mode: AuthFlowMode }) {
       cancelled = true;
     };
   }, [mode]);
+
+  useEffect(() => {
+    if (mode !== "accept-invitation" || !token) return;
+    let cancelled = false;
+    setNccInvitationStatus("loading");
+    setError("");
+    void (async () => {
+      const modeResult = await fetchAuthModeRequest();
+      if (cancelled) return;
+      if (!modeResult.ok || modeResult.data?.staffProvider !== "ncc") {
+        setNccInvitationStatus("idle");
+        return;
+      }
+      const validation = await validateNccInvitationRequest(token);
+      if (cancelled) return;
+      if (!validation.ok || !validation.data) {
+        setNccInvitationStatus("error");
+        setError(
+          `${validation.error ?? "This invitation is invalid or expired."} Ask an administrator to resend the invitation.`
+        );
+        return;
+      }
+      setNccInvitationEmail(validation.data.email);
+      setNccInvitationExpiresAt(validation.data.expiresAt);
+      setNccInvitationStatus("ready");
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [mode, token]);
 
   useEffect(() => {
     if (mode !== "reset-password") return;
@@ -338,6 +376,33 @@ export default function AuthFlowPage({ mode }: { mode: AuthFlowMode }) {
     event.preventDefault();
     setError("");
     setMessage("");
+    if (nccInvitationStatus === "ready") {
+      if (password.length < 8 || password.length > 128) {
+        setError(ui("Use between 8 and 128 characters."));
+        return;
+      }
+      if (password !== confirmPassword) {
+        setError(ui("Passwords do not match."));
+        return;
+      }
+      setSubmitting(true);
+      const result = await acceptInvitationAndSignIn(token, password);
+      setSubmitting(false);
+      if (!result.ok) {
+        setError(result.error);
+        return;
+      }
+      setPassword("");
+      setConfirmPassword("");
+      const needsWorkspace =
+        ["branchadmin", "registrar"].includes(result.session.activeRole) &&
+        !result.session.workspaceBranchId;
+      const destination =
+        roleOptions.find(option => option.value === result.session.activeRole)
+          ?.href ?? "/auth/login";
+      setLocation(needsWorkspace ? "/auth/select-workspace" : destination);
+      return;
+    }
     if (!invitationId) {
       setError(ui("Open this page from a valid invitation link."));
       return;
@@ -400,8 +465,16 @@ export default function AuthFlowPage({ mode }: { mode: AuthFlowMode }) {
           <span className="auth-v2-heading-icon" aria-hidden="true">
             <Icon size={22} />
           </span>
-          <h1>{ui(copy.title)}</h1>
-          <p>{ui(copy.description)}</p>
+          <h1>
+            {nccInvitationStatus === "ready"
+              ? `Activate your account for ${nccInvitationEmail}`
+              : ui(copy.title)}
+          </h1>
+          <p>
+            {nccInvitationStatus === "ready"
+              ? `Invitation expires ${new Date(nccInvitationExpiresAt).toLocaleString()}.`
+              : ui(copy.description)}
+          </p>
         </div>
 
         {mode === "select-role" ? (
@@ -567,7 +640,12 @@ export default function AuthFlowPage({ mode }: { mode: AuthFlowMode }) {
           </form>
         ) : mode === "accept-invitation" ? (
           <form className="auth-v2-form" onSubmit={acceptInvitation}>
-            {!invitationAccessToken ? (
+            {nccInvitationStatus === "loading" ? (
+              <p className="auth-v2-status" role="status">
+                <span className="auth-v2-spinner" /> Validating invitation
+              </p>
+            ) : nccInvitationStatus === "error" ? null :
+              nccInvitationStatus !== "ready" && !invitationAccessToken ? (
               <>
                 <label className="auth-v2-field">
                   <span>{ui("Account email")}</span>
@@ -602,7 +680,12 @@ export default function AuthFlowPage({ mode }: { mode: AuthFlowMode }) {
                 autoComplete="new-password"
                 value={password}
                 onChange={event => setPassword(event.target.value)}
-                minLength={12}
+                minLength={nccInvitationStatus === "ready" ? 8 : 12}
+                maxLength={nccInvitationStatus === "ready" ? 128 : undefined}
+                disabled={
+                  nccInvitationStatus === "loading" ||
+                  nccInvitationStatus === "error"
+                }
                 required
               />
             </label>
@@ -613,13 +696,20 @@ export default function AuthFlowPage({ mode }: { mode: AuthFlowMode }) {
                 autoComplete="new-password"
                 value={confirmPassword}
                 onChange={event => setConfirmPassword(event.target.value)}
-                minLength={12}
+                minLength={nccInvitationStatus === "ready" ? 8 : 12}
+                maxLength={nccInvitationStatus === "ready" ? 128 : undefined}
+                disabled={
+                  nccInvitationStatus === "loading" ||
+                  nccInvitationStatus === "error"
+                }
                 required
               />
             </label>
             <p className="auth-v2-field-help">
               {ui(
-                "Use 12 or more characters. Your administrator cannot see this password."
+                nccInvitationStatus === "ready"
+                  ? "Use between 8 and 128 characters. Your administrator cannot see this password."
+                  : "Use 12 or more characters. Your administrator cannot see this password."
               )}
             </p>
             <AuthStatus error={error} message={message} />
@@ -639,7 +729,12 @@ export default function AuthFlowPage({ mode }: { mode: AuthFlowMode }) {
             <button
               className="auth-v2-submit"
               type="submit"
-              disabled={submitting || Boolean(message)}
+              disabled={
+                submitting ||
+                Boolean(message) ||
+                nccInvitationStatus === "loading" ||
+                nccInvitationStatus === "error"
+              }
             >
               {submitting ? (
                 <>

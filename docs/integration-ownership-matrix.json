@@ -62,7 +62,10 @@
       "futureWriteStatus": "ncc_staff_enabled_student_contract_pending",
       "selectors": {
         "clientRoutes": ["^/app$", "^/auth(?:/.*)?$", "^/login$"],
-        "serverApiRoutes": ["^(GET|POST) /api/auth(?:/.*)?$"]
+        "serverApiRoutes": [
+          "^(GET|POST) /api/auth(?:/.*)?$",
+          "^POST /api/ncc/invitations/(?:validate|accept)$"
+        ]
       }
     },
     {
@@ -224,7 +227,9 @@
         ],
         "serverApiRoutes": [
           "^POST /api/admin/user-invitations$",
-          "^GET /api/ncc/directory/users(?:/[^/]+)?$"
+          "^GET /api/ncc/directory/users(?:/[^/]+)?$",
+          "^GET /api/ncc/directory/custom-fields$",
+          "^(POST|PATCH) /api/ncc/directory/users(?:/[^/]+(?:/(?:disable|enable|password|invite|cancel-invitation))?)?$"
         ]
       }
     },

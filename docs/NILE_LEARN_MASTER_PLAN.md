@@ -703,6 +703,18 @@ Current status:
   EMS→Moodle connector, 1 contract-documentation mismatch) is recorded in the
   implementation report.
 
+  The first accepted write family is **NCC staff writes** behind the disabled
+  `NILE_NCC_DIRECTORY_WRITES_ENABLED` flag: Super Admin create (invitation or
+  generated password), edit, role change with `caller_password` step-up,
+  disable/enable, admin password reset, invitation resend/cancel, and public
+  invitation validate/accept that establishes the sealed session on our own
+  `/auth/accept-invitation` route. One-time secrets are returned exactly once to
+  the browser and never stored or logged; NCC's own
+  400/401/403/404/409/422 decisions are passed through. NCC still has no
+  idempotency key or version precondition, so mutation safety relies on
+  in-flight locking and field-limited PATCH until the backend adds the contract;
+  this is recorded as an open backend requirement, not an accepted design.
+
 - On 2026-07-23 the product owner accepted ADR-010 and Phase 6J: Moodle is the
   sole writable authority for learning content, resources, assignments,
   submissions, quizzes, questions, attempts, completion, grades, and feedback.

@@ -180,6 +180,18 @@ export type NccStaffUserDto = {
   lastLoginAt: string | null;
   createdAt: string;
   updatedAt: string;
+  customFields: Record<string, string | number | boolean | null>;
+};
+
+export type NccCustomFieldDefinitionDto = {
+  id: string;
+  fieldKey: string;
+  label: string;
+  fieldType: "text" | "textarea" | "number" | "date" | "boolean" | "select";
+  isRequired: boolean;
+  helpText: string | null;
+  options: string[] | null;
+  sortOrder: number;
 };
 
 export type NccBranchDto = {
@@ -215,6 +227,122 @@ export function fetchNccDirectoryDepartmentsRequest() {
   return apiJson<{ items: NccDepartmentDto[] }>(
     "/api/ncc/directory/departments"
   );
+}
+
+export function fetchNccDirectoryCustomFieldsRequest() {
+  return apiJson<{ items: NccCustomFieldDefinitionDto[] }>(
+    "/api/ncc/directory/custom-fields"
+  );
+}
+
+export type NccStaffProfileInput = {
+  firstName: string;
+  lastName: string;
+  phone?: string | null;
+};
+
+export type NccStaffUserCreateInput = {
+  email: string;
+  role: NccStaffUserDto["role"];
+  provisioning: "invitation" | "manual";
+  profile: NccStaffProfileInput;
+  branchIds?: string[];
+  departmentIds?: string[];
+  customFields?: Record<string, string | number | boolean | null>;
+  callerPassword?: string;
+};
+
+export type NccStaffUserPatchInput = {
+  email?: string;
+  role?: NccStaffUserDto["role"];
+  profile?: NccStaffProfileInput;
+  branchIds?: string[];
+  departmentIds?: string[];
+  customFields?: Record<string, string | number | boolean | null>;
+  callerPassword?: string;
+};
+
+export type NccInvitationOneTimeDto = {
+  generatedPassword?: string | null;
+  invitationPath?: string | null;
+  invitationUrlUnparseable?: boolean;
+};
+
+export function createNccStaffUserRequest(input: NccStaffUserCreateInput) {
+  return apiJson<{
+    user: NccStaffUserDto;
+    oneTime: Required<NccInvitationOneTimeDto>;
+  }>("/api/ncc/directory/users", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export function patchNccStaffUserRequest(
+  userId: string,
+  input: NccStaffUserPatchInput
+) {
+  return apiJson<{ user: NccStaffUserDto }>(
+    `/api/ncc/directory/users/${encodeURIComponent(userId)}`,
+    { method: "PATCH", body: JSON.stringify(input) }
+  );
+}
+
+function nccUserActionRequest<T>(userId: string, action: string, body?: unknown) {
+  return apiJson<T>(
+    `/api/ncc/directory/users/${encodeURIComponent(userId)}/${action}`,
+    {
+      method: "POST",
+      body: body === undefined ? undefined : JSON.stringify(body),
+    }
+  );
+}
+
+export function disableNccStaffUserRequest(userId: string) {
+  return nccUserActionRequest<{ user: NccStaffUserDto }>(userId, "disable");
+}
+
+export function enableNccStaffUserRequest(userId: string) {
+  return nccUserActionRequest<{ user: NccStaffUserDto }>(userId, "enable");
+}
+
+export function resetNccStaffPasswordRequest(
+  userId: string,
+  callerPassword?: string
+) {
+  return nccUserActionRequest<{
+    oneTime: { generatedPassword: string };
+  }>(userId, "password", callerPassword ? { callerPassword } : {});
+}
+
+export function inviteNccStaffUserRequest(userId: string) {
+  return nccUserActionRequest<{
+    oneTime: {
+      invitationPath: string | null;
+      invitationUrlUnparseable: boolean;
+    };
+  }>(userId, "invite");
+}
+
+export function cancelNccStaffInvitationRequest(userId: string) {
+  return nccUserActionRequest<{ user: NccStaffUserDto }>(
+    userId,
+    "cancel-invitation"
+  );
+}
+
+export function validateNccInvitationRequest(token: string) {
+  return apiJson<{ email: string; expiresAt: string }>(
+    "/api/ncc/invitations/validate",
+    { method: "POST", body: JSON.stringify({ token }) }
+  );
+}
+
+export function acceptNccInvitationRequest(token: string, password: string) {
+  return apiJson<AuthSessionDto>("/api/ncc/invitations/accept", {
+    method: "POST",
+    body: JSON.stringify({ token, password }),
+  });
 }
 
 export type NccStudentDto = {

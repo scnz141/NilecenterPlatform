@@ -8,7 +8,10 @@ import {
 } from "react";
 import {
   ArrowLeft,
+  Copy,
   Edit3,
+  Eye,
+  EyeOff,
   PauseCircle,
   PlayCircle,
   Save,
@@ -23,11 +26,22 @@ import {
   StatusBadge,
 } from "@/components/platform/PlatformPrimitives";
 import {
+  cancelNccStaffInvitationRequest,
+  disableNccStaffUserRequest,
+  enableNccStaffUserRequest,
   fetchNccDirectoryBranchesRequest,
+  fetchNccDirectoryCustomFieldsRequest,
+  fetchNccDirectoryDepartmentsRequest,
   fetchNccDirectoryUserRequest,
+  inviteNccStaffUserRequest,
+  patchNccStaffUserRequest,
+  resetNccStaffPasswordRequest,
   runPlatformWorkflowActionRequest,
   type NccBranchDto,
+  type NccCustomFieldDefinitionDto,
+  type NccDepartmentDto,
   type NccStaffUserDto,
+  type NccStaffUserPatchInput,
 } from "@/lib/backend/api";
 import { getStoredAuthSession } from "@/lib/auth/session";
 import type { PlatformWorkflowAction } from "@/lib/domain/actions";
@@ -103,6 +117,427 @@ function formatDate(value?: string) {
   }).format(date);
 }
 
+function NccAdminUserDetail({
+  user,
+  branches,
+  departments,
+  definitions,
+  view,
+  reload,
+}: {
+  user: NccStaffUserDto;
+  branches: NccBranchDto[];
+  departments: NccDepartmentDto[];
+  definitions: NccCustomFieldDefinitionDto[];
+  view: UserDetailView;
+  reload: () => Promise<void>;
+}) {
+  const session = getStoredAuthSession();
+  const [firstName, setFirstName] = useState(user.firstName);
+  const [lastName, setLastName] = useState(user.lastName);
+  const [phone, setPhone] = useState(user.phone ?? "");
+  const [role, setRole] = useState(user.role);
+  const [branchIds, setBranchIds] = useState(user.branchIds);
+  const [departmentIds, setDepartmentIds] = useState(
+    user.departments.map(department => department.id)
+  );
+  const [customFields, setCustomFields] = useState(user.customFields);
+  const [callerPassword, setCallerPassword] = useState("");
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState("");
+  const [oneTime, setOneTime] = useState<{
+    label: string;
+    value: string;
+  } | null>(null);
+  const [revealed, setRevealed] = useState(false);
+  const activeBranches = branches.filter(branch => branch.status === "active");
+  const activeDepartments = departments.filter(
+    department => department.status === "active"
+  );
+  const roleChanged = role !== user.role;
+  const needsStepUp =
+    roleChanged && (role === "superadmin" || user.role === "superadmin");
+  const isSelf = user.id === session?.userId;
+  const basePath = `/app/admin/users/${user.id}`;
+
+  useEffect(
+    () => () => {
+      setCallerPassword("");
+    },
+    []
+  );
+
+  const fail = (status: number | undefined, message?: string) => {
+    setError(
+      status === 401
+        ? "Your password was not accepted."
+        : message ?? "The EMS account could not be updated."
+    );
+  };
+
+  const save = async (event: FormEvent) => {
+    event.preventDefault();
+    if (pending) return;
+    if (!firstName.trim() || !lastName.trim()) {
+      setError("First and last name are required.");
+      return;
+    }
+    if (needsStepUp && !callerPassword) {
+      setError("Your current password is required.");
+      return;
+    }
+    const patch: NccStaffUserPatchInput = {};
+    if (
+      firstName.trim() !== user.firstName ||
+      lastName.trim() !== user.lastName ||
+      (phone.trim() || null) !== user.phone
+    ) {
+      patch.profile = {
+        firstName: firstName.trim(),
+        lastName: lastName.trim(),
+        phone: phone.trim() || null,
+      };
+    }
+    if (roleChanged) patch.role = role;
+    if (JSON.stringify(branchIds) !== JSON.stringify(user.branchIds)) {
+      patch.branchIds = branchIds;
+    }
+    const originalDepartments = user.departments.map(item => item.id);
+    if (
+      role === "headofdepartment" &&
+      JSON.stringify(departmentIds) !== JSON.stringify(originalDepartments)
+    ) {
+      patch.departmentIds = departmentIds;
+    }
+    if (JSON.stringify(customFields) !== JSON.stringify(user.customFields)) {
+      patch.customFields = customFields;
+    }
+    if (needsStepUp) patch.callerPassword = callerPassword;
+    setPending(true);
+    setError("");
+    const response = await patchNccStaffUserRequest(user.id, patch);
+    setCallerPassword("");
+    setPending(false);
+    if (!response.ok) {
+      fail(response.status, response.error);
+      return;
+    }
+    toast.success("Access saved");
+    await reload();
+  };
+
+  const lifecycle = async (action: "disable" | "enable" | "cancel") => {
+    if (
+      action === "disable" &&
+      !window.confirm("They will be signed out immediately.")
+    ) {
+      return;
+    }
+    if (action === "cancel" && !window.confirm("Cancel this invitation?")) {
+      return;
+    }
+    setPending(true);
+    setError("");
+    const response =
+      action === "disable"
+        ? await disableNccStaffUserRequest(user.id)
+        : action === "enable"
+          ? await enableNccStaffUserRequest(user.id)
+          : await cancelNccStaffInvitationRequest(user.id);
+    setPending(false);
+    if (!response.ok) {
+      fail(response.status, response.error);
+      return;
+    }
+    await reload();
+  };
+
+  const resetPassword = async () => {
+    if (!window.confirm("Generate a new temporary password?")) return;
+    const stepUp =
+      user.role === "superadmin"
+        ? window.prompt("Your current password") ?? ""
+        : undefined;
+    if (user.role === "superadmin" && !stepUp) return;
+    setPending(true);
+    setError("");
+    const response = await resetNccStaffPasswordRequest(user.id, stepUp);
+    setPending(false);
+    if (!response.ok || !response.data) {
+      fail(response.status, response.error);
+      return;
+    }
+    setOneTime({
+      label:
+        user.status === "canceled"
+          ? "Activate with a generated password"
+          : "Temporary password",
+      value: response.data.oneTime.generatedPassword,
+    });
+    setRevealed(false);
+  };
+
+  const resendInvitation = async () => {
+    setPending(true);
+    setError("");
+    const response = await inviteNccStaffUserRequest(user.id);
+    setPending(false);
+    if (!response.ok || !response.data) {
+      fail(response.status, response.error);
+      return;
+    }
+    if (!response.data.oneTime.invitationPath) {
+      setError(
+        "EMS returned an invitation link we could not translate; resend it from EMS."
+      );
+      return;
+    }
+    setOneTime({
+      label: "Invitation link",
+      value: `${window.location.origin}${response.data.oneTime.invitationPath}`,
+    });
+    setRevealed(false);
+  };
+
+  const toggle = (
+    value: string,
+    current: string[],
+    update: (next: string[]) => void
+  ) =>
+    update(
+      current.includes(value)
+        ? current.filter(item => item !== value)
+        : [...current, value]
+    );
+
+  const renderCustomField = (definition: NccCustomFieldDefinitionDto) => {
+    const value = customFields[definition.fieldKey];
+    const update = (next: string | number | boolean | null) =>
+      setCustomFields(current => ({
+        ...current,
+        [definition.fieldKey]: next,
+      }));
+    if (definition.fieldType === "boolean") {
+      return (
+        <label key={definition.id}>
+          <input
+            type="checkbox"
+            checked={value === true}
+            onChange={event => update(event.target.checked)}
+          />
+          {definition.label}
+        </label>
+      );
+    }
+    if (definition.fieldType === "select") {
+      return (
+        <label key={definition.id}>
+          {definition.label}
+          <select
+            value={typeof value === "string" ? value : ""}
+            onChange={event => update(event.target.value)}
+          >
+            <option value="">Select</option>
+            {(definition.options ?? []).map(option => (
+              <option key={option} value={option}>
+                {option}
+              </option>
+            ))}
+          </select>
+        </label>
+      );
+    }
+    return (
+      <label key={definition.id}>
+        {definition.label}
+        {definition.fieldType === "textarea" ? (
+          <textarea
+            value={typeof value === "string" ? value : ""}
+            onChange={event => update(event.target.value)}
+          />
+        ) : (
+          <input
+            type={definition.fieldType}
+            value={
+              typeof value === "string" || typeof value === "number" ? value : ""
+            }
+            onChange={event =>
+              update(
+                definition.fieldType === "number"
+                  ? event.target.value === ""
+                    ? null
+                    : Number(event.target.value)
+                  : event.target.value
+              )
+            }
+          />
+        )}
+      </label>
+    );
+  };
+
+  const meta = roleMeta[user.role];
+  const branchAccess =
+    user.scopeType === "global"
+      ? "All branches"
+      : branches
+          .filter(branch => user.branchIds.includes(branch.id))
+          .map(branch => branch.name)
+          .join(", ") || "No branch";
+  const departmentNames =
+    user.departments.map(department => department.name).join(", ") ||
+    "No department";
+  const header = (
+    <section className="admin-access-panel selected-user admin-user-detail-hero">
+      <div className="admin-user-detail-identity">
+        <span style={{ background: meta.tint, color: meta.color }}>
+          {meta.shortLabel}
+        </span>
+        <div>
+          <Link href="/app/admin/users">
+            <ArrowLeft size={14} /> Users
+          </Link>
+          <h2>{user.name}</h2>
+          <p>{meta.label} · {branchAccess} · {departmentNames}</p>
+        </div>
+      </div>
+      <div className="admin-user-detail-actions">
+        {view !== "access" ? (
+          <Link className="platform-primary-button" href={`${basePath}/access`}>
+            <Edit3 size={15} /> Edit access
+          </Link>
+        ) : null}
+        {!isSelf && user.status === "active" ? (
+          <button type="button" disabled={pending} onClick={() => void lifecycle("disable")}>
+            Disable
+          </button>
+        ) : null}
+        {user.status === "disabled" ? (
+          <button type="button" disabled={pending} onClick={() => void lifecycle("enable")}>
+            Enable
+          </button>
+        ) : null}
+        {!isSelf && user.status !== "invited" ? (
+          <button type="button" disabled={pending} onClick={() => void resetPassword()}>
+            Reset password
+          </button>
+        ) : null}
+        {user.status === "invited" ? (
+          <>
+            <button type="button" disabled={pending} onClick={() => void resendInvitation()}>
+              Resend invitation
+            </button>
+            <button type="button" disabled={pending} onClick={() => void lifecycle("cancel")}>
+              Cancel invitation
+            </button>
+          </>
+        ) : null}
+      </div>
+      <dl className="admin-user-detail-facts">
+        <div><dt>Status</dt><dd><StatusBadge tone={nccStatusTone(user.status)}>{user.status}</StatusBadge></dd></div>
+        <div><dt>Email</dt><dd>{user.email}</dd></div>
+        <div><dt>Branch access</dt><dd>{branchAccess}</dd></div>
+        <div><dt>Departments</dt><dd>{departmentNames}</dd></div>
+        <div><dt>Moodle account</dt><dd>{user.moodleLinked ? "Linked" : "Not linked"}</dd></div>
+        <div><dt>Last sign-in</dt><dd>{formatNccDate(user.lastLoginAt, "Never")}</dd></div>
+        <div><dt>Created</dt><dd>{formatNccDate(user.createdAt, "Unknown")}</dd></div>
+      </dl>
+    </section>
+  );
+
+  const access = (
+    <form className="admin-user-detail-form" onSubmit={save}>
+      <label>First name<input value={firstName} onChange={event => setFirstName(event.target.value)} /></label>
+      <label>Last name<input value={lastName} onChange={event => setLastName(event.target.value)} /></label>
+      <label>Phone<input value={phone} onChange={event => setPhone(event.target.value)} /></label>
+      <label>
+        Role
+        <select value={role} onChange={event => setRole(event.target.value as NccStaffUserDto["role"])}>
+          {roleOrder.filter(item => item !== "student").map(item => (
+            <option key={item} value={item}>{roleMeta[item].label}</option>
+          ))}
+        </select>
+      </label>
+      {roleChanged ? (
+        <p role="status">Changing the role signs this person out everywhere and replaces their access.</p>
+      ) : null}
+      {role !== "superadmin" ? (
+        <fieldset>
+          <legend>Branch access</legend>
+          {activeBranches.map(branch => (
+            <label key={branch.id}>
+              <input type="checkbox" checked={branchIds.includes(branch.id)} onChange={() => toggle(branch.id, branchIds, setBranchIds)} />
+              {branch.name}
+            </label>
+          ))}
+        </fieldset>
+      ) : null}
+      {role === "headofdepartment" ? (
+        <fieldset>
+          <legend>Departments</legend>
+          {activeDepartments.map(department => (
+            <label key={department.id}>
+              <input type="checkbox" checked={departmentIds.includes(department.id)} onChange={() => toggle(department.id, departmentIds, setDepartmentIds)} />
+              {department.name}
+            </label>
+          ))}
+        </fieldset>
+      ) : null}
+      {definitions.map(renderCustomField)}
+      {needsStepUp ? (
+        <label>Your current password<input type="password" autoComplete="current-password" value={callerPassword} onChange={event => setCallerPassword(event.target.value)} /></label>
+      ) : null}
+      {error ? <p className="platform-form-error" role="alert">{error}</p> : null}
+      <div className="admin-user-detail-form-actions">
+        <Link href={basePath}>Cancel</Link>
+        <button className="platform-primary-button" type="submit" disabled={pending}>
+          <Save size={15} /> {pending ? "Saving..." : "Save changes"}
+        </button>
+      </div>
+    </form>
+  );
+
+  return (
+    <PlatformShell role="superadmin" title={user.name}>
+      <DetailLayout
+        className="admin-user-detail-page"
+        title={view === "access" ? "Access settings" : "Account overview"}
+        description="Manage this EMS staff account."
+        main={
+          <>
+            {header}
+            <nav className="admin-user-detail-tabs" aria-label="User detail sections">
+              <Link href={basePath} className={view === "overview" ? "active" : ""}>Overview</Link>
+              <Link href={`${basePath}/access`} className={view === "access" ? "active" : ""}>Access</Link>
+            </nav>
+            {oneTime ? (
+              <section className="admin-users-create-note" role="status">
+                <strong>{oneTime.label}</strong>
+                <span>{revealed ? oneTime.value : "••••••••••••"}</span>
+                <button type="button" onClick={() => setRevealed(value => !value)}>
+                  {revealed ? <EyeOff size={15} /> : <Eye size={15} />}
+                  {revealed ? "Hide" : "Reveal"}
+                </button>
+                <button type="button" onClick={() => void navigator.clipboard.writeText(oneTime.value)}>
+                  <Copy size={15} /> Copy
+                </button>
+                <small>Shown once. Nile Learn does not store it — share it securely now.</small>
+              </section>
+            ) : null}
+            {view === "access" ? access : (
+              <section className="platform-empty-state" role="status">
+                <strong>Account changes are managed in EMS</strong>
+                <span>Use the Access tab or account actions to update this person.</span>
+              </section>
+            )}
+            {error && view !== "access" ? <p className="platform-form-error" role="alert">{error}</p> : null}
+          </>
+        }
+      />
+    </PlatformShell>
+  );
+}
+
 export default function AdminUserDetailPage({
   userId,
   view = "overview",
@@ -116,6 +551,10 @@ export default function AdminUserDetailPage({
   const [teacherError, setTeacherError] = useState("");
   const [nccUser, setNccUser] = useState<NccStaffUserDto | null>(null);
   const [nccBranches, setNccBranches] = useState<NccBranchDto[]>([]);
+  const [nccDepartments, setNccDepartments] = useState<NccDepartmentDto[]>([]);
+  const [nccDefinitions, setNccDefinitions] = useState<
+    NccCustomFieldDefinitionDto[]
+  >([]);
   const [nccLoading, setNccLoading] = useState(isNccMode);
   const [nccError, setNccError] = useState<{
     message: string;
@@ -131,13 +570,19 @@ export default function AdminUserDetailPage({
     }
     setNccLoading(true);
     setNccError(null);
-    const [userResponse, branchesResponse] = await Promise.all([
-      fetchNccDirectoryUserRequest(userId),
-      fetchNccDirectoryBranchesRequest(),
-    ]);
-    const failedResponse = [userResponse, branchesResponse].find(
-      response => !response.ok
-    );
+    const [userResponse, branchesResponse, departmentsResponse, fieldsResponse] =
+      await Promise.all([
+        fetchNccDirectoryUserRequest(userId),
+        fetchNccDirectoryBranchesRequest(),
+        fetchNccDirectoryDepartmentsRequest(),
+        fetchNccDirectoryCustomFieldsRequest(),
+      ]);
+    const failedResponse = [
+      userResponse,
+      branchesResponse,
+      departmentsResponse,
+      fieldsResponse,
+    ].find(response => !response.ok);
     if (failedResponse) {
       setNccUser(null);
       setNccError({
@@ -147,7 +592,12 @@ export default function AdminUserDetailPage({
       setNccLoading(false);
       return;
     }
-    if (!userResponse.data || !branchesResponse.data) {
+    if (
+      !userResponse.data ||
+      !branchesResponse.data ||
+      !departmentsResponse.data ||
+      !fieldsResponse.data
+    ) {
       setNccUser(null);
       setNccError({ message: "The EMS staff account returned no data." });
       setNccLoading(false);
@@ -155,6 +605,8 @@ export default function AdminUserDetailPage({
     }
     setNccUser(userResponse.data.user);
     setNccBranches(branchesResponse.data.items);
+    setNccDepartments(departmentsResponse.data.items);
+    setNccDefinitions(fieldsResponse.data.items);
     setNccLoading(false);
   }, [userId]);
 
@@ -350,90 +802,15 @@ export default function AdminUserDetailPage({
       );
     }
 
-    const nccRole = roleMeta[nccUser.role];
-    const branchAccess =
-      nccUser.scopeType === "global"
-        ? "All branches"
-        : nccBranches
-            .filter(item => nccUser.branchIds.includes(item.id))
-            .map(item => item.name)
-            .join(", ") || "No branch";
-    const departments =
-      nccUser.departments.map(item => item.name).join(", ") || "No department";
-    const nccHeader = (
-      <section className="admin-access-panel selected-user admin-user-detail-hero">
-        <div className="admin-user-detail-identity">
-          <span style={{ background: nccRole.tint, color: nccRole.color }}>
-            {nccRole.shortLabel}
-          </span>
-          <div>
-            <Link href="/app/admin/users">
-              <ArrowLeft size={14} />
-              Users
-            </Link>
-            <h2>{nccUser.name}</h2>
-            <p>
-              {nccRole.label} · {branchAccess} · {departments}
-            </p>
-          </div>
-        </div>
-        <dl className="admin-user-detail-facts">
-          <div>
-            <dt>Status</dt>
-            <dd>
-              <StatusBadge tone={nccStatusTone(nccUser.status)}>
-                {nccUser.status}
-              </StatusBadge>
-            </dd>
-          </div>
-          <div>
-            <dt>Email</dt>
-            <dd>{nccUser.email}</dd>
-          </div>
-          <div>
-            <dt>Branch access</dt>
-            <dd>{branchAccess}</dd>
-          </div>
-          <div>
-            <dt>Departments</dt>
-            <dd>{departments}</dd>
-          </div>
-          <div>
-            <dt>Moodle account</dt>
-            <dd>{nccUser.moodleLinked ? "Linked" : "Not linked"}</dd>
-          </div>
-          <div>
-            <dt>Last sign-in</dt>
-            <dd>{formatNccDate(nccUser.lastLoginAt, "Never")}</dd>
-          </div>
-          <div>
-            <dt>Created</dt>
-            <dd>{formatNccDate(nccUser.createdAt, "Unknown")}</dd>
-          </div>
-        </dl>
-      </section>
-    );
-
     return (
-      <PlatformShell role="superadmin" title={nccUser.name}>
-        <DetailLayout
-          className="admin-user-detail-page"
-          title="Account overview"
-          description="Read identity and school scope from EMS."
-          main={
-            <>
-              {nccHeader}
-              <section className="platform-empty-state" role="status">
-                <strong>Account changes are managed in EMS</strong>
-                <span>
-                  Editing access, pausing accounts, and teacher assignment are
-                  not connected to EMS from Nile Learn yet.
-                </span>
-              </section>
-            </>
-          }
-        />
-      </PlatformShell>
+      <NccAdminUserDetail
+        user={nccUser}
+        branches={nccBranches}
+        departments={nccDepartments}
+        definitions={nccDefinitions}
+        view={view === "access" ? "access" : "overview"}
+        reload={loadNccUser}
+      />
     );
   }
 

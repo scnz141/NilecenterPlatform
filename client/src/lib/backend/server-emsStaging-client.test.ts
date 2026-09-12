@@ -6,6 +6,7 @@ import {
   mapEmsRoleToLocal,
   mapLocalRoleToEms,
   normalizeEmsClass,
+  normalizeEmsCustomFieldDefinitions,
   normalizeEmsLead,
   normalizeEmsMe,
   normalizeEmsPlacementTest,
@@ -254,6 +255,7 @@ describe("EMS staging payload guards", () => {
         lastLoginAt: "2026-09-12T10:00:00Z",
         createdAt: "2026-09-01T10:00:00Z",
         updatedAt: "2026-09-12T10:00:00Z",
+        customFields: { ignored: true },
       },
       {
         id: "user-2",
@@ -272,6 +274,7 @@ describe("EMS staging payload guards", () => {
         lastLoginAt: null,
         createdAt: "2026-09-01T10:00:00Z",
         updatedAt: "2026-09-12T10:00:00Z",
+        customFields: { ignored: true },
       },
     ]);
     expect(
@@ -305,11 +308,47 @@ describe("EMS staging payload guards", () => {
         departments: [],
         moodleLinked: false,
         lastLoginAt: null,
+        customFields: {},
       }),
     ]);
     expect(
       normalizeEmsStaffUsers([{ ...row, departments: "x" }])
     ).toBeNull();
+    expect(
+      normalizeEmsStaffUsers([
+        { ...row, custom_fields: { nested: { value: true } } },
+      ])
+    ).toBeNull();
+  });
+
+  it("normalizes active user profile custom-field definitions", () => {
+    expect(
+      normalizeEmsCustomFieldDefinitions([
+        {
+          id: "field-1",
+          entity_type: "user_profile",
+          field_key: "employee_number",
+          label: "Employee number",
+          field_type: "text",
+          is_required: true,
+          is_active: true,
+          sort_order: 1,
+          options_json: null,
+          help_text: "Use the EMS number.",
+        },
+      ])
+    ).toEqual([
+      {
+        id: "field-1",
+        fieldKey: "employee_number",
+        label: "Employee number",
+        fieldType: "text",
+        isRequired: true,
+        helpText: "Use the EMS number.",
+        options: null,
+        sortOrder: 1,
+      },
+    ]);
   });
 });
 

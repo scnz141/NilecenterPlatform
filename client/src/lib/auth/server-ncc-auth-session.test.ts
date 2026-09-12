@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import {
+  acceptNccInvitation,
   getNccRequestSession,
   listNccWorkspaces,
   loginNccStaff,
@@ -10,6 +11,7 @@ import {
   switchNccRole,
   switchNccWorkspace,
   validateNccAuthConfiguration,
+  validateNccInvitation,
 } from "../../../../server/nccAuthSession";
 
 const sealKey = "test-only-ncc-auth-session-key-32-characters";
@@ -321,5 +323,79 @@ describe("NCC staff auth session", () => {
     });
     expect(logout).toHaveBeenCalledWith("access-ncc-session-1");
     expect(headers.get("Set-Cookie")).toContain("Max-Age=0");
+  });
+
+  it("accepts an NCC invitation and establishes the sealed session", async () => {
+    const acceptInvitation = vi.fn(async () => ({
+      ok: true,
+      data: tokens(),
+    }));
+    const meRequest = vi.fn(async () => ({ ok: true, data: me() }));
+    const { headers, response } = responseRecorder();
+
+    const session = await acceptNccInvitation(
+      "invitation-token",
+      "new-password",
+      response,
+      {
+        env: env(),
+        createClient: () =>
+          ({ acceptInvitation, me: meRequest }) as never,
+      }
+    );
+
+    expect(acceptInvitation).toHaveBeenCalledWith(
+      "invitation-token",
+      "new-password"
+    );
+    expect(meRequest).toHaveBeenCalledWith("access-ncc-session-1");
+    expect(session.provider).toBe("ncc");
+    expect(sessionCookie(headers)).toBeTruthy();
+  });
+
+  it("rejects an invitation response without a complete token pair", async () => {
+    const { response } = responseRecorder();
+    await expect(
+      acceptNccInvitation("token", "password", response, {
+        env: env(),
+        createClient: () =>
+          ({
+            acceptInvitation: async () => ({ ok: true, data: {} }),
+          }) as never,
+      })
+    ).rejects.toMatchObject({ status: 502 });
+  });
+
+  it("strictly validates invitation metadata", async () => {
+    await expect(
+      validateNccInvitation("token", {
+        env: env(),
+        createClient: () =>
+          ({
+            validateInvitation: async () => ({
+              ok: true,
+              data: {
+                email: "staff@example.test",
+                expires_at: "2099-01-01T00:00:00Z",
+              },
+            }),
+          }) as never,
+      })
+    ).resolves.toEqual({
+      email: "staff@example.test",
+      expiresAt: "2099-01-01T00:00:00Z",
+    });
+    await expect(
+      validateNccInvitation("token", {
+        env: env(),
+        createClient: () =>
+          ({
+            validateInvitation: async () => ({
+              ok: true,
+              data: { email: "staff@example.test", expires_at: "invalid" },
+            }),
+          }) as never,
+      })
+    ).rejects.toMatchObject({ status: 502 });
   });
 });

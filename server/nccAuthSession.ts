@@ -393,6 +393,51 @@ export async function loginNccStaff(
   return value.session;
 }
 
+export async function acceptNccInvitation(
+  token: string,
+  password: string,
+  response: Response,
+  dependencies: NccAuthDependencies = {}
+) {
+  const env = dependencies.env ?? process.env;
+  const api = client(env, dependencies.createClient);
+  const accepted = await api.acceptInvitation(token, password);
+  if (!accepted.ok) remoteError(accepted);
+  const tokens = extractTokens(accepted.data);
+  if (!tokens) throw new NccAuthError(502, "NCC EMS returned invalid tokens.");
+  const meResult = await api.me(tokens.accessToken);
+  if (!meResult.ok) remoteError(meResult);
+  const me = normalizeEmsMe(meResult.data);
+  if (!me)
+    throw new NccAuthError(502, "NCC EMS returned invalid session authority.");
+  const value = buildEnvelope(me, tokens);
+  writeEnvelope(response, value, env, true);
+  return value.session;
+}
+
+export async function validateNccInvitation(
+  token: string,
+  dependencies: NccAuthDependencies = {}
+) {
+  const env = dependencies.env ?? process.env;
+  const api = client(env, dependencies.createClient);
+  const result = await api.validateInvitation(token);
+  if (!result.ok) remoteError(result);
+  if (!result.data || typeof result.data !== "object") {
+    throw new NccAuthError(502, "NCC EMS returned invalid invitation data.");
+  }
+  const record = result.data as Record<string, unknown>;
+  if (
+    typeof record.email !== "string" ||
+    !record.email ||
+    typeof record.expires_at !== "string" ||
+    !Number.isFinite(Date.parse(record.expires_at))
+  ) {
+    throw new NccAuthError(502, "NCC EMS returned invalid invitation data.");
+  }
+  return { email: record.email, expiresAt: record.expires_at };
+}
+
 export async function resolveNccAuthSession(
   request: Request,
   response: Response,
@@ -491,6 +536,8 @@ export async function runNccRead(
   }
   return result.result.data;
 }
+
+export const runNccWrite = runNccRead;
 
 export async function listNccWorkspaces(
   request: Request,
