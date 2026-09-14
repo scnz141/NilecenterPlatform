@@ -14,7 +14,7 @@
 
 .portal-messages-page {
   width: 100%;
-  max-width: 1560px;
+  max-width: none;
   margin-inline: auto;
 }
 
@@ -629,6 +629,7 @@
   line-height: 1.4;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
+  line-clamp: 2;
 }
 
 .portal-message-read-dot {
@@ -988,7 +989,7 @@
 /* Ultrawide / TV */
 @media (min-width: 1600px) {
   .portal-messages-page {
-    max-width: 1680px;
+    max-width: none;
   }
 
   .portal-message-workspace {
@@ -1004,7 +1005,7 @@
 
 @media (min-width: 1920px) {
   .portal-messages-page {
-    max-width: 1840px;
+    max-width: none;
   }
 
   .portal-message-workspace {
@@ -1015,7 +1016,7 @@
 
 .moodle-source-page {
   width: 100%;
-  max-width: 1440px;
+  max-width: none;
   margin-inline: auto;
 }
 
@@ -1302,7 +1303,7 @@
 
 .moodle-content-page {
   width: 100%;
-  max-width: 1440px;
+  max-width: none;
   margin-inline: auto;
 }
 
@@ -1572,6 +1573,12 @@
   .portal-report-toolbar-v4 {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  /* Column + wrap overflows children into phantom columns; role stylesheets
+     re-add flex-wrap: wrap, so this needs higher specificity than them. */
+  html .platform-shell[data-role] .portal-report-toolbar-v4 {
+    flex-wrap: nowrap;
   }
 
   .portal-report-tabs-v4,

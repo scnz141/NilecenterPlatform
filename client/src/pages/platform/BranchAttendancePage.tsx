@@ -1,14 +1,28 @@
-import { requireActiveUser } from "@/lib/auth/session";
-import { useEffect, useMemo, useState } from "react";
+import { getStoredAuthSession, requireActiveUser } from "@/lib/auth/session";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Check, CircleSlash, Clock3, CircleX, Users } from "lucide-react";
 import { toast } from "sonner";
+import NccReadStatus from "@/components/platform/NccReadStatus";
 import PlatformShell from "@/components/platform/PlatformShell";
 import { WorkspaceLayout } from "@/components/platform/PlatformLayouts";
 import {
   DataTableCard,
   StatusBadge,
 } from "@/components/platform/PlatformPrimitives";
-import { runPlatformWorkflowActionRequest } from "@/lib/backend/api";
+import {
+  fetchNccClassesRequest,
+  fetchNccClassSessionsRequest,
+  fetchNccSessionAttendanceRequest,
+  markNccSessionAttendanceRequest,
+  runPlatformWorkflowActionRequest,
+  type NccAttendanceDetailDto,
+  type NccClassDto,
+  type NccSessionDto,
+} from "@/lib/backend/api";
+import {
+  classifyNccFailure,
+  type NccReadState,
+} from "@/lib/backend/nccReadState";
 import { platformStore } from "@/lib/domain/store";
 import type { AttendanceStatus } from "@/lib/domain/types";
 
@@ -51,6 +65,299 @@ function formatSession(value?: string) {
 }
 
 export default function BranchAttendancePage() {
+  return getStoredAuthSession()?.provider === "ncc" ? (
+    <NccBranchAttendancePage />
+  ) : (
+    <CompatibilityBranchAttendancePage />
+  );
+}
+
+function NccBranchAttendancePage() {
+  const [readState, setReadState] = useState<
+    NccReadState<{ classes: NccClassDto[]; sessions: NccSessionDto[] }>
+  >({ status: "loading" });
+  const [selectedClassId, setSelectedClassId] = useState("");
+  const [selectedSessionId, setSelectedSessionId] = useState("");
+  const [attendanceState, setAttendanceState] = useState<
+    NccReadState<NccAttendanceDetailDto> | null
+  >(null);
+  const [draft, setDraft] = useState<Record<string, number>>({});
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState<{
+    kind: "success" | "error";
+    text: string;
+  } | null>(null);
+
+  const load = useCallback(async () => {
+    setReadState({ status: "loading" });
+    const classesResult = await fetchNccClassesRequest();
+    if (!classesResult.ok || !classesResult.data) {
+      setReadState(classifyNccFailure(classesResult));
+      return;
+    }
+    const classes = classesResult.data.items;
+    const sessionResults = await Promise.all(
+      classes.map(item => fetchNccClassSessionsRequest(item.id))
+    );
+    for (const result of sessionResults) {
+      if (!result.ok || !result.data) {
+        setReadState(classifyNccFailure(result));
+        return;
+      }
+    }
+    setReadState({
+      status: "ready",
+      data: {
+        classes,
+        sessions: sessionResults.flatMap(result => result.data!.items),
+      },
+    });
+  }, []);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const data = readState.status === "ready" ? readState.data : null;
+  const sessionsDesc = (data?.sessions ?? [])
+    .slice()
+    .sort(
+      (a, b) =>
+        new Date(b.startsAt).getTime() - new Date(a.startsAt).getTime()
+    );
+  const selectedClass =
+    data?.classes.find(item => item.id === selectedClassId) ??
+    data?.classes.find(item =>
+      sessionsDesc.some(session => session.classId === item.id)
+    ) ??
+    data?.classes[0];
+  const classSessions = sessionsDesc.filter(
+    session => session.classId === selectedClass?.id
+  );
+  const selectedSession =
+    classSessions.find(session => session.id === selectedSessionId) ??
+    classSessions[0];
+
+  const loadAttendance = useCallback(async () => {
+    if (!selectedSession) return;
+    setAttendanceState({ status: "loading" });
+    setMessage(null);
+    const result = await fetchNccSessionAttendanceRequest(selectedSession.id);
+    if (result.ok && result.data) {
+      const attendance = result.data.attendance;
+      setAttendanceState({ status: "ready", data: attendance });
+      const statusIds = new Set(attendance.statuses.map(item => item.id));
+      const fallbackStatusId =
+        attendance.statuses.find(item => item.acronym === "P")?.id ??
+        attendance.statuses[0]?.id;
+      const next: Record<string, number> = {};
+      for (const student of attendance.students) {
+        const parsed =
+          student.statusId === null ? NaN : Number(student.statusId);
+        next[student.studentId] =
+          Number.isSafeInteger(parsed) && statusIds.has(parsed)
+            ? parsed
+            : fallbackStatusId;
+      }
+      setDraft(next);
+    } else {
+      setAttendanceState(classifyNccFailure(result));
+    }
+  }, [selectedSession?.id]);
+
+  useEffect(() => {
+    if (selectedSession) void loadAttendance();
+  }, [loadAttendance, selectedSession]);
+
+  const save = async () => {
+    if (!selectedSession || attendanceState?.status !== "ready" || saving) {
+      return;
+    }
+    const attendance = attendanceState.data;
+    setSaving(true);
+    setMessage(null);
+    const result = await markNccSessionAttendanceRequest(selectedSession.id, {
+      marks: attendance.students.map(student => ({
+        studentId: student.studentId,
+        statusId: draft[student.studentId],
+      })),
+    });
+    setSaving(false);
+    if (result.ok && result.data) {
+      setAttendanceState({ status: "ready", data: result.data.attendance });
+      setMessage({ kind: "success", text: "Attendance saved." });
+      toast.success("Attendance saved.");
+    } else {
+      const text = result.error ?? "Attendance could not be saved.";
+      setMessage({ kind: "error", text });
+      toast.error(text);
+    }
+  };
+
+  const attendanceReady =
+    attendanceState?.status === "ready" ? attendanceState.data : null;
+  const saveDisabled =
+    saving ||
+    !selectedSession ||
+    !attendanceReady ||
+    attendanceReady.students.some(
+      student => !Number.isSafeInteger(draft[student.studentId])
+    );
+
+  return (
+    <PlatformShell role="branchadmin" title="Attendance">
+      <WorkspaceLayout
+        className="branch-attendance-page"
+        title="Attendance"
+        description="Record one class session at a time."
+        context={selectedClass?.branchName ?? "Branch"}
+        toolbar={
+          <div
+            className="branch-compact-toolbar branch-attendance-toolbar"
+            data-testid="branch-attendance-toolbar"
+          >
+            <label>
+              Class
+              <select
+                value={selectedClass?.id ?? ""}
+                disabled={!data?.classes.length}
+                onChange={event => {
+                  setSelectedClassId(event.target.value);
+                  setSelectedSessionId("");
+                }}
+              >
+                {data?.classes.length ? (
+                  data.classes.map(item => (
+                    <option key={item.id} value={item.id}>
+                      {item.name}
+                    </option>
+                  ))
+                ) : (
+                  <option value="">No classes</option>
+                )}
+              </select>
+            </label>
+            <label>
+              Session
+              <select
+                value={selectedSession?.id ?? ""}
+                onChange={event => setSelectedSessionId(event.target.value)}
+                disabled={!classSessions.length}
+              >
+                {classSessions.length ? (
+                  classSessions.map(session => (
+                    <option key={session.id} value={session.id}>
+                      {formatSession(session.startsAt)}
+                    </option>
+                  ))
+                ) : (
+                  <option value="">No sessions</option>
+                )}
+              </select>
+            </label>
+          </div>
+        }
+        main={
+          !data ? (
+            <NccReadStatus state={readState} onRetry={() => void load()} />
+          ) : !data.classes.length ? (
+            <div className="platform-empty-state" role="status">
+              <strong>No classes are assigned to this branch.</strong>
+            </div>
+          ) : !classSessions.length ? (
+            <div className="platform-empty-state" role="status">
+              <strong>No sessions available for attendance.</strong>
+            </div>
+          ) : (
+            <section
+              className="branch-attendance-workspace"
+              data-testid="branch-attendance-workspace"
+            >
+              <div className="branch-attendance-head">
+                <div>
+                  <span>Take attendance</span>
+                  <strong>{selectedClass?.name ?? "Class"}</strong>
+                  <small>{formatSession(selectedSession?.startsAt)}</small>
+                </div>
+                <span>{attendanceReady?.students.length ?? 0} learners</span>
+              </div>
+              {attendanceState?.status !== "ready" ? (
+                <NccReadStatus
+                  state={attendanceState ?? { status: "loading" }}
+                  onRetry={() => void loadAttendance()}
+                />
+              ) : (
+                <div className="branch-attendance-list">
+                  {attendanceReady!.students.map(student => {
+                    const studentName =
+                      `${student.firstName} ${student.lastName}`.trim() ||
+                      "Student";
+                    return (
+                      <article key={student.studentId}>
+                        <div className="branch-attendance-learner">
+                          <strong>{studentName}</strong>
+                          <small>{student.email}</small>
+                        </div>
+                        <label>
+                          <span className="sr-only">
+                            Attendance for {studentName}
+                          </span>
+                          <select
+                            aria-label={`Attendance for ${studentName}`}
+                            value={draft[student.studentId] ?? ""}
+                            onChange={event =>
+                              setDraft(value => ({
+                                ...value,
+                                [student.studentId]: Number(
+                                  event.target.value
+                                ),
+                              }))
+                            }
+                          >
+                            {attendanceReady!.statuses.map(status => (
+                              <option key={status.id} value={status.id}>
+                                {status.description ??
+                                  status.acronym ??
+                                  `Status ${status.id}`}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                      </article>
+                    );
+                  })}
+                </div>
+              )}
+              <div className="branch-attendance-save-bar">
+                {message ? (
+                  <span
+                    className={`branch-attendance-result ${message.kind}`}
+                    role={message.kind === "error" ? "alert" : "status"}
+                  >
+                    {message.text}
+                  </span>
+                ) : (
+                  <span>Changes apply to this session only.</span>
+                )}
+                <button
+                  type="button"
+                  className="platform-primary-button"
+                  data-testid="branch-attendance-save"
+                  disabled={saveDisabled}
+                  onClick={() => void save()}
+                >
+                  {saving ? "Saving attendance" : "Save attendance"}
+                </button>
+              </div>
+            </section>
+          )
+        }
+      />
+    </PlatformShell>
+  );
+}
+
+function CompatibilityBranchAttendancePage() {
   const [state, setState] = useState(() => platformStore.getState());
   const [selectedClassId, setSelectedClassId] = useState("");
   const [selectedSessionId, setSelectedSessionId] = useState("");

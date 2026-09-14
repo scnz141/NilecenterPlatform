@@ -129,7 +129,8 @@ function NccHodClassesPage() {
   const classes = readState.status === "ready" ? readState.data : [];
   const statuses = Array.from(new Set(classes.map(row => row.status)));
   const rows = classes.filter(row => {
-    const text = `${row.name} ${row.courseName} ${row.departmentName} ${row.teachers.map(teacher => teacher.name).join(" ")} ${row.status}`.toLowerCase();
+    const text =
+      `${row.name} ${row.courseName} ${row.departmentName} ${row.teachers.map(teacher => teacher.name).join(" ")} ${row.status}`.toLowerCase();
     return (
       (!query.trim() || text.includes(query.trim().toLowerCase())) &&
       (status === "all" || row.status === status)
@@ -190,20 +191,34 @@ function NccHodClassesPage() {
                     rows={rows}
                     rowKey={row => row.id}
                     columns={[
-                      { key: "class", label: "Class", render: row => <strong>{row.name}</strong> },
-                      { key: "course", label: "Course", render: row => row.courseName },
-                      { key: "department", label: "Department", render: row => row.departmentName },
+                      {
+                        key: "class",
+                        label: "Class",
+                        render: row => <strong>{row.name}</strong>,
+                      },
+                      {
+                        key: "course",
+                        label: "Course",
+                        render: row => row.courseName,
+                      },
+                      {
+                        key: "department",
+                        label: "Department",
+                        render: row => row.departmentName,
+                      },
                       {
                         key: "teachers",
                         label: "Teachers",
                         render: row =>
-                          row.teachers.map(teacher => teacher.name).join(", ") ||
-                          "No teacher",
+                          row.teachers
+                            .map(teacher => teacher.name)
+                            .join(", ") || "No teacher",
                       },
                       {
                         key: "enrolled",
                         label: "Enrolled",
-                        render: row => `${row.activeEnrolmentCount}/${row.capacity}`,
+                        render: row =>
+                          `${row.activeEnrolmentCount}/${row.capacity}`,
                       },
                       {
                         key: "status",

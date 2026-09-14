@@ -1,12 +1,25 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { ArrowLeft, BookOpen, CheckCircle2 } from "lucide-react";
 import { Link } from "wouter";
+import NccReadStatus from "@/components/platform/NccReadStatus";
 import PlatformShell from "@/components/platform/PlatformShell";
 import { TeacherClassNavigation } from "@/components/platform/TeacherClassNavigation";
 import { DetailLayout } from "@/components/platform/PlatformLayouts";
 import { StatusBadge } from "@/components/platform/PlatformPrimitives";
-import { runPlatformWorkflowActionRequest } from "@/lib/backend/api";
-import { requireActiveUser } from "@/lib/auth/session";
+import {
+  fetchNccClassEnrolmentsRequest,
+  fetchNccClassRequest,
+  fetchNccClassSessionsRequest,
+  runPlatformWorkflowActionRequest,
+  type NccClassDto,
+  type NccClassEnrolmentDto,
+  type NccSessionDto,
+} from "@/lib/backend/api";
+import {
+  classifyNccFailure,
+  type NccReadState,
+} from "@/lib/backend/nccReadState";
+import { getStoredAuthSession, requireActiveUser } from "@/lib/auth/session";
 import { platformStore } from "@/lib/domain/store";
 import type { EntityStatus } from "@/lib/domain/types";
 
@@ -34,7 +47,169 @@ function formatDateTime(value?: string) {
   }).format(date);
 }
 
-export default function TeacherClassDetailPage({
+export default function TeacherClassDetailPage(
+  props: TeacherClassDetailPageProps
+) {
+  return getStoredAuthSession()?.provider === "ncc" ? (
+    <NccTeacherClassDetailPage {...props} />
+  ) : (
+    <CompatibilityTeacherClassDetailPage {...props} />
+  );
+}
+
+function NccTeacherClassDetailPage({
+  classId,
+}: TeacherClassDetailPageProps) {
+  const [readState, setReadState] = useState<
+    NccReadState<{
+      classRecord: NccClassDto;
+      enrolments: NccClassEnrolmentDto[];
+      sessions: NccSessionDto[];
+    }>
+  >({ status: "loading" });
+
+  const load = useCallback(async () => {
+    setReadState({ status: "loading" });
+    const [classResult, enrolmentsResult, sessionsResult] = await Promise.all([
+      fetchNccClassRequest(classId),
+      fetchNccClassEnrolmentsRequest(classId),
+      fetchNccClassSessionsRequest(classId),
+    ]);
+    for (const result of [classResult, enrolmentsResult, sessionsResult]) {
+      if (!result.ok || !result.data) {
+        setReadState(classifyNccFailure(result));
+        return;
+      }
+    }
+    setReadState({
+      status: "ready",
+      data: {
+        classRecord: classResult.data!.class,
+        enrolments: enrolmentsResult.data!.items,
+        sessions: sessionsResult.data!.items,
+      },
+    });
+  }, [classId]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const data = readState.status === "ready" ? readState.data : null;
+  const classRecord = data?.classRecord ?? null;
+  const title = classRecord?.name ?? "Class";
+  const nextSession = data
+    ? [...data.sessions]
+        .sort(
+          (a, b) =>
+            new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime()
+        )
+        .find(item => item.status === "scheduled")
+    : undefined;
+  const learnerCount =
+    data?.enrolments.filter(
+      item => item.status === "pending" || item.status === "enrolled"
+    ).length ?? 0;
+
+  return (
+    <PlatformShell role="teacher" title={title}>
+      <DetailLayout
+        className="teacher-class-detail-page portal-simple-page"
+        context="Teacher"
+        title={title}
+        description={
+          classRecord
+            ? `${classRecord.courseName} · ${classRecord.branchName}`
+            : "Assigned class"
+        }
+        actions={
+          <Link
+            className="platform-secondary-button"
+            href="/app/teacher/classes"
+          >
+            <ArrowLeft size={15} />
+            All classes
+          </Link>
+        }
+        toolbar={<TeacherClassNavigation classId={classId} active="overview" />}
+        main={
+          !data || !classRecord ? (
+            <NccReadStatus state={readState} onRetry={() => void load()} />
+          ) : (
+            <section
+              className="teacher-class-overview-v3"
+              data-testid="teacher-class-overview"
+            >
+              <div className="teacher-class-overview-heading">
+                <span>
+                  <BookOpen size={16} />
+                  Class overview
+                </span>
+                <StatusBadge
+                  tone={classRecord.status === "active" ? "green" : "slate"}
+                >
+                  {classRecord.status}
+                </StatusBadge>
+              </div>
+
+              <div className="teacher-class-overview-next">
+                <div>
+                  <span>Up next</span>
+                  <h2>
+                    {nextSession
+                      ? formatDateTime(nextSession.startsAt)
+                      : "No upcoming session"}
+                  </h2>
+                  <p>
+                    {nextSession?.roomName ?? classRecord.defaultRoomName ?? ""}
+                  </p>
+                </div>
+                <div className="teacher-class-overview-actions">
+                  <Link
+                    className="platform-primary-button"
+                    href={`/app/teacher/classes/${classId}/attendance`}
+                  >
+                    <CheckCircle2 size={15} />
+                    Mark attendance
+                  </Link>
+                </div>
+              </div>
+
+              <dl className="teacher-class-fact-grid">
+                <div>
+                  <dt>Course</dt>
+                  <dd>{classRecord.courseName}</dd>
+                </div>
+                <div>
+                  <dt>Branch</dt>
+                  <dd>{classRecord.branchName}</dd>
+                </div>
+                <div>
+                  <dt>Room</dt>
+                  <dd>{classRecord.defaultRoomName ?? "Room not set"}</dd>
+                </div>
+                <div>
+                  <dt>Learners</dt>
+                  <dd>{learnerCount}</dd>
+                </div>
+                <div>
+                  <dt>Teachers</dt>
+                  <dd>
+                    {classRecord.teachers.length
+                      ? classRecord.teachers.map(item => item.name).join(", ")
+                      : "No teachers"}
+                  </dd>
+                </div>
+              </dl>
+            </section>
+          )
+        }
+      />
+    </PlatformShell>
+  );
+}
+
+function CompatibilityTeacherClassDetailPage({
   classId,
 }: TeacherClassDetailPageProps) {
   const [state, setState] = useState(() => platformStore.getState());

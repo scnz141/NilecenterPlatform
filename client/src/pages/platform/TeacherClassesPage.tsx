@@ -82,7 +82,8 @@ function NccTeacherClassesPage() {
   const classes = readState.status === "ready" ? readState.data.classes : [];
   const statuses = Array.from(new Set(classes.map(row => row.status)));
   const rows = classes.filter(row => {
-    const text = `${row.name} ${row.courseName ?? ""} ${row.status}`.toLowerCase();
+    const text =
+      `${row.name} ${row.courseName ?? ""} ${row.status}`.toLowerCase();
     return (
       (!search.trim() || text.includes(search.trim().toLowerCase())) &&
       (status === "all" || row.status === status)
@@ -184,8 +185,8 @@ function NccTeacherClassesPage() {
                       },
                     ]}
                     action={{
-                      href: () => undefined,
-                      label: row => row.name,
+                      href: row => `/app/teacher/classes/${row.id}`,
+                      label: row => `Open ${row.name}`,
                     }}
                   />
                 </div>

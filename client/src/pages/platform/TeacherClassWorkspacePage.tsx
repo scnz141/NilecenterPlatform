@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { toast } from "sonner";
 import {
   ArrowLeft,
   ArrowRight,
@@ -11,6 +12,7 @@ import {
   Users,
 } from "lucide-react";
 import { Link } from "wouter";
+import NccReadStatus from "@/components/platform/NccReadStatus";
 import PlatformShell from "@/components/platform/PlatformShell";
 import {
   TeacherClassNavigation,
@@ -21,8 +23,27 @@ import {
   DataTableCard,
   StatusBadge,
 } from "@/components/platform/PlatformPrimitives";
-import { runPlatformWorkflowActionRequest } from "@/lib/backend/api";
-import { requireActiveUser } from "@/lib/auth/session";
+import {
+  fetchNccClassEnrolmentsRequest,
+  fetchNccClassGradesRequest,
+  fetchNccClassRequest,
+  fetchNccClassSessionsRequest,
+  fetchNccSessionAttendanceRequest,
+  fetchNccTeacherWorkspaceRequest,
+  markNccSessionAttendanceRequest,
+  runPlatformWorkflowActionRequest,
+  type NccAttendanceDetailDto,
+  type NccClassDto,
+  type NccClassEnrolmentDto,
+  type NccClassGradesDto,
+  type NccSessionDto,
+  type NccTeacherWorkspaceDto,
+} from "@/lib/backend/api";
+import {
+  classifyNccFailure,
+  type NccReadState,
+} from "@/lib/backend/nccReadState";
+import { getStoredAuthSession, requireActiveUser } from "@/lib/auth/session";
 import { platformStore } from "@/lib/domain/store";
 import type {
   AttendanceStatus,
@@ -34,6 +55,7 @@ type TeacherClassWorkspaceView =
   | "sessions"
   | "attendance"
   | "students"
+  | "grades"
   | "materials";
 
 type TeacherClassWorkspacePageProps = {
@@ -59,6 +81,11 @@ const viewMeta: Record<
     title: "Students",
     description: "Learners enrolled in this class.",
     icon: Users,
+  },
+  grades: {
+    title: "Grades",
+    description: "Moodle grades for this class.",
+    icon: BookOpen,
   },
   materials: {
     title: "Materials",
@@ -120,7 +147,538 @@ function formatDateTime(value?: string) {
   }).format(date);
 }
 
-export default function TeacherClassWorkspacePage({
+export default function TeacherClassWorkspacePage(
+  props: TeacherClassWorkspacePageProps
+) {
+  return getStoredAuthSession()?.provider === "ncc" ? (
+    <NccTeacherClassWorkspacePage {...props} />
+  ) : (
+    <CompatibilityTeacherClassWorkspacePage {...props} />
+  );
+}
+
+function NccTeacherClassWorkspacePage({
+  classId,
+  view,
+}: TeacherClassWorkspacePageProps) {
+  const [readState, setReadState] = useState<
+    NccReadState<{
+      classRecord: NccClassDto;
+      enrolments: NccClassEnrolmentDto[];
+      sessions: NccSessionDto[];
+      workspace: NccTeacherWorkspaceDto;
+    }>
+  >({ status: "loading" });
+  const [selectedSessionId, setSelectedSessionId] = useState("");
+  const [attendanceState, setAttendanceState] = useState<
+    NccReadState<NccAttendanceDetailDto> | null
+  >(null);
+  const [attendanceDraft, setAttendanceDraft] = useState<
+    Record<string, number>
+  >({});
+  const [attendanceSaving, setAttendanceSaving] = useState(false);
+  const [attendanceMessage, setAttendanceMessage] = useState<{
+    kind: "success" | "error";
+    text: string;
+  } | null>(null);
+  const [gradesState, setGradesState] = useState<
+    NccReadState<NccClassGradesDto> | null
+  >(null);
+
+  const load = useCallback(async () => {
+    setReadState({ status: "loading" });
+    const [classResult, enrolmentsResult, sessionsResult, workspaceResult] =
+      await Promise.all([
+        fetchNccClassRequest(classId),
+        fetchNccClassEnrolmentsRequest(classId),
+        fetchNccClassSessionsRequest(classId),
+        fetchNccTeacherWorkspaceRequest(),
+      ]);
+    for (const result of [
+      classResult,
+      enrolmentsResult,
+      sessionsResult,
+      workspaceResult,
+    ]) {
+      if (!result.ok || !result.data) {
+        setReadState(classifyNccFailure(result));
+        return;
+      }
+    }
+    setReadState({
+      status: "ready",
+      data: {
+        classRecord: classResult.data!.class,
+        enrolments: enrolmentsResult.data!.items,
+        sessions: sessionsResult.data!.items,
+        workspace: workspaceResult.data!.workspace,
+      },
+    });
+  }, [classId]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const data = readState.status === "ready" ? readState.data : null;
+  const sessions = data
+    ? [...data.sessions].sort(
+        (a, b) =>
+          new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime()
+      )
+    : [];
+  const selectedSession =
+    sessions.find(item => item.id === selectedSessionId) ??
+    sessions.find(item => item.status === "scheduled") ??
+    sessions[0];
+  const workspaceClass = data?.workspace.classes.find(
+    item => item.id === classId
+  );
+  const meta = viewMeta[view];
+
+  const loadAttendance = useCallback(async () => {
+    if (view !== "attendance" || !selectedSession) return;
+    setAttendanceState({ status: "loading" });
+    setAttendanceMessage(null);
+    const result = await fetchNccSessionAttendanceRequest(selectedSession.id);
+    if (result.ok && result.data) {
+      const attendance = result.data.attendance;
+      setAttendanceState({ status: "ready", data: attendance });
+      const statusIds = new Set(attendance.statuses.map(item => item.id));
+      const fallbackStatusId =
+        attendance.statuses.find(item => item.acronym === "P")?.id ??
+        attendance.statuses[0]?.id;
+      const draft: Record<string, number> = {};
+      for (const student of attendance.students) {
+        const parsed =
+          student.statusId === null ? NaN : Number(student.statusId);
+        draft[student.studentId] =
+          Number.isSafeInteger(parsed) && statusIds.has(parsed)
+            ? parsed
+            : fallbackStatusId;
+      }
+      setAttendanceDraft(draft);
+    } else {
+      setAttendanceState(classifyNccFailure(result));
+    }
+  }, [view, selectedSession?.id]);
+
+  useEffect(() => {
+    if (view !== "attendance") return;
+    void loadAttendance();
+  }, [view, loadAttendance]);
+
+  const loadGrades = useCallback(async () => {
+    if (view !== "grades") return;
+    setGradesState({ status: "loading" });
+    const result = await fetchNccClassGradesRequest(classId);
+    setGradesState(
+      result.ok && result.data
+        ? { status: "ready", data: result.data.grades }
+        : classifyNccFailure(result)
+    );
+  }, [view, classId]);
+
+  useEffect(() => {
+    if (view !== "grades") return;
+    void loadGrades();
+  }, [view, loadGrades]);
+
+  const saveAttendance = async () => {
+    if (!selectedSession || attendanceState?.status !== "ready") return;
+    const attendance = attendanceState.data;
+    setAttendanceSaving(true);
+    setAttendanceMessage(null);
+    const result = await markNccSessionAttendanceRequest(selectedSession.id, {
+      marks: attendance.students.map(student => ({
+        studentId: student.studentId,
+        statusId: attendanceDraft[student.studentId],
+      })),
+    });
+    setAttendanceSaving(false);
+    if (result.ok && result.data) {
+      setAttendanceState({ status: "ready", data: result.data.attendance });
+      setAttendanceMessage({ kind: "success", text: "Attendance saved." });
+      toast.success("Attendance saved.");
+    } else {
+      const message = result.error ?? "Attendance could not be saved.";
+      setAttendanceMessage({ kind: "error", text: message });
+      toast.error(message);
+    }
+  };
+
+  const attendanceReady =
+    attendanceState?.status === "ready" ? attendanceState.data : null;
+  const attendanceSaveDisabled =
+    attendanceSaving ||
+    !attendanceReady ||
+    attendanceReady.students.some(
+      student =>
+        typeof attendanceDraft[student.studentId] !== "number" ||
+        !Number.isSafeInteger(attendanceDraft[student.studentId])
+    );
+
+  function renderMain() {
+    if (!data) {
+      return <NccReadStatus state={readState} onRetry={() => void load()} />;
+    }
+
+    if (view === "sessions") {
+      return (
+        <DataTableCard
+          title="Class sessions"
+          subtitle={`${sessions.length} sessions`}
+          className="teacher-class-record-card"
+        >
+          {sessions.length ? (
+            <div className="teacher-class-record-list">
+              {sessions.map(session => (
+                <article key={session.id}>
+                  <div className="teacher-class-record-copy">
+                    <span>{formatDateTime(session.startsAt)}</span>
+                    <strong>{session.roomName ?? "Room not set"}</strong>
+                  </div>
+                  <dl className="teacher-class-record-facts">
+                    <div>
+                      <dt>Ends</dt>
+                      <dd>{formatDateTime(session.endsAt)}</dd>
+                    </div>
+                    <div>
+                      <dt>Teacher</dt>
+                      <dd>{session.teacherName ?? "Teacher not set"}</dd>
+                    </div>
+                  </dl>
+                  <div className="teacher-class-record-actions">
+                    <StatusBadge
+                      tone={session.status === "scheduled" ? "green" : "slate"}
+                    >
+                      {session.status}
+                    </StatusBadge>
+                  </div>
+                </article>
+              ))}
+            </div>
+          ) : (
+            <div className="platform-empty-state">
+              <strong>No sessions yet</strong>
+              <span>Class sessions will appear here when scheduled.</span>
+            </div>
+          )}
+        </DataTableCard>
+      );
+    }
+
+    if (view === "attendance") {
+      if (!sessions.length) {
+        return (
+          <div className="platform-empty-state" role="status">
+            <strong>No sessions available for attendance.</strong>
+          </div>
+        );
+      }
+      return (
+        <section
+          className="teacher-attendance-workspace"
+          data-testid="teacher-attendance-workspace"
+        >
+          <div className="teacher-attendance-workspace-header">
+            <div>
+              <span>
+                {selectedSession
+                  ? formatDateTime(selectedSession.startsAt)
+                  : "No session selected"}
+              </span>
+              <h2>Take attendance</h2>
+              <p>{data.classRecord.name}</p>
+            </div>
+            <label className="teacher-attendance-session-select">
+              <span>Session</span>
+              <select
+                value={selectedSession?.id ?? ""}
+                onChange={event => setSelectedSessionId(event.target.value)}
+                data-testid="teacher-attendance-session"
+              >
+                {sessions.map(session => (
+                  <option key={session.id} value={session.id}>
+                    {formatDateTime(session.startsAt)}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+          {attendanceState?.status !== "ready" ? (
+            <NccReadStatus
+              state={attendanceState ?? { status: "loading" }}
+              onRetry={() => void loadAttendance()}
+            />
+          ) : (
+            <>
+              <div className="teacher-attendance-roster" role="list">
+                {attendanceReady!.students.map(student => {
+                  const studentName =
+                    `${student.firstName} ${student.lastName}`.trim() ||
+                    "Student";
+                  return (
+                    <article
+                      key={student.studentId}
+                      role="listitem"
+                      className="teacher-attendance-row"
+                    >
+                      <div className="teacher-attendance-identity">
+                        <span aria-hidden="true">
+                          {studentName.slice(0, 1)}
+                        </span>
+                        <div>
+                          <strong>{studentName}</strong>
+                          <small>{student.email}</small>
+                        </div>
+                      </div>
+                      <label className="teacher-attendance-status-select">
+                        <span className="sr-only">
+                          Attendance for {studentName}
+                        </span>
+                        <select
+                          aria-label={`Attendance for ${studentName}`}
+                          value={attendanceDraft[student.studentId] ?? ""}
+                          onChange={event =>
+                            setAttendanceDraft(previous => ({
+                              ...previous,
+                              [student.studentId]: Number(event.target.value),
+                            }))
+                          }
+                          data-testid={`teacher-attendance-status-${student.studentId}`}
+                        >
+                          {attendanceReady!.statuses.map(status => (
+                            <option key={status.id} value={status.id}>
+                              {status.description ??
+                                status.acronym ??
+                                `Status ${status.id}`}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    </article>
+                  );
+                })}
+              </div>
+              <div className="teacher-attendance-save-bar">
+                <span>
+                  {attendanceReady!.students.length} learner
+                  {attendanceReady!.students.length === 1 ? "" : "s"} in this
+                  roster
+                </span>
+                <button
+                  type="button"
+                  className="platform-primary-button"
+                  onClick={() => void saveAttendance()}
+                  disabled={attendanceSaveDisabled}
+                  data-testid="teacher-attendance-save"
+                >
+                  <CheckCircle2 size={15} />
+                  {attendanceSaving ? "Saving attendance" : "Save attendance"}
+                </button>
+              </div>
+              {attendanceMessage ? (
+                <p
+                  role={attendanceMessage.kind === "error" ? "alert" : "status"}
+                >
+                  {attendanceMessage.text}
+                </p>
+              ) : null}
+            </>
+          )}
+        </section>
+      );
+    }
+
+    if (view === "grades") {
+      if (gradesState?.status !== "ready") {
+        return (
+          <NccReadStatus
+            state={gradesState ?? { status: "loading" }}
+            onRetry={() => void loadGrades()}
+          />
+        );
+      }
+      const gradeStudents = gradesState.data.students;
+      return (
+        <DataTableCard
+          title="Class grades"
+          subtitle={`${gradeStudents.length} learners · Moodle`}
+          className="teacher-class-record-card"
+        >
+          <p role="status">Grades are read from Moodle.</p>
+          {gradeStudents.length ? (
+            <div className="teacher-class-record-list">
+              {gradeStudents.map(student => {
+                const studentName =
+                  `${student.firstName} ${student.lastName}`.trim() ||
+                  "Student";
+                return (
+                  <article key={student.studentId}>
+                    <div className="teacher-class-record-copy">
+                      <span>{student.email}</span>
+                      <strong>{studentName}</strong>
+                    </div>
+                    <dl className="teacher-class-record-facts">
+                      <div>
+                        <dt>Course grade</dt>
+                        <dd>{student.courseGrade ?? "Not graded"}</dd>
+                      </div>
+                    </dl>
+                    {student.gradeItems.length ? (
+                      <dl className="teacher-class-record-facts">
+                        {student.gradeItems.map(item => (
+                          <div key={item.id}>
+                            <dt>
+                              {item.itemName ?? "Grade item"} ·{" "}
+                              {item.itemModule ?? item.itemType ?? "Course"}
+                            </dt>
+                            <dd>
+                              {item.gradeFormatted ?? "Not graded"}
+                              {item.percentageFormatted
+                                ? ` · ${item.percentageFormatted}`
+                                : ""}
+                            </dd>
+                          </div>
+                        ))}
+                      </dl>
+                    ) : null}
+                  </article>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="platform-empty-state">
+              <strong>No Moodle grades yet</strong>
+              <span>
+                Grades appear after Moodle activities are assessed.
+              </span>
+            </div>
+          )}
+        </DataTableCard>
+      );
+    }
+
+    if (view === "students") {
+      return (
+        <DataTableCard
+          title="Class students"
+          subtitle={`${data.enrolments.length} learners`}
+          className="teacher-class-record-card"
+        >
+          {data.enrolments.length ? (
+            <div className="teacher-class-record-list">
+              {data.enrolments.map(enrolment => {
+                const studentName =
+                  `${enrolment.student.firstName} ${enrolment.student.lastName}`.trim() ||
+                  "Student";
+                return (
+                  <article key={enrolment.studentId}>
+                    <div className="teacher-class-record-copy">
+                      <span>{enrolment.student.email}</span>
+                      <strong>{studentName}</strong>
+                    </div>
+                    <dl className="teacher-class-record-facts">
+                      <div>
+                        <dt>Moodle</dt>
+                        <dd>
+                          {enrolment.student.moodleLinked
+                            ? "Linked"
+                            : "Not linked"}
+                        </dd>
+                      </div>
+                    </dl>
+                    <div className="teacher-class-record-actions">
+                      <StatusBadge
+                        tone={
+                          enrolment.status === "enrolled" ? "green" : "slate"
+                        }
+                      >
+                        {enrolment.status}
+                      </StatusBadge>
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="platform-empty-state">
+              <strong>No enrolled students.</strong>
+            </div>
+          )}
+        </DataTableCard>
+      );
+    }
+
+    return (
+      <DataTableCard
+        title="Class materials"
+        subtitle="Moodle-managed learning content"
+      >
+        <div
+          className="platform-empty-state"
+          data-testid="teacher-materials-moodle-owner"
+        >
+          <BookOpen size={20} aria-hidden="true" />
+          <strong>Materials are managed in Moodle</strong>
+          {workspaceClass?.moodleCourseUrl ? (
+            <a
+              className="platform-primary-button"
+              href={workspaceClass.moodleCourseUrl}
+              target="_blank"
+              rel="noreferrer"
+              data-testid="teacher-materials-open-moodle"
+            >
+              Open course in Moodle
+              <ArrowRight size={15} />
+            </a>
+          ) : (
+            <span role="status">
+              Moodle course is not available for this class.
+            </span>
+          )}
+        </div>
+      </DataTableCard>
+    );
+  }
+
+  return (
+    <PlatformShell
+      role="teacher"
+      title={`${data?.classRecord.name ?? "Class"} ${meta.title}`}
+    >
+      <WorkspaceLayout
+        className="teacher-class-workspace-page portal-simple-page"
+        context="Teacher"
+        title={meta.title}
+        description={
+          data
+            ? `${data.classRecord.name} · ${meta.description}`
+            : meta.description
+        }
+        actions={
+          <Link
+            className="platform-secondary-button"
+            href={`/app/teacher/classes/${classId}`}
+          >
+            <ArrowLeft size={15} />
+            Class overview
+          </Link>
+        }
+        toolbar={
+          <TeacherClassNavigation
+            classId={classId}
+            active={view as TeacherClassSection}
+          />
+        }
+        main={renderMain()}
+      />
+    </PlatformShell>
+  );
+}
+
+function CompatibilityTeacherClassWorkspacePage({
   classId,
   view,
 }: TeacherClassWorkspacePageProps) {
@@ -498,6 +1056,20 @@ export default function TeacherClassWorkspacePage({
             )}
           </DataTableCard>
         </div>
+      );
+    }
+
+    if (view === "grades") {
+      return (
+        <DataTableCard
+          title="Class grades"
+          subtitle="Provider-managed grades"
+          className="teacher-class-record-card"
+        >
+          <div className="platform-empty-state" role="status">
+            <strong>Grades are available from the connected learning provider.</strong>
+          </div>
+        </DataTableCard>
       );
     }
 

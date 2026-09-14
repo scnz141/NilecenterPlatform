@@ -1,5 +1,6 @@
 .nile-requests-page {
-  width: min(100%, 1480px);
+  width: 100%;
+  max-width: none;
   margin-inline: auto;
   padding: 0 0 40px;
   color: var(--foreground);

@@ -337,6 +337,27 @@
   padding-inline: 0;
 }
 
+:is(
+    .platform-shell[data-role="registrar"],
+    .platform-shell[data-role="headofdepartment"],
+    .platform-shell[data-role="branchadmin"]
+  )
+  .ncc-operations-dashboard
+  .platform-v2-layout-grid {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+:is(
+    .platform-shell[data-role="registrar"],
+    .platform-shell[data-role="headofdepartment"],
+    .platform-shell[data-role="branchadmin"]
+  )
+  .ncc-operations-dashboard
+  .platform-v2-layout-main {
+  display: grid;
+  gap: 18px;
+}
+
 /* List, review, and settings routes share a readable workbench width. */
 :is(
   .platform-shell[data-role="registrar"] .registrar-admissions-page,
@@ -356,7 +377,7 @@
   .platform-shell[data-role="branchadmin"] .branch-attendance-page
 ) {
   width: 100%;
-  max-width: 1560px;
+  max-width: none;
   margin-inline: auto;
 }
 
@@ -445,7 +466,7 @@
     .platform-shell[data-role="branchadmin"] .branch-reports-page,
     .platform-shell[data-role="branchadmin"] .branch-attendance-page
   ) {
-    max-width: 1640px;
+    max-width: none;
   }
 }
 
@@ -623,5 +644,355 @@
     transition-duration: 0.01ms !important;
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
+  }
+}
+
+/* Branch NCC dashboard: individual metric cards, clear panel boundaries,
+   two-column work area, responsive from mobile to classroom displays. */
+.branch-ncc-dashboard {
+  width: 100%;
+  max-width: none;
+  margin-inline: 0;
+  min-width: 0;
+  display: grid;
+  gap: 20px;
+  align-content: start;
+}
+
+.branch-ncc-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+  min-width: 0;
+}
+
+.branch-ncc-metric {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 4px 12px;
+  align-items: start;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--card);
+  box-shadow: 0 12px 30px rgba(26, 26, 26, 0.03);
+  padding: 16px;
+}
+
+.branch-ncc-metric-icon {
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  border-radius: 8px;
+  color: var(--item-color, var(--role-color));
+  background: color-mix(in srgb, var(--item-color, var(--role-color)) 12%, var(--card));
+  border: 1px solid color-mix(in srgb, var(--item-color, var(--role-color)) 26%, var(--border));
+}
+
+.branch-ncc-metric-copy {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.branch-ncc-metric-copy > span {
+  color: var(--muted-foreground);
+  font-size: 11px;
+  font-weight: 760;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  overflow-wrap: anywhere;
+}
+
+.branch-ncc-metric-copy > strong {
+  font-size: 28px;
+  font-weight: 760;
+  line-height: 1;
+  letter-spacing: -0.01em;
+}
+
+.branch-ncc-metric-copy > small {
+  display: inline-block;
+  width: fit-content;
+  max-width: 100%;
+  border-radius: 999px;
+  padding: 3px 9px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--item-color, var(--muted-foreground));
+  background: color-mix(in srgb, var(--item-color, var(--role-color)) 10%, var(--card));
+  border: 1px solid color-mix(in srgb, var(--item-color, var(--role-color)) 22%, transparent);
+  overflow-wrap: anywhere;
+}
+
+.branch-ncc-meter {
+  grid-column: 1 / -1;
+  display: block;
+  height: 6px;
+  margin-top: 8px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--muted) 70%, var(--card));
+  overflow: hidden;
+}
+
+.branch-ncc-meter > span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--item-color, var(--role-color));
+}
+
+.branch-ncc-main {
+  display: grid;
+  grid-template-columns: minmax(0, 1.55fr) minmax(300px, 0.75fr);
+  gap: 18px;
+  align-items: start;
+  min-width: 0;
+}
+
+.branch-ncc-stack {
+  min-width: 0;
+  display: grid;
+  gap: 18px;
+  align-content: start;
+}
+
+.branch-ncc-panel {
+  min-width: 0;
+  overflow: hidden;
+  border-radius: 8px;
+}
+
+.branch-ncc-panel .platform-workspace-header {
+  padding: 20px 22px 0;
+}
+
+.branch-ncc-count {
+  display: inline-block;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--muted) 60%, var(--card));
+  color: var(--muted-foreground);
+  font-size: 11px;
+  font-weight: 700;
+  padding: 3px 10px;
+}
+
+.branch-ncc-branch-list,
+.branch-ncc-lead-list,
+.branch-ncc-ops-list {
+  display: grid;
+  padding: 12px 22px 20px;
+}
+
+.branch-ncc-branch-list > article {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  min-width: 0;
+  padding-block: 14px;
+  border-top: 1px solid var(--border);
+}
+
+.branch-ncc-branch-list > article:first-child {
+  border-top: 0;
+}
+
+.branch-ncc-branch-copy {
+  min-width: 0;
+  flex: 1 1 auto;
+  display: grid;
+  gap: 6px;
+}
+
+.branch-ncc-branch-copy > strong {
+  font-size: 15px;
+  font-weight: 760;
+  overflow-wrap: anywhere;
+}
+
+.branch-ncc-branch-copy > small {
+  color: var(--muted-foreground);
+  font-size: 13px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.branch-ncc-branch-copy .branch-ncc-meter {
+  margin-top: 2px;
+  max-width: 420px;
+}
+
+.branch-ncc-branch-side {
+  flex: 0 0 auto;
+  display: grid;
+  gap: 6px;
+  justify-items: end;
+  text-align: end;
+}
+
+.branch-ncc-fill {
+  font-size: 12px;
+  font-weight: 760;
+  color: var(--role-color);
+  white-space: nowrap;
+}
+
+.branch-ncc-leads {
+  display: inline-block;
+  border-radius: 999px;
+  padding: 3px 10px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--muted-foreground);
+  background: color-mix(in srgb, var(--muted) 65%, var(--card));
+  border: 1px solid var(--border);
+  white-space: nowrap;
+}
+
+.branch-ncc-lead-list > article,
+.branch-ncc-ops-list > article {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  padding-block: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.branch-ncc-lead-list > article:first-child,
+.branch-ncc-ops-list > article:first-child {
+  border-top: 0;
+}
+
+.branch-ncc-lead-list strong {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 14px;
+  font-weight: 650;
+  overflow-wrap: anywhere;
+}
+
+.branch-ncc-ops-icon {
+  flex: 0 0 auto;
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  border-radius: 8px;
+  color: var(--role-color);
+  background: color-mix(in srgb, var(--role-tint) 55%, var(--card));
+  border: 1px solid var(--border);
+}
+
+.branch-ncc-ops-copy {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.branch-ncc-ops-copy > strong {
+  font-size: 14px;
+  font-weight: 650;
+  overflow-wrap: anywhere;
+}
+
+.branch-ncc-badge {
+  flex: 0 0 auto;
+  min-width: 34px;
+  text-align: center;
+  border-radius: 999px;
+  padding: 4px 11px;
+  font-size: 12px;
+  font-weight: 760;
+  color: var(--muted-foreground);
+  background: color-mix(in srgb, var(--muted) 65%, var(--card));
+  border: 1px solid var(--border);
+  font-variant-numeric: tabular-nums;
+}
+
+.branch-ncc-badge.active {
+  color: #1a4a3a;
+  background: color-mix(in srgb, #c4a35a 20%, var(--card));
+  border-color: color-mix(in srgb, #c4a35a 45%, var(--border));
+}
+
+@media (min-width: 1600px) {
+  .branch-ncc-dashboard {
+    gap: 24px;
+  }
+
+  .branch-ncc-metrics {
+    gap: 18px;
+  }
+
+  .branch-ncc-metric {
+    padding: 20px;
+  }
+
+  .branch-ncc-metric-copy > strong {
+    font-size: 30px;
+  }
+
+  .branch-ncc-main {
+    gap: 22px;
+  }
+}
+
+@media (max-width: 1100px) {
+  .branch-ncc-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .branch-ncc-main {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .branch-ncc-side {
+    max-width: none;
+  }
+}
+
+@media (max-width: 560px) {
+  .branch-ncc-dashboard {
+    gap: 16px;
+  }
+
+  .branch-ncc-metrics {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 12px;
+  }
+
+  .branch-ncc-metric {
+    padding: 15px;
+  }
+
+  .branch-ncc-metric-copy > strong {
+    font-size: 26px;
+  }
+
+  .branch-ncc-panel .platform-workspace-header {
+    padding: 18px 18px 0;
+  }
+
+  .branch-ncc-branch-list,
+  .branch-ncc-lead-list,
+  .branch-ncc-ops-list {
+    padding: 10px 18px 18px;
+  }
+
+  .branch-ncc-branch-list > article {
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .branch-ncc-branch-side {
+    justify-items: start;
+    text-align: start;
+  }
+
+  .branch-ncc-branch-copy .branch-ncc-meter {
+    max-width: none;
   }
 }

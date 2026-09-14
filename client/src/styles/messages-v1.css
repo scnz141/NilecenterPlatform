@@ -4,7 +4,7 @@
 */
 .portal-messages-page {
   width: 100%;
-  max-width: 1720px;
+  max-width: none;
   margin-inline: auto;
 }
 
@@ -295,6 +295,7 @@
   text-overflow: ellipsis;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 1;
+  line-clamp: 1;
 }
 
 .nile-message-unread-count {

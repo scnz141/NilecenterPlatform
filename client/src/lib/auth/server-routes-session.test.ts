@@ -26,6 +26,7 @@ type RouteHandler = (
 function captureRoutes() {
   const getRoutes = new Map<string, RouteHandler>();
   const postRoutes = new Map<string, RouteHandler>();
+  const patchRoutes = new Map<string, RouteHandler>();
   const middlewares: Array<{
     path?: string;
     handler: (request: unknown, response: unknown, next: () => void) => unknown;
@@ -53,9 +54,12 @@ function captureRoutes() {
     post(path: string, handler: RouteHandler) {
       postRoutes.set(path, handler);
     },
+    patch(path: string, handler: RouteHandler) {
+      patchRoutes.set(path, handler);
+    },
   };
   registerApiRoutes(app as never);
-  return { getRoutes, postRoutes, middlewares };
+  return { getRoutes, postRoutes, patchRoutes, middlewares };
 }
 
 function request(method: string, body: Record<string, unknown> = {}) {
@@ -494,6 +498,7 @@ describe("API local-only portal QA fixture", () => {
 
 describe("API login outcome classification", () => {
   function configureSupabaseAuth() {
+    vi.stubEnv("NILE_NCC_STAFF_AUTH_ENABLED", "0");
     vi.stubEnv("SUPABASE_URL", "https://phase2-test.supabase.co");
     vi.stubEnv("SUPABASE_PUBLISHABLE_KEY", "test-publishable-key");
     vi.stubEnv("DEMO_AUTH_ENABLED", "false");
@@ -720,6 +725,81 @@ describe("API NCC staff authentication boundary", () => {
     expect(JSON.stringify(headers.get("Set-Cookie"))).not.toContain(
       "ncc-access-token"
     );
+  });
+
+  it("routes an NCC password change to EMS and not the demo store", async () => {
+    configureNccAuth();
+    const meBody = {
+      session_id: "ncc-session-1",
+      user: {
+        id: "ncc-user-1",
+        email: "admin@example.test",
+        assigned_role: "super_admin",
+        status: "active",
+        is_active: true,
+        profile: { first_name: "NCC", last_name: "Admin" },
+        departments: null,
+      },
+      assigned_role: "super_admin",
+      active_role: "super_admin",
+      workspace_branch_id: null,
+      scopes: [{ scope_type: "global", scope_id: null, is_live: true }],
+    };
+    const json = (status: number, body: unknown) =>
+      new Response(JSON.stringify(body), {
+        status,
+        headers: { "Content-Type": "application/json" },
+      });
+    const fetcher = vi
+      .fn()
+      .mockResolvedValueOnce(
+        json(200, {
+          access_token: "ncc-access-token",
+          refresh_token: "ncc-refresh-token",
+          access_token_expires_at: "2099-01-01T00:15:00Z",
+          refresh_token_expires_at: "2099-02-01T00:00:00Z",
+          session_id: "ncc-session-1",
+          user: {},
+        })
+      )
+      .mockResolvedValueOnce(json(200, meBody))
+      .mockResolvedValueOnce(json(200, meBody))
+      .mockResolvedValueOnce(json(200, { ok: true }));
+    vi.stubGlobal("fetch", fetcher);
+    const { postRoutes } = captureRoutes();
+    const login = responseRecorder();
+    await postRoutes.get("/api/auth/login")?.(
+      request("POST", {
+        email: "admin@example.test",
+        password: "test-password",
+        role: "teacher",
+      }),
+      login.response
+    );
+    const setCookies = login.headers.get("Set-Cookie");
+    const cookie = (Array.isArray(setCookies) ? setCookies : [setCookies])
+      .map(value => String(value).split(";")[0])
+      .find(value => value.startsWith("nilelearn_ncc_session="));
+    const { response, result } = responseRecorder();
+    await postRoutes.get("/api/auth/password-change")?.(
+      {
+        ...request("POST", {
+          currentPassword: "test-password",
+          newPassword: "NewPass123",
+        }),
+        headers: { cookie },
+      },
+      response
+    );
+    const changeCall = fetcher.mock.calls.find(call =>
+      String(call[0]).includes("/auth/change-password")
+    );
+    expect(changeCall).toBeTruthy();
+    expect(JSON.parse(String(changeCall?.[1]?.body))).toEqual({
+      current_password: "test-password",
+      new_password: "NewPass123",
+    });
+    expect(result).toEqual({ status: 200, body: { ok: true } });
   });
 
   it("keeps Student login on the compatibility boundary", async () => {

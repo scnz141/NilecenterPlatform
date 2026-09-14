@@ -12,7 +12,8 @@
 }
 
 .platform-shell[data-role="branchadmin"] .platform-content {
-  width: min(100%, 1720px);
+  width: 100%;
+  max-width: none;
 }
 
 .platform-shell[data-role="branchadmin"]
@@ -31,7 +32,7 @@
     .profile-workspace
   ) {
   width: 100%;
-  max-width: 1600px;
+  max-width: none;
   margin-inline: auto;
   container-name: branch-workspace;
   container-type: inline-size;
@@ -63,6 +64,309 @@
 .platform-shell[data-role="branchadmin"] .platform-v2-layout,
 .platform-shell[data-role="branchadmin"] .platform-v2-layout-grid {
   gap: 18px;
+}
+
+.platform-shell[data-role="branchadmin"] .platform-v2-detail-layout .platform-v2-layout-grid,
+.platform-shell[data-role="branchadmin"] .ncc-operations-dashboard .platform-v2-layout-grid {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.platform-shell[data-role="branchadmin"] .platform-v2-detail-layout .platform-page-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.platform-shell[data-role="branchadmin"] .platform-v2-detail-layout .platform-page-actions > button {
+  min-height: 40px;
+  border: 1px solid var(--branch-line);
+  border-radius: 999px;
+  background: var(--card);
+  color: var(--foreground);
+  padding: 0 13px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 760;
+  cursor: pointer;
+}
+
+.platform-shell[data-role="branchadmin"] .platform-v2-detail-layout .platform-page-actions > button:last-of-type {
+  border-color: color-mix(in srgb, var(--destructive) 36%, var(--branch-line));
+  color: var(--destructive);
+}
+
+/* Branch student record: facts read top to bottom, the edit form gets
+   room to breathe, and enrolments use the full width. Panels size to
+   their content so tall neighbours can never stretch the status pill
+   or action buttons out of shape. */
+.platform-shell[data-role="branchadmin"] .registrar-student-detail-workspace {
+  grid-template-columns: minmax(0, 1.25fr) minmax(320px, 0.9fr);
+  align-items: start;
+  gap: 18px;
+}
+
+.platform-shell[data-role="branchadmin"] .registrar-student-detail-workspace > section {
+  min-width: 0;
+}
+
+.platform-shell[data-role="branchadmin"] .registrar-student-detail-workspace > section.registrar-panel {
+  align-content: start;
+  gap: 16px;
+  padding: 20px 22px;
+}
+
+.platform-shell[data-role="branchadmin"] .registrar-student-detail-workspace > section.registrar-panel > .platform-status {
+  justify-self: start;
+  align-self: start;
+}
+
+.platform-shell[data-role="branchadmin"] .registrar-student-detail-workspace .admin-user-detail-list {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0;
+}
+
+.platform-shell[data-role="branchadmin"] .registrar-student-detail-workspace .admin-user-detail-list > div {
+  grid-template-columns: 150px minmax(0, 1fr);
+  align-items: baseline;
+  gap: 12px;
+  border-top: 1px solid var(--branch-line);
+  padding-block: 9px;
+}
+
+.platform-shell[data-role="branchadmin"] .registrar-student-detail-workspace .admin-user-detail-list > div:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.platform-shell[data-role="branchadmin"] .registrar-student-detail-workspace .admin-user-detail-list dt {
+  font-size: 12px;
+}
+
+.platform-shell[data-role="branchadmin"] .registrar-student-detail-workspace .admin-user-detail-list dd {
+  font-size: 14px;
+  font-weight: 650;
+}
+
+.platform-shell[data-role="branchadmin"] .registrar-student-detail-workspace .admin-user-detail-form-actions {
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.platform-shell[data-role="branchadmin"] .registrar-student-detail-workspace:has(> section.registrar-panel > dl.admin-user-detail-list) > :is(.platform-table-card, .admin-users-create-note, .platform-form-error) {
+  grid-column: 1 / -1;
+}
+
+.platform-shell[data-role="branchadmin"] .registrar-student-detail-workspace .registrar-student-create-form {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  align-items: end;
+}
+
+.platform-shell[data-role="branchadmin"] .registrar-student-detail-workspace .registrar-student-create-form :is(input, select, textarea) {
+  min-height: 42px;
+}
+
+.platform-shell[data-role="branchadmin"] .registrar-student-detail-workspace .registrar-student-create-form > label:has(textarea),
+.platform-shell[data-role="branchadmin"] .registrar-student-detail-workspace .registrar-student-create-form > fieldset,
+.platform-shell[data-role="branchadmin"] .registrar-student-detail-workspace .registrar-student-create-form > .platform-form-error,
+.platform-shell[data-role="branchadmin"] .registrar-student-detail-workspace .registrar-student-create-form > button {
+  grid-column: 1 / -1;
+}
+
+.platform-shell[data-role="branchadmin"] .registrar-student-detail-workspace .registrar-student-create-form > fieldset {
+  min-width: 0;
+  margin: 0;
+  border: 1px solid var(--branch-line);
+  border-radius: 8px;
+  padding: 14px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.platform-shell[data-role="branchadmin"] .registrar-student-detail-workspace .registrar-student-create-form > fieldset > legend {
+  color: var(--muted-foreground);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  padding-inline: 6px;
+}
+
+.platform-shell[data-role="branchadmin"] .registrar-student-detail-workspace .registrar-student-create-form > button {
+  justify-self: start;
+}
+
+.platform-shell[data-role="branchadmin"] .registrar-student-detail-workspace .platform-directory-table-wrap {
+  overflow-x: auto;
+}
+
+.platform-shell[data-role="branchadmin"] .registrar-student-detail-workspace .platform-directory-table th {
+  color: var(--muted-foreground);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.platform-shell[data-role="branchadmin"] .registrar-student-detail-workspace .platform-directory-table :is(th, td) {
+  padding: 12px 14px;
+}
+
+/* Branch rooms: context over name over meta, then status and action. */
+.platform-shell[data-role="branchadmin"] .admin-ia-page .admin-record-list > article {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 6px 18px;
+  padding: 16px 20px;
+}
+
+.platform-shell[data-role="branchadmin"] .admin-ia-page .admin-record-list {
+  display: grid;
+}
+
+.platform-shell[data-role="branchadmin"] .admin-ia-page .admin-record-list-copy {
+  display: grid;
+  align-content: start;
+  gap: 4px;
+}
+
+.platform-shell[data-role="branchadmin"] .admin-ia-page .admin-record-list-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.platform-shell[data-role="branchadmin"] .admin-ia-page .admin-record-list-copy > span {
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.platform-shell[data-role="branchadmin"] .admin-ia-page .admin-record-list-copy > strong {
+  font-size: 16px;
+  overflow-wrap: anywhere;
+}
+
+.platform-shell[data-role="branchadmin"] .admin-ia-page .admin-record-list-copy > p {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.platform-shell[data-role="branchadmin"] .admin-ia-page .admin-record-list .simple-portal-row-action {
+  min-height: 40px;
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--branch-line);
+  border-radius: 999px;
+  background: var(--card);
+  padding: 0 16px;
+  font-size: 13px;
+  font-weight: 760;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.platform-shell[data-role="branchadmin"] .admin-ia-page .admin-record-list .simple-portal-row-action:hover {
+  background: color-mix(in srgb, var(--role-tint) 45%, var(--card));
+}
+
+.platform-shell[data-role="branchadmin"] .branch-reports-page .branch-report-controls-v3 {
+  display: grid;
+  width: 100%;
+  max-width: none;
+  grid-template-columns: minmax(170px, 0.72fr) minmax(220px, 1.4fr) minmax(170px, 0.72fr);
+  align-items: stretch;
+  gap: 0;
+  overflow: visible;
+  border-radius: 8px;
+}
+
+.platform-shell[data-role="branchadmin"] .branch-reports-page .branch-report-controls-v3 > label {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  border-inline-end: 1px solid var(--branch-line);
+  border-bottom: 0;
+}
+
+.platform-shell[data-role="branchadmin"] .branch-reports-page .branch-report-controls-v3 > label > span,
+.platform-shell[data-role="branchadmin"] .branch-reports-page .branch-report-controls-v3 :is(input, select) {
+  width: 100%;
+  min-width: 0;
+}
+
+.platform-shell[data-role="branchadmin"] .branch-reports-page .branch-report-controls-v3 > label:last-child {
+  border-inline-end: 0;
+}
+
+@container branch-workspace (max-width: 1100px) {
+  .platform-shell[data-role="branchadmin"] .branch-reports-page .branch-report-controls-v3 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .platform-shell[data-role="branchadmin"] .branch-reports-page .branch-report-controls-v3 > label:nth-child(2) {
+    grid-column: 1 / -1;
+    border-inline-end: 0;
+    border-bottom: 1px solid var(--branch-line);
+  }
+}
+
+@container branch-workspace (max-width: 760px) {
+  .platform-shell[data-role="branchadmin"] .registrar-student-detail-workspace {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .platform-shell[data-role="branchadmin"] .branch-reports-page .branch-report-controls-v3 {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .platform-shell[data-role="branchadmin"] .branch-reports-page .branch-report-controls-v3 > label {
+    grid-column: 1;
+    grid-template-columns: 76px minmax(0, 1fr);
+    border-inline-end: 0;
+    border-bottom: 1px solid var(--branch-line);
+  }
+
+  .platform-shell[data-role="branchadmin"] .branch-reports-page .branch-report-controls-v3 > label:last-child {
+    border-bottom: 0;
+  }
+
+  .platform-shell[data-role="branchadmin"] .platform-v2-detail-layout .platform-page-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .platform-shell[data-role="branchadmin"] .platform-v2-detail-layout .platform-page-actions > :is(a, button) {
+    width: 100%;
+    flex: 0 0 auto;
+    min-height: 40px;
+  }
+}
+
+@media (max-width: 760px) {
+  .platform-shell[data-role="branchadmin"] .registrar-student-detail-workspace {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .platform-shell[data-role="branchadmin"] .platform-v2-detail-layout .platform-page-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .platform-shell[data-role="branchadmin"] .platform-v2-detail-layout .platform-page-actions > :is(a, button) {
+    width: 100%;
+    flex: 0 0 auto;
+    min-height: 40px;
+  }
 }
 
 .platform-shell[data-role="branchadmin"]
@@ -763,7 +1067,8 @@
 
 @media (min-width: 1800px) {
   .platform-shell[data-role="branchadmin"] .platform-content {
-    width: min(100%, 1900px);
+    width: 100%;
+    max-width: none;
   }
 
   .platform-shell[data-role="branchadmin"]
@@ -781,7 +1086,7 @@
       .portal-simple-page,
       .profile-workspace
     ) {
-    max-width: 1760px;
+    max-width: none;
   }
 }
 
@@ -820,5 +1125,366 @@
     animation-iteration-count: 1 !important;
     scroll-behavior: auto;
     transition-duration: 0.01ms !important;
+  }
+}
+
+@media (min-width: 1600px) {
+  .platform-shell[data-role="branchadmin"] .registrar-student-detail-workspace {
+    grid-template-columns: minmax(0, 1.4fr) minmax(380px, 600px);
+    gap: 22px;
+  }
+}
+
+@media (max-width: 760px) {
+  .platform-shell[data-role="branchadmin"] .registrar-student-detail-workspace > section.registrar-panel {
+    padding: 18px;
+  }
+
+  .platform-shell[data-role="branchadmin"] .registrar-student-detail-workspace .admin-user-detail-list > div {
+    grid-template-columns: 118px minmax(0, 1fr);
+    gap: 10px;
+  }
+
+  .platform-shell[data-role="branchadmin"] .registrar-student-detail-workspace .registrar-student-create-form {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .platform-shell[data-role="branchadmin"] .registrar-student-detail-workspace .registrar-student-create-form > fieldset {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .platform-shell[data-role="branchadmin"] .admin-ia-page .admin-record-list > article {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .platform-shell[data-role="branchadmin"] .admin-ia-page .admin-record-list-actions {
+    justify-content: flex-start;
+  }
+}
+
+/* Branch class create/detail composer: the form keeps the same two-column
+   rhythm and chip fieldsets as the rooms and schedule composers. */
+.platform-shell[data-role="branchadmin"]
+  :is(.branch-class-create-page, .branch-class-detail-page)
+  .branch-room-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: start;
+  gap: 14px 16px;
+  padding: 20px 22px 22px;
+}
+
+.platform-shell[data-role="branchadmin"]
+  :is(.branch-class-create-page, .branch-class-detail-page)
+  .branch-room-form
+  > label {
+  min-width: 0;
+  display: grid;
+  gap: 7px;
+  color: var(--foreground);
+  font-size: 12px;
+  font-weight: 760;
+}
+
+.platform-shell[data-role="branchadmin"]
+  :is(.branch-class-create-page, .branch-class-detail-page)
+  .branch-room-form
+  :is(input:not([type="checkbox"]):not([type="radio"]), select) {
+  width: 100%;
+  min-height: 42px;
+  border-radius: 7px;
+}
+
+.platform-shell[data-role="branchadmin"]
+  :is(.branch-class-create-page, .branch-class-detail-page)
+  .branch-room-form
+  > fieldset {
+  grid-column: 1 / -1;
+  min-width: 0;
+  margin: 0;
+  border: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  align-items: start;
+  gap: 10px;
+}
+
+.platform-shell[data-role="branchadmin"]
+  :is(.branch-class-create-page, .branch-class-detail-page)
+  .branch-room-form
+  > fieldset
+  > legend {
+  grid-column: 1 / -1;
+  margin-bottom: 2px;
+  padding: 0;
+  color: var(--muted-foreground);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.platform-shell[data-role="branchadmin"]
+  :is(.branch-class-create-page, .branch-class-detail-page)
+  .branch-room-form
+  > fieldset
+  > label {
+  min-width: 0;
+  display: grid;
+  gap: 7px;
+  color: var(--foreground);
+  font-size: 12px;
+  font-weight: 760;
+}
+
+.platform-shell[data-role="branchadmin"]
+  :is(.branch-class-create-page, .branch-class-detail-page)
+  .branch-room-form
+  > fieldset
+  > label:has(> input[type="checkbox"]) {
+  min-height: 46px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--card);
+  padding: 8px 12px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.platform-shell[data-role="branchadmin"]
+  :is(.branch-class-create-page, .branch-class-detail-page)
+  .branch-room-form
+  > fieldset
+  input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  min-height: 0;
+  margin: 0;
+  flex: 0 0 auto;
+  accent-color: var(--role-color);
+  cursor: pointer;
+}
+
+.platform-shell[data-role="branchadmin"]
+  :is(.branch-class-create-page, .branch-class-detail-page)
+  .branch-room-form
+  > fieldset
+  > label:has(> input[type="checkbox"]:checked) {
+  border-color: color-mix(in srgb, var(--role-color) 55%, var(--border));
+  background: color-mix(in srgb, var(--role-tint) 55%, var(--card));
+}
+
+.platform-shell[data-role="branchadmin"]
+  :is(.branch-class-create-page, .branch-class-detail-page)
+  .branch-room-form
+  > :is(button, .platform-form-error) {
+  grid-column: 1 / -1;
+}
+
+.platform-shell[data-role="branchadmin"]
+  :is(.branch-class-create-page, .branch-class-detail-page)
+  .branch-room-form
+  > button {
+  min-height: 42px;
+  justify-self: start;
+}
+
+/* Status and Moodle actions sit under the class-detail form. */
+.platform-shell[data-role="branchadmin"]
+  .branch-class-detail-page
+  .branch-inline-composer
+  > .platform-page-actions {
+  gap: 10px;
+  padding: 0 22px 20px;
+}
+
+@container branch-workspace (max-width: 760px) {
+  .platform-shell[data-role="branchadmin"]
+    :is(.branch-class-create-page, .branch-class-detail-page)
+    .branch-room-form {
+    grid-template-columns: minmax(0, 1fr);
+    padding: 18px;
+  }
+}
+
+/* Very wide displays get a third field column so the form keeps filling the
+   board-sized viewport instead of stretching two columns across it. */
+@container branch-workspace (min-width: 1500px) {
+  .platform-shell[data-role="branchadmin"]
+    :is(.branch-class-create-page, .branch-class-detail-page)
+    .branch-room-form {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+/* Branch schedule: sessions read as flush records inside one card instead of
+   a stack of nested cards. */
+.platform-shell[data-role="branchadmin"]
+  .branch-schedule-page
+  .teacher-class-record-list {
+  gap: 0;
+}
+
+.platform-shell[data-role="branchadmin"]
+  .branch-schedule-page
+  .teacher-class-record-list
+  > article {
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 18px;
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  border-radius: 0;
+  background: transparent;
+  padding: 16px 22px;
+}
+
+.platform-shell[data-role="branchadmin"]
+  .branch-schedule-page
+  .teacher-class-record-list
+  > article:last-child {
+  border-bottom: 0;
+}
+
+.platform-shell[data-role="branchadmin"]
+  .branch-schedule-page
+  .teacher-class-record-list
+  > article:hover {
+  background: color-mix(in srgb, var(--muted) 52%, var(--card));
+}
+
+.platform-shell[data-role="branchadmin"]
+  .branch-schedule-page
+  .teacher-class-record-copy {
+  min-width: 0;
+  display: grid;
+  gap: 5px;
+}
+
+.platform-shell[data-role="branchadmin"]
+  .branch-schedule-page
+  .teacher-class-record-copy
+  > span {
+  color: var(--muted-foreground);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.platform-shell[data-role="branchadmin"]
+  .branch-schedule-page
+  .teacher-class-record-copy
+  > strong {
+  overflow-wrap: anywhere;
+  color: var(--foreground);
+  font-size: 15px;
+  font-weight: 760;
+  line-height: 1.3;
+}
+
+.platform-shell[data-role="branchadmin"]
+  .branch-schedule-page
+  .teacher-class-record-copy
+  > p {
+  margin: 0;
+  overflow-wrap: anywhere;
+  color: var(--muted-foreground);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.platform-shell[data-role="branchadmin"]
+  .branch-schedule-page
+  .teacher-class-record-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.platform-shell[data-role="branchadmin"]
+  .branch-schedule-page
+  .teacher-class-record-actions
+  > .platform-secondary-button {
+  min-height: 38px;
+  white-space: nowrap;
+}
+
+@container branch-workspace (max-width: 700px) {
+  .platform-shell[data-role="branchadmin"]
+    .branch-schedule-page
+    .teacher-class-record-list
+    > article {
+    grid-template-columns: minmax(0, 1fr);
+    align-items: start;
+    gap: 12px;
+    padding: 16px 18px;
+  }
+
+  .platform-shell[data-role="branchadmin"]
+    .branch-schedule-page
+    .teacher-class-record-actions {
+    justify-content: flex-start;
+  }
+}
+
+/* Branch rooms create/detail form: the shared admin form has no inset, so the
+   fields used to touch the card edge. */
+.platform-shell[data-role="branchadmin"]
+  .admin-ia-page
+  .admin-user-detail-form {
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  align-items: start;
+  gap: 14px 16px;
+  padding: 20px 22px 22px;
+}
+
+.platform-shell[data-role="branchadmin"]
+  .admin-ia-page
+  .admin-user-detail-form
+  > label {
+  min-width: 0;
+  gap: 7px;
+  font-size: 12px;
+  font-weight: 760;
+}
+
+.platform-shell[data-role="branchadmin"]
+  .admin-ia-page
+  .admin-user-detail-form
+  :is(input, select, textarea) {
+  min-height: 42px;
+  border-radius: 7px;
+}
+
+.platform-shell[data-role="branchadmin"]
+  .admin-ia-page
+  .admin-user-detail-form
+  > :is(.admin-user-detail-form-actions, .platform-form-error) {
+  grid-column: 1 / -1;
+}
+
+@container branch-workspace (max-width: 700px) {
+  .platform-shell[data-role="branchadmin"]
+    .admin-ia-page
+    .admin-user-detail-form {
+    grid-template-columns: minmax(0, 1fr);
+    padding: 18px;
+  }
+
+  .platform-shell[data-role="branchadmin"]
+    .admin-ia-page
+    .admin-user-detail-form-actions
+    > * {
+    flex: 1 1 auto;
+    justify-content: center;
   }
 }

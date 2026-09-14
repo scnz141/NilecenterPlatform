@@ -628,9 +628,9 @@
   font-weight: 760;
 }
 
-.branch-rooms-page .branch-room-form input,
+.branch-rooms-page .branch-room-form input:not([type="checkbox"]):not([type="radio"]),
 .branch-rooms-page .branch-room-form select,
-.branch-schedule-page .branch-room-form input,
+.branch-schedule-page .branch-room-form input:not([type="checkbox"]):not([type="radio"]),
 .branch-schedule-page .branch-room-form select {
   min-height: 42px;
   border-radius: 7px;
@@ -1526,5 +1526,163 @@
 
   .branch-session-actions button {
     width: 100%;
+  }
+}
+
+/* Schedule composer: class first, weekday chips on their own row, then
+   the numeric and date fields, then the propose action. */
+section.branch-schedule-composer .branch-room-form > label:first-child {
+  grid-column: 1 / -1;
+}
+
+section.branch-schedule-composer .branch-room-form > fieldset {
+  grid-column: 1 / -1;
+  min-width: 0;
+  margin: 0;
+  border: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 10px;
+}
+
+section.branch-schedule-composer .branch-room-form > fieldset > legend {
+  grid-column: 1 / -1;
+  color: var(--muted-foreground);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  padding: 0;
+  margin-bottom: 2px;
+}
+
+section.branch-schedule-composer .branch-room-form > fieldset > label {
+  min-height: 46px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--card);
+  padding: 8px 12px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 650;
+}
+
+section.branch-schedule-composer .branch-room-form > fieldset input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  min-height: 0;
+  margin: 0;
+  flex: 0 0 auto;
+  accent-color: var(--role-color);
+  cursor: pointer;
+}
+
+section.branch-schedule-composer .branch-room-form > fieldset > label:has(input:checked) {
+  border-color: color-mix(in srgb, var(--role-color) 55%, var(--border));
+  background: color-mix(in srgb, var(--role-tint) 55%, var(--card));
+}
+
+section.branch-schedule-composer .branch-room-form > button {
+  grid-column: 1 / -1;
+  justify-self: start;
+  align-self: auto;
+}
+
+/* Schedule composer results: proposed slots read as rows and the status
+   line renders as a notice instead of bare text on the card edge. */
+#branch-schedule-composer {
+  scroll-margin-top: 16px;
+}
+
+.branch-schedule-page .platform-v2-layout-main {
+  display: grid;
+  align-content: start;
+  gap: 18px;
+}
+
+.branch-schedule-page .branch-inline-composer > .portal-simple-stack {
+  display: grid;
+  gap: 12px;
+  padding: 0 20px 20px;
+}
+
+.branch-schedule-page .branch-inline-composer > .portal-simple-stack > ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--card);
+}
+
+.branch-schedule-page .branch-inline-composer > .portal-simple-stack > ul > li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  padding: 10px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.branch-schedule-page .branch-inline-composer > .portal-simple-stack > ul > li::before {
+  content: "";
+  flex: 0 0 auto;
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--role-color);
+}
+
+.branch-schedule-page .branch-inline-composer > .portal-simple-stack > ul > li + li {
+  border-top: 1px solid var(--border);
+}
+
+.branch-schedule-page .branch-inline-composer > .portal-simple-stack > button {
+  justify-self: start;
+}
+
+.branch-schedule-page .branch-inline-composer > p.branch-schedule-message {
+  margin: 0 20px 20px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px 14px;
+  font-size: 13px;
+  font-weight: 650;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.branch-schedule-page .branch-inline-composer > p.branch-schedule-message.success {
+  border-color: color-mix(in srgb, var(--role-color) 32%, var(--border));
+  background: color-mix(in srgb, var(--role-tint) 55%, var(--card));
+  color: var(--foreground);
+}
+
+.branch-schedule-page .branch-inline-composer > p.branch-schedule-message.error {
+  border-color: color-mix(in srgb, var(--destructive) 40%, var(--border));
+  background: color-mix(in srgb, var(--destructive) 8%, var(--card));
+  color: var(--foreground);
+}
+
+@media (max-width: 760px) {
+  .branch-schedule-page .branch-inline-composer > .portal-simple-stack {
+    padding: 0 16px 16px;
+  }
+
+  .branch-schedule-page .branch-inline-composer > .portal-simple-stack > ul > li {
+    padding: 10px 12px;
+  }
+
+  .branch-schedule-page .branch-inline-composer > p.branch-schedule-message {
+    margin: 0 16px 16px;
   }
 }

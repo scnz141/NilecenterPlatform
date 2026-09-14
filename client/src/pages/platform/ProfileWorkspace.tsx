@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Bell,
   CheckCircle2,
@@ -7,17 +7,27 @@ import {
   UserCircle,
 } from "lucide-react";
 import PlatformShell from "@/components/platform/PlatformShell";
+import NccReadStatus from "@/components/platform/NccReadStatus";
 import SettingsAreaNav from "@/components/platform/SettingsAreaNav";
 import { DetailLayout } from "@/components/platform/PlatformLayouts";
 import { StatusBadge } from "@/components/platform/PlatformPrimitives";
 import {
   changePasswordRequest,
+  fetchNccSelfProfileRequest,
+  patchNccSelfProfileRequest,
   runPlatformWorkflowActionRequest,
+  type NccSelfProfileDto,
+  type NccSelfProfileInput,
 } from "@/lib/backend/api";
 import {
   getStoredAuthSession,
+  refreshServerSession,
   requireActiveUser,
 } from "@/lib/auth/session";
+import {
+  classifyNccFailure,
+  type NccReadState,
+} from "@/lib/backend/nccReadState";
 import { platformStore } from "@/lib/domain/store";
 import type {
   StaffAvailabilityStatus,
@@ -84,6 +94,14 @@ function userInitials(name: string) {
 }
 
 export default function ProfileWorkspace({ role }: ProfileWorkspaceProps) {
+  const session = getStoredAuthSession();
+  if (session?.provider === "ncc" && role !== "student") {
+    return <NccProfileWorkspace role={role} />;
+  }
+  return <CompatibilityProfileWorkspace role={role} />;
+}
+
+function CompatibilityProfileWorkspace({ role }: ProfileWorkspaceProps) {
   const [version, setVersion] = useState(0);
   const [savingProfile, setSavingProfile] = useState(false);
   const [profileMessage, setProfileMessage] = useState("");
@@ -594,6 +612,385 @@ export default function ProfileWorkspace({ role }: ProfileWorkspaceProps) {
             ) : null}
             {profileError ? (
               <p className="platform-attendance-error">{profileError}</p>
+            ) : null}
+          </div>
+        }
+      />
+    </PlatformShell>
+  );
+}
+
+function NccProfileWorkspace({ role }: { role: Role }) {
+  const session = getStoredAuthSession();
+  const [activeSection, setActiveSection] = useState<"contact" | "security">(
+    "contact"
+  );
+  const [profileState, setProfileState] = useState<
+    NccReadState<NccSelfProfileDto>
+  >({ status: "loading" });
+  const [draft, setDraft] = useState<NccSelfProfileInput>({
+    firstName: "",
+    lastName: "",
+  });
+  const [savingProfile, setSavingProfile] = useState(false);
+  const [profileMessage, setProfileMessage] = useState("");
+  const [profileError, setProfileError] = useState("");
+  const [passwordDraft, setPasswordDraft] = useState({
+    currentPassword: "",
+    newPassword: "",
+    confirmPassword: "",
+  });
+  const [savingPassword, setSavingPassword] = useState(false);
+  const [passwordMessage, setPasswordMessage] = useState("");
+  const [passwordError, setPasswordError] = useState("");
+
+  const load = async () => {
+    setProfileState({ status: "loading" });
+    const response = await fetchNccSelfProfileRequest();
+    if (!response.ok || !response.data) {
+      setProfileState(classifyNccFailure(response));
+      return;
+    }
+    setProfileState({ status: "ready", data: response.data.profile });
+    setDraft({
+      firstName: response.data.profile.firstName,
+      lastName: response.data.profile.lastName,
+      phone: response.data.profile.phone,
+      address: response.data.profile.address,
+      nationality: response.data.profile.nationality,
+      dateOfBirth: response.data.profile.dateOfBirth,
+      notes: response.data.profile.notes,
+    });
+  };
+  useEffect(() => {
+    void load();
+  }, []);
+
+  const saveProfile = async () => {
+    if (savingProfile) return;
+    setProfileError("");
+    setProfileMessage("");
+    setSavingProfile(true);
+    const result = await patchNccSelfProfileRequest({
+      firstName: draft.firstName.trim(),
+      lastName: draft.lastName.trim(),
+      phone: draft.phone?.trim() || null,
+      address: draft.address?.trim() || null,
+      nationality: draft.nationality?.trim() || null,
+      dateOfBirth: draft.dateOfBirth || null,
+      notes: draft.notes?.trim() || null,
+    });
+    setSavingProfile(false);
+    if (!result.ok || !result.data) {
+      setProfileError(result.error ?? "Profile could not be saved.");
+      return;
+    }
+    setProfileState({ status: "ready", data: result.data.profile });
+    setDraft({
+      firstName: result.data.profile.firstName,
+      lastName: result.data.profile.lastName,
+      phone: result.data.profile.phone,
+      address: result.data.profile.address,
+      nationality: result.data.profile.nationality,
+      dateOfBirth: result.data.profile.dateOfBirth,
+      notes: result.data.profile.notes,
+    });
+    await refreshServerSession();
+    setProfileMessage("Profile saved.");
+  };
+
+  const changePassword = async () => {
+    if (savingPassword) return;
+    setPasswordError("");
+    setPasswordMessage("");
+    const next = passwordDraft.newPassword;
+    if (
+      next.length < 8 ||
+      next.length > 128 ||
+      !/[a-z]/.test(next) ||
+      !/[A-Z]/.test(next) ||
+      !/\d/.test(next)
+    ) {
+      setPasswordError(
+        "Use 8-128 characters with uppercase, lowercase, and a digit."
+      );
+      return;
+    }
+    if (next !== passwordDraft.confirmPassword) {
+      setPasswordError("New password and confirmation must match.");
+      return;
+    }
+    setSavingPassword(true);
+    const result = await changePasswordRequest({
+      currentPassword: passwordDraft.currentPassword,
+      newPassword: passwordDraft.newPassword,
+    });
+    setSavingPassword(false);
+    if (!result.ok) {
+      setPasswordError(result.error ?? "Password could not be changed.");
+      return;
+    }
+    setPasswordDraft({
+      currentPassword: "",
+      newPassword: "",
+      confirmPassword: "",
+    });
+    setPasswordMessage("Password changed.");
+  };
+
+  const profileSections = [
+    { id: "contact", label: "Contact" },
+    { id: "security", label: "Security" },
+  ] as const;
+
+  return (
+    <PlatformShell role={role} title="Settings">
+      <DetailLayout
+        className="profile-workspace portal-simple-page"
+        title={titleByRole[role]}
+        description={descriptionByRole[role]}
+        context={roleMeta[role].label}
+        actions={
+          activeSection === "contact" &&
+          profileState.status === "ready" ? (
+            <button
+              type="button"
+              className="platform-primary-button"
+              disabled={savingProfile}
+              onClick={() => void saveProfile()}
+            >
+              <CheckCircle2 size={15} />
+              {savingProfile ? "Saving" : "Save profile"}
+            </button>
+          ) : undefined
+        }
+        toolbar={
+          <div className="settings-area-toolbar">
+            <SettingsAreaNav role={role} active="account" />
+            <nav
+              className="portal-simple-tabs profile-section-tabs"
+              aria-label="Profile sections"
+            >
+              {profileSections.map(section => (
+                <button
+                  key={section.id}
+                  type="button"
+                  className={activeSection === section.id ? "active" : ""}
+                  onClick={() => setActiveSection(section.id)}
+                >
+                  {section.label}
+                </button>
+              ))}
+            </nav>
+          </div>
+        }
+        main={
+          <div className="profile-main-stack">
+            <section className="profile-identity-strip">
+              <div className="profile-avatar-large">
+                {userInitials(session?.name ?? "")}
+              </div>
+              <div>
+                <span>{roleMeta[role].label}</span>
+                <strong>{session?.name}</strong>
+                <p>{session?.email}</p>
+              </div>
+              <StatusBadge tone="green">active</StatusBadge>
+            </section>
+
+            {activeSection === "contact" ? (
+              <section className="profile-form-card">
+                <div className="profile-section-title">
+                  <UserCircle size={17} />
+                  <div>
+                    <span>Personal details</span>
+                    <strong>Identity and contact</strong>
+                  </div>
+                </div>
+                {profileState.status !== "ready" ? (
+                  <NccReadStatus
+                    state={profileState}
+                    onRetry={() => void load()}
+                  />
+                ) : (
+                  <div className="profile-form-grid">
+                    <label>
+                      First name
+                      <input
+                        value={draft.firstName}
+                        onChange={event =>
+                          setDraft(current => ({
+                            ...current,
+                            firstName: event.target.value,
+                          }))
+                        }
+                      />
+                    </label>
+                    <label>
+                      Last name
+                      <input
+                        value={draft.lastName}
+                        onChange={event =>
+                          setDraft(current => ({
+                            ...current,
+                            lastName: event.target.value,
+                          }))
+                        }
+                      />
+                    </label>
+                    <label>
+                      Email
+                      <input
+                        value={session?.email ?? ""}
+                        readOnly
+                        className="profile-readonly-input"
+                      />
+                    </label>
+                    <label>
+                      Phone
+                      <input
+                        value={draft.phone ?? ""}
+                        onChange={event =>
+                          setDraft(current => ({
+                            ...current,
+                            phone: event.target.value,
+                          }))
+                        }
+                      />
+                    </label>
+                    <label>
+                      Address
+                      <textarea
+                        value={draft.address ?? ""}
+                        onChange={event =>
+                          setDraft(current => ({
+                            ...current,
+                            address: event.target.value,
+                          }))
+                        }
+                      />
+                    </label>
+                    <label>
+                      Nationality
+                      <input
+                        value={draft.nationality ?? ""}
+                        maxLength={3}
+                        onChange={event =>
+                          setDraft(current => ({
+                            ...current,
+                            nationality: event.target.value,
+                          }))
+                        }
+                      />
+                    </label>
+                    <label>
+                      Date of birth
+                      <input
+                        type="date"
+                        value={draft.dateOfBirth ?? ""}
+                        onChange={event =>
+                          setDraft(current => ({
+                            ...current,
+                            dateOfBirth: event.target.value,
+                          }))
+                        }
+                      />
+                    </label>
+                    <label>
+                      Notes
+                      <textarea
+                        value={draft.notes ?? ""}
+                        onChange={event =>
+                          setDraft(current => ({
+                            ...current,
+                            notes: event.target.value,
+                          }))
+                        }
+                      />
+                    </label>
+                  </div>
+                )}
+                {profileMessage ? (
+                  <p className="platform-scheduler-feedback success">
+                    {profileMessage}
+                  </p>
+                ) : null}
+                {profileError ? (
+                  <p className="platform-attendance-error">{profileError}</p>
+                ) : null}
+              </section>
+            ) : null}
+
+            {activeSection === "security" ? (
+              <section className="profile-form-card">
+                <div className="profile-section-title">
+                  <KeyRound size={17} />
+                  <div>
+                    <span>Security</span>
+                    <strong>Password</strong>
+                  </div>
+                </div>
+                <div className="profile-security-form">
+                  <label>
+                    Current password
+                    <input
+                      type="password"
+                      autoComplete="current-password"
+                      value={passwordDraft.currentPassword}
+                      onChange={event =>
+                        setPasswordDraft(current => ({
+                          ...current,
+                          currentPassword: event.target.value,
+                        }))
+                      }
+                    />
+                  </label>
+                  <label>
+                    New password
+                    <input
+                      type="password"
+                      autoComplete="new-password"
+                      value={passwordDraft.newPassword}
+                      onChange={event =>
+                        setPasswordDraft(current => ({
+                          ...current,
+                          newPassword: event.target.value,
+                        }))
+                      }
+                    />
+                  </label>
+                  <label>
+                    Confirm password
+                    <input
+                      type="password"
+                      autoComplete="new-password"
+                      value={passwordDraft.confirmPassword}
+                      onChange={event =>
+                        setPasswordDraft(current => ({
+                          ...current,
+                          confirmPassword: event.target.value,
+                        }))
+                      }
+                    />
+                  </label>
+                  <button
+                    type="button"
+                    className="platform-secondary-button"
+                    disabled={savingPassword}
+                    onClick={() => void changePassword()}
+                  >
+                    {savingPassword ? "Updating" : "Change password"}
+                  </button>
+                </div>
+                {passwordMessage ? (
+                  <p className="platform-scheduler-feedback success">
+                    {passwordMessage}
+                  </p>
+                ) : null}
+                {passwordError ? (
+                  <p className="platform-attendance-error">{passwordError}</p>
+                ) : null}
+              </section>
             ) : null}
           </div>
         }

@@ -12,7 +12,8 @@
 }
 
 .platform-shell[data-role="headofdepartment"] .platform-content {
-  width: min(100%, 1720px);
+  width: 100%;
+  max-width: none;
 }
 
 .platform-shell[data-role="headofdepartment"]
@@ -21,13 +22,14 @@
     .hod-workflow-page,
     .hod-report-page,
     .hod-course-run-create-page,
+    .hod-course-detail-page,
     .portal-messages-page,
     .portal-simple-page,
     .profile-workspace,
     .moodle-source-page
   ) {
   width: 100%;
-  max-width: 1600px;
+  max-width: none;
   margin-inline: auto;
   container-name: hod-workspace;
   container-type: inline-size;
@@ -775,7 +777,8 @@
 
 @media (min-width: 1800px) {
   .platform-shell[data-role="headofdepartment"] .platform-content {
-    width: min(100%, 1900px);
+    width: 100%;
+    max-width: none;
   }
 
   .platform-shell[data-role="headofdepartment"]
@@ -789,7 +792,7 @@
       .profile-workspace,
       .moodle-source-page
     ) {
-    max-width: 1760px;
+    max-width: none;
   }
 }
 
@@ -828,5 +831,532 @@
     animation-iteration-count: 1 !important;
     scroll-behavior: auto;
     transition-duration: 0.01ms !important;
+  }
+}
+
+/* The academic overview is a board-sized dashboard: it follows the page width
+   instead of a centered column, the way the page header already does. */
+.platform-shell[data-role="headofdepartment"]
+  :is(.hod-dashboard-metrics, .hod-dashboard-v3, .portal-insight) {
+  max-width: none;
+  margin-inline: 0;
+}
+
+/* Fact rail: the change pill wraps inside its cell instead of spilling past
+   the strip, and the numbers carry the contrast over a quieter label. */
+.platform-shell[data-role="headofdepartment"] .platform-metric {
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 10px 12px;
+}
+
+.platform-shell[data-role="headofdepartment"] .platform-metric > div {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.platform-shell[data-role="headofdepartment"] .platform-metric span {
+  color: color-mix(in srgb, var(--foreground) 58%, var(--card));
+  font-weight: 800;
+  letter-spacing: 0.04em;
+}
+
+.platform-shell[data-role="headofdepartment"] .platform-metric strong {
+  margin-top: 7px;
+  font-weight: 780;
+}
+
+.platform-shell[data-role="headofdepartment"] .platform-metric small {
+  flex: 0 1 auto;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Panels keep one inset rhythm and a stronger edge so the dashboard does not
+   read as a single flat field. */
+.platform-shell[data-role="headofdepartment"]
+  .hod-dashboard-v3
+  .platform-v2-panel {
+  border-color: color-mix(in srgb, var(--hod-line) 86%, var(--card));
+  background: var(--card);
+}
+
+.platform-shell[data-role="headofdepartment"]
+  .hod-dashboard-v3
+  .platform-workspace-header {
+  border-bottom: 1px solid var(--hod-line);
+  padding: 16px 22px 14px;
+}
+
+.platform-shell[data-role="headofdepartment"]
+  .hod-dashboard-v3
+  .platform-v2-summary-body {
+  padding: 18px 22px 22px;
+}
+
+/* The three department facts read as one inset rail rather than three cards
+   stacked inside a card. */
+.platform-shell[data-role="headofdepartment"] .platform-v2-summary-facts {
+  gap: 0;
+  overflow: hidden;
+  border: 1px solid var(--hod-line);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--muted) 45%, var(--card));
+}
+
+.platform-shell[data-role="headofdepartment"]
+  .platform-v2-summary-facts
+  article {
+  min-height: 96px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  padding: 14px 16px;
+}
+
+.platform-shell[data-role="headofdepartment"]
+  .platform-v2-summary-facts
+  article
+  + article {
+  border-top: 0;
+  border-inline-start: 1px solid var(--hod-line);
+}
+
+@container platform-main (max-width: 700px) {
+  .platform-shell[data-role="headofdepartment"]
+    .platform-v2-summary-facts {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .platform-shell[data-role="headofdepartment"]
+    .platform-v2-summary-facts
+    article
+    + article {
+    border-inline-start: 0;
+    border-top: 1px solid var(--hod-line);
+  }
+}
+
+/* The dashboard owns no route-level container, so it collapses against the
+   main canvas instead of keeping its wide two-column grid on small screens. */
+@container platform-main (max-width: 1080px) {
+  .platform-shell[data-role="headofdepartment"] .hod-dashboard-v3 {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@container platform-main (max-width: 720px) {
+  .platform-shell[data-role="headofdepartment"] .hod-dashboard-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .platform-shell[data-role="headofdepartment"] .platform-metric {
+    gap: 8px 10px;
+    padding: 15px 16px;
+  }
+
+  .platform-shell[data-role="headofdepartment"]
+    .platform-metric
+    + .platform-metric {
+    border-inline-start: 0;
+  }
+
+  .platform-shell[data-role="headofdepartment"]
+    .platform-metric:nth-child(even) {
+    border-inline-start: 1px solid var(--hod-line);
+  }
+
+  .platform-shell[data-role="headofdepartment"]
+    .platform-metric:nth-child(n + 3) {
+    border-top: 1px solid var(--hod-line);
+  }
+}
+
+@container platform-main (max-width: 520px) {
+  .platform-shell[data-role="headofdepartment"] .hod-dashboard-metrics {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .platform-shell[data-role="headofdepartment"]
+    .platform-metric:nth-child(even) {
+    border-inline-start: 0;
+  }
+
+  .platform-shell[data-role="headofdepartment"]
+    .platform-metric
+    + .platform-metric {
+    border-top: 1px solid var(--hod-line);
+  }
+}
+
+/* HOD reports V4.1: one filter bar, one operations card, one report table. */
+/* The toolbar stops being a pill with inline dividers and becomes a filter */
+/* card with one field per block, so each control owns its boundary. */
+.platform-shell[data-role="headofdepartment"] .hod-report-page {
+  width: 100%;
+  max-width: none;
+  margin-inline: 0;
+}
+
+.platform-shell[data-role="headofdepartment"] .hod-report-page .platform-v2-layout-grid {
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 340px);
+  gap: 18px;
+  align-items: start;
+}
+
+.platform-shell[data-role="headofdepartment"] .hod-report-page .platform-v2-layout-side {
+  min-width: 0;
+  display: grid;
+  gap: 16px;
+  align-content: start;
+}
+
+.platform-shell[data-role="headofdepartment"] .hod-report-page .hod-compact-toolbar.hod-report-controls-v3 {
+  width: 100%;
+  max-width: none;
+  display: grid;
+  grid-template-columns: minmax(170px, 210px) minmax(170px, 210px) minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: stretch;
+  overflow: visible;
+  border: 1px solid var(--hod-line);
+  border-radius: 8px;
+  background: var(--card);
+  box-shadow: none;
+  padding: 10px;
+}
+
+.platform-shell[data-role="headofdepartment"] .hod-report-page .hod-compact-toolbar.hod-report-controls-v3 label {
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  gap: 5px;
+  align-content: center;
+  border: 1px solid var(--hod-line);
+  border-inline-end: 1px solid var(--hod-line);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--muted) 48%, var(--card));
+  padding: 8px 12px 9px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  white-space: normal;
+}
+
+.platform-shell[data-role="headofdepartment"] .hod-report-page .hod-compact-toolbar.hod-report-controls-v3 label > span {
+  min-width: 0;
+  width: 100%;
+}
+
+.platform-shell[data-role="headofdepartment"] .hod-report-page .hod-compact-toolbar.hod-report-controls-v3 select,
+.platform-shell[data-role="headofdepartment"] .hod-report-page .hod-compact-toolbar.hod-report-controls-v3 input {
+  width: 100%;
+  min-width: 0;
+  max-width: none;
+  min-height: 30px;
+  font-size: 13.5px;
+  font-weight: 650;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.platform-shell[data-role="headofdepartment"] .hod-report-page .hod-compact-toolbar.hod-report-controls-v3 label:nth-child(3) {
+  flex: none;
+  border-right: 1px solid var(--hod-line);
+}
+
+.platform-shell[data-role="headofdepartment"] .hod-report-page .hod-compact-toolbar.hod-report-controls-v3 label:nth-child(3) > span {
+  width: 100%;
+}
+
+.platform-shell[data-role="headofdepartment"] .hod-report-page .hod-compact-toolbar.hod-report-controls-v3 > button {
+  align-self: center;
+  justify-self: end;
+  min-height: 42px;
+  margin-left: 0;
+  border-radius: 8px;
+  padding-inline: 18px;
+  white-space: nowrap;
+}
+
+.platform-shell[data-role="headofdepartment"] .hod-report-main-stack {
+  gap: 18px;
+}
+
+.platform-shell[data-role="headofdepartment"] .hod-report-page .hod-operational-metrics,
+.platform-shell[data-role="headofdepartment"] .hod-report-page .hod-moodle-boundary {
+  border: 1px solid var(--hod-line);
+  border-radius: 8px;
+  background: var(--card);
+  box-shadow: none;
+  padding: 20px 22px;
+}
+
+.platform-shell[data-role="headofdepartment"] .hod-report-page .hod-report-section-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.platform-shell[data-role="headofdepartment"] .hod-report-page .hod-report-section-heading h2 {
+  font-size: 15px;
+  font-weight: 780;
+  line-height: 1.3;
+}
+
+.platform-shell[data-role="headofdepartment"] .hod-report-page .hod-report-section-heading p {
+  margin-top: 4px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.platform-shell[data-role="headofdepartment"] .hod-report-page .hod-report-section-heading .platform-status {
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.platform-shell[data-role="headofdepartment"] .hod-report-page .hod-operational-metric-list > article {
+  grid-template-columns: minmax(0, 1fr) minmax(130px, 190px);
+  gap: 8px 20px;
+  align-items: center;
+  padding: 15px 0;
+}
+
+.platform-shell[data-role="headofdepartment"] .hod-report-page .hod-operational-metric-list article > div:first-child {
+  gap: 4px;
+}
+
+.platform-shell[data-role="headofdepartment"] .hod-report-page .hod-operational-metric-list strong {
+  font-size: 14px;
+  font-weight: 750;
+  line-height: 1.32;
+}
+
+.platform-shell[data-role="headofdepartment"] .hod-report-page .hod-operational-metric-list span {
+  max-width: 62ch;
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+.platform-shell[data-role="headofdepartment"] .hod-report-page .hod-operational-metric-value {
+  gap: 6px;
+}
+
+.platform-shell[data-role="headofdepartment"] .hod-report-page .hod-operational-metric-value > strong {
+  font-size: 20px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+}
+
+.platform-shell[data-role="headofdepartment"] .hod-report-page .hod-operational-metric-value small {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--hod-line);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--muted) 55%, var(--card));
+  padding: 3px 10px;
+  font-size: 11px;
+  font-weight: 750;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+
+/* The report table lives inside its card, so it keeps dividers only and no */
+/* second outer border. Detail stays left-aligned with the record column. */
+.platform-shell[data-role="headofdepartment"] .hod-report-page .platform-table-card {
+  overflow: clip;
+  border: 1px solid var(--hod-line);
+  border-radius: 8px;
+  background: var(--card);
+  box-shadow: none;
+}
+
+.platform-shell[data-role="headofdepartment"] .hod-report-page .platform-table-card .platform-card-title.compact {
+  padding: 18px 22px 13px;
+}
+
+.platform-shell[data-role="headofdepartment"] .hod-report-page .platform-table-card .platform-card-title.compact span {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.platform-shell[data-role="headofdepartment"] .hod-report-page .platform-table-card .platform-card-title.compact strong {
+  font-size: 15px;
+  font-weight: 780;
+}
+
+.platform-shell[data-role="headofdepartment"] .hod-report-page .hod-report-table-v3.platform-report-table.typed {
+  gap: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.platform-shell[data-role="headofdepartment"] .hod-report-page .hod-report-table-v3 .platform-report-row {
+  grid-template-columns: minmax(0, 1.5fr) auto minmax(0, 1fr);
+  gap: 8px 20px;
+  align-items: start;
+  border-bottom: 1px solid var(--hod-line);
+  background: transparent;
+  padding: 14px 22px;
+}
+
+.platform-shell[data-role="headofdepartment"] .hod-report-page .hod-report-table-v3 .platform-report-row.header {
+  align-items: center;
+  background: color-mix(in srgb, var(--muted) 55%, var(--card));
+  padding: 0;
+}
+
+.platform-shell[data-role="headofdepartment"] .hod-report-page .hod-report-table-v3 .platform-report-row.header button {
+  padding: 11px 22px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+}
+
+.platform-shell[data-role="headofdepartment"] .hod-report-page .hod-report-table-v3 .platform-report-row-main {
+  gap: 4px;
+}
+
+.platform-shell[data-role="headofdepartment"] .hod-report-page .hod-report-table-v3 .platform-report-row-main small {
+  font-size: 10.5px;
+}
+
+.platform-shell[data-role="headofdepartment"] .hod-report-page .hod-report-table-v3 .platform-report-row-main strong {
+  font-size: 14px;
+  line-height: 1.32;
+}
+
+.platform-shell[data-role="headofdepartment"] .hod-report-page .hod-report-table-v3 .platform-report-row-main span {
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+.platform-shell[data-role="headofdepartment"] .hod-report-page .hod-report-table-v3 .platform-status {
+  margin-top: 3px;
+  justify-self: start;
+}
+
+.platform-shell[data-role="headofdepartment"] .hod-report-page .hod-report-table-v3 .platform-report-row-metric {
+  justify-content: start;
+  justify-items: start;
+  text-align: start;
+}
+
+.platform-shell[data-role="headofdepartment"] .hod-report-page .hod-report-table-v3 .platform-report-row-metric strong {
+  max-width: none;
+  font-size: 13.5px;
+  font-weight: 700;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+  text-overflow: clip;
+  white-space: normal;
+}
+
+.platform-shell[data-role="headofdepartment"] .hod-report-page .hod-moodle-boundary article {
+  gap: 4px;
+  padding: 13px 0;
+}
+
+.platform-shell[data-role="headofdepartment"] .hod-report-page .hod-moodle-boundary article strong {
+  font-size: 13.5px;
+  font-weight: 750;
+  line-height: 1.35;
+}
+
+.platform-shell[data-role="headofdepartment"] .hod-report-page .hod-moodle-boundary article span {
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+.platform-shell[data-role="headofdepartment"] .hod-report-page .portal-insight.compact {
+  border: 1px solid var(--hod-line);
+  border-radius: 8px;
+  box-shadow: none;
+  padding: 20px 22px;
+}
+
+@container hod-workspace (max-width: 1100px) {
+  .platform-shell[data-role="headofdepartment"] .hod-report-page .platform-v2-layout-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .platform-shell[data-role="headofdepartment"] .hod-report-page .platform-v2-layout-side {
+    position: static;
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@container hod-workspace (max-width: 920px) {
+  .platform-shell[data-role="headofdepartment"] .hod-report-page .hod-compact-toolbar.hod-report-controls-v3 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .platform-shell[data-role="headofdepartment"] .hod-report-page .hod-compact-toolbar.hod-report-controls-v3 label:nth-child(3) {
+    grid-column: 1 / -1;
+  }
+
+  .platform-shell[data-role="headofdepartment"] .hod-report-page .hod-compact-toolbar.hod-report-controls-v3 > button {
+    grid-column: 1 / -1;
+    justify-self: stretch;
+    width: 100%;
+  }
+}
+
+@container hod-workspace (max-width: 640px) {
+  .platform-shell[data-role="headofdepartment"] .hod-report-page .hod-compact-toolbar.hod-report-controls-v3 {
+    grid-template-columns: minmax(0, 1fr);
+    padding: 8px;
+  }
+
+  .platform-shell[data-role="headofdepartment"] .hod-report-page .hod-operational-metrics,
+  .platform-shell[data-role="headofdepartment"] .hod-report-page .hod-moodle-boundary {
+    padding: 18px;
+  }
+
+  .platform-shell[data-role="headofdepartment"] .hod-report-page .hod-report-section-heading {
+    flex-wrap: wrap;
+  }
+
+  .platform-shell[data-role="headofdepartment"] .hod-report-page .hod-operational-metric-list > article {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 10px;
+  }
+
+  .platform-shell[data-role="headofdepartment"] .hod-report-page .hod-operational-metric-value {
+    justify-items: start;
+    text-align: start;
+  }
+
+  .platform-shell[data-role="headofdepartment"] .hod-report-page .hod-report-table-v3 .platform-report-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+    padding: 14px 18px;
+  }
+
+  .platform-shell[data-role="headofdepartment"] .hod-report-page .hod-report-table-v3 .platform-report-row.header {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .platform-shell[data-role="headofdepartment"] .hod-report-page .hod-report-table-v3 .platform-report-row.header button {
+    padding: 10px 18px;
+  }
+
+  .platform-shell[data-role="headofdepartment"] .hod-report-page .hod-report-table-v3 .platform-report-row.header button:last-child {
+    display: none;
+  }
+
+  .platform-shell[data-role="headofdepartment"] .hod-report-page .hod-report-table-v3 .platform-report-row-metric {
+    grid-column: 1 / -1;
+  }
+
+  .platform-shell[data-role="headofdepartment"] .hod-report-page .portal-insight.compact {
+    padding: 18px;
   }
 }

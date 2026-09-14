@@ -17,11 +17,14 @@ import {
 import { loadServerEnv } from "./env.js";
 import {
   acceptNccInvitation,
+  changeNccPassword,
+  getNccSelfProfile,
   hasNccAuthCookie,
   listNccWorkspaces,
   loginNccStaff,
   logoutNccSession,
   nccStaffAuthEnabled,
+  patchNccSelfProfile,
   resolveNccAuthSession,
   sendNccAuthError,
   switchNccRole,
@@ -401,6 +404,103 @@ export function registerApiRoutes(app: ApiApp) {
     }
   });
 
+  app.get("/api/ncc/account/profile", async (req, res) => {
+    res.setHeader("Cache-Control", "private, no-store");
+    res.setHeader("Vary", "Cookie");
+    if (!nccStaffAuthEnabled() || !hasNccAuthCookie(req)) {
+      res
+        .status(404)
+        .json({ error: "EMS data is unavailable for this session." });
+      return;
+    }
+    try {
+      res.json({ profile: await getNccSelfProfile(req, res) });
+    } catch (error) {
+      if (!sendNccAuthError(error, res)) throw error;
+    }
+  });
+
+  app.patch("/api/ncc/account/profile", async (req, res) => {
+    res.setHeader("Cache-Control", "private, no-store");
+    if (!nccStaffAuthEnabled() || !hasNccAuthCookie(req)) {
+      res
+        .status(404)
+        .json({ error: "EMS data is unavailable for this session." });
+      return;
+    }
+    const body = req.body;
+    if (!body || typeof body !== "object" || Array.isArray(body)) {
+      res.status(400).json({ error: "Request body is required." });
+      return;
+    }
+    const allowed = [
+      "firstName",
+      "lastName",
+      "phone",
+      "address",
+      "nationality",
+      "dateOfBirth",
+      "notes",
+    ];
+    const unknown = Object.keys(body).find(key => !allowed.includes(key));
+    if (unknown) {
+      res.status(400).json({ error: `${unknown} is not allowed.` });
+      return;
+    }
+    if (
+      typeof body.firstName !== "string" ||
+      !body.firstName.trim() ||
+      typeof body.lastName !== "string" ||
+      !body.lastName.trim()
+    ) {
+      res
+        .status(400)
+        .json({ error: "firstName and lastName are required." });
+      return;
+    }
+    for (const key of [
+      "phone",
+      "address",
+      "nationality",
+      "dateOfBirth",
+      "notes",
+    ] as const) {
+      if (
+        body[key] !== undefined &&
+        body[key] !== null &&
+        typeof body[key] !== "string"
+      ) {
+        res.status(400).json({ error: `${key} is invalid.` });
+        return;
+      }
+    }
+    try {
+      res.json({
+        profile: await patchNccSelfProfile(req, res, {
+          firstName: body.firstName as string,
+          lastName: body.lastName as string,
+          ...(body.phone !== undefined
+            ? { phone: body.phone as string | null }
+            : {}),
+          ...(body.address !== undefined
+            ? { address: body.address as string | null }
+            : {}),
+          ...(body.nationality !== undefined
+            ? { nationality: body.nationality as string | null }
+            : {}),
+          ...(body.dateOfBirth !== undefined
+            ? { dateOfBirth: body.dateOfBirth as string | null }
+            : {}),
+          ...(body.notes !== undefined
+            ? { notes: body.notes as string | null }
+            : {}),
+        }),
+      });
+    } catch (error) {
+      if (!sendNccAuthError(error, res)) throw error;
+    }
+  });
+
   app.post("/api/auth/login", async (req, res) => {
     const { email, password, role } = req.body ?? {};
     const useNcc = nccStaffAuthEnabled() && role !== "student";
@@ -542,6 +642,11 @@ export function registerApiRoutes(app: ApiApp) {
       return;
     }
     try {
+      if (session.provider === "ncc") {
+        await changeNccPassword(req, res, currentPassword, newPassword);
+        res.json({ ok: true });
+        return;
+      }
       const result = changeDemoPasswordForSession(session, {
         currentPassword,
         newPassword,
@@ -553,6 +658,7 @@ export function registerApiRoutes(app: ApiApp) {
       );
       res.json({ ...result, ...audit });
     } catch (error) {
+      if (sendNccAuthError(error, res)) return;
       res.status(400).json({
         error:
           error instanceof Error ? error.message : "Password change failed.",

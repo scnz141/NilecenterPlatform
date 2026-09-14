@@ -248,9 +248,9 @@ function NccAdminUserCreatePage() {
   const [callerPassword, setCallerPassword] = useState("");
   const [branches, setBranches] = useState<NccBranchDto[]>([]);
   const [departments, setDepartments] = useState<NccDepartmentDto[]>([]);
-  const [definitions, setDefinitions] = useState<
-    NccCustomFieldDefinitionDto[]
-  >([]);
+  const [definitions, setDefinitions] = useState<NccCustomFieldDefinitionDto[]>(
+    []
+  );
   const [loading, setLoading] = useState(true);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
@@ -395,7 +395,7 @@ function NccAdminUserCreatePage() {
           ? "This email already has an EMS account."
           : response.status === 401
             ? "Your password was not accepted."
-            : response.error ?? "The EMS account could not be created."
+            : (response.error ?? "The EMS account could not be created.")
       );
       return;
     }
@@ -520,7 +520,9 @@ function NccAdminUserCreatePage() {
           main={
             <section className="admin-users-create-card">
               <div className="admin-users-create-success">
-                <span style={{ background: userMeta.tint, color: userMeta.color }}>
+                <span
+                  style={{ background: userMeta.tint, color: userMeta.color }}
+                >
                   {userMeta.shortLabel}
                 </span>
                 <strong>{result.user.name}</strong>
@@ -541,13 +543,18 @@ function NccAdminUserCreatePage() {
                   )}
                   {result.secret ? (
                     <div className="admin-users-create-actions">
-                      <button type="button" onClick={() => setRevealed(value => !value)}>
+                      <button
+                        type="button"
+                        onClick={() => setRevealed(value => !value)}
+                      >
                         {revealed ? <EyeOff size={15} /> : <Eye size={15} />}
                         {revealed ? "Hide" : "Reveal"}
                       </button>
                       <button
                         type="button"
-                        onClick={() => void navigator.clipboard.writeText(result.secret!)}
+                        onClick={() =>
+                          void navigator.clipboard.writeText(result.secret!)
+                        }
                       >
                         <Copy size={15} /> Copy
                       </button>
@@ -598,31 +605,41 @@ function NccAdminUserCreatePage() {
         main={
           <section className="admin-users-create-card">
             <div className="admin-users-create-shell">
-              <nav className="admin-users-create-steps" aria-label="Create user steps">
-                {["Role", "Basic information", "Access", "Provisioning & review"].map(
-                  (label, index) => (
-                    <button
-                      key={label}
-                      type="button"
-                      className={
-                        index === step ? "active" : index < step ? "complete" : ""
-                      }
-                      onClick={() => {
-                        if (index < step) setStep(index as CreateStep);
-                      }}
-                    >
-                      <span>{index + 1}</span>
-                      {label}
-                    </button>
-                  )
-                )}
+              <nav
+                className="admin-users-create-steps"
+                aria-label="Create user steps"
+              >
+                {[
+                  "Role",
+                  "Basic information",
+                  "Access",
+                  "Provisioning & review",
+                ].map((label, index) => (
+                  <button
+                    key={label}
+                    type="button"
+                    className={
+                      index === step ? "active" : index < step ? "complete" : ""
+                    }
+                    onClick={() => {
+                      if (index < step) setStep(index as CreateStep);
+                    }}
+                  >
+                    <span>{index + 1}</span>
+                    {label}
+                  </button>
+                ))}
               </nav>
               <form
                 className="admin-access-form admin-access-guided-form admin-users-simple-form admin-users-step-form"
                 onSubmit={submit}
               >
                 {step === 0 ? (
-                  <div className="admin-users-role-grid" role="radiogroup" aria-label="Role">
+                  <div
+                    className="admin-users-role-grid"
+                    role="radiogroup"
+                    aria-label="Role"
+                  >
                     {staffRoleOptions.map(value => (
                       <button
                         key={value}
@@ -645,19 +662,32 @@ function NccAdminUserCreatePage() {
                   <>
                     <label>
                       First name
-                      <input value={firstName} onChange={event => setFirstName(event.target.value)} />
+                      <input
+                        value={firstName}
+                        onChange={event => setFirstName(event.target.value)}
+                      />
                     </label>
                     <label>
                       Last name
-                      <input value={lastName} onChange={event => setLastName(event.target.value)} />
+                      <input
+                        value={lastName}
+                        onChange={event => setLastName(event.target.value)}
+                      />
                     </label>
                     <label>
                       Email
-                      <input type="email" value={email} onChange={event => setEmail(event.target.value)} />
+                      <input
+                        type="email"
+                        value={email}
+                        onChange={event => setEmail(event.target.value)}
+                      />
                     </label>
                     <label>
                       Phone
-                      <input value={phone} onChange={event => setPhone(event.target.value)} />
+                      <input
+                        value={phone}
+                        onChange={event => setPhone(event.target.value)}
+                      />
                     </label>
                   </>
                 ) : null}
@@ -675,7 +705,9 @@ function NccAdminUserCreatePage() {
                             <input
                               type="checkbox"
                               checked={branchIds.includes(branch.id)}
-                              onChange={() => toggle(branch.id, branchIds, setBranchIds)}
+                              onChange={() =>
+                                toggle(branch.id, branchIds, setBranchIds)
+                              }
                             />
                             {branch.name}
                           </label>
@@ -691,7 +723,11 @@ function NccAdminUserCreatePage() {
                               type="checkbox"
                               checked={departmentIds.includes(department.id)}
                               onChange={() =>
-                                toggle(department.id, departmentIds, setDepartmentIds)
+                                toggle(
+                                  department.id,
+                                  departmentIds,
+                                  setDepartmentIds
+                                )
                               }
                             />
                             {department.name}
@@ -724,10 +760,28 @@ function NccAdminUserCreatePage() {
                       </label>
                     </fieldset>
                     <div className="admin-users-create-review">
-                      <div><span>Role</span><strong>{roleMeta[role].label}</strong></div>
-                      <div><span>Name</span><strong>{firstName} {lastName}</strong></div>
-                      <div><span>Email</span><strong>{email}</strong></div>
-                      <div><span>Branches</span><strong>{role === "superadmin" ? "All branches" : branchIds.length}</strong></div>
+                      <div>
+                        <span>Role</span>
+                        <strong>{roleMeta[role].label}</strong>
+                      </div>
+                      <div>
+                        <span>Name</span>
+                        <strong>
+                          {firstName} {lastName}
+                        </strong>
+                      </div>
+                      <div>
+                        <span>Email</span>
+                        <strong>{email}</strong>
+                      </div>
+                      <div>
+                        <span>Branches</span>
+                        <strong>
+                          {role === "superadmin"
+                            ? "All branches"
+                            : branchIds.length}
+                        </strong>
+                      </div>
                     </div>
                     {role === "superadmin" ? (
                       <label>
@@ -736,7 +790,9 @@ function NccAdminUserCreatePage() {
                           type="password"
                           autoComplete="current-password"
                           value={callerPassword}
-                          onChange={event => setCallerPassword(event.target.value)}
+                          onChange={event =>
+                            setCallerPassword(event.target.value)
+                          }
                         />
                       </label>
                     ) : null}
@@ -746,19 +802,34 @@ function NccAdminUserCreatePage() {
                   <div className="platform-form-error" role="alert">
                     {error}
                     {errorStatus === 409 ? (
-                      <Link href="/app/admin/users">Search the user directory</Link>
+                      <Link href="/app/admin/users">
+                        Search the user directory
+                      </Link>
                     ) : null}
                   </div>
                 ) : null}
                 <div className="admin-users-create-actions">
                   {step > 0 ? (
-                    <button type="button" onClick={() => setStep(current => (current - 1) as CreateStep)}>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setStep(current => (current - 1) as CreateStep)
+                      }
+                    >
                       Back
                     </button>
                   ) : null}
-                  <button type="submit" className="platform-primary-button" disabled={pending}>
+                  <button
+                    type="submit"
+                    className="platform-primary-button"
+                    disabled={pending}
+                  >
                     <UserPlus size={15} />
-                    {step < 3 ? "Continue" : pending ? "Creating..." : "Create account"}
+                    {step < 3
+                      ? "Continue"
+                      : pending
+                        ? "Creating..."
+                        : "Create account"}
                   </button>
                 </div>
               </form>
@@ -838,7 +909,8 @@ export default function AdminUsersPage({ mode = "list" }: AdminUsersPageProps) {
     ].find(response => !response.ok);
     if (failedResponse) {
       setNccError({
-        message: failedResponse.error ?? "The EMS staff directory could not load.",
+        message:
+          failedResponse.error ?? "The EMS staff directory could not load.",
         status: failedResponse.status,
       });
       setNccLoading(false);
@@ -877,7 +949,8 @@ export default function AdminUsersPage({ mode = "list" }: AdminUsersPageProps) {
           user.departments.some(item => item.id === department.id)
         )
         .map(department => department.name);
-      const text = `${user.name} ${user.email} ${roleMeta[user.role].label} ${branchNames.join(" ")} ${departmentNames.join(" ")}`.toLowerCase();
+      const text =
+        `${user.name} ${user.email} ${roleMeta[user.role].label} ${branchNames.join(" ")} ${departmentNames.join(" ")}`.toLowerCase();
       return (
         text.includes(normalizedQuery) &&
         (roleFilter === "all" || user.role === roleFilter) &&
@@ -1141,7 +1214,10 @@ export default function AdminUsersPage({ mode = "list" }: AdminUsersPageProps) {
           title="Users"
           description="Manage people who can access Nile Learn."
           actions={
-            <Link className="platform-primary-button" href="/app/admin/users/new">
+            <Link
+              className="platform-primary-button"
+              href="/app/admin/users/new"
+            >
               <UserPlus size={15} />
               Create user
             </Link>

@@ -1,5 +1,11 @@
-import { requireActiveUser } from "@/lib/auth/session";
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { getStoredAuthSession, requireActiveUser } from "@/lib/auth/session";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type FormEvent,
+} from "react";
 import {
   AlertTriangle,
   CalendarDays,
@@ -10,6 +16,7 @@ import {
 } from "lucide-react";
 import { Link } from "wouter";
 import { toast } from "sonner";
+import NccReadStatus from "@/components/platform/NccReadStatus";
 import PlatformShell from "@/components/platform/PlatformShell";
 import {
   FormFlowLayout,
@@ -19,7 +26,22 @@ import {
   DataTableCard,
   StatusBadge,
 } from "@/components/platform/PlatformPrimitives";
-import { runPlatformWorkflowActionRequest } from "@/lib/backend/api";
+import {
+  confirmNccClassSessionsRequest,
+  fetchNccClassesRequest,
+  fetchNccClassSessionsRequest,
+  fetchNccRoomsRequest,
+  proposeNccClassSessionsRequest,
+  runPlatformWorkflowActionRequest,
+  type NccClassDto,
+  type NccRoomDto,
+  type NccSessionDto,
+  type NccSessionSlotDto,
+} from "@/lib/backend/api";
+import {
+  classifyNccFailure,
+  type NccReadState,
+} from "@/lib/backend/nccReadState";
 import { platformStore } from "@/lib/domain/store";
 import type { CalendarEventType, EntityStatus } from "@/lib/domain/types";
 
@@ -60,7 +82,554 @@ type BranchSchedulePageProps = {
   view?: "list" | "create" | "conflicts";
 };
 
-export default function BranchSchedulePage({
+export default function BranchSchedulePage(props: BranchSchedulePageProps) {
+  return getStoredAuthSession()?.provider === "ncc" ? (
+    <NccBranchSchedulePage {...props} />
+  ) : (
+    <CompatibilityBranchSchedulePage {...props} />
+  );
+}
+
+type NccBranchScheduleData = {
+  classes: NccClassDto[];
+  rooms: NccRoomDto[];
+  sessions: NccSessionDto[];
+};
+
+function dateInputOffset(days: number) {
+  const date = new Date();
+  date.setHours(12, 0, 0, 0);
+  date.setDate(date.getDate() + days);
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+const nccWeekdayLabels = [
+  "Monday",
+  "Tuesday",
+  "Wednesday",
+  "Thursday",
+  "Friday",
+  "Saturday",
+  "Sunday",
+];
+
+function NccBranchSchedulePage({ view = "list" }: BranchSchedulePageProps) {
+  const [readState, setReadState] = useState<
+    NccReadState<NccBranchScheduleData>
+  >({ status: "loading" });
+  const [query, setQuery] = useState("");
+  const [form, setForm] = useState(() => ({
+    classId: "",
+    weekdays: [] as number[],
+    hoursPerDay: 1,
+    fromDate: dateInputOffset(1),
+    toDate: dateInputOffset(14),
+    startHour: 9,
+  }));
+  const [formInitialized, setFormInitialized] = useState(false);
+  const [slots, setSlots] = useState<NccSessionSlotDto[] | null>(null);
+  const [saving, setSaving] = useState<"propose" | "confirm" | null>(null);
+  const [message, setMessage] = useState<{
+    kind: "success" | "error";
+    text: string;
+  } | null>(null);
+  const [composerOpen, setComposerOpen] = useState(
+    () =>
+      typeof window !== "undefined" &&
+      window.location.hash === "#branch-schedule-composer"
+  );
+
+  const load = useCallback(async () => {
+    setReadState({ status: "loading" });
+    const [classesResult, roomsResult] = await Promise.all([
+      fetchNccClassesRequest(),
+      fetchNccRoomsRequest(),
+    ]);
+    for (const result of [classesResult, roomsResult]) {
+      if (!result.ok || !result.data) {
+        setReadState(classifyNccFailure(result));
+        return;
+      }
+    }
+    const classes = classesResult.data!.items;
+    const sessionResults = await Promise.all(
+      classes.map(item => fetchNccClassSessionsRequest(item.id))
+    );
+    for (const result of sessionResults) {
+      if (!result.ok || !result.data) {
+        setReadState(classifyNccFailure(result));
+        return;
+      }
+    }
+    setReadState({
+      status: "ready",
+      data: {
+        classes,
+        rooms: roomsResult.data!.items,
+        sessions: sessionResults.flatMap(result => result.data!.items),
+      },
+    });
+  }, []);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const data = readState.status === "ready" ? readState.data : null;
+  const activeClasses = data
+    ? data.classes.filter(item => item.status === "active")
+    : [];
+  const selectedClass =
+    activeClasses.find(item => item.id === form.classId) ?? activeClasses[0];
+
+  useEffect(() => {
+    if (view !== "create" || formInitialized || !selectedClass) return;
+    setForm(value => ({
+      ...value,
+      classId: selectedClass.id,
+      weekdays: selectedClass.schedule.daysOfWeek?.length
+        ? [...selectedClass.schedule.daysOfWeek]
+        : value.weekdays,
+    }));
+    setFormInitialized(true);
+  }, [view, formInitialized, selectedClass]);
+
+  // The list view keeps the composer closed until asked for, then brings
+  // the panel into view so the scheduling fields are not missed.
+  useEffect(() => {
+    if (view !== "list" || !composerOpen) return;
+    document
+      .getElementById("branch-schedule-composer")
+      ?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }, [view, composerOpen]);
+
+  const context = data?.classes[0]?.branchName ?? "Branch";
+
+  const propose = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!selectedClass || !form.weekdays.length || saving) return;
+    setSaving("propose");
+    setMessage(null);
+    setSlots(null);
+    const result = await proposeNccClassSessionsRequest(selectedClass.id, {
+      weekdays: form.weekdays,
+      hoursPerDay: form.hoursPerDay,
+      fromDate: form.fromDate,
+      toDate: form.toDate,
+      startHour: form.startHour,
+    });
+    setSaving(null);
+    if (result.ok && result.data) {
+      setSlots(result.data.slots);
+      setMessage({
+        kind: "success",
+        text: `${result.data.slots.length} session slots proposed.`,
+      });
+    } else {
+      const text = result.error ?? "Session proposal failed.";
+      setMessage({ kind: "error", text });
+      toast.error(text);
+    }
+  };
+
+  const confirm = async () => {
+    if (!selectedClass || !slots?.length || saving) return;
+    setSaving("confirm");
+    setMessage(null);
+    const result = await confirmNccClassSessionsRequest(selectedClass.id, {
+      slots,
+    });
+    setSaving(null);
+    if (result.ok && result.data) {
+      setMessage({
+        kind: "success",
+        text: `${result.data.createdCount} sessions created.`,
+      });
+      toast.success("Sessions created");
+      setSlots(null);
+      void load();
+    } else {
+      const text = result.error ?? "Sessions could not be created.";
+      setMessage({ kind: "error", text });
+      toast.error(text);
+    }
+  };
+
+  // Shared by the standalone composer route and the inline composer
+  // above the schedule list. Presentation only; all workflow logic lives
+  // in the handlers above.
+  const composerBody = (
+    <>
+    <form className="branch-room-form" onSubmit={propose}>
+      <label>
+        Class
+        <select
+          value={selectedClass?.id ?? ""}
+          disabled={Boolean(saving) || !activeClasses.length}
+          onChange={event =>
+            setForm(value => ({
+              ...value,
+              classId: event.target.value,
+            }))
+          }
+          data-testid="branch-schedule-class"
+        >
+          {activeClasses.length ? (
+            activeClasses.map(item => (
+              <option key={item.id} value={item.id}>
+                {item.name}
+              </option>
+            ))
+          ) : (
+            <option value="">No active classes</option>
+          )}
+        </select>
+      </label>
+      <fieldset>
+        <legend>Weekdays</legend>
+        {nccWeekdayLabels.map((label, weekday) => (
+          <label key={weekday}>
+            <input
+              type="checkbox"
+              checked={form.weekdays.includes(weekday)}
+              disabled={Boolean(saving)}
+              onChange={event =>
+                setForm(value => ({
+                  ...value,
+                  weekdays: event.target.checked
+                    ? [...value.weekdays, weekday].sort(
+                        (a, b) => a - b
+                      )
+                    : value.weekdays.filter(
+                        item => item !== weekday
+                      ),
+                }))
+              }
+            />
+            {label}
+          </label>
+        ))}
+      </fieldset>
+      <label>
+        Hours per day
+        <input
+          type="number"
+          min={1}
+          step={1}
+          value={form.hoursPerDay}
+          disabled={Boolean(saving)}
+          onChange={event =>
+            setForm(value => ({
+              ...value,
+              hoursPerDay: Number(event.target.value),
+            }))
+          }
+        />
+      </label>
+      <label>
+        From
+        <input
+          type="date"
+          value={form.fromDate}
+          disabled={Boolean(saving)}
+          onChange={event =>
+            setForm(value => ({
+              ...value,
+              fromDate: event.target.value,
+            }))
+          }
+        />
+      </label>
+      <label>
+        To
+        <input
+          type="date"
+          value={form.toDate}
+          disabled={Boolean(saving)}
+          onChange={event =>
+            setForm(value => ({
+              ...value,
+              toDate: event.target.value,
+            }))
+          }
+        />
+      </label>
+      <label>
+        Start hour
+        <input
+          type="number"
+          min={0}
+          max={23}
+          step={1}
+          value={form.startHour}
+          disabled={Boolean(saving)}
+          onChange={event =>
+            setForm(value => ({
+              ...value,
+              startHour: Number(event.target.value),
+            }))
+          }
+        />
+      </label>
+      <button
+        type="submit"
+        className="platform-primary-button"
+        disabled={
+          Boolean(saving) ||
+          !selectedClass ||
+          !form.weekdays.length
+        }
+        data-testid="branch-schedule-propose"
+      >
+        <CalendarDays size={15} />
+        {saving === "propose" ? "Proposing" : "Propose sessions"}
+      </button>
+    </form>
+    {slots?.length ? (
+      <div className="portal-simple-stack">
+        <ul data-testid="branch-schedule-proposed-slots">
+          {slots.map((slot, index) => (
+            <li key={`${slot.startsAt}-${index}`}>
+              {formatDateTime(slot.startsAt)} ·{" "}
+              {slot.durationHours}h
+            </li>
+          ))}
+        </ul>
+        <button
+          type="button"
+          className="platform-primary-button"
+          disabled={Boolean(saving)}
+          onClick={() => void confirm()}
+          data-testid="branch-schedule-confirm"
+        >
+          <CheckCircle2 size={15} />
+          {saving === "confirm"
+            ? "Creating sessions"
+            : "Create proposed sessions"}
+        </button>
+      </div>
+    ) : null}
+    {message ? (
+      <p
+        role={message.kind === "error" ? "alert" : "status"}
+        className={
+          message.kind === "error"
+            ? "branch-schedule-message error"
+            : "branch-schedule-message success"
+        }
+      >
+        {message.text}
+      </p>
+    ) : null}
+    </>
+  );
+
+  if (view === "create") {
+    return (
+      <PlatformShell role="branchadmin" title="Schedule sessions">
+        <FormFlowLayout
+          className="branch-schedule-page branch-schedule-create-page"
+          title="Schedule sessions"
+          description="Find available class times before creating sessions."
+          context={context}
+          actions={
+            <Link
+              className="platform-secondary-button"
+              href="/app/branch/schedule"
+            >
+              View schedule
+            </Link>
+          }
+          main={
+            !data ? (
+              <NccReadStatus state={readState} onRetry={() => void load()} />
+            ) : (
+              <section
+                className="branch-inline-composer branch-schedule-composer"
+                data-testid="branch-schedule-composer"
+                id="branch-schedule-composer"
+              >
+                {composerBody}
+              </section>
+            )
+          }
+        />
+      </PlatformShell>
+    );
+  }
+
+  if (view === "conflicts") {
+    return (
+      <PlatformShell role="branchadmin" title="Schedule conflicts">
+        <WorkspaceLayout
+          className="branch-schedule-page branch-schedule-conflicts-page"
+          title="Schedule conflicts"
+          description="Review how EMS checks proposed session times."
+          context={context}
+          actions={
+            <Link
+              className="platform-secondary-button"
+              href="/app/branch/schedule"
+            >
+              <CalendarDays size={15} />
+              View schedule
+            </Link>
+          }
+          main={
+            <div className="platform-empty-state" role="status">
+              <strong>
+                Schedule conflicts are checked by EMS when sessions are
+                proposed.
+              </strong>
+              <Link
+                className="platform-secondary-button"
+                href="/app/branch/schedule/new"
+              >
+                Schedule sessions
+              </Link>
+            </div>
+          }
+        />
+      </PlatformShell>
+    );
+  }
+
+  const filteredSessions = (data?.sessions ?? [])
+    .slice()
+    .sort(
+      (a, b) =>
+        new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime()
+    )
+    .filter(session => {
+      const text = [
+        session.className,
+        session.teacherName,
+        session.roomName,
+        session.status,
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+      return !query.trim() || text.includes(query.trim().toLowerCase());
+    });
+
+  return (
+    <PlatformShell role="branchadmin" title="Schedule">
+      <WorkspaceLayout
+        className="branch-schedule-page"
+        title="Schedule"
+        description="Review scheduled class sessions."
+        context={context}
+        actions={
+          <button
+            type="button"
+            className="platform-primary-button"
+            onClick={() => setComposerOpen(value => !value)}
+            aria-expanded={composerOpen}
+            aria-controls="branch-schedule-composer"
+          >
+            <Plus size={15} />
+            Schedule sessions
+          </button>
+        }
+        toolbar={
+          <div
+            className="branch-compact-toolbar"
+            data-testid="branch-schedule-toolbar"
+          >
+            <label>
+              Search
+              <span>
+                <Search size={15} />
+                <input
+                  value={query}
+                  onChange={event => setQuery(event.target.value)}
+                  placeholder="Class, teacher, or room"
+                />
+              </span>
+            </label>
+          </div>
+        }
+        main={
+          !data ? (
+            <NccReadStatus state={readState} onRetry={() => void load()} />
+          ) : (
+            <>
+              {composerOpen ? (
+                <section
+                  className="branch-inline-composer branch-schedule-composer"
+                  data-testid="branch-schedule-composer"
+                  id="branch-schedule-composer"
+                >
+                  <div className="branch-inline-composer-head">
+                    <div>
+                      <span>Plan ahead</span>
+                      <strong>Schedule sessions</strong>
+                    </div>
+                    <button
+                      type="button"
+                      className="branch-inline-close"
+                      onClick={() => setComposerOpen(false)}
+                    >
+                      Close
+                    </button>
+                  </div>
+                  {composerBody}
+                </section>
+              ) : null}
+            <DataTableCard
+              title="Class sessions"
+              subtitle={`${filteredSessions.length} sessions`}
+            >
+              {filteredSessions.length ? (
+                <div
+                  className="teacher-class-record-list"
+                  data-testid="branch-schedule-list"
+                >
+                  {filteredSessions.map(session => (
+                    <article key={session.id}>
+                      <div className="teacher-class-record-copy">
+                        <span>{formatDateTime(session.startsAt)}</span>
+                        <strong>{session.className}</strong>
+                        <p>
+                          Ends {formatDateTime(session.endsAt)} ·{" "}
+                          {session.roomName ?? "No room"} ·{" "}
+                          {session.teacherName ?? "Teacher not set"}
+                        </p>
+                      </div>
+                      <div className="teacher-class-record-actions">
+                        <StatusBadge
+                          tone={
+                            session.status === "scheduled" ? "green" : "slate"
+                          }
+                        >
+                          {session.status}
+                        </StatusBadge>
+                        <Link
+                          className="platform-secondary-button"
+                          href={`/app/branch/schedule/sessions/${session.id}`}
+                        >
+                          Open session
+                        </Link>
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              ) : (
+                <div className="platform-empty-state">
+                  <strong>No class sessions scheduled.</strong>
+                </div>
+              )}
+            </DataTableCard>
+            </>
+          )
+        }
+      />
+    </PlatformShell>
+  );
+}
+
+function CompatibilityBranchSchedulePage({
   view = "list",
 }: BranchSchedulePageProps) {
   const [version, setVersion] = useState(0);

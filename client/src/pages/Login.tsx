@@ -221,6 +221,8 @@ function LoginForm({
   >(audience === "administration" ? "loading" : "compatibility");
   const currentRole = roles.find(item => item.id === role) ?? roles[0];
   const ui = (label: string) => translateUiLabel(locale, label);
+  const isPreparingStaffSignIn =
+    audience === "administration" && staffProvider === "loading";
 
   useEffect(() => {
     if (audience !== "administration") return;
@@ -352,122 +354,140 @@ function LoginForm({
         <form
           className="auth-v2-form"
           onSubmit={handleLogin}
-          aria-busy={loading}
+          aria-busy={loading || isPreparingStaffSignIn}
         >
-          {audience === "administration" &&
-          staffProvider === "compatibility" ? (
-            <label className="auth-v2-field">
-              <span>{ui("Workspace")}</span>
-              <select
-                value={role}
-                onChange={event => handleRoleChange(event.target.value as Role)}
-                aria-describedby="auth-role-description"
-              >
-                {availableRoles.map(item => (
-                  <option key={item.id} value={item.id}>
-                    {ui(item.label)}
-                  </option>
-                ))}
-              </select>
-              <small id="auth-role-description">{ui(currentRole.desc)}</small>
-            </label>
-          ) : null}
-
-          <label className="auth-v2-field">
-            <span>{ui("Email")}</span>
-            <input
-              type="email"
-              autoComplete="username"
-              value={email}
-              onChange={event => {
-                setEmail(event.target.value);
-                setEmailTouched(true);
-              }}
-              placeholder={
-                staffProvider === "ncc" ? "name@example.com" : currentRole.email
-              }
-              required
-            />
-          </label>
-
-          <label className="auth-v2-field">
-            <span className="auth-v2-field-heading">
-              <span>{ui("Password")}</span>
-              {audience === "student" || staffProvider === "compatibility" ? (
-                <Link href={`/auth/forgot-password?${forgotParams.toString()}`}>
-                  {ui("Forgot password?")}
-                </Link>
-              ) : null}
-            </span>
-            <span className="auth-v2-password">
-              <input
-                type={showPassword ? "text" : "password"}
-                autoComplete="current-password"
-                value={password}
-                onChange={event => setPassword(event.target.value)}
-                placeholder={ui("Enter password")}
-                required
-              />
-              <button
-                type="button"
-                onClick={() => setShowPassword(value => !value)}
-                aria-label={ui(
-                  showPassword ? "Hide password" : "Show password"
-                )}
-              >
-                {showPassword ? <EyeOff size={17} /> : <Eye size={17} />}
-              </button>
-            </span>
-          </label>
-
-          <label className="auth-v2-remember">
-            <input
-              type="checkbox"
-              checked={remember}
-              onChange={event => handleRememberChange(event.target.checked)}
-            />
-            <span>
-              <strong>
-                {ui(
-                  staffProvider === "ncc"
-                    ? "Remember email"
-                    : "Remember email and workspace"
-                )}
-              </strong>
-              <small>{ui("Never saves your password.")}</small>
-            </span>
-          </label>
-
-          {formError ? (
-            <p className="auth-v2-status error" role="alert">
-              {formError}
+          {isPreparingStaffSignIn ? (
+            <p className="auth-v2-status" role="status">
+              <span className="auth-v2-spinner dark" />
+              {ui("Preparing sign in")}
             </p>
-          ) : null}
+          ) : (
+            <>
+              {audience === "administration" &&
+              staffProvider === "compatibility" ? (
+                <label className="auth-v2-field">
+                  <span>{ui("Workspace")}</span>
+                  <select
+                    value={role}
+                    onChange={event =>
+                      handleRoleChange(event.target.value as Role)
+                    }
+                    aria-describedby="auth-role-description"
+                  >
+                    {availableRoles.map(item => (
+                      <option key={item.id} value={item.id}>
+                        {ui(item.label)}
+                      </option>
+                    ))}
+                  </select>
+                  <small id="auth-role-description">
+                    {ui(currentRole.desc)}
+                  </small>
+                </label>
+              ) : null}
 
-          <button
-            type="submit"
-            className="auth-v2-submit"
-            disabled={
-              loading ||
-              signedIn ||
-              staffProvider === "loading" ||
-              staffProvider === "error"
-            }
-          >
-            {signedIn ? (
-              <>
-                <CheckCircle2 size={18} /> {ui("Opening workspace")}
-              </>
-            ) : loading ? (
-              <>
-                <span className="auth-v2-spinner" /> {ui("Signing in")}
-              </>
-            ) : (
-              <>
-                {ui("Sign in")} <ArrowRight size={17} aria-hidden="true" />
-              </>
-            )}
-          </button>
+              <label className="auth-v2-field">
+                <span>{ui("Email")}</span>
+                <input
+                  type="email"
+                  autoComplete="username"
+                  value={email}
+                  onChange={event => {
+                    setEmail(event.target.value);
+                    setEmailTouched(true);
+                  }}
+                  placeholder={
+                    staffProvider === "ncc"
+                      ? "name@example.com"
+                      : currentRole.email
+                  }
+                  required
+                />
+              </label>
+
+              <label className="auth-v2-field">
+                <span className="auth-v2-field-heading">
+                  <span>{ui("Password")}</span>
+                  {audience === "student" ||
+                  staffProvider === "compatibility" ? (
+                    <Link
+                      href={`/auth/forgot-password?${forgotParams.toString()}`}
+                    >
+                      {ui("Forgot password?")}
+                    </Link>
+                  ) : null}
+                </span>
+                <span className="auth-v2-password">
+                  <input
+                    type={showPassword ? "text" : "password"}
+                    autoComplete="current-password"
+                    value={password}
+                    onChange={event => setPassword(event.target.value)}
+                    placeholder={ui("Enter password")}
+                    required
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(value => !value)}
+                    aria-label={ui(
+                      showPassword ? "Hide password" : "Show password"
+                    )}
+                  >
+                    {showPassword ? <EyeOff size={17} /> : <Eye size={17} />}
+                  </button>
+                </span>
+              </label>
+
+              <label className="auth-v2-remember">
+                <input
+                  type="checkbox"
+                  checked={remember}
+                  onChange={event => handleRememberChange(event.target.checked)}
+                />
+                <span>
+                  <strong>
+                    {ui(
+                      staffProvider === "ncc"
+                        ? "Remember email"
+                        : "Remember email and workspace"
+                    )}
+                  </strong>
+                  <small>{ui("Never saves your password.")}</small>
+                </span>
+              </label>
+
+              {formError ? (
+                <p className="auth-v2-status error" role="alert">
+                  {formError}
+                </p>
+              ) : null}
+
+              <button
+                type="submit"
+                className="auth-v2-submit"
+                disabled={
+                  loading ||
+                  signedIn ||
+                  staffProvider === "loading" ||
+                  staffProvider === "error"
+                }
+              >
+                {signedIn ? (
+                  <>
+                    <CheckCircle2 size={18} /> {ui("Opening workspace")}
+                  </>
+                ) : loading ? (
+                  <>
+                    <span className="auth-v2-spinner" /> {ui("Signing in")}
+                  </>
+                ) : (
+                  <>
+                    {ui("Sign in")} <ArrowRight size={17} aria-hidden="true" />
+                  </>
+                )}
+              </button>
+            </>
+          )}
         </form>
 
         <div className="auth-v2-route-switch">

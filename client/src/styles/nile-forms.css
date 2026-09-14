@@ -1,5 +1,6 @@
 .nile-forms-page {
-  width: min(100%, 1560px);
+  width: 100%;
+  max-width: none;
   margin-inline: auto;
   padding: 0 0 36px;
   color: var(--foreground);
@@ -2414,7 +2415,8 @@
 
 @media (min-width: 1720px) {
   .nile-forms-page {
-    width: min(100%, 1680px);
+    width: 100%;
+    max-width: none;
   }
 
   .nile-form-builder-grid {

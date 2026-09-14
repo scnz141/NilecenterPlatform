@@ -1,6 +1,12 @@
-import { requireActiveUser } from "@/lib/auth/session";
+import { getStoredAuthSession, requireActiveUser } from "@/lib/auth/session";
 import { motion } from "framer-motion";
-import { useMemo, type CSSProperties } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type CSSProperties,
+} from "react";
 import {
   Activity,
   ArrowRight,
@@ -26,21 +32,28 @@ import {
 } from "lucide-react";
 import { Link } from "wouter";
 import PlatformShell from "@/components/platform/PlatformShell";
+import NccReadStatus from "@/components/platform/NccReadStatus";
 import {
   PortalInsight,
   type InsightPoint,
 } from "@/components/platform/PortalInsights";
 import {
+  DataTableCard,
   PlatformPageHeader,
   PlatformWorkspaceHeader,
   platformReveal,
   StatCard,
-  StatusBadge,
 } from "@/components/platform/PlatformPrimitives";
+import { fetchNccDashboardSummaryRequest } from "@/lib/backend/api";
+import type { NccDashboardSummaryDto } from "@/lib/backend/api";
+import {
+  classifyNccFailure,
+  type NccReadState,
+} from "@/lib/backend/nccReadState";
 import { platformStore } from "@/lib/domain/store";
 import {
   dashboardByRole,
-roleMeta,
+  roleMeta,
   type Role,
   type Stat,
 } from "@/lib/platformData";
@@ -61,6 +74,13 @@ function formatConnectionStatus(status: string) {
 }
 
 export default function RoleDashboard({ role }: { role: Role }) {
+  if (
+    getStoredAuthSession()?.provider === "ncc" &&
+    (role === "superadmin" || role === "branchadmin" || role === "registrar")
+  ) {
+    return <NccOperationsDashboard role={role} />;
+  }
+
   if (role === "superadmin") {
     return <SuperAdminDashboard />;
   }
@@ -86,6 +106,630 @@ export default function RoleDashboard({ role }: { role: Role }) {
   }
 
   return null;
+}
+
+const nccDashboardCopy = {
+  superadmin: {
+    title: "School overview",
+    description: "Review current students, classes, and branch capacity.",
+    fallbackContext: "Global",
+    actions: [
+      { label: "Users", href: "/app/admin/users", Icon: Users },
+      { label: "Health", href: "/app/admin/system-health", Icon: ShieldCheck },
+    ],
+  },
+  branchadmin: {
+    title: "Branch overview",
+    description: "Review students, classes, and capacity in this branch.",
+    fallbackContext: "Branch",
+    actions: [
+      { label: "Students", href: "/app/branch/students", Icon: Users },
+      { label: "Schedule", href: "/app/branch/schedule", Icon: CalendarDays },
+    ],
+  },
+  registrar: {
+    title: "Admissions overview",
+    description: "Review admissions and enrollment workload.",
+    fallbackContext: "Registrar",
+    actions: [
+      { label: "Leads", href: "/app/registrar/leads", Icon: ClipboardList },
+      {
+        label: "Enrollments",
+        href: "/app/registrar/enrollments",
+        Icon: UserPlus,
+      },
+    ],
+  },
+} as const;
+
+function NccOperationsDashboard({
+  role,
+}: {
+  role: "superadmin" | "branchadmin" | "registrar";
+}) {
+  const [readState, setReadState] = useState<
+    NccReadState<NccDashboardSummaryDto>
+  >({ status: "loading" });
+
+  const load = useCallback(async () => {
+    setReadState({ status: "loading" });
+    const result = await fetchNccDashboardSummaryRequest();
+    setReadState(
+      result.ok && result.data
+        ? { status: "ready", data: result.data.summary }
+        : classifyNccFailure(result)
+    );
+  }, []);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const copy = nccDashboardCopy[role];
+  const summary = readState.status === "ready" ? readState.data : null;
+  const context =
+    role === "superadmin"
+      ? copy.fallbackContext
+      : summary?.byBranch.length === 1
+        ? summary.byBranch[0].branchName
+        : copy.fallbackContext;
+  const cards = summary?.cards;
+  const fillPct =
+    cards && cards.enrolmentCapacity > 0
+      ? Math.round((cards.enrolmentFill / cards.enrolmentCapacity) * 100)
+      : null;
+  const stats: Stat[] = [
+    {
+      label: "Active students",
+      value: String(cards?.activeStudents ?? 0),
+      change: "Current EMS scope",
+      tone: "teal",
+    },
+    {
+      label: "Active classes",
+      value: String(cards?.activeClasses ?? 0),
+      change: "Current EMS scope",
+      tone: "green",
+    },
+    {
+      label: "Enrollment",
+      value: `${cards?.enrolmentFill ?? 0}/${cards?.enrolmentCapacity ?? 0}`,
+      change: fillPct !== null ? `${fillPct}% filled` : "Current EMS scope",
+      tone: "amber",
+    },
+    {
+      label: "Open leads",
+      value: String(cards?.openLeads ?? 0),
+      change: "Current EMS scope",
+      tone: "purple",
+    },
+  ];
+  const leadBuckets = summary?.charts.leadsByStatus ?? [];
+  const operationsSnapshot = cards
+    ? [
+        {
+          label: "Staff accounts",
+          value:
+            cards.staffCount === null ? "Unavailable" : String(cards.staffCount),
+        },
+        {
+          label: "Scheduled placements",
+          value: String(cards.scheduledPlacements),
+        },
+        {
+          label: "Scheduled trials",
+          value: String(cards.scheduledTrials),
+        },
+        {
+          label: "Available places",
+          value: String(cards.enrolmentCapacity),
+        },
+      ]
+    : [];
+
+  if (role === "superadmin") {
+    if (!summary || !cards) {
+      return (
+        <PlatformShell role="superadmin" title="Command center">
+          <PlatformPageHeader
+            compact
+            title="Platform overview"
+            description="Review current EMS operations and open the next admin workspace."
+          />
+          <DataTableCard title="Current EMS scope">
+            <NccReadStatus state={readState} onRetry={() => void load()} />
+          </DataTableCard>
+        </PlatformShell>
+      );
+    }
+
+    const adminStats: Stat[] = [
+      {
+        label: "Active staff",
+        value: cards.staffCount === null ? "—" : String(cards.staffCount),
+        change: "Current EMS scope",
+        tone: "teal",
+      },
+      {
+        label: "Active learners",
+        value: String(cards.activeStudents),
+        change: `${cards.enrolmentFill} enrollments`,
+        tone: "green",
+      },
+      {
+        label: "Active classes",
+        value: String(cards.activeClasses),
+        change: `${cards.enrolmentCapacity} available places`,
+        tone: "amber",
+      },
+      {
+        label: "Open leads",
+        value: String(cards.openLeads),
+        change: "Admissions follow-up",
+        tone: cards.openLeads ? "amber" : "green",
+      },
+    ];
+    const administrationTiles = [
+      {
+        label: "Users & roles",
+        description: "Accounts, roles, and access level.",
+        metric:
+          cards.staffCount === null
+            ? "Staff count unavailable"
+            : `${cards.staffCount} staff accounts`,
+        href: "/app/admin/users",
+        Icon: Users,
+        tone: "teal" as Stat["tone"],
+      },
+      {
+        label: "Academic structure",
+        description: "Departments, programs, courses, certificates.",
+        metric: `${cards.activeClasses} active classes`,
+        href: "/app/admin/courses",
+        Icon: BookOpen,
+        tone: "purple" as Stat["tone"],
+      },
+      {
+        label: "Branch operations",
+        description: "Branches, rooms, schedules, local delivery.",
+        metric: `${summary.byBranch.length} branches`,
+        href: "/app/admin/branches",
+        Icon: Building2,
+        tone: "green" as Stat["tone"],
+      },
+      {
+        label: "Admissions & finance",
+        description: "Enrollment, placement, payments, reports.",
+        metric: `${cards.openLeads} open leads`,
+        href: "/app/admin/reports",
+        Icon: CreditCard,
+        tone: "amber" as Stat["tone"],
+      },
+      {
+        label: "Activity & health",
+        description: "Activity, settings, connections, checks.",
+        metric: "Review current system status",
+        href: "/app/admin/system-health",
+        Icon: Activity,
+        tone: "slate" as Stat["tone"],
+      },
+    ];
+    const scheduledIntake = cards.scheduledPlacements + cards.scheduledTrials;
+    const attentionItems = [
+      {
+        label: "Review users and access",
+        detail: "Open staff accounts and role assignments.",
+        href: "/app/admin/users",
+        Icon: Users,
+        tone: "teal" as Stat["tone"],
+      },
+      {
+        label: cards.openLeads
+          ? "Admissions follow-up"
+          : "Admissions queue clear",
+        detail: cards.openLeads
+          ? `${cards.openLeads} lead(s) need follow-up.`
+          : "No open leads in the current scope.",
+        href: "/app/admin/reports",
+        Icon: ClipboardList,
+        tone: cards.openLeads
+          ? ("amber" as Stat["tone"])
+          : ("green" as Stat["tone"]),
+      },
+      {
+        label: scheduledIntake ? "Scheduled intake" : "Intake schedule clear",
+        detail: scheduledIntake
+          ? `${cards.scheduledPlacements} placement and ${cards.scheduledTrials} trial booking(s).`
+          : "No placement or trial bookings are scheduled.",
+        href: "/app/admin/schedule",
+        Icon: CalendarDays,
+        tone: scheduledIntake
+          ? ("amber" as Stat["tone"])
+          : ("green" as Stat["tone"]),
+      },
+      {
+        label: "Review system health",
+        detail: "Open the latest service and connection status.",
+        href: "/app/admin/system-health",
+        Icon: ShieldCheck,
+        tone: "slate" as Stat["tone"],
+      },
+    ];
+    const branchHighlights = summary.byBranch.slice(0, 4);
+
+    return (
+      <PlatformShell role="superadmin" title="Command center">
+        <PlatformPageHeader
+          compact
+          title="Platform overview"
+          description="Review current EMS operations and open the next admin workspace."
+          actions={
+            <>
+              <Link
+                href="/app/admin/audit-logs"
+                className="platform-secondary-button"
+              >
+                View activity
+              </Link>
+              <Link
+                href="/app/admin/users/new"
+                className="platform-primary-button"
+                style={{ background: roleMeta.superadmin.color }}
+              >
+                <Plus size={15} />
+                Create user
+              </Link>
+            </>
+          }
+        />
+
+        <motion.div
+          className="platform-metric-grid platform-admin-metric-grid"
+          initial="hidden"
+          animate="visible"
+        >
+          {adminStats.map((stat, index) => (
+            <StatCard
+              key={stat.label}
+              label={stat.label}
+              value={stat.value}
+              change={stat.change}
+              tone={stat.tone}
+              delay={0.05 + index * 0.045}
+            />
+          ))}
+        </motion.div>
+
+        <motion.div
+          className="platform-v2-admin-main"
+          initial="hidden"
+          animate="visible"
+          custom={0.14}
+          variants={dashboardReveal}
+        >
+          <section className="platform-v2-panel platform-v2-admin-map">
+            <PlatformWorkspaceHeader
+              title="Administration map"
+              description="Open the workspaces used most by platform operations."
+              actions={
+                <Link
+                  href="/app/admin/platform-blueprint"
+                  className="platform-secondary-button compact"
+                >
+                  Blueprint
+                </Link>
+              }
+            />
+            <div className="platform-v2-workflow-tiles">
+              {administrationTiles.map(item => (
+                <Link
+                  key={item.label}
+                  href={item.href}
+                  className="platform-v2-workflow-tile"
+                  style={
+                    { "--item-color": toneColor[item.tone] } as CSSProperties
+                  }
+                >
+                  <span>
+                    <item.Icon size={18} />
+                  </span>
+                  <div>
+                    <strong>{item.label}</strong>
+                    <p>{item.description}</p>
+                    <small>{item.metric}</small>
+                  </div>
+                  <ArrowRight size={15} />
+                </Link>
+              ))}
+            </div>
+          </section>
+
+          <aside className="platform-v2-panel platform-v2-attention-panel">
+            <PlatformWorkspaceHeader
+              title="Needs attention"
+              description="Useful operational checks for the current EMS scope."
+            />
+            <div className="platform-v2-attention-list">
+              {attentionItems.map(item => (
+                <Link
+                  key={item.label}
+                  href={item.href}
+                  style={
+                    { "--item-color": toneColor[item.tone] } as CSSProperties
+                  }
+                >
+                  <span>
+                    <item.Icon size={16} />
+                  </span>
+                  <div>
+                    <strong>{item.label}</strong>
+                    <small>{item.detail}</small>
+                  </div>
+                  <ArrowRight size={15} />
+                </Link>
+              ))}
+            </div>
+          </aside>
+        </motion.div>
+
+        <motion.div
+          className="platform-v2-admin-activity"
+          initial="hidden"
+          animate="visible"
+          custom={0.2}
+          variants={dashboardReveal}
+        >
+          <section className="platform-v2-panel">
+            <PlatformWorkspaceHeader
+              title="Branch summary"
+              description="Current student, class, enrollment, and staff scope by branch."
+              actions={
+                <Link
+                  href="/app/admin/branches"
+                  className="platform-secondary-button compact"
+                >
+                  Open branches
+                </Link>
+              }
+            />
+            <div className="platform-v2-audit-list">
+              {branchHighlights.length ? (
+                branchHighlights.map(branch => {
+                  const branchFill =
+                    branch.enrolmentCapacity > 0
+                      ? `${Math.round((branch.enrolmentFill / branch.enrolmentCapacity) * 100)}% filled`
+                      : "No capacity set";
+                  return (
+                    <article key={branch.branchId}>
+                      <div>
+                        <strong>{branch.branchName}</strong>
+                        <small>
+                          {branch.activeStudents} students ·{" "}
+                          {branch.activeClasses} classes · {branch.openLeads}{" "}
+                          open leads
+                          {branch.staffCount !== null
+                            ? ` · ${branch.staffCount} staff`
+                            : ""}
+                        </small>
+                      </div>
+                      <span>{branchFill}</span>
+                    </article>
+                  );
+                })
+              ) : (
+                <article>
+                  <div>
+                    <strong>No branch summary</strong>
+                    <small>
+                      No branches are available in the current EMS scope.
+                    </small>
+                  </div>
+                  <span>Current</span>
+                </article>
+              )}
+            </div>
+          </section>
+        </motion.div>
+      </PlatformShell>
+    );
+  }
+
+  const metricIcons = [Users, Presentation, BookOpen, ClipboardList] as const;
+  const opsIcons: Record<string, typeof Users> = {
+    "Staff accounts": Users,
+    "Scheduled placements": ListChecks,
+    "Scheduled trials": CalendarDays,
+    "Available places": Building2,
+  };
+
+  return (
+    <PlatformShell role={role} title={copy.title}>
+      <div className="branch-ncc-dashboard">
+        <PlatformPageHeader
+          compact
+          title={copy.title}
+          description={copy.description}
+          context={context}
+          actions={
+            <>
+              {copy.actions.map(({ label, href, Icon }) => (
+                <Link
+                  key={href}
+                  className="platform-secondary-button"
+                  href={href}
+                >
+                  <Icon size={15} />
+                  {label}
+                </Link>
+              ))}
+            </>
+          }
+        />
+        {!summary ? (
+          <NccReadStatus state={readState} onRetry={() => void load()} />
+        ) : (
+          <>
+            <motion.div
+              className="branch-ncc-metrics"
+              initial="hidden"
+              animate="visible"
+            >
+              {stats.map((stat, index) => {
+                const Icon = metricIcons[index] ?? Users;
+                return (
+                  <motion.article
+                    key={stat.label}
+                    className="branch-ncc-metric"
+                    custom={0.05 + index * 0.045}
+                    variants={dashboardReveal}
+                    style={
+                      { "--item-color": toneColor[stat.tone] } as CSSProperties
+                    }
+                  >
+                    <span className="branch-ncc-metric-icon">
+                      <Icon size={17} />
+                    </span>
+                    <div className="branch-ncc-metric-copy">
+                      <span>{stat.label}</span>
+                      <strong>{stat.value}</strong>
+                      <small>{stat.change}</small>
+                    </div>
+                    {index === 2 && fillPct !== null ? (
+                      <span className="branch-ncc-meter" aria-hidden="true">
+                        <span style={{ width: `${fillPct}%` }} />
+                      </span>
+                    ) : null}
+                  </motion.article>
+                );
+              })}
+            </motion.div>
+            <motion.div
+              className="branch-ncc-main"
+              initial="hidden"
+              animate="visible"
+              custom={0.14}
+              variants={dashboardReveal}
+            >
+              <div className="branch-ncc-stack">
+                <section className="platform-v2-panel branch-ncc-panel">
+                  <PlatformWorkspaceHeader
+                    title="Branch summary"
+                    description="Current students, classes, enrollment, and leads by branch."
+                    meta={
+                      <span className="branch-ncc-count">
+                        {summary.byBranch.length} branch(es)
+                      </span>
+                    }
+                  />
+                  {summary.byBranch.length ? (
+                    <div
+                      className="branch-ncc-branch-list"
+                      data-testid="ncc-branch-summary-list"
+                    >
+                      {summary.byBranch.map(branch => {
+                        const pct =
+                          branch.enrolmentCapacity > 0
+                            ? Math.round(
+                                (branch.enrolmentFill /
+                                  branch.enrolmentCapacity) *
+                                  100
+                              )
+                            : 0;
+                        return (
+                          <article key={branch.branchId}>
+                            <div className="branch-ncc-branch-copy">
+                              <strong>{branch.branchName}</strong>
+                              <small>
+                                {branch.activeStudents} students ·{" "}
+                                {branch.activeClasses} classes · Enrollment{" "}
+                                {branch.enrolmentFill}/
+                                {branch.enrolmentCapacity}
+                                {branch.staffCount !== null
+                                  ? ` · ${branch.staffCount} staff`
+                                  : ""}
+                              </small>
+                              <span
+                                className="branch-ncc-meter"
+                                aria-hidden="true"
+                              >
+                                <span style={{ width: `${pct}%` }} />
+                              </span>
+                            </div>
+                            <span className="branch-ncc-branch-side">
+                              <span className="branch-ncc-fill">
+                                {branch.enrolmentCapacity > 0
+                                  ? `${pct}% filled`
+                                  : "No capacity set"}
+                              </span>
+                              <span className="branch-ncc-leads">
+                                {branch.openLeads} open leads
+                              </span>
+                            </span>
+                          </article>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <div className="platform-empty-state" role="status">
+                      <strong>
+                        No branch summary is available for this scope.
+                      </strong>
+                    </div>
+                  )}
+                </section>
+                {leadBuckets.length ? (
+                  <section className="platform-v2-panel branch-ncc-panel">
+                    <PlatformWorkspaceHeader
+                      title="Lead pipeline"
+                      description="Open admissions follow-up by status."
+                    />
+                    <div className="branch-ncc-lead-list">
+                      {leadBuckets.map(bucket => (
+                        <article key={bucket.key}>
+                          <strong>{bucket.label}</strong>
+                          <span
+                            className={
+                              bucket.count
+                                ? "branch-ncc-badge active"
+                                : "branch-ncc-badge"
+                            }
+                          >
+                            {bucket.count}
+                          </span>
+                        </article>
+                      ))}
+                    </div>
+                  </section>
+                ) : null}
+              </div>
+              <aside className="platform-v2-panel branch-ncc-panel branch-ncc-side">
+                <PlatformWorkspaceHeader
+                  title="Operations snapshot"
+                  description="Current EMS scope"
+                />
+                <div className="branch-ncc-ops-list">
+                  {operationsSnapshot.map(item => {
+                    const Icon = opsIcons[item.label] ?? Activity;
+                    return (
+                      <article key={item.label}>
+                        <span className="branch-ncc-ops-icon">
+                          <Icon size={16} />
+                        </span>
+                        <div className="branch-ncc-ops-copy">
+                          <strong>{item.label}</strong>
+                        </div>
+                        <span className="branch-ncc-badge">{item.value}</span>
+                      </article>
+                    );
+                  })}
+                </div>
+              </aside>
+            </motion.div>
+          </>
+        )}
+      </div>
+    </PlatformShell>
+  );
 }
 
 function StudentLearningDashboard() {
@@ -1190,7 +1834,10 @@ function TeacherCommandDashboard() {
                 >
                   {nextClassGroup ? "Mark attendance" : "View classes"}
                 </Link>
-                <Link href={nextClassPath} className="platform-secondary-button">
+                <Link
+                  href={nextClassPath}
+                  className="platform-secondary-button"
+                >
                   Class panel
                 </Link>
               </div>
@@ -1677,8 +2324,7 @@ function HeadOfDepartmentDashboard() {
   const actorUser =
     state.users.find(
       user => user.id === requireActiveUser("headofdepartment").id
-    ) ??
-    state.users.find(user => user.activeRole === "headofdepartment");
+    ) ?? state.users.find(user => user.activeRole === "headofdepartment");
   const departmentIds = new Set(
     state.departments
       .filter(

@@ -135,6 +135,37 @@ export function fetchSessionRequest() {
   return apiJson<AuthSessionDto | null>("/api/auth/session");
 }
 
+export type NccSelfProfileDto = {
+  firstName: string;
+  lastName: string;
+  phone: string | null;
+  address: string | null;
+  nationality: string | null;
+  dateOfBirth: string | null;
+  notes: string | null;
+};
+
+export type NccSelfProfileInput = {
+  firstName: string;
+  lastName: string;
+  phone?: string | null;
+  address?: string | null;
+  nationality?: string | null;
+  dateOfBirth?: string | null;
+  notes?: string | null;
+};
+
+export function fetchNccSelfProfileRequest() {
+  return apiJson<{ profile: NccSelfProfileDto }>("/api/ncc/account/profile");
+}
+
+export function patchNccSelfProfileRequest(input: NccSelfProfileInput) {
+  return apiJson<{ profile: NccSelfProfileDto }>("/api/ncc/account/profile", {
+    method: "PATCH",
+    body: JSON.stringify(input),
+  });
+}
+
 export function switchRoleRequest(role: Role) {
   return apiJson<AuthSessionDto>("/api/auth/switch-role", {
     method: "POST",
@@ -288,7 +319,11 @@ export function patchNccStaffUserRequest(
   );
 }
 
-function nccUserActionRequest<T>(userId: string, action: string, body?: unknown) {
+function nccUserActionRequest<T>(
+  userId: string,
+  action: string,
+  body?: unknown
+) {
   return apiJson<T>(
     `/api/ncc/directory/users/${encodeURIComponent(userId)}/${action}`,
     {
@@ -331,6 +366,61 @@ export function cancelNccStaffInvitationRequest(userId: string) {
   );
 }
 
+export type NccMoodleUserDto = {
+  id: number;
+  username: string | null;
+  firstName: string | null;
+  lastName: string | null;
+  fullName: string | null;
+  email: string | null;
+};
+
+export type NccMoodleBindInput =
+  | { mode: "create" }
+  | { mode: "link"; moodleUserId: number };
+
+export type NccMoodleOneTimeDto = { generatedMoodlePassword: string | null };
+
+export function fetchNccMoodleUsersRequest(q: string) {
+  return apiJson<{ items: NccMoodleUserDto[] }>(
+    `/api/ncc/moodle/users?q=${encodeURIComponent(q)}`
+  );
+}
+
+export function bindNccStaffMoodleRequest(
+  userId: string,
+  input: NccMoodleBindInput
+) {
+  return apiJson<{ user: NccStaffUserDto; oneTime: NccMoodleOneTimeDto }>(
+    `/api/ncc/directory/users/${encodeURIComponent(userId)}/moodle`,
+    { method: "POST", body: JSON.stringify(input) }
+  );
+}
+
+export function resetNccStaffMoodlePasswordRequest(userId: string) {
+  return apiJson<{ oneTime: { generatedMoodlePassword: string } }>(
+    `/api/ncc/directory/users/${encodeURIComponent(userId)}/moodle/password`,
+    { method: "POST" }
+  );
+}
+
+export function bindNccStudentMoodleRequest(
+  studentId: string,
+  input: NccMoodleBindInput
+) {
+  return apiJson<{ student: NccStudentDto; oneTime: NccMoodleOneTimeDto }>(
+    `/api/ncc/admissions/students/${encodeURIComponent(studentId)}/moodle`,
+    { method: "POST", body: JSON.stringify(input) }
+  );
+}
+
+export function resetNccStudentMoodlePasswordRequest(studentId: string) {
+  return apiJson<{ oneTime: { generatedMoodlePassword: string } }>(
+    `/api/ncc/admissions/students/${encodeURIComponent(studentId)}/moodle/password`,
+    { method: "POST" }
+  );
+}
+
 export function validateNccInvitationRequest(token: string) {
   return apiJson<{ email: string; expiresAt: string }>(
     "/api/ncc/invitations/validate",
@@ -345,6 +435,25 @@ export function acceptNccInvitationRequest(token: string, password: string) {
   });
 }
 
+export type NccStudentGuardianDto = {
+  sortOrder: 1 | 2;
+  name: string;
+  phone: string;
+  email: string;
+  relationship: string;
+};
+
+export type NccStudentIdentityInput = {
+  nationality: string;
+  address: string;
+  gender: "male" | "female";
+  dateOfBirth: string;
+  phone?: string | null;
+  passportNumber?: string | null;
+  nationalId?: string | null;
+  guardians?: NccStudentGuardianDto[];
+};
+
 export type NccStudentDto = {
   id: string;
   firstName: string;
@@ -353,16 +462,16 @@ export type NccStudentDto = {
   email: string;
   phone: string | null;
   dateOfBirth: string | null;
+  nationality: string | null;
+  address: string | null;
+  gender: "male" | "female" | null;
+  passportNumber: string | null;
+  nationalId: string | null;
+  guardians: NccStudentGuardianDto[];
   branchId: string;
   branchName: string;
   status: "active" | "disabled";
   moodleLinked: boolean;
-  guardian: {
-    name: string | null;
-    phone: string | null;
-    email: string | null;
-    relationship: string | null;
-  } | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -385,11 +494,20 @@ export type NccLeadDto = {
   phone: string | null;
   branchId: string;
   branchName: string;
-  preferredCourseId: string | null;
-  preferredCourseName: string | null;
+  preferredCourses: Array<{ id: string; name: string }>;
+  wantsOnline: boolean;
+  wantsOnsite: boolean;
+  entryPath: "direct" | "placement" | "trial" | "unset" | null;
   source: string | null;
   notes: string | null;
-  status: "new" | "contacted" | "qualified" | "converted" | "lost";
+  status:
+    | "new"
+    | "placement_test"
+    | "trial_lesson"
+    | "pending"
+    | "ready"
+    | "converted"
+    | "cancelled";
   studentId: string | null;
   createdAt: string;
   updatedAt: string;
@@ -432,6 +550,7 @@ export type NccClassDto = {
   startAt: string;
   endAt: string;
   teachers: Array<{ id: string; name: string; email: string }>;
+  teacherIds: string[];
   moodleGroupId: number | null;
   schedule: {
     daysOfWeek: number[] | null;
@@ -441,7 +560,9 @@ export type NccClassDto = {
   defaultRoomId: string | null;
   defaultRoomName: string | null;
   status: "active" | "disabled";
+  sortOrder: number;
   activeEnrolmentCount: number;
+  createdBy: string | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -453,6 +574,57 @@ export type NccRoomDto = {
   name: string;
   capacity: number | null;
   status: "active" | "disabled";
+  sortOrder: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type NccCourseDto = {
+  id: string;
+  fullname: string;
+  shortname: string;
+  departmentId: string;
+  departmentName: string;
+  status: "active" | "disabled";
+  moodleCourseId: number;
+  idNumber: string | null;
+  displayName: string | null;
+  categoryId: number | null;
+  categoryName: string | null;
+  moodleVisible: boolean | null;
+  moodleAttendanceId: number | null;
+  moodleRefreshedAt: string;
+  moodleRefreshError: string | null;
+  warnings: string[];
+  departmentStatus: "active" | "disabled";
+  sortOrder: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type NccMoodleCourseDto = {
+  id: number;
+  shortname: string;
+  idNumber: string | null;
+  fullname: string;
+  displayName: string | null;
+  categoryId: number | null;
+  categoryName: string | null;
+  visible: boolean | null;
+};
+
+export type NccMoodleCoursePickerDto = {
+  refreshedAt: string | null;
+  warnings: string[];
+  error: string | null;
+  courses: NccMoodleCourseDto[];
+};
+
+export type NccMoodleGroupDto = {
+  id: number;
+  name: string;
+  idNumber: string | null;
+  moodleCourseId: number;
 };
 
 export type NccTeacherWorkspaceDto = {
@@ -532,6 +704,748 @@ export function fetchNccTeacherWorkspaceRequest() {
   return apiJson<{ workspace: NccTeacherWorkspaceDto }>(
     "/api/ncc/delivery/teacher-workspace"
   );
+}
+
+export function fetchNccMoodleCoursesRequest(q?: string, refresh?: boolean) {
+  const params = new URLSearchParams();
+  if (q?.trim()) params.set("q", q.trim());
+  if (refresh) params.set("refresh", "true");
+  const suffix = params.size ? `?${params.toString()}` : "";
+  return apiJson<NccMoodleCoursePickerDto>(
+    `/api/ncc/delivery/moodle-courses${suffix}`
+  );
+}
+
+export function fetchNccCourseRequest(courseId: string) {
+  return apiJson<{ course: NccCourseDto }>(
+    `/api/ncc/delivery/courses/${encodeURIComponent(courseId)}`
+  );
+}
+
+export function createNccCourseRequest(input: {
+  departmentId: string;
+  moodleCourseId: number;
+  sortOrder?: number;
+}) {
+  return apiJson<{ course: NccCourseDto }>("/api/ncc/delivery/courses", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export function patchNccCourseRequest(
+  courseId: string,
+  input: {
+    departmentId?: string;
+    sortOrder?: number;
+    moodleAttendanceId?: number | null;
+  }
+) {
+  return apiJson<{ course: NccCourseDto }>(
+    `/api/ncc/delivery/courses/${encodeURIComponent(courseId)}`,
+    { method: "PATCH", body: JSON.stringify(input) }
+  );
+}
+
+export function disableNccCourseRequest(courseId: string) {
+  return apiJson<{ course: NccCourseDto }>(
+    `/api/ncc/delivery/courses/${encodeURIComponent(courseId)}/disable`,
+    { method: "POST" }
+  );
+}
+
+export function enableNccCourseRequest(courseId: string) {
+  return apiJson<{ course: NccCourseDto }>(
+    `/api/ncc/delivery/courses/${encodeURIComponent(courseId)}/enable`,
+    { method: "POST" }
+  );
+}
+
+export function refreshNccCourseRequest(courseId: string) {
+  return apiJson<{ course: NccCourseDto }>(
+    `/api/ncc/delivery/courses/${encodeURIComponent(courseId)}/refresh`,
+    { method: "POST" }
+  );
+}
+
+export function fetchNccRoomRequest(roomId: string) {
+  return apiJson<{ room: NccRoomDto }>(
+    `/api/ncc/delivery/rooms/${encodeURIComponent(roomId)}`
+  );
+}
+
+export function createNccRoomRequest(input: {
+  name: string;
+  capacity?: number | null;
+  sortOrder?: number;
+  branchId?: string;
+}) {
+  return apiJson<{ room: NccRoomDto }>("/api/ncc/delivery/rooms", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export function patchNccRoomRequest(
+  roomId: string,
+  input: { name?: string; capacity?: number | null; sortOrder?: number }
+) {
+  return apiJson<{ room: NccRoomDto }>(
+    `/api/ncc/delivery/rooms/${encodeURIComponent(roomId)}`,
+    { method: "PATCH", body: JSON.stringify(input) }
+  );
+}
+
+export function disableNccRoomRequest(roomId: string) {
+  return apiJson<{ room: NccRoomDto }>(
+    `/api/ncc/delivery/rooms/${encodeURIComponent(roomId)}/disable`,
+    { method: "POST" }
+  );
+}
+
+export function enableNccRoomRequest(roomId: string) {
+  return apiJson<{ room: NccRoomDto }>(
+    `/api/ncc/delivery/rooms/${encodeURIComponent(roomId)}/enable`,
+    { method: "POST" }
+  );
+}
+
+export type NccClassScheduleInput = {
+  daysOfWeek: number[];
+  startTime: string;
+  endTime: string;
+} | null;
+
+export type NccClassCreateInput = {
+  name: string;
+  courseId: string;
+  capacity: number;
+  startAt: string;
+  endAt: string;
+  teacherIds?: string[];
+  sortOrder?: number;
+  schedule?: NccClassScheduleInput;
+  defaultRoomId?: string | null;
+  branchId?: string;
+};
+
+export type NccClassPatchInput = {
+  name?: string;
+  capacity?: number;
+  startAt?: string;
+  endAt?: string;
+  teacherIds?: string[];
+  sortOrder?: number;
+  schedule?: NccClassScheduleInput;
+  defaultRoomId?: string | null;
+};
+
+export function createNccClassRequest(input: NccClassCreateInput) {
+  return apiJson<{ class: NccClassDto }>("/api/ncc/delivery/classes", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export function patchNccClassRequest(
+  classId: string,
+  input: NccClassPatchInput
+) {
+  return apiJson<{ class: NccClassDto }>(
+    `/api/ncc/delivery/classes/${encodeURIComponent(classId)}`,
+    { method: "PATCH", body: JSON.stringify(input) }
+  );
+}
+
+export function disableNccClassRequest(classId: string) {
+  return apiJson<{ class: NccClassDto }>(
+    `/api/ncc/delivery/classes/${encodeURIComponent(classId)}/disable`,
+    { method: "POST" }
+  );
+}
+
+export function enableNccClassRequest(classId: string) {
+  return apiJson<{ class: NccClassDto }>(
+    `/api/ncc/delivery/classes/${encodeURIComponent(classId)}/enable`,
+    { method: "POST" }
+  );
+}
+
+export function fetchNccMoodleGroupsRequest(courseId: string, q: string) {
+  const params = new URLSearchParams({ courseId, q });
+  return apiJson<{ items: NccMoodleGroupDto[] }>(
+    `/api/ncc/delivery/moodle-groups?${params.toString()}`
+  );
+}
+
+export function bindNccClassMoodleRequest(
+  classId: string,
+  input: { mode: "create" } | { mode: "link"; moodleGroupId: number }
+) {
+  return apiJson<{ class: NccClassDto }>(
+    `/api/ncc/delivery/classes/${encodeURIComponent(classId)}/moodle`,
+    { method: "POST", body: JSON.stringify(input) }
+  );
+}
+
+export function syncNccClassMoodleRequest(classId: string) {
+  return apiJson<{ class: NccClassDto }>(
+    `/api/ncc/delivery/classes/${encodeURIComponent(classId)}/moodle/sync`,
+    { method: "POST" }
+  );
+}
+
+export type NccClassEnrolmentDto = {
+  studentId: string;
+  classId: string;
+  className: string;
+  courseId: string;
+  courseName: string;
+  status: "pending" | "enrolled" | "cancelled" | "completed";
+  enrolledAt: string | null;
+  withdrawnAt: string | null;
+  student: {
+    branchId: string;
+    email: string;
+    firstName: string;
+    lastName: string;
+    moodleLinked: boolean;
+  };
+};
+
+export type NccSessionDto = {
+  id: string;
+  classId: string;
+  className: string;
+  branchId: string;
+  roomId: string | null;
+  roomName: string | null;
+  teacherId: string | null;
+  teacherName: string | null;
+  startsAt: string;
+  endsAt: string;
+  durationHours: number;
+  status: "scheduled" | "cancelled";
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type NccSessionSlotDto = {
+  startsAt: string;
+  durationHours: number;
+  teacherId: string;
+  roomId: string | null;
+};
+
+export type NccSessionSlotInput = {
+  startsAt: string;
+  durationHours: number;
+  teacherId: string;
+  roomId?: string | null;
+};
+
+export type NccAttendanceStatusDto = {
+  id: number;
+  acronym: string | null;
+  description: string | null;
+};
+
+export type NccAttendanceStudentDto = {
+  studentId: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+  moodleUserId: number | null;
+  statusId: string | null;
+  statusAcronym: string | null;
+  statusDescription: string | null;
+  remarks: string | null;
+};
+
+export type NccAttendanceDetailDto = {
+  moodleSessionId: number;
+  attendanceId: number;
+  emsSessionId: string | null;
+  sessionDate: string | null;
+  durationSeconds: number;
+  moodleGroupId: number;
+  statuses: NccAttendanceStatusDto[];
+  students: NccAttendanceStudentDto[];
+};
+
+export type NccGradeItemDto = {
+  id: number;
+  itemName: string | null;
+  itemType: string | null;
+  itemModule: string | null;
+  gradeFormatted: string | null;
+  percentageFormatted: string | null;
+  gradeMin: number | null;
+  gradeMax: number | null;
+};
+
+export type NccClassGradesDto = {
+  classId: string;
+  moodleCourseId: number;
+  courseName: string | null;
+  students: Array<{
+    studentId: string;
+    firstName: string;
+    lastName: string;
+    email: string;
+    moodleUserId: number | null;
+    courseGrade: string | null;
+    gradeItems: NccGradeItemDto[];
+  }>;
+};
+
+export function fetchNccClassEnrolmentsRequest(classId: string) {
+  return apiJson<{ items: NccClassEnrolmentDto[] }>(
+    `/api/ncc/delivery/classes/${encodeURIComponent(classId)}/enrolments`
+  );
+}
+
+export function createNccClassEnrolmentRequest(
+  classId: string,
+  input: { studentId: string; status?: "pending" | "enrolled" }
+) {
+  return apiJson<{ enrolment: NccClassEnrolmentDto }>(
+    `/api/ncc/delivery/classes/${encodeURIComponent(classId)}/enrolments`,
+    { method: "POST", body: JSON.stringify(input) }
+  );
+}
+
+export function withdrawNccClassEnrolmentRequest(
+  classId: string,
+  studentId: string
+) {
+  return apiJson<{ enrolment: NccClassEnrolmentDto }>(
+    `/api/ncc/delivery/classes/${encodeURIComponent(classId)}/enrolments/${encodeURIComponent(studentId)}/withdraw`,
+    { method: "POST" }
+  );
+}
+
+export function completeNccClassEnrolmentRequest(
+  classId: string,
+  studentId: string
+) {
+  return apiJson<{ enrolment: NccClassEnrolmentDto }>(
+    `/api/ncc/delivery/classes/${encodeURIComponent(classId)}/enrolments/${encodeURIComponent(studentId)}/complete`,
+    { method: "POST" }
+  );
+}
+
+export function fetchNccClassSessionsRequest(classId: string) {
+  return apiJson<{ items: NccSessionDto[] }>(
+    `/api/ncc/delivery/classes/${encodeURIComponent(classId)}/sessions`
+  );
+}
+
+export function proposeNccClassSessionsRequest(
+  classId: string,
+  input: {
+    weekdays: number[];
+    hoursPerDay: number;
+    fromDate: string;
+    toDate: string;
+    startHour?: number;
+  }
+) {
+  return apiJson<{ slots: NccSessionSlotDto[] }>(
+    `/api/ncc/delivery/classes/${encodeURIComponent(classId)}/sessions/propose`,
+    { method: "POST", body: JSON.stringify(input) }
+  );
+}
+
+export function confirmNccClassSessionsRequest(
+  classId: string,
+  input: { slots: NccSessionSlotInput[] }
+) {
+  return apiJson<{ items: NccSessionDto[]; createdCount: number }>(
+    `/api/ncc/delivery/classes/${encodeURIComponent(classId)}/sessions/confirm`,
+    { method: "POST", body: JSON.stringify(input) }
+  );
+}
+
+export function batchNccClassSessionsRequest(
+  classId: string,
+  input: { slots: NccSessionSlotInput[] }
+) {
+  return apiJson<{ items: NccSessionDto[]; createdCount: number }>(
+    `/api/ncc/delivery/classes/${encodeURIComponent(classId)}/sessions/batch`,
+    { method: "POST", body: JSON.stringify(input) }
+  );
+}
+
+export function fetchNccSessionRequest(sessionId: string) {
+  return apiJson<{ session: NccSessionDto }>(
+    `/api/ncc/delivery/sessions/${encodeURIComponent(sessionId)}`
+  );
+}
+
+export function patchNccSessionRequest(
+  sessionId: string,
+  input: {
+    startsAt?: string;
+    endsAt?: string;
+    durationHours?: number;
+    teacherId?: string;
+    roomId?: string | null;
+  }
+) {
+  return apiJson<{ session: NccSessionDto }>(
+    `/api/ncc/delivery/sessions/${encodeURIComponent(sessionId)}`,
+    { method: "PATCH", body: JSON.stringify(input) }
+  );
+}
+
+export function cancelNccSessionRequest(sessionId: string) {
+  return apiJson<{ session: NccSessionDto }>(
+    `/api/ncc/delivery/sessions/${encodeURIComponent(sessionId)}/cancel`,
+    { method: "POST" }
+  );
+}
+
+export function fetchNccSessionAttendanceRequest(sessionId: string) {
+  return apiJson<{ attendance: NccAttendanceDetailDto }>(
+    `/api/ncc/delivery/sessions/${encodeURIComponent(sessionId)}/attendance`
+  );
+}
+
+export function markNccSessionAttendanceRequest(
+  sessionId: string,
+  input: { marks: Array<{ studentId: string; statusId: number }> }
+) {
+  return apiJson<{ attendance: NccAttendanceDetailDto }>(
+    `/api/ncc/delivery/sessions/${encodeURIComponent(sessionId)}/attendance`,
+    { method: "POST", body: JSON.stringify(input) }
+  );
+}
+
+export function fetchNccClassGradesRequest(classId: string) {
+  return apiJson<{ grades: NccClassGradesDto }>(
+    `/api/ncc/delivery/classes/${encodeURIComponent(classId)}/grades`
+  );
+}
+
+export type NccHealthStatusDto =
+  | "ok"
+  | "warning"
+  | "error"
+  | "not_configured";
+
+export type NccSystemHealthDto = {
+  status: "healthy" | "degraded" | "unhealthy";
+  checkedAt: string;
+  components: {
+    api: { status: NccHealthStatusDto; detail: string | null };
+    database: { status: NccHealthStatusDto; detail: string | null };
+    schemaCheck: {
+      status: NccHealthStatusDto;
+      detail: string | null;
+      missingTables: string[] | null;
+    };
+    migration: {
+      status: NccHealthStatusDto;
+      detail: string | null;
+      version: string | null;
+    };
+    moodle: {
+      status: NccHealthStatusDto;
+      detail: string | null;
+      configured: boolean | null;
+      reachable: boolean | null;
+      siteName: string | null;
+      release: string | null;
+      versionExpected: boolean | null;
+      warnings: string[] | null;
+    };
+  };
+};
+
+export function fetchNccSystemHealthRequest() {
+  return apiJson<{ health: NccSystemHealthDto }>("/api/ncc/system/health");
+}
+
+export type NccDashboardCardsDto = {
+  activeStudents: number;
+  openLeads: number;
+  activeClasses: number;
+  enrolmentFill: number;
+  enrolmentCapacity: number;
+  scheduledPlacements: number;
+  scheduledTrials: number;
+  staffCount: number | null;
+};
+
+export type NccDashboardBranchDto = NccDashboardCardsDto & {
+  branchId: string;
+  branchName: string;
+};
+
+export type NccDashboardNamedCountDto = {
+  key: string;
+  label: string;
+  count: number;
+};
+
+export type NccDashboardClassFillDto = {
+  branchId: string;
+  branchName: string;
+  enrolmentFill: number;
+  enrolmentCapacity: number;
+  fillPct: number | null;
+};
+
+export type NccDashboardSummaryDto = {
+  cards: NccDashboardCardsDto;
+  byBranch: NccDashboardBranchDto[];
+  charts: {
+    studentsByBranch: NccDashboardNamedCountDto[];
+    leadsByStatus: NccDashboardNamedCountDto[];
+    placementTrialByStatus: NccDashboardNamedCountDto[];
+    classFillByBranch: NccDashboardClassFillDto[];
+  };
+};
+
+export function fetchNccDashboardSummaryRequest() {
+  return apiJson<{ summary: NccDashboardSummaryDto }>(
+    "/api/ncc/dashboard/summary"
+  );
+}
+
+export type NccAuditStreamDto =
+  | "auth"
+  | "branch"
+  | "department"
+  | "course"
+  | "custom_field"
+  | "moodle_site"
+  | "student"
+  | "lead"
+  | "placement_test"
+  | "class"
+  | "enrolment"
+  | "room"
+  | "session";
+
+export type NccAuditEventDto = {
+  id: string;
+  stream: NccAuditStreamDto;
+  eventType: string;
+  createdAt: string;
+  actorDisplayName: string | null;
+  actorUserId: string | null;
+  branchId: string | null;
+  entityId: string | null;
+  entityLabel: string | null;
+  secondaryEntityId: string | null;
+  targetUserId: string | null;
+};
+
+export function fetchNccAuditEventsRequest(
+  query: {
+    stream?: NccAuditStreamDto;
+    eventType?: string;
+    limit?: number;
+  } = {}
+) {
+  const params = new URLSearchParams();
+  if (query.stream) params.set("stream", query.stream);
+  if (query.eventType) params.set("eventType", query.eventType);
+  params.set("limit", String(query.limit ?? 100));
+  return apiJson<{ items: NccAuditEventDto[] }>(
+    `/api/ncc/audit/events?${params.toString()}`
+  );
+}
+
+export type NccNotificationDto = {
+  id: string;
+  category: string;
+  kind: string;
+  title: string;
+  body: string | null;
+  createdAt: string;
+  readAt: string | null;
+};
+
+export function fetchNccNotificationsRequest(
+  query: { unread?: boolean; limit?: number } = {}
+) {
+  const params = new URLSearchParams();
+  if (query.unread !== undefined) params.set("unread", String(query.unread));
+  params.set("limit", String(query.limit ?? 6));
+  return apiJson<{ items: NccNotificationDto[] }>(
+    `/api/ncc/notifications?${params.toString()}`
+  );
+}
+
+export function fetchNccNotificationUnreadCountRequest() {
+  return apiJson<{ unreadCount: number }>(
+    "/api/ncc/notifications/unread-count"
+  );
+}
+
+export function markNccNotificationReadRequest(notificationId: string) {
+  return apiJson<{ notification: NccNotificationDto }>(
+    `/api/ncc/notifications/${encodeURIComponent(notificationId)}/read`,
+    { method: "POST" }
+  );
+}
+
+export function markAllNccNotificationsReadRequest() {
+  return apiJson<{ markedRead: number }>("/api/ncc/notifications/read-all", {
+    method: "POST",
+  });
+}
+
+export type NccLeadWriteInput = {
+  firstName?: string;
+  lastName?: string;
+  email?: string;
+  phone?: string | null;
+  source?: string | null;
+  notes?: string | null;
+  preferredCourseIds?: string[];
+  wantsOnline?: boolean;
+  wantsOnsite?: boolean;
+  entryPath?: NccLeadDto["entryPath"];
+  branchId?: string;
+  status?: "new" | "placement_test" | "trial_lesson" | "pending" | "cancelled";
+};
+
+export type NccStudentWriteInput = {
+  firstName?: string;
+  lastName?: string;
+  email?: string;
+  phone?: string | null;
+  dateOfBirth?: string | null;
+  nationality?: string | null;
+  address?: string | null;
+  gender?: "male" | "female" | null;
+  passportNumber?: string | null;
+  nationalId?: string | null;
+  guardians?: NccStudentGuardianDto[];
+  branchId?: string;
+};
+
+export function createNccLeadRequest(
+  input: Required<Pick<NccLeadWriteInput, "firstName" | "lastName" | "email">> &
+    NccLeadWriteInput
+) {
+  return apiJson<{ lead: NccLeadDto }>("/api/ncc/admissions/leads", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export function patchNccLeadRequest(leadId: string, input: NccLeadWriteInput) {
+  return apiJson<{ lead: NccLeadDto }>(
+    `/api/ncc/admissions/leads/${encodeURIComponent(leadId)}`,
+    { method: "PATCH", body: JSON.stringify(input) }
+  );
+}
+
+export function convertNccLeadRequest(
+  leadId: string,
+  input: NccStudentIdentityInput
+) {
+  return apiJson<{ lead: NccLeadDto; student: NccStudentDto }>(
+    `/api/ncc/admissions/leads/${encodeURIComponent(leadId)}/convert`,
+    { method: "POST", body: JSON.stringify(input) }
+  );
+}
+
+export function markNccLeadReadyRequest(leadId: string) {
+  return apiJson<{ lead: NccLeadDto }>(
+    `/api/ncc/admissions/leads/${encodeURIComponent(leadId)}/ready`,
+    { method: "POST" }
+  );
+}
+
+export function createNccStudentRequest(
+  input: NccStudentIdentityInput & {
+    firstName: string;
+    lastName: string;
+    email: string;
+    branchId?: string;
+  }
+) {
+  return apiJson<{ student: NccStudentDto }>("/api/ncc/admissions/students", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export function patchNccStudentRequest(
+  studentId: string,
+  input: NccStudentWriteInput
+) {
+  return apiJson<{ student: NccStudentDto }>(
+    `/api/ncc/admissions/students/${encodeURIComponent(studentId)}`,
+    { method: "PATCH", body: JSON.stringify(input) }
+  );
+}
+
+export function disableNccStudentRequest(studentId: string) {
+  return apiJson<{ student: NccStudentDto }>(
+    `/api/ncc/admissions/students/${encodeURIComponent(studentId)}/disable`,
+    { method: "POST" }
+  );
+}
+
+export function enableNccStudentRequest(studentId: string) {
+  return apiJson<{ student: NccStudentDto }>(
+    `/api/ncc/admissions/students/${encodeURIComponent(studentId)}/enable`,
+    { method: "POST" }
+  );
+}
+
+export function createNccPlacementTestRequest(input: {
+  subject: { type: "lead" | "student"; id: string };
+  scheduledAt: string;
+  roomId?: string | null;
+  branchId?: string;
+}) {
+  return apiJson<{ placementTest: NccPlacementTestDto }>(
+    "/api/ncc/admissions/placement-tests",
+    { method: "POST", body: JSON.stringify(input) }
+  );
+}
+
+export function patchNccPlacementTestRequest(
+  placementTestId: string,
+  input: { scheduledAt?: string; roomId?: string | null; status?: "no_show" }
+) {
+  return apiJson<{ placementTest: NccPlacementTestDto }>(
+    `/api/ncc/admissions/placement-tests/${encodeURIComponent(placementTestId)}`,
+    { method: "PATCH", body: JSON.stringify(input) }
+  );
+}
+
+export function cancelNccPlacementTestRequest(placementTestId: string) {
+  return apiJson<{ placementTest: NccPlacementTestDto }>(
+    `/api/ncc/admissions/placement-tests/${encodeURIComponent(placementTestId)}/cancel`,
+    { method: "POST" }
+  );
+}
+
+export function recordNccPlacementResultRequest(
+  placementTestId: string,
+  input: {
+    recommendedCourseId: string;
+    resultScore?: string | null;
+    resultNotes?: string | null;
+  }
+) {
+  return apiJson<{ placementTest: NccPlacementTestDto }>(
+    `/api/ncc/admissions/placement-tests/${encodeURIComponent(placementTestId)}/record-result`,
+    { method: "POST", body: JSON.stringify(input) }
+  );
+}
+
+export function fetchNccCoursesRequest() {
+  return apiJson<{ items: NccCourseDto[] }>("/api/ncc/delivery/courses");
 }
 
 export type MoodleCommandCapabilitiesDto = {

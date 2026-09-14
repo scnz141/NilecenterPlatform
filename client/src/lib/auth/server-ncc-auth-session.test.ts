@@ -2,11 +2,14 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   acceptNccInvitation,
+  changeNccPassword,
   getNccRequestSession,
+  getNccSelfProfile,
   listNccWorkspaces,
   loginNccStaff,
   logoutNccSession,
   nccStaffAuthEnabled,
+  patchNccSelfProfile,
   resolveNccAuthSession,
   switchNccRole,
   switchNccWorkspace,
@@ -339,8 +342,7 @@ describe("NCC staff auth session", () => {
       response,
       {
         env: env(),
-        createClient: () =>
-          ({ acceptInvitation, me: meRequest }) as never,
+        createClient: () => ({ acceptInvitation, me: meRequest }) as never,
       }
     );
 
@@ -351,6 +353,151 @@ describe("NCC staff auth session", () => {
     expect(meRequest).toHaveBeenCalledWith("access-ncc-session-1");
     expect(session.provider).toBe("ncc");
     expect(sessionCookie(headers)).toBeTruthy();
+  });
+
+  it("reads the self profile with the sealed token and refreshes once", async () => {
+    const initial = await login();
+    const profile = {
+      user: {
+        profile: {
+          first_name: "NCC",
+          last_name: "Staff",
+          phone: "+20",
+        },
+      },
+    };
+    const api = {
+      me: vi
+        .fn()
+        .mockResolvedValueOnce({
+          ok: false,
+          error: { error: "Not authenticated", status: 401 },
+        })
+        .mockResolvedValueOnce({ ok: true, data: profile })
+        .mockResolvedValueOnce({
+          ok: true,
+          data: me({ sessionId: "ncc-session-2" }),
+        }),
+      refresh: vi.fn(async () => ({
+        ok: true,
+        data: tokens("ncc-session-2"),
+      })),
+    };
+    const { headers, response } = responseRecorder();
+    const result = await getNccSelfProfile(
+      { headers: { cookie: initial.cookie } },
+      response,
+      { env: env(), createClient: () => api as never }
+    );
+    expect(api.refresh).toHaveBeenCalledWith("refresh-ncc-session-1");
+    expect(api.me).toHaveBeenNthCalledWith(1, "access-ncc-session-1");
+    expect(api.me).toHaveBeenNthCalledWith(2, "access-ncc-session-2");
+    expect(result).toEqual({
+      firstName: "NCC",
+      lastName: "Staff",
+      phone: "+20",
+      address: null,
+      nationality: null,
+      dateOfBirth: null,
+      notes: null,
+    });
+    expect(result).not.toHaveProperty("user");
+    expect(result).not.toHaveProperty("scopes");
+    expect(sessionCookie(headers)).toBeTruthy();
+  });
+
+  it("fails closed on a malformed self profile", async () => {
+    const initial = await login();
+    const api = {
+      me: vi.fn(async () => ({ ok: true, data: { user: {} } })),
+    };
+    const { response } = responseRecorder();
+    await expect(
+      getNccSelfProfile({ headers: { cookie: initial.cookie } }, response, {
+        env: env(),
+        createClient: () => api as never,
+      })
+    ).rejects.toMatchObject({
+      status: 502,
+      message: "NCC EMS returned invalid profile data.",
+    });
+  });
+
+  it("patches the self profile through a closed snake_case body", async () => {
+    const initial = await login();
+    const patchMe = vi.fn(async () => ({
+      ok: true,
+      data: {
+        user: {
+          profile: {
+            first_name: "New",
+            last_name: "Name",
+            phone: "+20",
+            notes: null,
+          },
+        },
+      },
+    }));
+    const { response } = responseRecorder();
+    const result = await patchNccSelfProfile(
+      { headers: { cookie: initial.cookie } },
+      response,
+      {
+        firstName: "New",
+        lastName: "Name",
+        phone: "+20",
+        notes: null,
+      },
+      { env: env(), createClient: () => ({ patchMe }) as never }
+    );
+    expect(patchMe).toHaveBeenCalledWith("access-ncc-session-1", {
+      profile: {
+        first_name: "New",
+        last_name: "Name",
+        phone: "+20",
+        notes: null,
+      },
+    });
+    expect(result).toMatchObject({
+      firstName: "New",
+      lastName: "Name",
+      phone: "+20",
+      notes: null,
+    });
+    const failing = {
+      patchMe: vi.fn(async () => ({
+        ok: false,
+        error: { error: "Invalid profile", status: 422, details: { x: 1 } },
+      })),
+    };
+    const { response: failedResponse } = responseRecorder();
+    await expect(
+      patchNccSelfProfile(
+        { headers: { cookie: initial.cookie } },
+        failedResponse,
+        { firstName: "New", lastName: "Name" },
+        { env: env(), createClient: () => failing as never }
+      )
+    ).rejects.toMatchObject({ status: 422, details: { x: 1 } });
+  });
+
+  it("changes the password through the provider without returning secrets", async () => {
+    const initial = await login();
+    const changePassword = vi.fn(async () => ({ ok: true, data: null }));
+    const { response } = responseRecorder();
+    const result = await changeNccPassword(
+      { headers: { cookie: initial.cookie } },
+      response,
+      "old-password",
+      "new-password",
+      { env: env(), createClient: () => ({ changePassword }) as never }
+    );
+    expect(changePassword).toHaveBeenCalledWith(
+      "access-ncc-session-1",
+      "old-password",
+      "new-password"
+    );
+    expect(result).toBeUndefined();
   });
 
   it("rejects an invitation response without a complete token pair", async () => {

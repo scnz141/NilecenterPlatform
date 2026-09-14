@@ -5,6 +5,7 @@ export type TeacherClassSection =
   | "sessions"
   | "attendance"
   | "students"
+  | "grades"
   | "materials";
 
 const classSections: Array<{ key: TeacherClassSection; label: string }> = [
@@ -12,6 +13,7 @@ const classSections: Array<{ key: TeacherClassSection; label: string }> = [
   { key: "sessions", label: "Sessions" },
   { key: "attendance", label: "Attendance" },
   { key: "students", label: "Students" },
+  { key: "grades", label: "Grades" },
   { key: "materials", label: "Materials" },
 ];
 

@@ -644,8 +644,8 @@ export default function AuthFlowPage({ mode }: { mode: AuthFlowMode }) {
               <p className="auth-v2-status" role="status">
                 <span className="auth-v2-spinner" /> Validating invitation
               </p>
-            ) : nccInvitationStatus === "error" ? null :
-              nccInvitationStatus !== "ready" && !invitationAccessToken ? (
+            ) : nccInvitationStatus === "error" ? null : nccInvitationStatus !==
+                "ready" && !invitationAccessToken ? (
               <>
                 <label className="auth-v2-field">
                   <span>{ui("Account email")}</span>

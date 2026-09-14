@@ -149,6 +149,12 @@ const ProfileWorkspace = lazy(
 const BranchDirectoryPage = lazy(
   () => import("./pages/platform/BranchDirectoryPage")
 );
+const NccStudentCreate = lazy(
+  () => import("./components/platform/ncc/NccStudentCreate")
+);
+const NccStudentRecord = lazy(
+  () => import("./components/platform/ncc/NccStudentRecord")
+);
 const BranchClassCreatePage = lazy(
   () => import("./pages/platform/BranchClassCreatePage")
 );
@@ -891,6 +897,12 @@ function Router() {
           </ProtectedRoute>
         </Route>
 
+        <Route path="/app/admin/courses/new">
+          <ProtectedRoute role="superadmin" pageId="courses">
+            <AdminCoursesPage view="create" />
+          </ProtectedRoute>
+        </Route>
+
         <Route path="/app/admin/courses/:courseId">
           {params => (
             <ProtectedRoute role="superadmin" pageId="courses">
@@ -945,6 +957,14 @@ function Router() {
           <ProtectedRoute role="branchadmin" pageId="rooms">
             <BranchRoomsPage view="create" />
           </ProtectedRoute>
+        </Route>
+
+        <Route path="/app/branch/rooms/:roomId">
+          {params => (
+            <ProtectedRoute role="branchadmin" pageId="rooms">
+              <BranchRoomsPage view="detail" roomId={params.roomId} />
+            </ProtectedRoute>
+          )}
         </Route>
 
         <Route path="/app/branch/rooms">
@@ -1003,6 +1023,27 @@ function Router() {
           <ProtectedRoute role="branchadmin" pageId="reports">
             <BranchReportsPage />
           </ProtectedRoute>
+        </Route>
+
+        <Route path="/app/branch/students/new">
+          <ProtectedRoute role="branchadmin" pageId="students">
+            <NccStudentCreate
+              role="branchadmin"
+              backHref="/app/branch/students"
+            />
+          </ProtectedRoute>
+        </Route>
+
+        <Route path="/app/branch/students/:studentId">
+          {params => (
+            <ProtectedRoute role="branchadmin" pageId="students">
+              <NccStudentRecord
+                studentId={params.studentId}
+                role="branchadmin"
+                backHref="/app/branch/students"
+              />
+            </ProtectedRoute>
+          )}
         </Route>
 
         <Route path="/app/branch/students">
@@ -1352,6 +1393,14 @@ function Router() {
                 classId={params.classId}
                 studentId={params.studentId}
               />
+            </ProtectedRoute>
+          )}
+        </Route>
+
+        <Route path="/app/teacher/classes/:classId/grades">
+          {params => (
+            <ProtectedRoute role="teacher" pageId="grades">
+              <TeacherClassWorkspacePage classId={params.classId} view="grades" />
             </ProtectedRoute>
           )}
         </Route>

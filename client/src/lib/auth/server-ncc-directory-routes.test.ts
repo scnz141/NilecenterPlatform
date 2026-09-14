@@ -7,7 +7,10 @@ const sealKey = "test-only-ncc-auth-session-key-32-characters";
 const accessExpiresAt = "2099-01-01T00:15:00Z";
 const refreshExpiresAt = "2099-02-01T00:00:00Z";
 
-type RouteHandler = (request: Request, response: Response) => Promise<void> | void;
+type RouteHandler = (
+  request: Request,
+  response: Response
+) => Promise<void> | void;
 type Request = {
   headers: { cookie?: string };
   params?: Record<string, string>;
@@ -682,10 +685,14 @@ describe("NCC directory routes", () => {
     const { response, result } = responseRecorder();
 
     await routes.get("PATCH /api/ncc/directory/users/:userId")?.(
-      request(cookie, { userId: "staff-user-1" }, {
-        profile: { firstName: "Updated", lastName: "Admin", phone: null },
-        customFields: { employee_number: "A-2" },
-      }),
+      request(
+        cookie,
+        { userId: "staff-user-1" },
+        {
+          profile: { firstName: "Updated", lastName: "Admin", phone: null },
+          customFields: { employee_number: "A-2" },
+        }
+      ),
       response
     );
 
@@ -738,9 +745,9 @@ describe("NCC directory routes", () => {
       );
     }
 
-    expect(actions.every(([, recorder]) => recorder.result.status === 200)).toBe(
-      true
-    );
+    expect(
+      actions.every(([, recorder]) => recorder.result.status === 200)
+    ).toBe(true);
     expect(actions[2][1].result.body).toEqual({
       oneTime: { generatedPassword: "reset-password" },
     });
@@ -799,6 +806,222 @@ describe("NCC directory routes", () => {
           },
         ],
       },
+    });
+  });
+});
+
+describe("NCC Moodle staff account routes", () => {
+  const moodleEnv = () =>
+    env({ NILE_NCC_MOODLE_ACCOUNT_WRITES_ENABLED: "1" });
+
+  it("blocks staff Moodle operations while the flag is off or without a session", async () => {
+    const off = captureRoutes({ env: env(), api: {} });
+    const flagOff = responseRecorder();
+    await off.get("POST /api/ncc/directory/users/:userId/moodle")?.(
+      request("", { userId: "staff-user-1" }, { mode: "create" }),
+      flagOff.response
+    );
+    expect(flagOff.result).toEqual({
+      status: 503,
+      body: { error: "NCC Moodle account operations are not active." },
+    });
+
+    const on = captureRoutes({ env: moodleEnv(), api: {} });
+    const anonymous = responseRecorder();
+    await on.get("POST /api/ncc/directory/users/:userId/moodle")?.(
+      request("", { userId: "staff-user-1" }, { mode: "create" }),
+      anonymous.response
+    );
+    expect(anonymous.result).toEqual({
+      status: 404,
+      body: { error: "EMS directory is unavailable for this session." },
+    });
+  });
+
+  it("creates a staff Moodle account and returns the password once", async () => {
+    const cookie = await login();
+    const bindUserMoodle = vi.fn(async () => ({
+      ok: true,
+      data: {
+        ...staffUser({ moodle_user_id: 42 }),
+        generated_moodle_password: "moodle-pass-2",
+      },
+    }));
+    const routes = captureRoutes({
+      env: moodleEnv(),
+      api: { bindUserMoodle },
+    });
+    const { response, result } = responseRecorder();
+
+    await routes.get("POST /api/ncc/directory/users/:userId/moodle")?.(
+      request(cookie, { userId: "staff-user-1" }, { mode: "create" }),
+      response
+    );
+
+    expect(bindUserMoodle).toHaveBeenCalledWith(
+      "access-ncc-session-1",
+      "staff-user-1",
+      { mode: "create" }
+    );
+    expect(result.status).toBe(200);
+    expect(result.body).toMatchObject({
+      user: { id: "staff-user-1", moodleLinked: true },
+      oneTime: { generatedMoodlePassword: "moodle-pass-2" },
+    });
+    expect(JSON.stringify(result.body)).not.toContain(
+      "generated_moodle_password"
+    );
+  });
+
+  it("fails closed when staff create returns no generated password", async () => {
+    const cookie = await login();
+    const bindUserMoodle = vi.fn(async () => ({
+      ok: true,
+      data: staffUser(),
+    }));
+    const routes = captureRoutes({
+      env: moodleEnv(),
+      api: { bindUserMoodle },
+    });
+    const { response, result } = responseRecorder();
+
+    await routes.get("POST /api/ncc/directory/users/:userId/moodle")?.(
+      request(cookie, { userId: "staff-user-1" }, { mode: "create" }),
+      response
+    );
+
+    expect(result).toEqual({
+      status: 502,
+      body: { error: "NCC EMS returned invalid directory data." },
+    });
+  });
+
+  it("links a staff Moodle account with moodle_user_id and no password", async () => {
+    const cookie = await login();
+    const bindUserMoodle = vi.fn(async () => ({
+      ok: true,
+      data: staffUser({ moodle_user_id: 42 }),
+    }));
+    const routes = captureRoutes({
+      env: moodleEnv(),
+      api: { bindUserMoodle },
+    });
+    const { response, result } = responseRecorder();
+
+    await routes.get("POST /api/ncc/directory/users/:userId/moodle")?.(
+      request(
+        cookie,
+        { userId: "staff-user-1" },
+        { mode: "link", moodleUserId: 42 }
+      ),
+      response
+    );
+
+    expect(bindUserMoodle).toHaveBeenCalledWith(
+      "access-ncc-session-1",
+      "staff-user-1",
+      { mode: "link", moodle_user_id: 42 }
+    );
+    expect(result).toEqual({
+      status: 200,
+      body: {
+        user: expect.objectContaining({ moodleLinked: true }),
+        oneTime: { generatedMoodlePassword: null },
+      },
+    });
+    expect(JSON.stringify(result.body)).not.toContain(
+      "generated_moodle_password"
+    );
+  });
+
+  it("rejects invalid staff bind bodies before the provider call", async () => {
+    const cookie = await login();
+    const bindUserMoodle = vi.fn();
+    const routes = captureRoutes({
+      env: moodleEnv(),
+      api: { bindUserMoodle },
+    });
+    const route = routes.get("POST /api/ncc/directory/users/:userId/moodle");
+    for (const body of [
+      { mode: "link" },
+      { mode: "link", moodleUserId: -3 },
+      { mode: "link", moodleUserId: "42" },
+      { mode: "create", moodleUserId: 42 },
+      { mode: "create", extra: true },
+      {},
+    ]) {
+      const { response, result } = responseRecorder();
+      await route?.(
+        request(cookie, { userId: "staff-user-1" }, body),
+        response
+      );
+      expect(result.status).toBe(400);
+    }
+    expect(bindUserMoodle).not.toHaveBeenCalled();
+  });
+
+  it("resets a staff Moodle password through an empty POST", async () => {
+    const cookie = await login();
+    const resetUserMoodlePassword = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        data: { generated_moodle_password: "reset-pass-2" },
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        data: { generated_moodle_password: "" },
+      });
+    const routes = captureRoutes({
+      env: moodleEnv(),
+      api: { resetUserMoodlePassword },
+    });
+    const ok = responseRecorder();
+    const empty = responseRecorder();
+    const route = routes.get(
+      "POST /api/ncc/directory/users/:userId/moodle/password"
+    );
+
+    await route?.(request(cookie, { userId: "staff-user-1" }), ok.response);
+    await route?.(request(cookie, { userId: "staff-user-1" }), empty.response);
+
+    expect(resetUserMoodlePassword).toHaveBeenCalledWith(
+      "access-ncc-session-1",
+      "staff-user-1"
+    );
+    expect(ok.result).toEqual({
+      status: 200,
+      body: { oneTime: { generatedMoodlePassword: "reset-pass-2" } },
+    });
+    expect(JSON.stringify(ok.result.body)).not.toContain(
+      "generated_moodle_password"
+    );
+    expect(empty.result).toEqual({
+      status: 502,
+      body: { error: "NCC EMS returned invalid directory data." },
+    });
+  });
+
+  it("passes through scoped staff Moodle denials", async () => {
+    const cookie = await login();
+    const bindUserMoodle = vi.fn(async () => ({
+      ok: false,
+      error: { error: "User is outside your scope", status: 404 },
+    }));
+    const routes = captureRoutes({
+      env: moodleEnv(),
+      api: { bindUserMoodle },
+    });
+    const { response, result } = responseRecorder();
+
+    await routes.get("POST /api/ncc/directory/users/:userId/moodle")?.(
+      request(cookie, { userId: "staff-user-1" }, { mode: "create" }),
+      response
+    );
+
+    expect(result).toEqual({
+      status: 404,
+      body: { error: "User is outside your scope" },
     });
   });
 });

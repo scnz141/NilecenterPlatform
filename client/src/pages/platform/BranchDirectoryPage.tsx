@@ -111,6 +111,7 @@ function NccBranchDirectoryPage({ view }: { view: BranchDirectoryView }) {
                 metric: student.moodleLinked
                   ? "Moodle linked"
                   : "No Moodle account",
+                href: `/app/branch/students/${student.id}`,
               })),
             }
           : classifyNccFailure(result)
@@ -167,6 +168,7 @@ function NccBranchDirectoryPage({ view }: { view: BranchDirectoryView }) {
               scope: item.defaultRoomName ?? item.branchName,
               status: item.status,
               metric: `${item.activeEnrolmentCount}/${item.capacity} enrolled`,
+              href: `/app/branch/classes/${item.id}`,
             })),
           }
         : classifyNccFailure(result)
@@ -187,13 +189,21 @@ function NccBranchDirectoryPage({ view }: { view: BranchDirectoryView }) {
   });
   const copy = viewCopy[view];
   const action =
-    view === "classes" ? (
+    view === "students" ? (
+      <Link className="platform-primary-button" href="/app/branch/students/new">
+        <Plus size={15} />
+        New student
+      </Link>
+    ) : view === "classes" ? (
       <div className="platform-page-actions">
         <Link className="platform-secondary-button" href="/app/branch/schedule">
           Open schedule
           <ArrowRight size={15} />
         </Link>
-        <Link className="platform-primary-button" href="/app/branch/classes/new">
+        <Link
+          className="platform-primary-button"
+          href="/app/branch/classes/new"
+        >
           <Plus size={15} />
           New class
         </Link>
@@ -291,7 +301,7 @@ function NccBranchDirectoryPage({ view }: { view: BranchDirectoryView }) {
                       },
                     ]}
                     action={{
-                      href: () => undefined,
+                      href: row => row.href,
                       label: row => row.name,
                     }}
                   />

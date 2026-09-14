@@ -26,6 +26,7 @@ import {
   StatusBadge,
 } from "@/components/platform/PlatformPrimitives";
 import {
+  bindNccStaffMoodleRequest,
   cancelNccStaffInvitationRequest,
   disableNccStaffUserRequest,
   enableNccStaffUserRequest,
@@ -33,13 +34,16 @@ import {
   fetchNccDirectoryCustomFieldsRequest,
   fetchNccDirectoryDepartmentsRequest,
   fetchNccDirectoryUserRequest,
+  fetchNccMoodleUsersRequest,
   inviteNccStaffUserRequest,
   patchNccStaffUserRequest,
+  resetNccStaffMoodlePasswordRequest,
   resetNccStaffPasswordRequest,
   runPlatformWorkflowActionRequest,
   type NccBranchDto,
   type NccCustomFieldDefinitionDto,
   type NccDepartmentDto,
+  type NccMoodleUserDto,
   type NccStaffUserDto,
   type NccStaffUserPatchInput,
 } from "@/lib/backend/api";
@@ -150,6 +154,13 @@ function NccAdminUserDetail({
     value: string;
   } | null>(null);
   const [revealed, setRevealed] = useState(false);
+  const [linkOpen, setLinkOpen] = useState(false);
+  const [moodleQuery, setMoodleQuery] = useState("");
+  const [moodleSearch, setMoodleSearch] = useState<{
+    status: "idle" | "loading" | "error" | "ready";
+    items: NccMoodleUserDto[];
+  }>({ status: "idle", items: [] });
+  const [moodleUserId, setMoodleUserId] = useState<number | null>(null);
   const activeBranches = branches.filter(branch => branch.status === "active");
   const activeDepartments = departments.filter(
     department => department.status === "active"
@@ -171,7 +182,7 @@ function NccAdminUserDetail({
     setError(
       status === 401
         ? "Your password was not accepted."
-        : message ?? "The EMS account could not be updated."
+        : (message ?? "The EMS account could not be updated.")
     );
   };
 
@@ -256,7 +267,7 @@ function NccAdminUserDetail({
     if (!window.confirm("Generate a new temporary password?")) return;
     const stepUp =
       user.role === "superadmin"
-        ? window.prompt("Your current password") ?? ""
+        ? (window.prompt("Your current password") ?? "")
         : undefined;
     if (user.role === "superadmin" && !stepUp) return;
     setPending(true);
@@ -273,6 +284,82 @@ function NccAdminUserDetail({
           ? "Activate with a generated password"
           : "Temporary password",
       value: response.data.oneTime.generatedPassword,
+    });
+    setRevealed(false);
+  };
+
+  const moodleCreate = async () => {
+    if (pending) return;
+    setPending(true);
+    setError("");
+    const response = await bindNccStaffMoodleRequest(user.id, {
+      mode: "create",
+    });
+    setPending(false);
+    if (!response.ok || !response.data) {
+      fail(response.status, response.error);
+      return;
+    }
+    if (response.data.oneTime.generatedMoodlePassword) {
+      setOneTime({
+        label: "Moodle password",
+        value: response.data.oneTime.generatedMoodlePassword,
+      });
+      setRevealed(false);
+    }
+    await reload();
+  };
+
+  const moodleSearchUsers = async () => {
+    const query = moodleQuery.trim();
+    if (pending || query.length < 2) return;
+    setPending(true);
+    setError("");
+    setMoodleSearch({ status: "loading", items: [] });
+    setMoodleUserId(null);
+    const response = await fetchNccMoodleUsersRequest(query);
+    setPending(false);
+    if (!response.ok || !response.data) {
+      setMoodleSearch({ status: "error", items: [] });
+      fail(response.status, response.error);
+      return;
+    }
+    setMoodleSearch({ status: "ready", items: response.data.items });
+  };
+
+  const moodleLink = async () => {
+    if (pending || moodleUserId === null) return;
+    setPending(true);
+    setError("");
+    const response = await bindNccStaffMoodleRequest(user.id, {
+      mode: "link",
+      moodleUserId,
+    });
+    setPending(false);
+    if (!response.ok) {
+      fail(response.status, response.error);
+      return;
+    }
+    setLinkOpen(false);
+    setMoodleQuery("");
+    setMoodleSearch({ status: "idle", items: [] });
+    setMoodleUserId(null);
+    await reload();
+  };
+
+  const moodleReset = async () => {
+    if (!window.confirm("Generate a new Moodle password?")) return;
+    setPending(true);
+    setError("");
+    const response = await resetNccStaffMoodlePasswordRequest(user.id);
+    setPending(false);
+    if (!response.ok || !response.data) {
+      fail(response.status, response.error);
+      return;
+    }
+    setOneTime({
+      label: "Moodle password",
+      value: response.data.oneTime.generatedMoodlePassword,
     });
     setRevealed(false);
   };
@@ -359,7 +446,9 @@ function NccAdminUserDetail({
           <input
             type={definition.fieldType}
             value={
-              typeof value === "string" || typeof value === "number" ? value : ""
+              typeof value === "string" || typeof value === "number"
+                ? value
+                : ""
             }
             onChange={event =>
               update(
@@ -398,7 +487,9 @@ function NccAdminUserDetail({
             <ArrowLeft size={14} /> Users
           </Link>
           <h2>{user.name}</h2>
-          <p>{meta.label} · {branchAccess} · {departmentNames}</p>
+          <p>
+            {meta.label} · {branchAccess} · {departmentNames}
+          </p>
         </div>
       </div>
       <div className="admin-user-detail-actions">
@@ -408,65 +499,141 @@ function NccAdminUserDetail({
           </Link>
         ) : null}
         {!isSelf && user.status === "active" ? (
-          <button type="button" disabled={pending} onClick={() => void lifecycle("disable")}>
+          <button
+            type="button"
+            disabled={pending}
+            onClick={() => void lifecycle("disable")}
+          >
             Disable
           </button>
         ) : null}
         {user.status === "disabled" ? (
-          <button type="button" disabled={pending} onClick={() => void lifecycle("enable")}>
+          <button
+            type="button"
+            disabled={pending}
+            onClick={() => void lifecycle("enable")}
+          >
             Enable
           </button>
         ) : null}
         {!isSelf && user.status !== "invited" ? (
-          <button type="button" disabled={pending} onClick={() => void resetPassword()}>
+          <button
+            type="button"
+            disabled={pending}
+            onClick={() => void resetPassword()}
+          >
             Reset password
           </button>
         ) : null}
         {user.status === "invited" ? (
           <>
-            <button type="button" disabled={pending} onClick={() => void resendInvitation()}>
+            <button
+              type="button"
+              disabled={pending}
+              onClick={() => void resendInvitation()}
+            >
               Resend invitation
             </button>
-            <button type="button" disabled={pending} onClick={() => void lifecycle("cancel")}>
+            <button
+              type="button"
+              disabled={pending}
+              onClick={() => void lifecycle("cancel")}
+            >
               Cancel invitation
             </button>
           </>
         ) : null}
       </div>
       <dl className="admin-user-detail-facts">
-        <div><dt>Status</dt><dd><StatusBadge tone={nccStatusTone(user.status)}>{user.status}</StatusBadge></dd></div>
-        <div><dt>Email</dt><dd>{user.email}</dd></div>
-        <div><dt>Branch access</dt><dd>{branchAccess}</dd></div>
-        <div><dt>Departments</dt><dd>{departmentNames}</dd></div>
-        <div><dt>Moodle account</dt><dd>{user.moodleLinked ? "Linked" : "Not linked"}</dd></div>
-        <div><dt>Last sign-in</dt><dd>{formatNccDate(user.lastLoginAt, "Never")}</dd></div>
-        <div><dt>Created</dt><dd>{formatNccDate(user.createdAt, "Unknown")}</dd></div>
+        <div>
+          <dt>Status</dt>
+          <dd>
+            <StatusBadge tone={nccStatusTone(user.status)}>
+              {user.status}
+            </StatusBadge>
+          </dd>
+        </div>
+        <div>
+          <dt>Email</dt>
+          <dd>{user.email}</dd>
+        </div>
+        <div>
+          <dt>Branch access</dt>
+          <dd>{branchAccess}</dd>
+        </div>
+        <div>
+          <dt>Departments</dt>
+          <dd>{departmentNames}</dd>
+        </div>
+        <div>
+          <dt>Moodle account</dt>
+          <dd>{user.moodleLinked ? "Linked" : "Not linked"}</dd>
+        </div>
+        <div>
+          <dt>Last sign-in</dt>
+          <dd>{formatNccDate(user.lastLoginAt, "Never")}</dd>
+        </div>
+        <div>
+          <dt>Created</dt>
+          <dd>{formatNccDate(user.createdAt, "Unknown")}</dd>
+        </div>
       </dl>
     </section>
   );
 
   const access = (
     <form className="admin-user-detail-form" onSubmit={save}>
-      <label>First name<input value={firstName} onChange={event => setFirstName(event.target.value)} /></label>
-      <label>Last name<input value={lastName} onChange={event => setLastName(event.target.value)} /></label>
-      <label>Phone<input value={phone} onChange={event => setPhone(event.target.value)} /></label>
+      <label>
+        First name
+        <input
+          value={firstName}
+          onChange={event => setFirstName(event.target.value)}
+        />
+      </label>
+      <label>
+        Last name
+        <input
+          value={lastName}
+          onChange={event => setLastName(event.target.value)}
+        />
+      </label>
+      <label>
+        Phone
+        <input value={phone} onChange={event => setPhone(event.target.value)} />
+      </label>
       <label>
         Role
-        <select value={role} onChange={event => setRole(event.target.value as NccStaffUserDto["role"])}>
-          {roleOrder.filter(item => item !== "student").map(item => (
-            <option key={item} value={item}>{roleMeta[item].label}</option>
-          ))}
+        <select
+          value={role}
+          onChange={event =>
+            setRole(event.target.value as NccStaffUserDto["role"])
+          }
+        >
+          {roleOrder
+            .filter(item => item !== "student")
+            .map(item => (
+              <option key={item} value={item}>
+                {roleMeta[item].label}
+              </option>
+            ))}
         </select>
       </label>
       {roleChanged ? (
-        <p role="status">Changing the role signs this person out everywhere and replaces their access.</p>
+        <p role="status">
+          Changing the role signs this person out everywhere and replaces their
+          access.
+        </p>
       ) : null}
       {role !== "superadmin" ? (
         <fieldset>
           <legend>Branch access</legend>
           {activeBranches.map(branch => (
             <label key={branch.id}>
-              <input type="checkbox" checked={branchIds.includes(branch.id)} onChange={() => toggle(branch.id, branchIds, setBranchIds)} />
+              <input
+                type="checkbox"
+                checked={branchIds.includes(branch.id)}
+                onChange={() => toggle(branch.id, branchIds, setBranchIds)}
+              />
               {branch.name}
             </label>
           ))}
@@ -477,7 +644,13 @@ function NccAdminUserDetail({
           <legend>Departments</legend>
           {activeDepartments.map(department => (
             <label key={department.id}>
-              <input type="checkbox" checked={departmentIds.includes(department.id)} onChange={() => toggle(department.id, departmentIds, setDepartmentIds)} />
+              <input
+                type="checkbox"
+                checked={departmentIds.includes(department.id)}
+                onChange={() =>
+                  toggle(department.id, departmentIds, setDepartmentIds)
+                }
+              />
               {department.name}
             </label>
           ))}
@@ -485,12 +658,28 @@ function NccAdminUserDetail({
       ) : null}
       {definitions.map(renderCustomField)}
       {needsStepUp ? (
-        <label>Your current password<input type="password" autoComplete="current-password" value={callerPassword} onChange={event => setCallerPassword(event.target.value)} /></label>
+        <label>
+          Your current password
+          <input
+            type="password"
+            autoComplete="current-password"
+            value={callerPassword}
+            onChange={event => setCallerPassword(event.target.value)}
+          />
+        </label>
       ) : null}
-      {error ? <p className="platform-form-error" role="alert">{error}</p> : null}
+      {error ? (
+        <p className="platform-form-error" role="alert">
+          {error}
+        </p>
+      ) : null}
       <div className="admin-user-detail-form-actions">
         <Link href={basePath}>Cancel</Link>
-        <button className="platform-primary-button" type="submit" disabled={pending}>
+        <button
+          className="platform-primary-button"
+          type="submit"
+          disabled={pending}
+        >
           <Save size={15} /> {pending ? "Saving..." : "Save changes"}
         </button>
       </div>
@@ -506,31 +695,156 @@ function NccAdminUserDetail({
         main={
           <>
             {header}
-            <nav className="admin-user-detail-tabs" aria-label="User detail sections">
-              <Link href={basePath} className={view === "overview" ? "active" : ""}>Overview</Link>
-              <Link href={`${basePath}/access`} className={view === "access" ? "active" : ""}>Access</Link>
+            <nav
+              className="admin-user-detail-tabs"
+              aria-label="User detail sections"
+            >
+              <Link
+                href={basePath}
+                className={view === "overview" ? "active" : ""}
+              >
+                Overview
+              </Link>
+              <Link
+                href={`${basePath}/access`}
+                className={view === "access" ? "active" : ""}
+              >
+                Access
+              </Link>
             </nav>
             {oneTime ? (
               <section className="admin-users-create-note" role="status">
                 <strong>{oneTime.label}</strong>
                 <span>{revealed ? oneTime.value : "••••••••••••"}</span>
-                <button type="button" onClick={() => setRevealed(value => !value)}>
+                <button
+                  type="button"
+                  onClick={() => setRevealed(value => !value)}
+                >
                   {revealed ? <EyeOff size={15} /> : <Eye size={15} />}
                   {revealed ? "Hide" : "Reveal"}
                 </button>
-                <button type="button" onClick={() => void navigator.clipboard.writeText(oneTime.value)}>
+                <button
+                  type="button"
+                  onClick={() =>
+                    void navigator.clipboard.writeText(oneTime.value)
+                  }
+                >
                   <Copy size={15} /> Copy
                 </button>
-                <small>Shown once. Nile Learn does not store it — share it securely now.</small>
+                <small>
+                  Shown once. Nile Learn does not store it — share it securely
+                  now.
+                </small>
               </section>
             ) : null}
-            {view === "access" ? access : (
+            {view === "access" ? (
+              access
+            ) : (
               <section className="platform-empty-state" role="status">
                 <strong>Account changes are managed in EMS</strong>
-                <span>Use the Access tab or account actions to update this person.</span>
+                <span>
+                  Use the Access tab or account actions to update this person.
+                </span>
+                {!isSelf && user.status !== "canceled" ? (
+                  <div className="admin-user-detail-form-actions">
+                    {user.moodleLinked ? (
+                      <button
+                        type="button"
+                        disabled={pending}
+                        onClick={() => void moodleReset()}
+                      >
+                        Reset Moodle password
+                      </button>
+                    ) : (
+                      <>
+                        <button
+                          type="button"
+                          disabled={pending}
+                          onClick={() => void moodleCreate()}
+                        >
+                          Create Moodle account
+                        </button>
+                        <button
+                          type="button"
+                          disabled={pending}
+                          onClick={() => {
+                            setLinkOpen(value => !value);
+                            setMoodleUserId(null);
+                          }}
+                        >
+                          Link existing account
+                        </button>
+                      </>
+                    )}
+                  </div>
+                ) : null}
+                {linkOpen && !user.moodleLinked ? (
+                  <div className="admin-user-detail-form">
+                    <label>
+                      Search Moodle users
+                      <input
+                        value={moodleQuery}
+                        placeholder="Name, username, or email"
+                        onChange={event =>
+                          setMoodleQuery(event.target.value)
+                        }
+                      />
+                    </label>
+                    <div className="admin-user-detail-form-actions">
+                      <button
+                        type="button"
+                        className="platform-secondary-button"
+                        disabled={pending || moodleQuery.trim().length < 2}
+                        onClick={() => void moodleSearchUsers()}
+                      >
+                        Search
+                      </button>
+                    </div>
+                    {moodleSearch.status === "loading" ? (
+                      <p role="status">Searching Moodle users...</p>
+                    ) : null}
+                    {moodleSearch.status === "error" ? (
+                      <p role="alert">Moodle users could not be loaded.</p>
+                    ) : null}
+                    {moodleSearch.status === "ready" &&
+                    !moodleSearch.items.length ? (
+                      <p role="status">No Moodle users matched.</p>
+                    ) : null}
+                    {moodleSearch.items.map(item => (
+                      <label key={item.id}>
+                        <input
+                          type="radio"
+                          name="moodle-user"
+                          checked={moodleUserId === item.id}
+                          onChange={() => setMoodleUserId(item.id)}
+                        />
+                        {item.fullName ??
+                          item.username ??
+                          item.email ??
+                          `Moodle user ${item.id}`}
+                      </label>
+                    ))}
+                    {moodleUserId !== null ? (
+                      <div className="admin-user-detail-form-actions">
+                        <button
+                          type="button"
+                          className="platform-primary-button"
+                          disabled={pending}
+                          onClick={() => void moodleLink()}
+                        >
+                          Link account
+                        </button>
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
               </section>
             )}
-            {error && view !== "access" ? <p className="platform-form-error" role="alert">{error}</p> : null}
+            {error && view !== "access" ? (
+              <p className="platform-form-error" role="alert">
+                {error}
+              </p>
+            ) : null}
           </>
         }
       />
@@ -570,13 +884,17 @@ export default function AdminUserDetailPage({
     }
     setNccLoading(true);
     setNccError(null);
-    const [userResponse, branchesResponse, departmentsResponse, fieldsResponse] =
-      await Promise.all([
-        fetchNccDirectoryUserRequest(userId),
-        fetchNccDirectoryBranchesRequest(),
-        fetchNccDirectoryDepartmentsRequest(),
-        fetchNccDirectoryCustomFieldsRequest(),
-      ]);
+    const [
+      userResponse,
+      branchesResponse,
+      departmentsResponse,
+      fieldsResponse,
+    ] = await Promise.all([
+      fetchNccDirectoryUserRequest(userId),
+      fetchNccDirectoryBranchesRequest(),
+      fetchNccDirectoryDepartmentsRequest(),
+      fetchNccDirectoryCustomFieldsRequest(),
+    ]);
     const failedResponse = [
       userResponse,
       branchesResponse,
@@ -586,7 +904,8 @@ export default function AdminUserDetailPage({
     if (failedResponse) {
       setNccUser(null);
       setNccError({
-        message: failedResponse.error ?? "The EMS staff account could not load.",
+        message:
+          failedResponse.error ?? "The EMS staff account could not load.",
         status: failedResponse.status,
       });
       setNccLoading(false);
@@ -739,7 +1058,10 @@ export default function AdminUserDetailPage({
             title="User not found"
             description="This account could not be found in the Nile Learn directory."
             actions={
-              <Link className="platform-secondary-button" href="/app/admin/users">
+              <Link
+                className="platform-secondary-button"
+                href="/app/admin/users"
+              >
                 <ArrowLeft size={15} />
                 Back to users
               </Link>
@@ -747,7 +1069,9 @@ export default function AdminUserDetailPage({
             main={
               <section className="platform-empty-state">
                 <strong>No matching user</strong>
-                <span>Return to the users list and open a current account.</span>
+                <span>
+                  Return to the users list and open a current account.
+                </span>
               </section>
             }
           />
@@ -786,7 +1110,8 @@ export default function AdminUserDetailPage({
               <section className="platform-empty-state" role="alert">
                 <strong>User could not be loaded from EMS</strong>
                 <span>
-                  {nccError?.message ?? "The EMS staff account returned no data."}
+                  {nccError?.message ??
+                    "The EMS staff account returned no data."}
                 </span>
                 <button
                   type="button"

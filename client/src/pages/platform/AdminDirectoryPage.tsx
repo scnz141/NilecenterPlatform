@@ -128,11 +128,7 @@ function NccAdminUnavailablePage({ view }: { view: AdminDirectoryView }) {
   );
 }
 
-function NccAdminDirectoryPage({
-  view,
-}: {
-  view: "branches" | "departments";
-}) {
+function NccAdminDirectoryPage({ view }: { view: "branches" | "departments" }) {
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState("all");
   const [readState, setReadState] = useState<NccReadState<DirectoryRow[]>>({
@@ -182,7 +178,8 @@ function NccAdminDirectoryPage({
   const rows = readState.status === "ready" ? readState.data : [];
   const statusOptions = Array.from(new Set(rows.map(row => row.status)));
   const filteredRows = rows.filter(row => {
-    const text = `${row.name} ${row.detail} ${row.scope} ${row.status}`.toLowerCase();
+    const text =
+      `${row.name} ${row.detail} ${row.scope} ${row.status}`.toLowerCase();
     return (
       (!query.trim() || text.includes(query.trim().toLowerCase())) &&
       (status === "all" || row.status === status)
@@ -232,7 +229,10 @@ function NccAdminDirectoryPage({
           readState.status !== "ready" ? (
             <NccReadStatus state={readState} onRetry={() => void load()} />
           ) : (
-            <DataTableCard title={copy.title} subtitle={`${filteredRows.length} records`}>
+            <DataTableCard
+              title={copy.title}
+              subtitle={`${filteredRows.length} records`}
+            >
               <div className="admin-record-list admin-directory-record-list">
                 {filteredRows.length ? (
                   filteredRows.map(row => (

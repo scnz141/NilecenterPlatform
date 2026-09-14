@@ -22,6 +22,8 @@ import {
 import { toast } from "sonner";
 import { Link } from "wouter";
 import NccReadStatus from "@/components/platform/NccReadStatus";
+import NccStudentCreate from "@/components/platform/ncc/NccStudentCreate";
+import NccStudentRecord from "@/components/platform/ncc/NccStudentRecord";
 import OperationalDirectoryTable from "@/components/platform/OperationalDirectoryTable";
 import PlatformShell from "@/components/platform/PlatformShell";
 import PendingMediaField from "@/components/platform/PendingMediaField";
@@ -114,9 +116,24 @@ export default function RegistrarStudentsPage({
   view = "list",
   studentId,
 }: RegistrarStudentsPageProps) {
-  return getStoredAuthSession()?.provider === "ncc" ? (
-    <NccRegistrarStudentsPage view={view} studentId={studentId} />
-  ) : (
+  if (getStoredAuthSession()?.provider === "ncc") {
+    if (view === "create") {
+      return (
+        <NccStudentCreate role="registrar" backHref="/app/registrar/students" />
+      );
+    }
+    if (view === "detail" && studentId) {
+      return (
+        <NccStudentRecord
+          studentId={studentId}
+          role="registrar"
+          backHref="/app/registrar/students"
+        />
+      );
+    }
+    return <NccRegistrarStudentsPage view="list" />;
+  }
+  return (
     <CompatibilityRegistrarStudentsPage view={view} studentId={studentId} />
   );
 }
@@ -136,9 +153,9 @@ function NccRegistrarStudentsPage({
   studentId?: string;
 }) {
   const [search, setSearch] = useState("");
-  const [readState, setReadState] = useState<
-    NccReadState<NccStudentReadData>
-  >({ status: "loading" });
+  const [readState, setReadState] = useState<NccReadState<NccStudentReadData>>({
+    status: "loading",
+  });
   const load = useCallback(async () => {
     if (view === "create") return;
     setReadState({ status: "loading" });
@@ -159,9 +176,7 @@ function NccRegistrarStudentsPage({
       fetchNccStudentRequest(studentId),
       fetchNccStudentEnrolmentsRequest(studentId),
     ]);
-    const failed = [studentResult, enrolmentsResult].find(
-      result => !result.ok
-    );
+    const failed = [studentResult, enrolmentsResult].find(result => !result.ok);
     if (failed || !studentResult.data || !enrolmentsResult.data) {
       setReadState(
         classifyNccFailure(
@@ -198,7 +213,10 @@ function NccRegistrarStudentsPage({
                 Create the student in EMS; the account will appear in this
                 directory.
               </span>
-              <Link className="platform-secondary-button" href="/app/registrar/students">
+              <Link
+                className="platform-secondary-button"
+                href="/app/registrar/students"
+              >
                 Back to students
               </Link>
             </section>
@@ -210,7 +228,10 @@ function NccRegistrarStudentsPage({
 
   if (readState.status !== "ready") {
     return (
-      <PlatformShell role="registrar" title={view === "list" ? "Students" : "Student detail"}>
+      <PlatformShell
+        role="registrar"
+        title={view === "list" ? "Students" : "Student detail"}
+      >
         <WorkspaceLayout
           className="portal-ia-page registrar-workspace registrar-students-page"
           title={view === "list" ? "Students" : "Student detail"}
@@ -224,7 +245,7 @@ function NccRegistrarStudentsPage({
 
   if (readState.data.view === "detail") {
     const { student, enrolments } = readState.data;
-    const guardian = student.guardian;
+    const guardians = student.guardians;
     return (
       <PlatformShell role="registrar" title="Student detail">
         <DetailLayout
@@ -233,7 +254,10 @@ function NccRegistrarStudentsPage({
           description={`${student.email} · ${student.branchName} · ${student.status}`}
           context="Registrar"
           actions={
-            <Link className="platform-secondary-button" href="/app/registrar/students">
+            <Link
+              className="platform-secondary-button"
+              href="/app/registrar/students"
+            >
               Back to students
             </Link>
           }
@@ -244,15 +268,27 @@ function NccRegistrarStudentsPage({
                   {[
                     ["Phone", student.phone ?? "—"],
                     ["Date of birth", student.dateOfBirth ?? "—"],
-                    ["Guardian", guardian?.name ?? "—"],
-                    ["Guardian phone", guardian?.phone ?? "—"],
-                    ["Guardian email", guardian?.email ?? "—"],
-                    ["Relationship", guardian?.relationship ?? "—"],
+                    ["Nationality", student.nationality ?? "—"],
+                    ["Gender", student.gender ?? "—"],
+                    [
+                      "Guardians",
+                      guardians.length
+                        ? guardians
+                            .map(
+                              guardian =>
+                                `${guardian.name} (${guardian.relationship})`
+                            )
+                            .join(", ")
+                        : "—",
+                    ],
                     [
                       "Moodle account",
                       student.moodleLinked ? "Linked" : "Not linked",
                     ],
-                    ["Created", new Date(student.createdAt).toLocaleDateString()],
+                    [
+                      "Created",
+                      new Date(student.createdAt).toLocaleDateString(),
+                    ],
                   ].map(([label, value]) => (
                     <article key={label}>
                       <span>{label}</span>
@@ -321,7 +357,7 @@ function NccRegistrarStudentsPage({
       student.email,
       student.phone,
       student.branchName,
-      student.guardian?.name,
+      student.guardians[0]?.name,
     ]
       .filter(Boolean)
       .join(" ")
@@ -335,7 +371,10 @@ function NccRegistrarStudentsPage({
         title="Students"
         description="Find a student and open their record."
         actions={
-          <Link className="platform-primary-button" href="/app/registrar/students/new">
+          <Link
+            className="platform-primary-button"
+            href="/app/registrar/students/new"
+          >
             <UserPlus size={15} />
             New student
           </Link>
@@ -378,16 +417,21 @@ function NccRegistrarStudentsPage({
                         </div>
                       ),
                     },
-                    { key: "branch", label: "Branch", render: row => row.branchName },
+                    {
+                      key: "branch",
+                      label: "Branch",
+                      render: row => row.branchName,
+                    },
                     {
                       key: "guardian",
                       label: "Guardian",
-                      render: row => row.guardian?.name ?? "—",
+                      render: row => row.guardians[0]?.name ?? "—",
                     },
                     {
                       key: "moodle",
                       label: "Moodle account",
-                      render: row => (row.moodleLinked ? "Linked" : "Not linked"),
+                      render: row =>
+                        row.moodleLinked ? "Linked" : "Not linked",
                     },
                     {
                       key: "status",

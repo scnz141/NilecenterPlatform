@@ -1,6 +1,7 @@
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { RefreshCcw } from "lucide-react";
 import { toast } from "sonner";
+import NccReadStatus from "@/components/platform/NccReadStatus";
 import PlatformShell from "@/components/platform/PlatformShell";
 import { ReportLayout } from "@/components/platform/PlatformLayouts";
 import {
@@ -11,7 +12,16 @@ import {
   PortalInsight,
   type InsightPoint,
 } from "@/components/platform/PortalInsights";
-import { runPlatformWorkflowActionRequest } from "@/lib/backend/api";
+import { getStoredAuthSession } from "@/lib/auth/session";
+import {
+  fetchNccSystemHealthRequest,
+  runPlatformWorkflowActionRequest,
+  type NccSystemHealthDto,
+} from "@/lib/backend/api";
+import {
+  classifyNccFailure,
+  type NccReadState,
+} from "@/lib/backend/nccReadState";
 import {
   emsStagingStatusRequest,
   type EmsStagingStatus,
@@ -36,6 +46,194 @@ function integrationTone(
 }
 
 export default function AdminSystemHealthPage() {
+  return getStoredAuthSession()?.provider === "ncc" ? (
+    <NccAdminSystemHealthPage />
+  ) : (
+    <CompatibilityAdminSystemHealthPage />
+  );
+}
+
+function nccHealthTone(
+  status: string
+): "green" | "amber" | "red" | "slate" {
+  if (status === "ok" || status === "healthy") return "green";
+  if (status === "warning" || status === "degraded" || status === "not_configured")
+    return "amber";
+  if (status === "error" || status === "unhealthy") return "red";
+  return "slate";
+}
+
+function humanizeHealthStatus(status: string) {
+  return status
+    .replace(/[_-]/g, " ")
+    .replace(/\b\w/g, character => character.toUpperCase());
+}
+
+function formatHealthDateTime(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat("en", {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(date);
+}
+
+function boolLabel(value: boolean | null) {
+  return value === null ? "Unknown" : value ? "Yes" : "No";
+}
+
+function NccAdminSystemHealthPage() {
+  const [readState, setReadState] = useState<NccReadState<NccSystemHealthDto>>({
+    status: "loading",
+  });
+
+  const load = useCallback(async () => {
+    setReadState({ status: "loading" });
+    const result = await fetchNccSystemHealthRequest();
+    setReadState(
+      result.ok && result.data
+        ? { status: "ready", data: result.data.health }
+        : classifyNccFailure(result)
+    );
+  }, []);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const health = readState.status === "ready" ? readState.data : null;
+
+  const componentRows = health
+    ? ([
+        {
+          key: "api",
+          label: "API",
+          status: health.components.api.status,
+          detail: health.components.api.detail,
+        },
+        {
+          key: "database",
+          label: "Database",
+          status: health.components.database.status,
+          detail: health.components.database.detail,
+        },
+        {
+          key: "schema",
+          label: "Schema",
+          status: health.components.schemaCheck.status,
+          detail:
+            health.components.schemaCheck.missingTables?.length
+              ? `Missing tables: ${health.components.schemaCheck.missingTables.join(", ")}`
+              : health.components.schemaCheck.detail,
+        },
+        {
+          key: "migration",
+          label: "Migration",
+          status: health.components.migration.status,
+          detail: [
+            health.components.migration.version
+              ? `Version ${health.components.migration.version}`
+              : null,
+            health.components.migration.detail,
+          ]
+            .filter(Boolean)
+            .join(" · ") || null,
+        },
+        {
+          key: "moodle",
+          label: "Moodle",
+          status: health.components.moodle.status,
+          detail: [
+            health.components.moodle.siteName,
+            health.components.moodle.release,
+            `Configured ${boolLabel(health.components.moodle.configured)}`,
+            `Reachable ${boolLabel(health.components.moodle.reachable)}`,
+            `Expected version ${boolLabel(health.components.moodle.versionExpected)}`,
+            health.components.moodle.detail,
+          ]
+            .filter(Boolean)
+            .join(" · "),
+        },
+      ] as const)
+    : [];
+
+  return (
+    <PlatformShell role="superadmin" title="System health">
+      <ReportLayout
+        className="admin-system-health-page"
+        title="Health"
+        description="Review live EMS and Moodle service status."
+        context="Admin"
+        actions={
+          <button
+            type="button"
+            className="platform-primary-button"
+            onClick={() => void load()}
+            disabled={readState.status === "loading"}
+          >
+            <RefreshCcw size={15} />
+            {readState.status === "loading" ? "Checking" : "Run check"}
+          </button>
+        }
+        main={
+          <div className="admin-health-workspace">
+            {!health ? (
+              <NccReadStatus state={readState} onRetry={() => void load()} />
+            ) : (
+              <>
+                <section className="admin-health-summary" role="status">
+                  <div className="teacher-class-overview-heading">
+                    <span>
+                      <RefreshCcw size={16} />
+                      Overall status
+                    </span>
+                    <StatusBadge tone={nccHealthTone(health.status)}>
+                      {humanizeHealthStatus(health.status)}
+                    </StatusBadge>
+                  </div>
+                  <p>Checked {formatHealthDateTime(health.checkedAt)}</p>
+                </section>
+                <DataTableCard
+                  title="Service health"
+                  subtitle={humanizeHealthStatus(health.status)}
+                  className="admin-health-checks-card"
+                >
+                  <div
+                    className="admin-record-list admin-health-record-list"
+                    data-testid="admin-health-list"
+                  >
+                    {componentRows.map(row => (
+                      <article key={row.key}>
+                        <div className="admin-record-list-copy">
+                          <strong>{row.label}</strong>
+                          {row.detail ? <p>{row.detail}</p> : null}
+                        </div>
+                        <div className="admin-record-list-meta">
+                          <StatusBadge tone={nccHealthTone(row.status)}>
+                            {humanizeHealthStatus(row.status)}
+                          </StatusBadge>
+                        </div>
+                      </article>
+                    ))}
+                  </div>
+                  {health.components.moodle.warnings?.length ? (
+                    <p role="status">
+                      {health.components.moodle.warnings.join(" ")}
+                    </p>
+                  ) : null}
+                </DataTableCard>
+              </>
+            )}
+          </div>
+        }
+      />
+    </PlatformShell>
+  );
+}
+
+function CompatibilityAdminSystemHealthPage() {
   const [version, setVersion] = useState(0);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");

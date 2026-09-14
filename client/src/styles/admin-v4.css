@@ -106,18 +106,33 @@
 }
 
 .platform-shell[data-role="superadmin"] .platform-v2-workflow-tile {
-  min-height: 94px;
+  min-height: 98px;
   border: 0;
   border-radius: 0;
   border-top: 1px solid var(--border);
   background: transparent;
   box-shadow: none;
-  padding-inline: 0;
+  padding-block: 16px;
 }
 
 .platform-shell[data-role="superadmin"]
   .platform-v2-workflow-tile:nth-child(-n + 2) {
   border-top: 0;
+}
+
+.platform-shell[data-role="superadmin"]
+  .platform-v2-workflow-tile:nth-child(odd) {
+  padding-inline: 0 18px;
+}
+
+.platform-shell[data-role="superadmin"]
+  .platform-v2-workflow-tile:nth-child(even) {
+  border-inline-start: 1px solid var(--border);
+  padding-inline: 18px 0;
+}
+
+.platform-shell[data-role="superadmin"] .platform-v2-workflow-tile > div {
+  min-width: 0;
 }
 
 .platform-shell[data-role="superadmin"] .platform-v2-workflow-tile:hover {
@@ -148,23 +163,39 @@
   padding-inline: 0;
 }
 
-/* Make governance pages feel like one dependable workspace family. */
+/* Operational governance pages use the shell canvas. Focused forms and
+   detail views keep a local reading width instead of shrinking every route. */
 :is(
   .platform-shell[data-role="superadmin"] .admin-users-simple-page,
-  .platform-shell[data-role="superadmin"] .admin-users-create-page,
-  .platform-shell[data-role="superadmin"] .admin-user-detail-page,
   .platform-shell[data-role="superadmin"] .admin-roles-simple-page,
   .platform-shell[data-role="superadmin"] .admin-permissions-page,
   .platform-shell[data-role="superadmin"] .admin-directory-page,
   .platform-shell[data-role="superadmin"] .admin-branches-page,
-  .platform-shell[data-role="superadmin"] .admin-settings-page,
-  .platform-shell[data-role="superadmin"] .admin-integrations-page,
   .platform-shell[data-role="superadmin"] .admin-audit-page,
   .platform-shell[data-role="superadmin"] .admin-system-health-page,
-  .platform-shell[data-role="superadmin"] .admin-ia-page
+  .platform-shell[data-role="superadmin"] .admin-ia-page,
+  .platform-shell[data-role="superadmin"] .admin-report-page,
+  .platform-shell[data-role="superadmin"] .admin-course-page,
+  .platform-shell[data-role="superadmin"] .admin-schedule-page,
+  .platform-shell[data-role="superadmin"] .portal-simple-page,
+  .platform-shell[data-role="superadmin"] .portal-messages-page
 ) {
   width: 100%;
-  max-width: 1560px;
+  max-width: none;
+  margin-inline: auto;
+}
+
+:is(
+  .platform-shell[data-role="superadmin"] .admin-users-create-page,
+  .platform-shell[data-role="superadmin"] .admin-user-detail-page,
+  .platform-shell[data-role="superadmin"] .admin-settings-page,
+  .platform-shell[data-role="superadmin"] .admin-integrations-page,
+  .platform-shell[data-role="superadmin"] .admin-report-page,
+  .platform-shell[data-role="superadmin"] .admin-course-page,
+  .platform-shell[data-role="superadmin"] .admin-schedule-page
+) {
+  width: 100%;
+  max-width: none;
   margin-inline: auto;
 }
 
@@ -307,10 +338,24 @@
 
 .platform-shell[data-role="superadmin"] .admin-user-detail-hero {
   grid-template-columns: minmax(0, 1fr) auto;
-  gap: 14px 18px;
-  padding: 18px;
+  gap: 18px 20px;
+  padding: 20px 22px;
   background: var(--card);
   box-shadow: none;
+}
+
+.platform-shell[data-role="superadmin"] .admin-user-detail-identity {
+  align-items: start;
+}
+
+.platform-shell[data-role="superadmin"] .admin-user-detail-actions {
+  align-self: start;
+  flex-wrap: wrap;
+}
+
+.platform-shell[data-role="superadmin"] .admin-user-detail-actions > * {
+  min-height: 40px;
+  white-space: nowrap;
 }
 
 .platform-shell[data-role="superadmin"] .admin-user-detail-identity > span {
@@ -328,7 +373,7 @@
 .platform-shell[data-role="superadmin"] .admin-user-detail-facts {
   grid-column: 1 / -1;
   margin: 0;
-  padding-top: 14px;
+  padding-top: 0;
   border-top: 1px solid var(--border);
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -336,17 +381,25 @@
 
 .platform-shell[data-role="superadmin"] .admin-user-detail-facts > div {
   min-width: 0;
-  padding-inline: 14px;
+  min-height: 64px;
+  align-content: start;
+  padding: 14px 16px;
   border-inline-start: 1px solid var(--border);
   display: grid;
-  gap: 5px;
+  gap: 4px;
 }
 
 .platform-shell[data-role="superadmin"]
   .admin-user-detail-facts
-  > div:first-child {
+  > div:nth-child(4n + 1) {
   padding-inline-start: 0;
   border-inline-start: 0;
+}
+
+.platform-shell[data-role="superadmin"]
+  .admin-user-detail-facts
+  > div:nth-child(n + 5) {
+  border-top: 1px solid var(--border);
 }
 
 .platform-shell[data-role="superadmin"] .admin-user-detail-facts dt {
@@ -440,22 +493,153 @@
   color: var(--foreground);
 }
 
+.platform-shell[data-role="superadmin"] .admin-permissions-workspace {
+  min-width: 0;
+  overflow: hidden;
+}
+
+.platform-shell[data-role="superadmin"] .admin-permissions-heading {
+  padding: 22px 24px 20px;
+}
+
+.platform-shell[data-role="superadmin"] .admin-permissions-toolbar {
+  width: auto;
+  min-width: 0;
+  margin: 18px 24px 0;
+}
+
+.platform-shell[data-role="superadmin"] .admin-permissions-toolbar label {
+  flex: 1 1 220px;
+  min-width: 0;
+  padding-inline: 16px;
+}
+
+.platform-shell[data-role="superadmin"] .admin-permissions-toolbar select {
+  width: 100%;
+  min-width: 0;
+}
+
+.platform-shell[data-role="superadmin"] .admin-permissions-result {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  overflow-wrap: anywhere;
+}
+
+.platform-shell[data-role="superadmin"] .admin-permissions-result :is(strong, span) {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+.platform-shell[data-role="superadmin"] .admin-permission-grid {
+  margin-top: 18px;
+}
+
+.platform-shell[data-role="superadmin"] .admin-permission-toggle {
+  min-width: 0;
+  padding-inline: 24px;
+  text-align: start;
+}
+
+.platform-shell[data-role="superadmin"] .admin-permission-toggle strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.platform-shell[data-role="superadmin"] .admin-permission-toggle small {
+  text-align: end;
+}
+
+/* Catalog rows keep their metadata and actions distinct before mobile stacking. */
+.platform-shell[data-role="superadmin"]
+  .admin-course-catalog-records
+  > article {
+  grid-template-columns: minmax(0, 1.35fr) minmax(260px, 0.72fr) auto;
+  gap: 18px;
+}
+
+.platform-shell[data-role="superadmin"]
+  .admin-course-catalog-records
+  .admin-record-list-actions {
+  align-self: stretch;
+  align-content: center;
+  border-inline-start: 1px solid var(--border);
+  padding-inline-start: 18px;
+}
+
 @media (min-width: 1600px) {
   :is(
-    .platform-shell[data-role="superadmin"] .admin-users-simple-page,
     .platform-shell[data-role="superadmin"] .admin-users-create-page,
     .platform-shell[data-role="superadmin"] .admin-user-detail-page,
-    .platform-shell[data-role="superadmin"] .admin-roles-simple-page,
-    .platform-shell[data-role="superadmin"] .admin-permissions-page,
-    .platform-shell[data-role="superadmin"] .admin-directory-page,
-    .platform-shell[data-role="superadmin"] .admin-branches-page,
     .platform-shell[data-role="superadmin"] .admin-settings-page,
     .platform-shell[data-role="superadmin"] .admin-integrations-page,
-    .platform-shell[data-role="superadmin"] .admin-audit-page,
-    .platform-shell[data-role="superadmin"] .admin-system-health-page,
-    .platform-shell[data-role="superadmin"] .admin-ia-page
+    .platform-shell[data-role="superadmin"] .admin-report-page,
+    .platform-shell[data-role="superadmin"] .admin-course-page,
+    .platform-shell[data-role="superadmin"] .admin-schedule-page
   ) {
-    max-width: 1640px;
+    max-width: none;
+  }
+}
+
+@media (min-width: 2200px) {
+  .platform-shell[data-role="superadmin"] .admin-permission-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .platform-shell[data-role="superadmin"]
+    .admin-permission-toggle:nth-child(even) {
+    border-inline-start: 1px solid var(--border);
+  }
+
+  .platform-shell[data-role="superadmin"] .platform-v2-workflow-tiles {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .platform-shell[data-role="superadmin"]
+    .platform-v2-workflow-tile:nth-child(n) {
+    border-inline-start: 1px solid var(--border);
+    border-top: 1px solid var(--border);
+    padding-inline: 18px;
+  }
+
+  .platform-shell[data-role="superadmin"]
+    .platform-v2-workflow-tile:nth-child(-n + 3) {
+    border-top: 0;
+  }
+
+  .platform-shell[data-role="superadmin"]
+    .platform-v2-workflow-tile:nth-child(3n + 1) {
+    border-inline-start: 0;
+    padding-inline-start: 0;
+  }
+
+  .platform-shell[data-role="superadmin"]
+    .platform-v2-workflow-tile:nth-child(3n) {
+    padding-inline-end: 0;
+  }
+
+  .platform-shell[data-role="superadmin"] .platform-v2-attention-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .platform-shell[data-role="superadmin"]
+    .platform-v2-attention-list
+    > *:nth-child(-n + 2) {
+    border-top: 0;
+  }
+
+  .platform-shell[data-role="superadmin"]
+    .platform-v2-attention-list
+    > *:nth-child(odd) {
+    padding-inline-end: 18px;
+  }
+
+  .platform-shell[data-role="superadmin"]
+    .platform-v2-attention-list
+    > *:nth-child(even) {
+    border-inline-start: 1px solid var(--border);
+    padding-inline-start: 18px;
   }
 }
 
@@ -465,10 +649,54 @@
   }
 }
 
+@media (max-width: 760px) {
+  .platform-shell[data-role="superadmin"] .admin-permissions-toolbar {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    align-items: stretch;
+  }
+
+  .platform-shell[data-role="superadmin"] .admin-permissions-toolbar label,
+  .platform-shell[data-role="superadmin"] .admin-permissions-count {
+    width: 100%;
+  }
+}
+
+@media (max-width: 1400px) {
+  .platform-shell[data-role="superadmin"]
+    .admin-course-catalog-records
+    > article {
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 14px 18px;
+  }
+
+  .platform-shell[data-role="superadmin"]
+    .admin-course-catalog-records
+    .admin-record-list-facts {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    width: 100%;
+    border-top: 1px solid var(--border);
+    border-inline-start: 0;
+    padding-top: 14px;
+  }
+
+  .platform-shell[data-role="superadmin"]
+    .admin-course-catalog-records
+    .admin-record-list-actions {
+    border-inline-start: 0;
+    padding-inline-start: 0;
+  }
+}
+
 @media (max-width: 1180px) {
   .platform-shell[data-role="superadmin"] .admin-user-detail-facts {
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 12px 0;
+    gap: 0;
+  }
+
+  .platform-shell[data-role="superadmin"] .admin-user-detail-facts > div {
+    padding-inline: 16px;
   }
 
   .platform-shell[data-role="superadmin"]
@@ -476,6 +704,12 @@
     > div:nth-child(odd) {
     padding-inline-start: 0;
     border-inline-start: 0;
+  }
+
+  .platform-shell[data-role="superadmin"]
+    .admin-user-detail-facts
+    > div:nth-child(n + 3) {
+    border-top: 1px solid var(--border);
   }
 
   .platform-shell[data-role="superadmin"] .admin-user-detail-overview {
@@ -544,13 +778,58 @@
     padding-inline: 18px;
   }
 
-  .platform-shell[data-role="superadmin"] .platform-v2-workflow-tile {
-    min-height: 76px;
+  .platform-shell[data-role="superadmin"] .platform-v2-workflow-tiles {
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .platform-shell[data-role="superadmin"]
-    .platform-v2-workflow-tile:nth-child(2) {
+    .platform-v2-workflow-tile:nth-child(n) {
+    min-height: 76px;
+    border-inline-start: 0;
     border-top: 1px solid var(--border);
+    padding-inline: 0;
+  }
+
+  .platform-shell[data-role="superadmin"]
+    .platform-v2-workflow-tile:first-child {
+    border-top: 0;
+  }
+
+  .platform-shell[data-role="superadmin"] .admin-permissions-heading {
+    padding: 18px 18px 16px;
+  }
+
+  .platform-shell[data-role="superadmin"] .admin-permissions-toolbar {
+    margin: 14px 18px 0;
+  }
+
+  .platform-shell[data-role="superadmin"] .admin-permissions-toolbar label {
+    flex-basis: 100%;
+    padding-inline: 10px;
+  }
+
+  .platform-shell[data-role="superadmin"] .admin-permission-toggle {
+    padding-inline: 18px;
+  }
+
+  .platform-shell[data-role="superadmin"]
+    .admin-course-catalog-records
+    > article {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 13px;
+  }
+
+  .platform-shell[data-role="superadmin"]
+    .admin-course-catalog-records
+    .admin-record-list-facts {
+    grid-column: auto;
+    grid-row: auto;
+  }
+
+  .platform-shell[data-role="superadmin"]
+    .admin-course-catalog-records
+    .admin-record-list-actions {
+    align-self: auto;
   }
 
   .platform-shell[data-role="superadmin"] .admin-user-detail-tabs {

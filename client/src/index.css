@@ -1284,6 +1284,16 @@
     flex-wrap: wrap;
   }
 
+  /* Header/detail action clusters keep a consistent rhythm whether they sit
+     in the page header or inside a workspace panel. */
+  .platform-page-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    min-width: 0;
+  }
+
   .platform-primary-button,
   .platform-secondary-button {
     min-height: 40px;
@@ -16080,6 +16090,7 @@
 
     .platform-page-header {
       display: grid;
+      grid-template-columns: minmax(0, 1fr);
       gap: 16px;
     }
 
@@ -20139,6 +20150,7 @@
 
     .platform-page-header {
       display: grid;
+      grid-template-columns: minmax(0, 1fr);
       gap: 12px;
     }
 

@@ -7,6 +7,7 @@ import {
   mapLocalRoleToEms,
   normalizeEmsBranches,
   normalizeEmsMe,
+  normalizeEmsSelfProfile,
   resolveEmsStagingConfig,
   type EmsStagingClient,
   type EmsStagingMe,
@@ -69,6 +70,14 @@ export function sendNccAuthError(
 export function nccStaffAuthEnabled(env: NodeJS.ProcessEnv = process.env) {
   return ["1", "true"].includes(
     (env.NILE_NCC_STAFF_AUTH_ENABLED ?? "").trim().toLowerCase()
+  );
+}
+
+export function nccMoodleAccountWritesEnabled(
+  env: NodeJS.ProcessEnv = process.env
+) {
+  return ["1", "true"].includes(
+    (env.NILE_NCC_MOODLE_ACCOUNT_WRITES_ENABLED ?? "").trim().toLowerCase()
   );
 }
 
@@ -506,10 +515,7 @@ export async function switchNccRole(
 export async function runNccRead(
   request: Request,
   response: Response,
-  operation: (
-    api: EmsStagingClient,
-    token: string
-  ) => Promise<RemoteResult>,
+  operation: (api: EmsStagingClient, token: string) => Promise<RemoteResult>,
   dependencies: NccAuthDependencies = {}
 ) {
   const env = dependencies.env ?? process.env;
@@ -582,6 +588,83 @@ export async function switchNccWorkspace(
   const next = buildEnvelope(me, result.tokens, value.session.createdAt);
   writeEnvelope(response, next, env);
   return next.session;
+}
+
+export type NccSelfProfileInput = {
+  firstName: string;
+  lastName: string;
+  phone?: string | null;
+  address?: string | null;
+  nationality?: string | null;
+  dateOfBirth?: string | null;
+  notes?: string | null;
+};
+
+export async function getNccSelfProfile(
+  request: Request,
+  response: Response,
+  dependencies: NccAuthDependencies = {}
+) {
+  const profile = normalizeEmsSelfProfile(
+    await runNccRead(
+      request,
+      response,
+      (api, token) => api.me(token),
+      dependencies
+    )
+  );
+  if (!profile) {
+    throw new NccAuthError(502, "NCC EMS returned invalid profile data.");
+  }
+  return profile;
+}
+
+export async function patchNccSelfProfile(
+  request: Request,
+  response: Response,
+  input: NccSelfProfileInput,
+  dependencies: NccAuthDependencies = {}
+) {
+  const profile: Record<string, unknown> = {
+    first_name: input.firstName,
+    last_name: input.lastName,
+  };
+  for (const [key, target] of [
+    ["phone", "phone"],
+    ["address", "address"],
+    ["nationality", "nationality"],
+    ["dateOfBirth", "date_of_birth"],
+    ["notes", "notes"],
+  ] as const) {
+    if (input[key] !== undefined) profile[target] = input[key];
+  }
+  const updated = normalizeEmsSelfProfile(
+    await runNccWrite(
+      request,
+      response,
+      (api, token) => api.patchMe(token, { profile }),
+      dependencies
+    )
+  );
+  if (!updated) {
+    throw new NccAuthError(502, "NCC EMS returned invalid profile data.");
+  }
+  return updated;
+}
+
+export async function changeNccPassword(
+  request: Request,
+  response: Response,
+  currentPassword: string,
+  newPassword: string,
+  dependencies: NccAuthDependencies = {}
+) {
+  await runNccWrite(
+    request,
+    response,
+    (api, token) => api.changePassword(token, currentPassword, newPassword),
+    dependencies
+  );
 }
 
 export async function logoutNccSession(

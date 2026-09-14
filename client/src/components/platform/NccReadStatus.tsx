@@ -26,7 +26,10 @@ export default function NccReadStatus({
     return (
       <div className="platform-empty-state" role="status">
         <strong>Choose a branch to continue.</strong>
-        <Link className="platform-secondary-button" href="/auth/select-workspace">
+        <Link
+          className="platform-secondary-button"
+          href="/auth/select-workspace"
+        >
           Choose branch
         </Link>
       </div>

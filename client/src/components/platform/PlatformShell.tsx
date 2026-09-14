@@ -1,4 +1,5 @@
 import {
+  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -77,7 +78,14 @@ import {
   PLATFORM_SYNC_ERROR_EVENT,
   platformStore,
 } from "@/lib/domain/store";
-import { runPlatformWorkflowActionRequest } from "@/lib/backend/api";
+import {
+  fetchNccNotificationsRequest,
+  fetchNccNotificationUnreadCountRequest,
+  markAllNccNotificationsReadRequest,
+  markNccNotificationReadRequest,
+  runPlatformWorkflowActionRequest,
+  type NccNotificationDto,
+} from "@/lib/backend/api";
 import { usePortalRoleStyles } from "@/lib/ui/portalRoleStyles";
 
 const iconMap = {
@@ -481,7 +489,52 @@ export default function PlatformShell({ role, children, title }: ShellProps) {
       .search(query)
       .filter(item => canShowSearchResult(role, item.href));
   }, [query, role]);
-  const notificationItems = useMemo(() => {
+  const isNcc = getStoredAuthSession()?.provider === "ncc";
+  const [nccNotifications, setNccNotifications] = useState<{
+    items: NccNotificationDto[];
+    unreadCount: number;
+    loading: boolean;
+    error: string | null;
+  }>({ items: [], unreadCount: 0, loading: false, error: null });
+
+  const loadNccNotifications = useCallback(async () => {
+    setNccNotifications(current => ({
+      ...current,
+      loading: true,
+      error: null,
+    }));
+    const [listResult, countResult] = await Promise.all([
+      fetchNccNotificationsRequest({ limit: 6 }),
+      fetchNccNotificationUnreadCountRequest(),
+    ]);
+    if (!listResult.ok || !listResult.data || !countResult.ok || !countResult.data) {
+      setNccNotifications(current => ({
+        ...current,
+        loading: false,
+        error:
+          (!listResult.ok ? listResult.error : null) ??
+          (!countResult.ok ? countResult.error : null) ??
+          "Notifications are unavailable.",
+      }));
+      return;
+    }
+    setNccNotifications({
+      items: listResult.data.items,
+      unreadCount: countResult.data.unreadCount,
+      loading: false,
+      error: null,
+    });
+  }, []);
+
+  useEffect(() => {
+    if (isNcc) void loadNccNotifications();
+  }, [isNcc, loadNccNotifications]);
+
+  useEffect(() => {
+    if (isNcc && notificationsOpen) void loadNccNotifications();
+  }, [isNcc, notificationsOpen, loadNccNotifications]);
+
+  const compatibilityNotificationItems = useMemo(() => {
     const state = platformStore.getState();
     return state.notifications
       .filter(
@@ -489,9 +542,37 @@ export default function PlatformShell({ role, children, title }: ShellProps) {
       )
       .slice(0, 6);
   }, [notificationVersion, role, user.id]);
-  const unreadCount = notificationItems.filter(item => !item.read).length;
+  const notificationItems: Array<{
+    id: string;
+    title: string;
+    body: string;
+    read: boolean;
+    href?: string;
+  }> = isNcc
+    ? nccNotifications.items.map(item => ({
+        id: item.id,
+        title: item.title,
+        body: item.body ?? "",
+        read: item.readAt !== null,
+        href: undefined,
+      }))
+    : compatibilityNotificationItems;
+  const unreadCount = isNcc
+    ? nccNotifications.unreadCount
+    : notificationItems.filter(item => !item.read).length;
 
   const markNotificationRead = async (notificationId: string) => {
+    if (isNcc) {
+      const result = await markNccNotificationReadRequest(notificationId);
+      if (!result.ok || !result.data) {
+        toast.error("Notification could not be updated", {
+          description: result.error,
+        });
+        return false;
+      }
+      await loadNccNotifications();
+      return true;
+    }
     const result = await runPlatformWorkflowActionRequest({
       type: "notification.read",
       notificationId,
@@ -508,6 +589,18 @@ export default function PlatformShell({ role, children, title }: ShellProps) {
   };
 
   const markAllNotificationsRead = async () => {
+    if (isNcc) {
+      const result = await markAllNccNotificationsReadRequest();
+      if (!result.ok || !result.data) {
+        toast.error("Notification could not be updated", {
+          description: result.error,
+        });
+        return;
+      }
+      await loadNccNotifications();
+      toast.success(t(locale, "notificationsMarkedRead"));
+      return;
+    }
     for (const notification of notificationItems.filter(item => !item.read)) {
       const saved = await markNotificationRead(notification.id);
       if (!saved) return;
@@ -1008,19 +1101,40 @@ export default function PlatformShell({ role, children, title }: ShellProps) {
                       <strong>{t(locale, "notifications")}</strong>
                       <button
                         onClick={markAllNotificationsRead}
+                        disabled={
+                          isNcc &&
+                          (nccNotifications.loading || !unreadCount)
+                        }
                       >
                         {t(locale, "markRead")}
                       </button>
                     </div>
+                    {isNcc && nccNotifications.loading ? (
+                      <div className="platform-notification-empty">
+                        Loading
+                      </div>
+                    ) : null}
+                    {isNcc && nccNotifications.error ? (
+                      <div className="platform-notification-empty">
+                        {nccNotifications.error}
+                        <button
+                          type="button"
+                          onClick={() => void loadNccNotifications()}
+                        >
+                          Retry
+                        </button>
+                      </div>
+                    ) : null}
                     {notificationItems.map(item => (
                       <button
                         key={item.id}
                         className="platform-notification-item"
                         role="menuitem"
                         onClick={async () => {
-                          await markNotificationRead(item.id);
+                          const saved = await markNotificationRead(item.id);
+                          if (isNcc && !saved) return;
                           setNotificationsOpen(false);
-                          navigate(item.href);
+                          if (item.href) navigate(item.href);
                         }}
                       >
                         <span
@@ -1035,7 +1149,8 @@ export default function PlatformShell({ role, children, title }: ShellProps) {
                         <small>{item.body}</small>
                       </button>
                     ))}
-                    {!notificationItems.length ? (
+                    {!notificationItems.length &&
+                    !(isNcc && (nccNotifications.loading || nccNotifications.error)) ? (
                       <div className="platform-notification-empty">
                         {t(locale, "noNotifications")}
                       </div>

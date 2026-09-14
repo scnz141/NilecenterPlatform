@@ -1,15 +1,32 @@
-import { requireActiveUser } from "@/lib/auth/session";
-import { useMemo, useState } from "react";
+import {
+  getStoredAuthSession,
+  requireActiveUser,
+} from "@/lib/auth/session";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 import { Download, Search } from "lucide-react";
 import { toast } from "sonner";
 import PlatformShell from "@/components/platform/PlatformShell";
+import NccReadStatus from "@/components/platform/NccReadStatus";
 import { ReportLayout } from "@/components/platform/PlatformLayouts";
 import {
   DataTableCard,
   StatusBadge,
 } from "@/components/platform/PlatformPrimitives";
 import { platformStore } from "@/lib/domain/store";
-import { runPlatformWorkflowActionRequest } from "@/lib/backend/api";
+import {
+  fetchNccAuditEventsRequest,
+  runPlatformWorkflowActionRequest,
+  type NccAuditEventDto,
+} from "@/lib/backend/api";
+import {
+  classifyNccFailure,
+  type NccReadState,
+} from "@/lib/backend/nccReadState";
 import type { AuditLog } from "@/lib/domain/types";
 
 function formatDateTime(value: string) {
@@ -64,6 +81,156 @@ function matchesAudit(audit: AuditLog, query: string, group: string) {
 }
 
 export default function AdminAuditLogsPage() {
+  return getStoredAuthSession()?.provider === "ncc" ? (
+    <NccAdminAuditLogsPage />
+  ) : (
+    <CompatibilityAdminAuditLogsPage />
+  );
+}
+
+function NccAdminAuditLogsPage() {
+  const [readState, setReadState] = useState<
+    NccReadState<NccAuditEventDto[]>
+  >({ status: "loading" });
+  const [query, setQuery] = useState("");
+  const [stream, setStream] = useState("All");
+
+  const load = useCallback(async () => {
+    setReadState({ status: "loading" });
+    const result = await fetchNccAuditEventsRequest({ limit: 100 });
+    setReadState(
+      result.ok && result.data
+        ? { status: "ready", data: result.data.items }
+        : classifyNccFailure(result)
+    );
+  }, []);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const events = readState.status === "ready" ? readState.data : null;
+  const streams = useMemo(
+    () =>
+      Array.from(new Set((events ?? []).map(event => event.stream))).sort(
+        (a, b) => a.localeCompare(b)
+      ),
+    [events]
+  );
+  const normalizedQuery = query.trim().toLowerCase();
+  const filtered = (events ?? []).filter(event => {
+    const text = [
+      event.actorDisplayName,
+      event.eventType,
+      event.stream,
+      event.entityLabel,
+    ]
+      .filter(Boolean)
+      .join(" ")
+      .toLowerCase();
+    return (
+      (!normalizedQuery || text.includes(normalizedQuery)) &&
+      (stream === "All" || event.stream === stream)
+    );
+  });
+
+  return (
+    <PlatformShell role="superadmin" title="Activity log">
+      <ReportLayout
+        className="admin-audit-page"
+        title="Activity log"
+        description="Search recent EMS audit events."
+        context="Admin"
+        toolbar={
+          <div
+            className="admin-compact-toolbar admin-audit-toolbar"
+            data-testid="admin-activity-toolbar"
+          >
+            <label>
+              Search
+              <span>
+                <Search size={15} />
+                <input
+                  value={query}
+                  onInput={event => setQuery(event.currentTarget.value)}
+                  onChange={event => setQuery(event.currentTarget.value)}
+                  placeholder="Search activity"
+                />
+              </span>
+            </label>
+            <label>
+              Stream
+              <select
+                value={stream}
+                onChange={event => setStream(event.target.value)}
+              >
+                <option value="All">All streams</option>
+                {streams.map(item => (
+                  <option key={item} value={item}>
+                    {humanize(item)}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+        }
+        main={
+          !events ? (
+            <NccReadStatus state={readState} onRetry={() => void load()} />
+          ) : (
+            <DataTableCard
+              title="Recent activity"
+              subtitle={`${filtered.length} matching events · latest 100`}
+            >
+              {filtered.length ? (
+                <div
+                  className="admin-record-list admin-audit-record-list"
+                  data-testid="admin-activity-list"
+                >
+                  {filtered.map(event => (
+                    <article key={event.id}>
+                      <div className="admin-record-list-copy">
+                        <span>{humanize(event.stream)}</span>
+                        <strong>{humanize(event.eventType)}</strong>
+                        <p>{event.entityLabel ?? "System activity"}</p>
+                      </div>
+                      <dl className="admin-record-list-facts">
+                        <div>
+                          <dt>By</dt>
+                          <dd>{event.actorDisplayName ?? "System"}</dd>
+                        </div>
+                        <div>
+                          <dt>When</dt>
+                          <dd>{formatDateTime(event.createdAt)}</dd>
+                        </div>
+                      </dl>
+                      <div className="admin-record-list-meta">
+                        <StatusBadge tone={actionTone(event.eventType)}>
+                          {humanize(
+                            event.eventType.split(".").at(-1) ??
+                              event.eventType
+                          )}
+                        </StatusBadge>
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              ) : (
+                <div className="platform-empty-state">
+                  <Search size={18} />
+                  <strong>No activity matches</strong>
+                  <small>Clear the query or choose another stream.</small>
+                </div>
+              )}
+            </DataTableCard>
+          )
+        }
+      />
+    </PlatformShell>
+  );
+}
+
+function CompatibilityAdminAuditLogsPage() {
   const [version, setVersion] = useState(0);
   const [query, setQuery] = useState("");
   const [group, setGroup] = useState("All");

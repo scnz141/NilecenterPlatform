@@ -218,7 +218,7 @@
       "selectors": {
         "clientRoutes": [
           "^/app/admin/(users(?:/.*)?|roles|permissions)$",
-          "^/app/branch/(students|teachers)$",
+          "^/app/branch/(students(?:/.*)?|teachers)$",
           "^/app/hod/teachers$",
           "^/app/registrar/students(?:/.*)?$"
         ],
@@ -276,7 +276,8 @@
         ],
         "serverApiRoutes": [
           "^POST /api/registrar/student-invitations$",
-          "^GET /api/ncc/admissions/(students(?:/[^/]+(?:/enrolments)?)?|leads(?:/[^/]+)?|placement-tests(?:/[^/]+)?)$"
+          "^GET /api/ncc/admissions/(students(?:/[^/]+(?:/enrolments)?)?|leads(?:/[^/]+)?|placement-tests(?:/[^/]+)?)$",
+          "^(POST|PATCH) /api/ncc/admissions/(students(?:/[^/]+(?:/(?:disable|enable))?)?|leads(?:/[^/]+(?:/convert)?)?|placement-tests(?:/[^/]+(?:/(?:cancel|record-result))?)?)$"
         ]
       }
     },
@@ -333,7 +334,7 @@
           "^(calendar[.](create|conflict[.]resolve)|class[.](create|session[.](cancel|reschedule)|status[.]update|update)|course-run[.]create|room[.](create|status[.]update)|teacher[.](assign|availability[.]update))$"
         ],
         "serverApiRoutes": [
-          "^GET /api/ncc/delivery/(classes(?:/[^/]+)?|rooms|teacher-workspace)$"
+          "^GET /api/ncc/delivery/(classes(?:/[^/]+)?|courses|rooms|teacher-workspace)$"
         ]
       }
     },

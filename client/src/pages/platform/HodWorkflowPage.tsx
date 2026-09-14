@@ -1,5 +1,5 @@
-import { requireActiveUser } from "@/lib/auth/session";
-import { useMemo, useState } from "react";
+import { getStoredAuthSession, requireActiveUser } from "@/lib/auth/session";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ArrowRight,
   BookOpen,
@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { Link } from "wouter";
+import NccReadStatus from "@/components/platform/NccReadStatus";
 import PlatformShell from "@/components/platform/PlatformShell";
 import {
   DetailLayout,
@@ -23,7 +24,16 @@ import {
   DataTableCard,
   StatusBadge,
 } from "@/components/platform/PlatformPrimitives";
-import { runPlatformWorkflowActionRequest } from "@/lib/backend/api";
+import {
+  fetchNccCourseRequest,
+  fetchNccCoursesRequest,
+  runPlatformWorkflowActionRequest,
+  type NccCourseDto,
+} from "@/lib/backend/api";
+import {
+  classifyNccFailure,
+  type NccReadState,
+} from "@/lib/backend/nccReadState";
 import type { PlatformWorkflowAction } from "@/lib/domain/actions";
 import { platformStore } from "@/lib/domain/store";
 import type {
@@ -243,7 +253,292 @@ function normalizeStatusClass(status: string) {
   return status.replace(/[_\s]/g, "-");
 }
 
-export default function HodWorkflowPage({
+export default function HodWorkflowPage(props: HodWorkflowPageProps) {
+  return getStoredAuthSession()?.provider === "ncc" &&
+    props.pageId === "courses" ? (
+    <NccHodCoursesPage mode={props.mode} courseId={props.courseId} />
+  ) : (
+    <CompatibilityHodWorkflowPage {...props} />
+  );
+}
+
+function NccHodCoursesPage({
+  mode,
+  courseId,
+}: {
+  mode?: HodWorkflowPageProps["mode"];
+  courseId?: string;
+}) {
+  const isDetail = mode === "course-detail";
+  const [readState, setReadState] = useState<
+    NccReadState<NccCourseDto[] | NccCourseDto>
+  >({ status: "loading" });
+  const [query, setQuery] = useState("");
+
+  const load = useCallback(async () => {
+    setReadState({ status: "loading" });
+    if (isDetail) {
+      const result = await fetchNccCourseRequest(courseId ?? "");
+      setReadState(
+        result.ok && result.data
+          ? { status: "ready", data: result.data.course }
+          : classifyNccFailure(result)
+      );
+      return;
+    }
+    const result = await fetchNccCoursesRequest();
+    setReadState(
+      result.ok && result.data
+        ? { status: "ready", data: result.data.items }
+        : classifyNccFailure(result)
+    );
+  }, [isDetail, courseId]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  if (isDetail) {
+    if (!courseId) {
+      return (
+        <PlatformShell role="headofdepartment" title="Courses">
+          <DetailLayout
+            className="hod-course-detail-page"
+            title="Course not found"
+            description="Return to the course list and choose a department course."
+            context="Course"
+            actions={
+              <Link
+                className="platform-secondary-button"
+                href="/app/hod/courses"
+              >
+                Back to courses
+              </Link>
+            }
+            main={
+              <div className="platform-empty-state">
+                <strong>Course not found</strong>
+              </div>
+            }
+          />
+        </PlatformShell>
+      );
+    }
+    const course =
+      readState.status === "ready" && !Array.isArray(readState.data)
+        ? readState.data
+        : null;
+    return (
+      <PlatformShell
+        role="headofdepartment"
+        title={course?.fullname ?? "Course"}
+      >
+        <DetailLayout
+          className="hod-course-detail-page"
+          title={course?.fullname ?? "Course"}
+          description={
+            course
+              ? `${course.shortname} · ${course.departmentName}`
+              : "Department course"
+          }
+          context="Course"
+          actions={
+            <Link
+              className="platform-secondary-button"
+              href="/app/hod/courses"
+            >
+              Back to courses
+            </Link>
+          }
+          main={
+            !course ? (
+              <NccReadStatus state={readState} onRetry={() => void load()} />
+            ) : (
+              <section
+                className="hod-course-detail"
+                data-testid="hod-course-detail"
+              >
+                <div className="teacher-class-overview-heading">
+                  <span>
+                    <BookOpen size={16} />
+                    Course record
+                  </span>
+                  <StatusBadge
+                    tone={course.status === "active" ? "green" : "slate"}
+                  >
+                    {course.status}
+                  </StatusBadge>
+                </div>
+                <dl className="teacher-class-fact-grid">
+                  <div>
+                    <dt>Department</dt>
+                    <dd>
+                      {course.departmentName} ·{" "}
+                      {course.departmentStatus === "active"
+                        ? "Active"
+                        : "Disabled"}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>Moodle course</dt>
+                    <dd>#{course.moodleCourseId}</dd>
+                  </div>
+                  <div>
+                    <dt>Visibility</dt>
+                    <dd>
+                      {course.moodleVisible === null
+                        ? "Unknown"
+                        : course.moodleVisible
+                          ? "Visible"
+                          : "Hidden"}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>Attendance</dt>
+                    <dd>
+                      {course.moodleAttendanceId !== null
+                        ? `Linked (#${course.moodleAttendanceId})`
+                        : "Not linked"}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>Last Moodle refresh</dt>
+                    <dd>
+                      {course.moodleRefreshedAt
+                        ? formatHodDateTime(course.moodleRefreshedAt)
+                        : "Not refreshed"}
+                    </dd>
+                  </div>
+                  {course.idNumber ? (
+                    <div>
+                      <dt>ID number</dt>
+                      <dd>{course.idNumber}</dd>
+                    </div>
+                  ) : null}
+                </dl>
+                {course.moodleRefreshError ? (
+                  <p role="alert">{course.moodleRefreshError}</p>
+                ) : null}
+                {course.warnings.length ? (
+                  <p role="status">{course.warnings.join(" ")}</p>
+                ) : null}
+              </section>
+            )
+          }
+        />
+      </PlatformShell>
+    );
+  }
+
+  const courses =
+    readState.status === "ready" && Array.isArray(readState.data)
+      ? readState.data
+      : [];
+  const rows = courses.filter(course => {
+    const text =
+      `${course.fullname} ${course.shortname} ${course.departmentName} ${course.status}`.toLowerCase();
+    return !query.trim() || text.includes(query.trim().toLowerCase());
+  });
+
+  return (
+    <PlatformShell role="headofdepartment" title="Courses">
+      <WorkspaceLayout
+        className="hod-workflow-page hod-courses-page"
+        title="Courses"
+        description="Review course status and academic ownership."
+        context="Academic"
+        toolbar={
+          <div
+            className="hod-compact-toolbar hod-workflow-toolbar-v3"
+            data-testid="hod-courses-toolbar"
+          >
+            <label>
+              Search
+              <span>
+                <Search size={15} />
+                <input
+                  value={query}
+                  onChange={event => setQuery(event.target.value)}
+                  placeholder="Search courses"
+                />
+              </span>
+            </label>
+          </div>
+        }
+        main={
+          readState.status !== "ready" ? (
+            <NccReadStatus state={readState} onRetry={() => void load()} />
+          ) : (
+            <DataTableCard
+              title="Department courses"
+              subtitle={`${rows.length} courses`}
+            >
+              {rows.length ? (
+                <div
+                  className="teacher-class-record-list"
+                  data-testid="hod-courses-list"
+                >
+                  {rows.map(course => (
+                    <article key={course.id}>
+                      <div className="teacher-class-record-copy">
+                        <span>{course.shortname}</span>
+                        <strong>{course.fullname}</strong>
+                        <p>
+                          {course.departmentName} ·{" "}
+                          {course.moodleVisible === null
+                            ? "Unknown"
+                            : course.moodleVisible
+                              ? "Visible"
+                              : "Hidden"}{" "}
+                          ·{" "}
+                          {course.moodleAttendanceId !== null
+                            ? "Attendance linked"
+                            : "Attendance not linked"}
+                        </p>
+                      </div>
+                      <div className="teacher-class-record-actions">
+                        <StatusBadge
+                          tone={course.status === "active" ? "green" : "slate"}
+                        >
+                          {course.status}
+                        </StatusBadge>
+                        <Link
+                          className="platform-secondary-button"
+                          href={`/app/hod/courses/${course.id}`}
+                        >
+                          Open course
+                        </Link>
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              ) : (
+                <div className="platform-empty-state">
+                  <strong>
+                    No courses are assigned to your departments.
+                  </strong>
+                </div>
+              )}
+            </DataTableCard>
+          )
+        }
+      />
+    </PlatformShell>
+  );
+}
+
+function formatHodDateTime(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat("en", {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(date);
+}
+
+function CompatibilityHodWorkflowPage({
   pageId,
   mode = "list",
   courseId,

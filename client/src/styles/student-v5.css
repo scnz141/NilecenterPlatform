@@ -12,7 +12,8 @@
 }
 
 .platform-shell[data-role="student"] .platform-content {
-  width: min(100%, 1720px);
+  width: 100%;
+  max-width: none;
 }
 
 .platform-shell[data-role="student"]
@@ -23,11 +24,12 @@
     .student-records-page,
     .student-support-page,
     .portal-messages-page,
+    .portal-simple-page,
     .profile-workspace,
     .moodle-source-page
   ) {
   width: 100%;
-  max-width: 1600px;
+  max-width: none;
   margin-inline: auto;
   container-name: student-workspace;
   container-type: inline-size;
@@ -648,7 +650,7 @@
       .profile-workspace,
       .moodle-source-page
     ) {
-    max-width: 1640px;
+    max-width: none;
   }
 
   .platform-shell[data-role="student"] .student-course-hero-v3 {

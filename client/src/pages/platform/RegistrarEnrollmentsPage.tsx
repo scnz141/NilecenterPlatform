@@ -1,8 +1,9 @@
-import { requireActiveUser } from "@/lib/auth/session";
-import { useMemo, useState } from "react";
+import { getStoredAuthSession, requireActiveUser } from "@/lib/auth/session";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { CheckCircle2, UserPlus } from "lucide-react";
 import { toast } from "sonner";
 import { Link } from "wouter";
+import NccReadStatus from "@/components/platform/NccReadStatus";
 import PlatformShell from "@/components/platform/PlatformShell";
 import {
   DetailLayout,
@@ -12,7 +13,22 @@ import {
   DataTableCard,
   StatusBadge,
 } from "@/components/platform/PlatformPrimitives";
-import { runPlatformWorkflowActionRequest } from "@/lib/backend/api";
+import {
+  completeNccClassEnrolmentRequest,
+  createNccClassEnrolmentRequest,
+  fetchNccClassEnrolmentsRequest,
+  fetchNccClassesRequest,
+  fetchNccStudentsRequest,
+  runPlatformWorkflowActionRequest,
+  withdrawNccClassEnrolmentRequest,
+  type NccClassDto,
+  type NccClassEnrolmentDto,
+  type NccStudentDto,
+} from "@/lib/backend/api";
+import {
+  classifyNccFailure,
+  type NccReadState,
+} from "@/lib/backend/nccReadState";
 import { platformStore } from "@/lib/domain/store";
 
 type AssignmentDraft = {
@@ -39,7 +55,390 @@ function humanize(value: string) {
     .replace(/\b\w/g, character => character.toUpperCase());
 }
 
-export default function RegistrarEnrollmentsPage({
+export default function RegistrarEnrollmentsPage(
+  props: RegistrarEnrollmentsPageProps
+) {
+  return getStoredAuthSession()?.provider === "ncc" ? (
+    <NccRegistrarEnrollmentsPage {...props} />
+  ) : (
+    <CompatibilityRegistrarEnrollmentsPage {...props} />
+  );
+}
+
+type NccEnrollmentDesk = {
+  students: NccStudentDto[];
+  classes: NccClassDto[];
+  enrolments: NccClassEnrolmentDto[];
+};
+
+function NccRegistrarEnrollmentsPage({
+  workflowId,
+}: RegistrarEnrollmentsPageProps) {
+  const [readState, setReadState] = useState<NccReadState<NccEnrollmentDesk>>({
+    status: "loading",
+  });
+  const [selectedClassId, setSelectedClassId] = useState("");
+  const [pendingAction, setPendingAction] = useState(false);
+  const [message, setMessage] = useState<{
+    kind: "success" | "error";
+    text: string;
+  } | null>(null);
+
+  const load = useCallback(async () => {
+    setReadState({ status: "loading" });
+    const [studentsResult, classesResult] = await Promise.all([
+      fetchNccStudentsRequest(),
+      fetchNccClassesRequest(),
+    ]);
+    for (const result of [studentsResult, classesResult]) {
+      if (!result.ok || !result.data) {
+        setReadState(classifyNccFailure(result));
+        return;
+      }
+    }
+    const classes = classesResult.data!.items;
+    const enrolmentResults = await Promise.all(
+      classes.map(item => fetchNccClassEnrolmentsRequest(item.id))
+    );
+    for (const result of enrolmentResults) {
+      if (!result.ok || !result.data) {
+        setReadState(classifyNccFailure(result));
+        return;
+      }
+    }
+    setReadState({
+      status: "ready",
+      data: {
+        students: studentsResult.data!.items,
+        classes,
+        enrolments: enrolmentResults.flatMap(result => result.data!.items),
+      },
+    });
+  }, []);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const data = readState.status === "ready" ? readState.data : null;
+  const isAnyActionPending = pendingAction;
+
+  const runAction = async (
+    action: () => Promise<
+      | { ok: true; data?: unknown }
+      | { ok: false; status?: number; error?: string }
+    >,
+    successText: string,
+    toastText: string
+  ) => {
+    setPendingAction(true);
+    setMessage(null);
+    const result = await action();
+    setPendingAction(false);
+    if (result.ok) {
+      setMessage({ kind: "success", text: successText });
+      toast.success(toastText);
+      void load();
+    } else {
+      const text =
+        "error" in result && result.error
+          ? result.error
+          : "Enrollment action failed.";
+      setMessage({ kind: "error", text });
+      toast.error(text);
+    }
+  };
+
+  if (workflowId) {
+    const student = data?.students.find(item => item.id === workflowId);
+    const studentEnrolments = data
+      ? data.enrolments.filter(item => item.studentId === workflowId)
+      : [];
+    const activeClasses = data
+      ? data.classes.filter(item => item.status === "active")
+      : [];
+    const enrollableClasses = activeClasses.filter(
+      classRecord =>
+        !studentEnrolments.some(
+          enrolment =>
+            enrolment.classId === classRecord.id &&
+            (enrolment.status === "pending" ||
+              enrolment.status === "enrolled")
+        )
+    );
+    const chosenClass =
+      enrollableClasses.find(item => item.id === selectedClassId) ??
+      enrollableClasses[0];
+    const blockedReason = !student
+      ? ""
+      : student.status !== "active"
+        ? "This student is disabled."
+        : !student.moodleLinked
+          ? "A Moodle account is required before enrollment."
+          : !activeClasses.length
+            ? "No active classes are available."
+            : !enrollableClasses.length
+              ? "This learner is already enrolled in every active class."
+              : "";
+
+    return (
+      <PlatformShell role="registrar" title="Enrollment record">
+        <DetailLayout
+          className="registrar-enrollment-detail-page"
+          title={student?.name ?? "Enrollment record"}
+          description={student?.email ?? "Student enrollment"}
+          context="Enrollment"
+          actions={
+            <Link
+              className="platform-secondary-button"
+              href="/app/registrar/enrollments"
+            >
+              Back to enrollments
+            </Link>
+          }
+          main={
+            !data ? (
+              <NccReadStatus state={readState} onRetry={() => void load()} />
+            ) : !student ? (
+              <section className="platform-empty-state">
+                <strong>Enrollment record not found</strong>
+                <Link
+                  className="platform-secondary-button"
+                  href="/app/registrar/enrollments"
+                >
+                  Back to enrollments
+                </Link>
+              </section>
+            ) : (
+              <div className="portal-simple-stack">
+                <DataTableCard
+                  title="Current enrollments"
+                  subtitle={`${studentEnrolments.length} records`}
+                  className="teacher-class-record-card"
+                >
+                  {studentEnrolments.length ? (
+                    <div className="teacher-class-record-list">
+                      {studentEnrolments.map(enrolment => {
+                        const active =
+                          enrolment.status === "pending" ||
+                          enrolment.status === "enrolled";
+                        return (
+                          <article key={`${enrolment.classId}`}>
+                            <div className="teacher-class-record-copy">
+                              <span>{enrolment.courseName}</span>
+                              <strong>{enrolment.className}</strong>
+                              <p>
+                                Moodle{" "}
+                                {enrolment.student.moodleLinked
+                                  ? "Linked"
+                                  : "Not linked"}
+                              </p>
+                            </div>
+                            <div className="teacher-class-record-actions">
+                              <StatusBadge tone={statusTone(enrolment.status)}>
+                                {enrolment.status}
+                              </StatusBadge>
+                              {active ? (
+                                <>
+                                  <button
+                                    type="button"
+                                    className="platform-secondary-button"
+                                    disabled={isAnyActionPending}
+                                    onClick={() =>
+                                      void runAction(
+                                        () =>
+                                          withdrawNccClassEnrolmentRequest(
+                                            enrolment.classId,
+                                            enrolment.studentId
+                                          ),
+                                        "Enrollment withdrawn.",
+                                        "Enrollment withdrawn"
+                                      )
+                                    }
+                                  >
+                                    Withdraw
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="platform-secondary-button"
+                                    disabled={isAnyActionPending}
+                                    onClick={() =>
+                                      void runAction(
+                                        () =>
+                                          completeNccClassEnrolmentRequest(
+                                            enrolment.classId,
+                                            enrolment.studentId
+                                          ),
+                                        "Enrollment completed.",
+                                        "Enrollment completed"
+                                      )
+                                    }
+                                  >
+                                    Complete
+                                  </button>
+                                </>
+                              ) : null}
+                            </div>
+                          </article>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <div className="platform-empty-state">
+                      <strong>No enrolments yet</strong>
+                    </div>
+                  )}
+                </DataTableCard>
+
+                <DataTableCard
+                  title="Enroll in class"
+                  subtitle="Assign this learner to an active class"
+                  className="teacher-class-record-card"
+                >
+                  <form
+                    className="registrar-enrollment-form"
+                    data-testid="registrar-enrollment-form"
+                    onSubmit={event => {
+                      event.preventDefault();
+                      if (!chosenClass) return;
+                      void runAction(
+                        () =>
+                          createNccClassEnrolmentRequest(chosenClass.id, {
+                            studentId: student.id,
+                            status: "enrolled",
+                          }),
+                        "Learner enrolled.",
+                        "Learner enrolled"
+                      );
+                    }}
+                  >
+                    <label>
+                      Class
+                      <select
+                        value={chosenClass?.id ?? ""}
+                        disabled={
+                          isAnyActionPending || !enrollableClasses.length
+                        }
+                        onChange={event =>
+                          setSelectedClassId(event.target.value)
+                        }
+                        data-testid="registrar-enroll-class"
+                      >
+                        {enrollableClasses.length ? (
+                          enrollableClasses.map(item => (
+                            <option key={item.id} value={item.id}>
+                              {item.name} · {item.activeEnrolmentCount}/
+                              {item.capacity}
+                            </option>
+                          ))
+                        ) : (
+                          <option value="" disabled>
+                            {activeClasses.length
+                              ? "No other active classes"
+                              : "No active classes"}
+                          </option>
+                        )}
+                      </select>
+                    </label>
+                    {blockedReason ? (
+                      <p role="status">{blockedReason}</p>
+                    ) : null}
+                    <div className="registrar-enrollment-actions">
+                      <button
+                        type="submit"
+                        className="platform-primary-button"
+                        disabled={
+                          isAnyActionPending || !chosenClass || !!blockedReason
+                        }
+                      >
+                        <UserPlus size={15} />
+                        {pendingAction ? "Saving" : "Enroll learner"}
+                      </button>
+                    </div>
+                  </form>
+                </DataTableCard>
+
+                {message ? (
+                  <p role={message.kind === "error" ? "alert" : "status"}>
+                    {message.text}
+                  </p>
+                ) : null}
+              </div>
+            )
+          }
+        />
+      </PlatformShell>
+    );
+  }
+
+  return (
+    <PlatformShell role="registrar" title="Enrollments">
+      <WorkspaceLayout
+        className="registrar-enrollments-page"
+        title="Enrollments"
+        description="Review each learner's class status."
+        context="Registrar"
+        main={
+          readState.status !== "ready" ? (
+            <NccReadStatus state={readState} onRetry={() => void load()} />
+          ) : (
+            <DataTableCard
+              title="Student enrollments"
+              subtitle={`${data!.students.length} learners`}
+            >
+              {data!.students.length ? (
+                <div className="teacher-class-record-list">
+                  {data!.students.map(student => {
+                    const activeEnrolments = data!.enrolments.filter(
+                      item =>
+                        item.studentId === student.id &&
+                        (item.status === "pending" ||
+                          item.status === "enrolled")
+                    );
+                    return (
+                      <article key={student.id}>
+                        <div className="teacher-class-record-copy">
+                          <span>{student.email}</span>
+                          <strong>{student.name}</strong>
+                          <p>
+                            {activeEnrolments.length
+                              ? activeEnrolments
+                                  .map(
+                                    item => `${item.className} · ${item.status}`
+                                  )
+                                  .join(", ")
+                              : "No active class"}
+                          </p>
+                        </div>
+                        <div className="teacher-class-record-actions">
+                          <StatusBadge tone={statusTone(student.status)}>
+                            {student.status}
+                          </StatusBadge>
+                          <Link
+                            className="platform-secondary-button"
+                            href={`/app/registrar/enrollments/${student.id}`}
+                          >
+                            Manage enrollment
+                          </Link>
+                        </div>
+                      </article>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="platform-empty-state">
+                  <strong>No students available for enrollment.</strong>
+                </div>
+              )}
+            </DataTableCard>
+          )
+        }
+      />
+    </PlatformShell>
+  );
+}
+
+function CompatibilityRegistrarEnrollmentsPage({
   workflowId,
 }: RegistrarEnrollmentsPageProps) {
   const [version, setVersion] = useState(0);

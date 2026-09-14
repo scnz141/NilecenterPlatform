@@ -13,7 +13,8 @@
 }
 
 .platform-shell[data-role="registrar"] .platform-content {
-  width: min(100%, 1720px);
+  width: 100%;
+  max-width: none;
 }
 
 .platform-shell[data-role="registrar"]
@@ -27,12 +28,15 @@
     .registrar-enrollment-detail-page,
     .registrar-enrollment-records-page,
     .registrar-enrollment-record-detail,
+    .registrar-payments-list-page,
+    .registrar-payment-detail-page,
+    .registrar-students-list-page,
     .portal-messages-page,
     .portal-simple-page,
     .profile-workspace
   ) {
   width: 100%;
-  max-width: 1600px;
+  max-width: none;
   margin-inline: auto;
   container-name: registrar-workspace;
   container-type: inline-size;
@@ -924,7 +928,8 @@
 
 @media (min-width: 1800px) {
   .platform-shell[data-role="registrar"] .platform-content {
-    width: min(100%, 1900px);
+    width: 100%;
+    max-width: none;
   }
 
   .platform-shell[data-role="registrar"]
@@ -942,7 +947,7 @@
       .portal-simple-page,
       .profile-workspace
     ) {
-    max-width: 1760px;
+    max-width: none;
   }
 }
 
@@ -995,5 +1000,278 @@
     animation-iteration-count: 1 !important;
     scroll-behavior: auto;
     transition-duration: 0.01ms !important;
+  }
+}
+
+/* Registrar student record: facts read top to bottom, the edit form gets
+   room to breathe, and enrolments use the full width. Panels size to
+   their content so tall neighbours can never stretch the status pill
+   or action buttons out of shape. */
+.platform-shell[data-role="registrar"] .registrar-student-detail-workspace {
+  grid-template-columns: minmax(0, 1.2fr) minmax(320px, 0.85fr);
+  align-items: start;
+  gap: 18px;
+}
+
+.platform-shell[data-role="registrar"] .registrar-student-detail-workspace > section.registrar-panel {
+  align-content: start;
+  gap: 16px;
+  padding: 20px 22px;
+}
+
+.platform-shell[data-role="registrar"] .registrar-student-detail-workspace > section.registrar-panel > .platform-status {
+  justify-self: start;
+  align-self: start;
+}
+
+.platform-shell[data-role="registrar"] .registrar-student-detail-workspace .admin-user-detail-list {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0;
+}
+
+.platform-shell[data-role="registrar"] .registrar-student-detail-workspace .admin-user-detail-list > div {
+  grid-template-columns: 150px minmax(0, 1fr);
+  align-items: baseline;
+  gap: 12px;
+  border-top: 1px solid var(--registrar-line);
+  padding-block: 9px;
+}
+
+.platform-shell[data-role="registrar"] .registrar-student-detail-workspace .admin-user-detail-list > div:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.platform-shell[data-role="registrar"] .registrar-student-detail-workspace .admin-user-detail-list dt {
+  font-size: 12px;
+}
+
+.platform-shell[data-role="registrar"] .registrar-student-detail-workspace .admin-user-detail-list dd {
+  font-size: 14px;
+  font-weight: 650;
+}
+
+.platform-shell[data-role="registrar"] .registrar-student-detail-workspace .admin-user-detail-form-actions {
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.platform-shell[data-role="registrar"] .registrar-student-detail-workspace:has(> section.registrar-panel > dl.admin-user-detail-list) > :is(.platform-table-card, .admin-users-create-note, .platform-form-error) {
+  grid-column: 1 / -1;
+}
+
+.platform-shell[data-role="registrar"] .registrar-student-detail-workspace .registrar-student-create-form {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  align-items: end;
+}
+
+.platform-shell[data-role="registrar"] .registrar-student-detail-workspace .registrar-student-create-form > label:has(textarea),
+.platform-shell[data-role="registrar"] .registrar-student-detail-workspace .registrar-student-create-form > fieldset,
+.platform-shell[data-role="registrar"] .registrar-student-detail-workspace .registrar-student-create-form > .platform-form-error,
+.platform-shell[data-role="registrar"] .registrar-student-detail-workspace .registrar-student-create-form > button {
+  grid-column: 1 / -1;
+}
+
+.platform-shell[data-role="registrar"] .registrar-student-detail-workspace .registrar-student-create-form > fieldset {
+  min-width: 0;
+  margin: 0;
+  border: 1px solid var(--registrar-line);
+  border-radius: 8px;
+  padding: 14px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.platform-shell[data-role="registrar"] .registrar-student-detail-workspace .registrar-student-create-form > fieldset > legend {
+  color: var(--muted-foreground);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  padding-inline: 6px;
+}
+
+.platform-shell[data-role="registrar"] .registrar-student-detail-workspace .registrar-student-create-form > button {
+  justify-self: start;
+}
+
+.platform-shell[data-role="registrar"] .registrar-student-detail-workspace .platform-directory-table-wrap {
+  overflow-x: auto;
+}
+
+.platform-shell[data-role="registrar"] .registrar-student-detail-workspace .platform-directory-table th {
+  color: var(--muted-foreground);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.platform-shell[data-role="registrar"] .registrar-student-detail-workspace .platform-directory-table :is(th, td) {
+  padding: 12px 14px;
+}
+
+@media (min-width: 1600px) {
+  .platform-shell[data-role="registrar"] .registrar-student-detail-workspace {
+    grid-template-columns: minmax(0, 1.4fr) minmax(380px, 600px);
+    gap: 22px;
+  }
+}
+
+@media (max-width: 760px) {
+  .platform-shell[data-role="registrar"] .registrar-student-detail-workspace {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .platform-shell[data-role="registrar"] .registrar-student-detail-workspace > section.registrar-panel {
+    padding: 18px;
+  }
+
+  .platform-shell[data-role="registrar"] .registrar-student-detail-workspace .admin-user-detail-list > div {
+    grid-template-columns: 118px minmax(0, 1fr);
+    gap: 10px;
+  }
+
+  .platform-shell[data-role="registrar"] .registrar-student-detail-workspace .registrar-student-create-form {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .platform-shell[data-role="registrar"] .registrar-student-detail-workspace .registrar-student-create-form > fieldset {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .platform-shell[data-role="registrar"] .platform-v2-detail-layout .platform-page-actions {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+  }
+
+  .platform-shell[data-role="registrar"] .platform-v2-detail-layout .platform-page-actions > :is(a, button) {
+    width: 100%;
+    min-height: 42px;
+  }
+}
+
+/* Enrollment detail V5.1: the record fills the page width like its header. */
+/* The old 900px inner cap turned this route into a narrow strip on TVs and */
+/* ultrawide displays while every other registrar page used full width. */
+.platform-shell[data-role="registrar"] .registrar-enrollment-detail-page .platform-v2-layout-main {
+  width: 100%;
+  margin-inline: 0;
+}
+
+.platform-shell[data-role="registrar"] .registrar-enrollment-detail-page .portal-simple-stack {
+  gap: 18px;
+}
+
+/* Cards share one inset rhythm: title band, then breathing room for rows. */
+.platform-shell[data-role="registrar"] .registrar-enrollment-detail-page .platform-table-card {
+  border-color: var(--registrar-line);
+  border-radius: 8px;
+  box-shadow: none;
+}
+
+.platform-shell[data-role="registrar"] .registrar-enrollment-detail-page .platform-table-card .platform-card-title.compact {
+  padding: 18px 22px 13px;
+}
+
+.platform-shell[data-role="registrar"] .registrar-enrollment-detail-page .platform-table-card .platform-card-title.compact span {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.platform-shell[data-role="registrar"] .registrar-enrollment-detail-page .platform-table-card .platform-card-title.compact strong {
+  font-size: 15px;
+  font-weight: 780;
+}
+
+.platform-shell[data-role="registrar"] .registrar-enrollment-detail-page .teacher-class-record-list {
+  padding: 2px 18px 18px;
+}
+
+.platform-shell[data-role="registrar"] .registrar-enrollment-detail-page .teacher-class-record-list article {
+  align-items: center;
+  gap: 8px 18px;
+}
+
+.platform-shell[data-role="registrar"] .registrar-enrollment-detail-page .teacher-class-record-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.platform-shell[data-role="registrar"] .registrar-enrollment-detail-page .platform-empty-state {
+  margin: 2px 18px 18px;
+}
+
+/* This form asks one question (which class), so it stacks instead of */
+/* leaving half the card empty in a two-column grid. */
+.platform-shell[data-role="registrar"] .registrar-enrollment-detail-page .registrar-enrollment-form {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 14px;
+  padding: 18px 22px 20px;
+}
+
+.platform-shell[data-role="registrar"] .registrar-enrollment-detail-page .registrar-enrollment-form label {
+  gap: 7px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.platform-shell[data-role="registrar"] .registrar-enrollment-detail-page .registrar-enrollment-form select {
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.platform-shell[data-role="registrar"] .registrar-enrollment-detail-page .registrar-enrollment-actions {
+  justify-content: flex-end;
+}
+
+/* Wide canvases (TVs, ultrawide): records left, composer right. */
+@container registrar-workspace (min-width: 1150px) {
+  .platform-shell[data-role="registrar"] .registrar-enrollment-detail-page .portal-simple-stack {
+    grid-template-columns: minmax(0, 1.55fr) minmax(340px, 0.85fr);
+    align-items: start;
+  }
+}
+
+@container registrar-workspace (max-width: 640px) {
+  .platform-shell[data-role="registrar"] .registrar-enrollment-detail-page .platform-table-card .platform-card-title.compact {
+    padding: 16px 18px 12px;
+  }
+
+  .platform-shell[data-role="registrar"] .registrar-enrollment-detail-page .teacher-class-record-list {
+    padding: 2px 14px 16px;
+  }
+
+  .platform-shell[data-role="registrar"] .registrar-enrollment-detail-page .teacher-class-record-actions {
+    justify-content: flex-start;
+  }
+
+  .platform-shell[data-role="registrar"] .registrar-enrollment-detail-page .platform-empty-state {
+    margin: 2px 14px 16px;
+  }
+
+  .platform-shell[data-role="registrar"] .registrar-enrollment-detail-page .registrar-enrollment-form {
+    padding: 16px 18px 18px;
+  }
+
+  .platform-shell[data-role="registrar"] .registrar-enrollment-detail-page .registrar-enrollment-actions .platform-primary-button {
+    width: 100%;
   }
 }

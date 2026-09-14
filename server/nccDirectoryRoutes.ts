@@ -13,6 +13,7 @@ import {
 } from "./emsStagingClient.js";
 import {
   hasNccAuthCookie,
+  nccMoodleAccountWritesEnabled,
   nccStaffAuthEnabled,
   runNccRead,
   runNccWrite,
@@ -44,9 +45,7 @@ type DirectoryApp = {
   patch?(path: string, handler: DirectoryHandler): void;
 };
 
-export function nccDirectoryReadsEnabled(
-  env: NodeJS.ProcessEnv = process.env
-) {
+export function nccDirectoryReadsEnabled(env: NodeJS.ProcessEnv = process.env) {
   return ["1", "true"].includes(
     (env.NILE_NCC_DIRECTORY_READS_ENABLED ?? "").trim().toLowerCase()
   );
@@ -160,6 +159,73 @@ function prepareDirectoryWrite(
   return true;
 }
 
+function prepareMoodleAccountWrite(
+  request: DirectoryRequest,
+  response: DirectoryResponse,
+  dependencies: NccAuthDependencies
+) {
+  response.setHeader("Cache-Control", "private, no-store");
+  const env = dependencies.env ?? process.env;
+  if (!nccMoodleAccountWritesEnabled(env)) {
+    response
+      .status(503)
+      .json({ error: "NCC Moodle account operations are not active." });
+    return false;
+  }
+  if (!nccStaffAuthEnabled(env) || !hasNccAuthCookie(request)) {
+    response
+      .status(404)
+      .json({ error: "EMS directory is unavailable for this session." });
+    return false;
+  }
+  return true;
+}
+
+function moodleBindBody(body: unknown) {
+  if (
+    !isPlainObject(body) ||
+    !hasOnlyKeys(body, ["mode", "moodleUserId"]) ||
+    (body.mode !== "create" && body.mode !== "link")
+  ) {
+    return null;
+  }
+  if (body.mode === "create") {
+    return body.moodleUserId === undefined ? { mode: "create" as const } : null;
+  }
+  if (
+    !Number.isSafeInteger(body.moodleUserId) ||
+    (body.moodleUserId as number) < 1
+  ) {
+    return null;
+  }
+  return {
+    mode: "link" as const,
+    moodleUserId: body.moodleUserId as number,
+  };
+}
+
+function moodleBindUpstream(
+  bind: NonNullable<ReturnType<typeof moodleBindBody>>
+) {
+  return bind.mode === "link"
+    ? { mode: "link", moodle_user_id: bind.moodleUserId }
+    : { mode: "create" };
+}
+
+function generatedMoodlePassword(
+  payload: Record<string, unknown>,
+  required: boolean
+) {
+  const generated = payload.generated_moodle_password;
+  if (generated === undefined || generated === null) {
+    return required ? null : { password: null };
+  }
+  if (typeof generated !== "string" || !generated) {
+    return null;
+  }
+  return { password: generated };
+}
+
 async function handleDirectoryRead<T>(
   request: DirectoryRequest,
   response: DirectoryResponse,
@@ -172,9 +238,7 @@ async function handleDirectoryRead<T>(
   response.setHeader("Vary", "Cookie");
   const env = dependencies.env ?? process.env;
   if (!nccDirectoryReadsEnabled(env)) {
-    response
-      .status(503)
-      .json({ error: "NCC directory reads are not active." });
+    response.status(503).json({ error: "NCC directory reads are not active." });
     return;
   }
   if (!nccStaffAuthEnabled(env) || !hasNccAuthCookie(request)) {
@@ -344,9 +408,7 @@ export function registerNccDirectoryRoutes(
       ...(body.customFields && Object.keys(body.customFields).length
         ? { custom_fields: body.customFields }
         : {}),
-      ...(body.callerPassword
-        ? { caller_password: body.callerPassword }
-        : {}),
+      ...(body.callerPassword ? { caller_password: body.callerPassword } : {}),
     };
     try {
       const payload = await runNccWrite(
@@ -387,128 +449,89 @@ export function registerNccDirectoryRoutes(
     }
   });
 
-  app.patch?.(
-    "/api/ncc/directory/users/:userId",
-    async (request, response) => {
-      if (!prepareDirectoryWrite(request, response, dependencies)) return;
-      const body = request.body;
-      if (
-        !isPlainObject(body) ||
-        !hasOnlyKeys(body, [
-          "email",
-          "role",
-          "profile",
-          "branchIds",
-          "departmentIds",
-          "customFields",
-          "callerPassword",
-        ])
-      ) {
-        response.status(400).json({ error: "Request body is invalid." });
+  app.patch?.("/api/ncc/directory/users/:userId", async (request, response) => {
+    if (!prepareDirectoryWrite(request, response, dependencies)) return;
+    const body = request.body;
+    if (
+      !isPlainObject(body) ||
+      !hasOnlyKeys(body, [
+        "email",
+        "role",
+        "profile",
+        "branchIds",
+        "departmentIds",
+        "customFields",
+        "callerPassword",
+      ])
+    ) {
+      response.status(400).json({ error: "Request body is invalid." });
+      return;
+    }
+    const upstreamBody: Record<string, unknown> = {};
+    if (body.email !== undefined) {
+      if (typeof body.email !== "string" || !body.email.trim()) {
+        response.status(400).json({ error: "Email is required." });
         return;
       }
-      const upstreamBody: Record<string, unknown> = {};
-      if (body.email !== undefined) {
-        if (typeof body.email !== "string" || !body.email.trim()) {
-          response.status(400).json({ error: "Email is required." });
-          return;
-        }
-        upstreamBody.email = body.email.trim();
+      upstreamBody.email = body.email.trim();
+    }
+    if (body.role !== undefined) {
+      if (!isLocalRole(body.role)) {
+        response.status(400).json({ error: "Role is required." });
+        return;
       }
-      if (body.role !== undefined) {
-        if (!isLocalRole(body.role)) {
-          response.status(400).json({ error: "Role is required." });
-          return;
-        }
-        upstreamBody.assigned_role = mapLocalRoleToEms(body.role);
-        if (body.role === "superadmin") {
-          upstreamBody.scopes = [{ scope_type: "global" }];
-        }
-      }
-      if (body.profile !== undefined) {
-        const profile = profileBody(body.profile);
-        if (!profile) {
-          response.status(400).json({ error: "First name is required." });
-          return;
-        }
-        upstreamBody.profile = profile;
-      }
-      if (body.branchIds !== undefined) {
-        if (!isStringArray(body.branchIds)) {
-          response.status(400).json({ error: "Branch access is required." });
-          return;
-        }
-        if (body.role !== "superadmin") {
-          upstreamBody.scopes = body.branchIds.map(branchId => ({
-            scope_type: "branch",
-            scope_id: branchId,
-          }));
-        }
-      }
-      if (body.departmentIds !== undefined) {
-        if (!isStringArray(body.departmentIds)) {
-          response.status(400).json({ error: "Department access is required." });
-          return;
-        }
-        upstreamBody.departments = body.departmentIds;
-      }
-      if (body.customFields !== undefined) {
-        if (!validCustomFields(body.customFields)) {
-          response.status(400).json({ error: "Custom fields are invalid." });
-          return;
-        }
-        upstreamBody.custom_fields = body.customFields;
-      }
-      if (body.callerPassword !== undefined) {
-        if (typeof body.callerPassword !== "string") {
-          response.status(400).json({ error: "Current password is required." });
-          return;
-        }
-        upstreamBody.caller_password = body.callerPassword;
-      }
-      try {
-        const payload = await runNccWrite(
-          request,
-          response,
-          (api, token) =>
-            api.patchUser(
-              token,
-              request.params?.userId ?? "",
-              upstreamBody
-            ),
-          dependencies
-        );
-        const user = normalizeEmsStaffUser(payload);
-        if (!user) {
-          response
-            .status(502)
-            .json({ error: "NCC EMS returned invalid directory data." });
-          return;
-        }
-        response.json({ user });
-      } catch (error) {
-        if (!sendNccAuthError(error, response)) throw error;
+      upstreamBody.assigned_role = mapLocalRoleToEms(body.role);
+      if (body.role === "superadmin") {
+        upstreamBody.scopes = [{ scope_type: "global" }];
       }
     }
-  );
-
-  const lifecycle = (
-    action: "disable" | "enable" | "cancel-invitation"
-  ) => async (request: DirectoryRequest, response: DirectoryResponse) => {
-    if (!prepareDirectoryWrite(request, response, dependencies)) return;
+    if (body.profile !== undefined) {
+      const profile = profileBody(body.profile);
+      if (!profile) {
+        response.status(400).json({ error: "First name is required." });
+        return;
+      }
+      upstreamBody.profile = profile;
+    }
+    if (body.branchIds !== undefined) {
+      if (!isStringArray(body.branchIds)) {
+        response.status(400).json({ error: "Branch access is required." });
+        return;
+      }
+      if (body.role !== "superadmin") {
+        upstreamBody.scopes = body.branchIds.map(branchId => ({
+          scope_type: "branch",
+          scope_id: branchId,
+        }));
+      }
+    }
+    if (body.departmentIds !== undefined) {
+      if (!isStringArray(body.departmentIds)) {
+        response.status(400).json({ error: "Department access is required." });
+        return;
+      }
+      upstreamBody.departments = body.departmentIds;
+    }
+    if (body.customFields !== undefined) {
+      if (!validCustomFields(body.customFields)) {
+        response.status(400).json({ error: "Custom fields are invalid." });
+        return;
+      }
+      upstreamBody.custom_fields = body.customFields;
+    }
+    if (body.callerPassword !== undefined) {
+      if (typeof body.callerPassword !== "string") {
+        response.status(400).json({ error: "Current password is required." });
+        return;
+      }
+      upstreamBody.caller_password = body.callerPassword;
+    }
     try {
       const payload = await runNccWrite(
         request,
         response,
         (api, token) =>
-          action === "disable"
-            ? api.disableUser(token, request.params?.userId ?? "")
-            : action === "enable"
-              ? api.enableUser(token, request.params?.userId ?? "")
-              : api.cancelUserInvitation(
-                  token,
-                  request.params?.userId ?? ""
-                ),
+          api.patchUser(token, request.params?.userId ?? "", upstreamBody),
         dependencies
       );
       const user = normalizeEmsStaffUser(payload);
@@ -522,12 +545,38 @@ export function registerNccDirectoryRoutes(
     } catch (error) {
       if (!sendNccAuthError(error, response)) throw error;
     }
-  };
+  });
 
-  app.post(
-    "/api/ncc/directory/users/:userId/disable",
-    lifecycle("disable")
-  );
+  const lifecycle =
+    (action: "disable" | "enable" | "cancel-invitation") =>
+    async (request: DirectoryRequest, response: DirectoryResponse) => {
+      if (!prepareDirectoryWrite(request, response, dependencies)) return;
+      try {
+        const payload = await runNccWrite(
+          request,
+          response,
+          (api, token) =>
+            action === "disable"
+              ? api.disableUser(token, request.params?.userId ?? "")
+              : action === "enable"
+                ? api.enableUser(token, request.params?.userId ?? "")
+                : api.cancelUserInvitation(token, request.params?.userId ?? ""),
+          dependencies
+        );
+        const user = normalizeEmsStaffUser(payload);
+        if (!user) {
+          response
+            .status(502)
+            .json({ error: "NCC EMS returned invalid directory data." });
+          return;
+        }
+        response.json({ user });
+      } catch (error) {
+        if (!sendNccAuthError(error, response)) throw error;
+      }
+    };
+
+  app.post("/api/ncc/directory/users/:userId/disable", lifecycle("disable"));
   app.post("/api/ncc/directory/users/:userId/enable", lifecycle("enable"));
   app.post(
     "/api/ncc/directory/users/:userId/cancel-invitation",
@@ -574,6 +623,87 @@ export function registerNccDirectoryRoutes(
         }
         response.json({
           oneTime: { generatedPassword: payload.generated_password },
+        });
+      } catch (error) {
+        if (!sendNccAuthError(error, response)) throw error;
+      }
+    }
+  );
+
+  app.post(
+    "/api/ncc/directory/users/:userId/moodle",
+    async (request, response) => {
+      if (!prepareMoodleAccountWrite(request, response, dependencies)) return;
+      const bind = moodleBindBody(request.body);
+      if (!bind) {
+        response.status(400).json({ error: "Request body is invalid." });
+        return;
+      }
+      try {
+        const payload = await runNccWrite(
+          request,
+          response,
+          (api, token) =>
+            api.bindUserMoodle(
+              token,
+              request.params?.userId ?? "",
+              moodleBindUpstream(bind)
+            ),
+          dependencies
+        );
+        if (!isPlainObject(payload)) {
+          response
+            .status(502)
+            .json({ error: "NCC EMS returned invalid directory data." });
+          return;
+        }
+        const user = normalizeEmsStaffUser(payload);
+        const generated = generatedMoodlePassword(
+          payload,
+          bind.mode === "create"
+        );
+        if (!user || !generated) {
+          response
+            .status(502)
+            .json({ error: "NCC EMS returned invalid directory data." });
+          return;
+        }
+        response.json({
+          user,
+          oneTime: {
+            generatedMoodlePassword:
+              bind.mode === "create" ? generated.password : null,
+          },
+        });
+      } catch (error) {
+        if (!sendNccAuthError(error, response)) throw error;
+      }
+    }
+  );
+
+  app.post(
+    "/api/ncc/directory/users/:userId/moodle/password",
+    async (request, response) => {
+      if (!prepareMoodleAccountWrite(request, response, dependencies)) return;
+      try {
+        const payload = await runNccWrite(
+          request,
+          response,
+          (api, token) =>
+            api.resetUserMoodlePassword(token, request.params?.userId ?? ""),
+          dependencies
+        );
+        const generated =
+          isPlainObject(payload) &&
+          generatedMoodlePassword(payload, true);
+        if (!generated || !generated.password) {
+          response
+            .status(502)
+            .json({ error: "NCC EMS returned invalid directory data." });
+          return;
+        }
+        response.json({
+          oneTime: { generatedMoodlePassword: generated.password },
         });
       } catch (error) {
         if (!sendNccAuthError(error, response)) throw error;

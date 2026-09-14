@@ -1,20 +1,43 @@
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { BookOpen, ArrowRight, Library, Search } from "lucide-react";
 import { toast } from "sonner";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import PlatformShell from "@/components/platform/PlatformShell";
 import { WorkspaceLayout } from "@/components/platform/PlatformLayouts";
 import {
   DataTableCard,
   StatusBadge,
 } from "@/components/platform/PlatformPrimitives";
-import { runPlatformWorkflowActionRequest } from "@/lib/backend/api";
-import { requireActiveUser } from "@/lib/auth/session";
+import {
+  createNccCourseRequest,
+  disableNccCourseRequest,
+  enableNccCourseRequest,
+  fetchNccCourseRequest,
+  fetchNccCoursesRequest,
+  fetchNccDirectoryDepartmentsRequest,
+  fetchNccMoodleCoursesRequest,
+  patchNccCourseRequest,
+  refreshNccCourseRequest,
+  runPlatformWorkflowActionRequest,
+  type NccCourseDto,
+  type NccDepartmentDto,
+  type NccMoodleCoursePickerDto,
+} from "@/lib/backend/api";
+import {
+  getStoredAuthSession,
+  requireActiveUser,
+} from "@/lib/auth/session";
+import {
+  classifyNccFailure,
+  type NccReadState,
+} from "@/lib/backend/nccReadState";
+import NccReadStatus from "@/components/platform/NccReadStatus";
 import { platformStore } from "@/lib/domain/store";
 import type { Course, EntityStatus } from "@/lib/domain/types";
 
 type AdminCoursesView =
   | "catalog"
+  | "create"
   | "programs"
   | "levels"
   | "curriculum"
@@ -58,6 +81,16 @@ function formatDate(value: string) {
 }
 
 export default function AdminCoursesPage({
+  view = "catalog",
+  courseId,
+}: AdminCoursesPageProps) {
+  if (getStoredAuthSession()?.provider === "ncc") {
+    return <NccAdminCoursesPage view={view} courseId={courseId} />;
+  }
+  return <CompatibilityAdminCoursesPage view={view} courseId={courseId} />;
+}
+
+function CompatibilityAdminCoursesPage({
   view = "catalog",
   courseId,
 }: AdminCoursesPageProps) {
@@ -590,6 +623,10 @@ export default function AdminCoursesPage({
       title: "Courses",
       description: "Manage the course catalog only.",
     },
+    create: {
+      title: "Courses",
+      description: "Manage the course catalog only.",
+    },
     programs: {
       title: "Programs",
       description: "Review program structure.",
@@ -618,6 +655,7 @@ export default function AdminCoursesPage({
 
   const main = {
     catalog,
+    create: catalog,
     programs,
     levels,
     curriculum,
@@ -693,6 +731,594 @@ export default function AdminCoursesPage({
               ) : null}
             </div>
           )
+        }
+        main={main}
+      />
+    </PlatformShell>
+  );
+}
+
+function NccAdminCoursesPage({
+  view = "catalog",
+  courseId,
+}: AdminCoursesPageProps) {
+  const [, navigate] = useLocation();
+  const [search, setSearch] = useState("");
+  const [status, setStatus] = useState<"all" | "active" | "disabled">("all");
+  const [courses, setCourses] = useState<NccReadState<NccCourseDto[]>>({
+    status: "loading",
+  });
+  const [departments, setDepartments] = useState<NccDepartmentDto[]>([]);
+  const [course, setCourse] = useState<NccReadState<NccCourseDto>>({
+    status: "loading",
+  });
+  const [picker, setPicker] = useState<NccReadState<NccMoodleCoursePickerDto>>({
+    status: "loading",
+  });
+  const [moodleCourseId, setMoodleCourseId] = useState<number | null>(null);
+  const [departmentId, setDepartmentId] = useState("");
+  const [draft, setDraft] = useState({
+    departmentId: "",
+    sortOrder: "0",
+    moodleAttendanceId: "",
+  });
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState("");
+
+  const loadCatalog = useCallback(async () => {
+    setCourses({ status: "loading" });
+    const result = await fetchNccCoursesRequest();
+    setCourses(
+      result.ok && result.data
+        ? { status: "ready", data: result.data.items }
+        : classifyNccFailure(result)
+    );
+  }, []);
+
+  const loadCreate = useCallback(async () => {
+    setPicker({ status: "loading" });
+    const [departmentsResult, pickerResult, coursesResult] =
+      await Promise.all([
+        fetchNccDirectoryDepartmentsRequest(),
+        fetchNccMoodleCoursesRequest(),
+        fetchNccCoursesRequest(),
+      ]);
+    if (departmentsResult.ok && departmentsResult.data) {
+      setDepartments(departmentsResult.data.items);
+    }
+    if (coursesResult.ok && coursesResult.data) {
+      setCourses({ status: "ready", data: coursesResult.data.items });
+    }
+    setPicker(
+      pickerResult.ok && pickerResult.data
+        ? { status: "ready", data: pickerResult.data }
+        : classifyNccFailure(pickerResult)
+    );
+  }, []);
+
+  const loadDetail = useCallback(async () => {
+    if (!courseId) return;
+    setCourse({ status: "loading" });
+    const [courseResult, departmentsResult] = await Promise.all([
+      fetchNccCourseRequest(courseId),
+      fetchNccDirectoryDepartmentsRequest(),
+    ]);
+    if (departmentsResult.ok && departmentsResult.data) {
+      setDepartments(departmentsResult.data.items);
+    }
+    if (!courseResult.ok || !courseResult.data) {
+      setCourse(classifyNccFailure(courseResult));
+      return;
+    }
+    const record = courseResult.data.course;
+    setCourse({ status: "ready", data: record });
+    setDraft({
+      departmentId: record.departmentId,
+      sortOrder: String(record.sortOrder),
+      moodleAttendanceId:
+        record.moodleAttendanceId === null
+          ? ""
+          : String(record.moodleAttendanceId),
+    });
+  }, [courseId]);
+
+  useEffect(() => {
+    if (view === "catalog") void loadCatalog();
+    if (view === "create") void loadCreate();
+    if (view === "detail") void loadDetail();
+  }, [view, loadCatalog, loadCreate, loadDetail]);
+
+  const activeDepartments = departments.filter(
+    department => department.status === "active"
+  );
+  const filteredCourses =
+    courses.status === "ready"
+      ? courses.data.filter(item => {
+          const text = [
+            item.fullname,
+            item.shortname,
+            item.departmentName,
+            item.status,
+          ]
+            .join(" ")
+            .toLowerCase();
+          return (
+            text.includes(search.trim().toLowerCase()) &&
+            (status === "all" || item.status === status)
+          );
+        })
+      : [];
+  const mappedMoodleIds =
+    courses.status === "ready"
+      ? new Set(courses.data.map(item => item.moodleCourseId))
+      : null;
+
+  const createCourse = async () => {
+    if (pending || moodleCourseId === null || !departmentId) return;
+    setPending(true);
+    setError("");
+    const response = await createNccCourseRequest({
+      departmentId,
+      moodleCourseId,
+    });
+    setPending(false);
+    if (!response.ok || !response.data) {
+      setError(response.error ?? "The course could not be linked.");
+      return;
+    }
+    navigate(`/app/admin/courses/${response.data.course.id}`);
+  };
+
+  const saveCourse = async () => {
+    if (pending || course.status !== "ready") return;
+    const record = course.data;
+    const input: {
+      departmentId?: string;
+      sortOrder?: number;
+      moodleAttendanceId?: number | null;
+    } = {};
+    if (draft.departmentId !== record.departmentId) {
+      input.departmentId = draft.departmentId;
+    }
+    const sortOrder = Number(draft.sortOrder);
+    if (Number.isSafeInteger(sortOrder) && sortOrder !== record.sortOrder) {
+      input.sortOrder = sortOrder;
+    }
+    const attendance = draft.moodleAttendanceId.trim();
+    const nextAttendance = attendance ? Number(attendance) : null;
+    if (
+      nextAttendance !== null &&
+      (!Number.isSafeInteger(nextAttendance) || nextAttendance < 1)
+    ) {
+      setError("Moodle attendance ID must be a positive integer.");
+      return;
+    }
+    if (nextAttendance !== record.moodleAttendanceId) {
+      input.moodleAttendanceId = nextAttendance;
+    }
+    setPending(true);
+    setError("");
+    const response = await patchNccCourseRequest(record.id, input);
+    setPending(false);
+    if (!response.ok) {
+      setError(response.error ?? "The course could not be updated.");
+      return;
+    }
+    await loadDetail();
+  };
+
+  const courseAction = async (action: "disable" | "enable" | "refresh") => {
+    if (pending || course.status !== "ready") return;
+    setPending(true);
+    setError("");
+    const response =
+      action === "disable"
+        ? await disableNccCourseRequest(course.data.id)
+        : action === "enable"
+          ? await enableNccCourseRequest(course.data.id)
+          : await refreshNccCourseRequest(course.data.id);
+    setPending(false);
+    if (!response.ok) {
+      setError(response.error ?? "The course could not be updated.");
+      return;
+    }
+    await loadDetail();
+  };
+
+  const unavailable = (
+    <div className="platform-empty-state">
+      <strong>Not managed in EMS</strong>
+      <span>
+        This catalog section is only available for compatibility data. EMS
+        course overlays live in the catalog.
+      </span>
+      <Link className="platform-row-link" href="/app/admin/courses">
+        Back to catalog
+      </Link>
+    </div>
+  );
+
+  const catalog = (
+    <DataTableCard
+      title="EMS course catalog"
+      subtitle={
+        courses.status === "ready" ? `${filteredCourses.length} course(s)` : ""
+      }
+      className="admin-ia-table-card admin-courses-catalog-list"
+    >
+      {courses.status !== "ready" ? (
+        <NccReadStatus state={courses} onRetry={() => void loadCatalog()} />
+      ) : (
+        <div className="admin-record-list admin-course-catalog-records">
+          {filteredCourses.map(item => (
+            <article key={item.id}>
+              <div className="admin-record-list-copy">
+                <span>{item.departmentName}</span>
+                <strong>{item.displayName ?? item.fullname}</strong>
+                <p>
+                  {item.shortname} · Moodle course {item.moodleCourseId}
+                  {item.categoryName ? ` · ${item.categoryName}` : ""}
+                </p>
+              </div>
+              <dl className="admin-record-list-facts">
+                <div>
+                  <dt>Department</dt>
+                  <dd>{item.departmentName}</dd>
+                </div>
+                <div>
+                  <dt>Sort order</dt>
+                  <dd>{item.sortOrder}</dd>
+                </div>
+              </dl>
+              <div className="admin-record-list-actions">
+                <StatusBadge
+                  tone={item.status === "active" ? "green" : "slate"}
+                >
+                  {item.status}
+                </StatusBadge>
+                <Link
+                  className="simple-portal-row-action"
+                  href={`/app/admin/courses/${item.id}`}
+                >
+                  Details
+                  <ArrowRight size={14} />
+                </Link>
+              </div>
+            </article>
+          ))}
+          {!filteredCourses.length ? (
+            <div className="platform-empty-state">
+              <strong>No courses found</strong>
+              <span>Try a different search or status filter.</span>
+            </div>
+          ) : null}
+        </div>
+      )}
+    </DataTableCard>
+  );
+
+  const pickerCourses =
+    picker.status === "ready"
+      ? picker.data.courses.filter(
+          item => !mappedMoodleIds || !mappedMoodleIds.has(item.id)
+        )
+      : [];
+
+  const create = (
+    <DataTableCard
+      title="Link Moodle course"
+      subtitle="Create one EMS course overlay"
+      className="admin-ia-table-card"
+    >
+      {picker.status !== "ready" ? (
+        <NccReadStatus state={picker} onRetry={() => void loadCreate()} />
+      ) : (
+        <div className="admin-user-detail-form">
+          {picker.data.error ? (
+            <p className="platform-form-error" role="alert">
+              {picker.data.error}
+            </p>
+          ) : null}
+          {picker.data.warnings.map(warning => (
+            <p key={warning} role="status">
+              {warning}
+            </p>
+          ))}
+          <label>
+            Department
+            <select
+              value={departmentId}
+              disabled={pending}
+              onChange={event => setDepartmentId(event.target.value)}
+            >
+              <option value="">Select department</option>
+              {activeDepartments.map(department => (
+                <option key={department.id} value={department.id}>
+                  {department.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <fieldset>
+            <legend>Moodle course</legend>
+            {pickerCourses.length ? (
+              pickerCourses.map(item => (
+                <label key={item.id}>
+                  <input
+                    type="radio"
+                    name="moodle-course"
+                    checked={moodleCourseId === item.id}
+                    onChange={() => setMoodleCourseId(item.id)}
+                  />
+                  {item.displayName ?? item.fullname} ({item.shortname})
+                  {item.categoryName ? ` · ${item.categoryName}` : ""}
+                </label>
+              ))
+            ) : (
+              <p role="status">No unmapped Moodle courses available.</p>
+            )}
+          </fieldset>
+          {error ? (
+            <p className="platform-form-error" role="alert">
+              {error}
+            </p>
+          ) : null}
+          <div className="admin-user-detail-form-actions">
+            <Link className="platform-secondary-button" href="/app/admin/courses">
+              Cancel
+            </Link>
+            <button
+              type="button"
+              className="platform-primary-button"
+              disabled={pending || moodleCourseId === null || !departmentId}
+              onClick={() => void createCourse()}
+            >
+              {pending ? "Linking" : "Link Moodle course"}
+            </button>
+          </div>
+        </div>
+      )}
+    </DataTableCard>
+  );
+
+  const detail =
+    course.status !== "ready" ? (
+      <DataTableCard title="Course detail" className="admin-ia-table-card">
+        <NccReadStatus state={course} onRetry={() => void loadDetail()} />
+      </DataTableCard>
+    ) : (
+      <div className="admin-courses-detail-stack">
+        <section className="admin-courses-detail-card">
+          <div>
+            <span className="admin-courses-detail-kicker">EMS course</span>
+            <h2>{course.data.displayName ?? course.data.fullname}</h2>
+            <p>
+              {course.data.shortname} · Moodle course {course.data.moodleCourseId}
+            </p>
+          </div>
+          <StatusBadge
+            tone={course.data.status === "active" ? "green" : "slate"}
+          >
+            {course.data.status}
+          </StatusBadge>
+        </section>
+        <div className="admin-courses-detail-grid">
+          <section className="admin-courses-detail-card">
+            <span className="admin-courses-detail-kicker">Moodle snapshot</span>
+            <dl className="admin-courses-detail-list">
+              <div>
+                <dt>Category</dt>
+                <dd>{course.data.categoryName ?? "—"}</dd>
+              </div>
+              <div>
+                <dt>ID number</dt>
+                <dd>{course.data.idNumber ?? "—"}</dd>
+              </div>
+              <div>
+                <dt>Visible in Moodle</dt>
+                <dd>
+                  {course.data.moodleVisible === null
+                    ? "—"
+                    : course.data.moodleVisible
+                      ? "Yes"
+                      : "No"}
+                </dd>
+              </div>
+              <div>
+                <dt>Attendance activity</dt>
+                <dd>{course.data.moodleAttendanceId ?? "—"}</dd>
+              </div>
+              <div>
+                <dt>Last refreshed</dt>
+                <dd>{formatDate(course.data.moodleRefreshedAt)}</dd>
+              </div>
+              <div>
+                <dt>Refresh error</dt>
+                <dd>{course.data.moodleRefreshError ?? "None"}</dd>
+              </div>
+            </dl>
+            {course.data.warnings.map(warning => (
+              <p key={warning} role="status">
+                {warning}
+              </p>
+            ))}
+          </section>
+          <section className="admin-courses-detail-card">
+            <span className="admin-courses-detail-kicker">EMS settings</span>
+            <div className="admin-user-detail-form">
+              <label>
+                Department
+                <select
+                  value={draft.departmentId}
+                  disabled={pending}
+                  onChange={event =>
+                    setDraft(current => ({
+                      ...current,
+                      departmentId: event.target.value,
+                    }))
+                  }
+                >
+                  {departments.map(department => (
+                    <option key={department.id} value={department.id}>
+                      {department.name}
+                      {department.status !== "active" ? " (disabled)" : ""}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Sort order
+                <input
+                  type="number"
+                  value={draft.sortOrder}
+                  disabled={pending}
+                  onChange={event =>
+                    setDraft(current => ({
+                      ...current,
+                      sortOrder: event.target.value,
+                    }))
+                  }
+                />
+              </label>
+              <label>
+                Moodle attendance ID
+                <input
+                  type="number"
+                  min={1}
+                  value={draft.moodleAttendanceId}
+                  disabled={pending}
+                  placeholder="None"
+                  onChange={event =>
+                    setDraft(current => ({
+                      ...current,
+                      moodleAttendanceId: event.target.value,
+                    }))
+                  }
+                />
+              </label>
+            </div>
+            <div className="admin-user-detail-form-actions">
+              <button
+                type="button"
+                className="platform-secondary-button"
+                disabled={pending}
+                onClick={() => void saveCourse()}
+              >
+                {pending ? "Saving" : "Save course"}
+              </button>
+              <button
+                type="button"
+                disabled={pending}
+                onClick={() => void courseAction("refresh")}
+              >
+                Refresh Moodle snapshot
+              </button>
+              <button
+                type="button"
+                disabled={pending}
+                onClick={() =>
+                  void courseAction(
+                    course.data.status === "active" ? "disable" : "enable"
+                  )
+                }
+              >
+                {course.data.status === "active" ? "Disable" : "Enable"}
+              </button>
+            </div>
+            {error ? (
+              <p className="platform-form-error" role="alert">
+                {error}
+              </p>
+            ) : null}
+          </section>
+        </div>
+      </div>
+    );
+
+  const titles: Record<AdminCoursesView, { title: string; description: string }> =
+    {
+      catalog: {
+        title: "Courses",
+        description: "Manage EMS course overlays linked to Moodle.",
+      },
+      create: {
+        title: "Link Moodle course",
+        description: "Create one EMS course overlay from the Moodle picker.",
+      },
+      detail: {
+        title: course.status === "ready" ? course.data.fullname : "Course",
+        description: "Review one EMS course overlay.",
+      },
+      programs: { title: "Programs", description: "Review program structure." },
+      levels: { title: "Levels", description: "Review learning levels." },
+      curriculum: { title: "Curriculum", description: "Review modules." },
+      teachers: { title: "Course teachers", description: "Review teachers." },
+      resources: { title: "Resources", description: "Review resources." },
+    };
+
+  const main = {
+    catalog,
+    create,
+    detail,
+    programs: unavailable,
+    levels: unavailable,
+    curriculum: unavailable,
+    teachers: unavailable,
+    resources: unavailable,
+  }[view];
+
+  return (
+    <PlatformShell role="superadmin" title="Courses">
+      <WorkspaceLayout
+        className="admin-ia-page admin-courses-page"
+        title={titles[view].title}
+        description={titles[view].description}
+        actions={
+          view === "catalog" ? (
+            <Link
+              className="platform-primary-button"
+              href="/app/admin/courses/new"
+            >
+              <BookOpen size={15} />
+              Link Moodle course
+            </Link>
+          ) : (
+            <Link className="platform-secondary-button" href="/app/admin/courses">
+              Back to catalog
+            </Link>
+          )
+        }
+        toolbar={
+          view === "catalog" ? (
+            <div className="admin-ia-control-row">
+              <div className="admin-ia-toolbar">
+                <label className="admin-ia-search">
+                  <Search size={16} />
+                  <input
+                    value={search}
+                    onChange={event => setSearch(event.target.value)}
+                    placeholder="Search courses"
+                    aria-label="Search courses"
+                  />
+                </label>
+                <label>
+                  Status
+                  <select
+                    value={status}
+                    onChange={event =>
+                      setStatus(
+                        event.target.value as "all" | "active" | "disabled"
+                      )
+                    }
+                  >
+                    <option value="all">All statuses</option>
+                    <option value="active">Active</option>
+                    <option value="disabled">Disabled</option>
+                  </select>
+                </label>
+              </div>
+            </div>
+          ) : null
         }
         main={main}
       />

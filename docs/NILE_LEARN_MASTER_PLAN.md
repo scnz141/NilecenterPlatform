@@ -715,6 +715,17 @@ Current status:
   in-flight locking and field-limited PATCH until the backend adds the contract;
   this is recorded as an open backend requirement, not an accepted design.
 
+  The second accepted write family is **NCC admissions writes** behind the
+  disabled `NILE_NCC_ADMISSIONS_WRITES_ENABLED` flag: Registrar lead
+  create/edit/status/convert, student create/edit/disable/enable, and placement
+  booking/reschedule/no-show/cancel/result, plus Branch Admin student
+  create/detail on new `/app/branch/students/new` and
+  `/app/branch/students/:studentId` routes. The BFF derives the branch from the
+  sealed session workspace for Branch Admin and Registrar and rejects
+  mismatching bodies; Super Admin must name a branch. Placement results require
+  an EMS course, so the result form stays honest until courses exist.
+  Idempotency and version preconditions remain an open backend requirement.
+
 - On 2026-07-23 the product owner accepted ADR-010 and Phase 6J: Moodle is the
   sole writable authority for learning content, resources, assignments,
   submissions, quizzes, questions, attempts, completion, grades, and feedback.
