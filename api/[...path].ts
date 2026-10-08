@@ -32,9 +32,13 @@ export default async function handler(req: VercelCatchAllRequest, res: ServerRes
       .map((segment) => segment.replace(/^\/+|\/+$/g, ""))
       .filter(Boolean)
       .join("/");
+    // Vercel appends the catch-all segments as `path=…`; drop it so routes
+    // with strict query allowlists see only the caller's own parameters.
     const queryIndex = req.url?.indexOf("?") ?? -1;
-    const queryString = queryIndex >= 0 && req.url ? req.url.slice(queryIndex) : "";
-    req.url = `/api/${suffix}${queryString}`;
+    const params = new URLSearchParams(queryIndex >= 0 && req.url ? req.url.slice(queryIndex + 1) : "");
+    params.delete("path");
+    const queryString = params.toString();
+    req.url = `/api/${suffix}${queryString ? `?${queryString}` : ""}`;
   }
 
   try {
