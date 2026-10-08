@@ -1,15 +1,27 @@
 import {
-  normalizeEmsBranches,
+  isEmsStagingRole,
   mapLocalRoleToEms,
+  normalizeEmsBranch,
+  normalizeEmsBranches,
+  normalizeEmsBranchStatistics,
   normalizeEmsCustomFieldDefinitions,
+  normalizeEmsDepartment,
   normalizeEmsDepartments,
+  normalizeEmsHourCellPatch,
+  normalizeEmsHourCellRange,
   normalizeEmsStaffUser,
   normalizeEmsStaffUsers,
+  normalizeEmsUserCourseIds,
+  normalizeEmsUserStatistics,
   type EmsStagingBranch,
+  type EmsStagingBranchStatistics,
   type EmsStagingCustomFieldDefinition,
   type EmsStagingDepartment,
-  type EmsStagingLocalRole,
+  type EmsStagingHourCellOp,
+  type EmsStagingHourCellRange,
+  type EmsStagingRole,
   type EmsStagingStaffUser,
+  type EmsStagingUserStatistics,
 } from "./emsStagingClient.js";
 import {
   hasNccAuthCookie,
@@ -25,6 +37,7 @@ import {
 type DirectoryRequest = {
   headers: { cookie?: string };
   params?: Record<string, string>;
+  query?: Record<string, unknown>;
   body?: Record<string, unknown>;
 };
 
@@ -43,6 +56,7 @@ type DirectoryApp = {
   get(path: string, handler: DirectoryHandler): void;
   post(path: string, handler: DirectoryHandler): void;
   patch?(path: string, handler: DirectoryHandler): void;
+  put?(path: string, handler: DirectoryHandler): void;
 };
 
 export function nccDirectoryReadsEnabled(env: NodeJS.ProcessEnv = process.env) {
@@ -69,14 +83,12 @@ function hasOnlyKeys(record: Record<string, unknown>, keys: string[]) {
   return Object.keys(record).every(key => keys.includes(key));
 }
 
-function isLocalRole(value: unknown): value is EmsStagingLocalRole {
-  return [
-    "superadmin",
-    "branchadmin",
-    "headofdepartment",
-    "registrar",
-    "teacher",
-  ].includes(String(value));
+/** Accepts the EMS role strings used by the unified staff app and the
+ *  legacy local role names used by the compatibility admin pages. */
+function resolveAssignedRole(value: unknown): EmsStagingRole | null {
+  if (typeof value !== "string") return null;
+  if (isEmsStagingRole(value)) return value;
+  return mapLocalRoleToEms(value);
 }
 
 function isStringArray(value: unknown): value is string[] {
@@ -84,6 +96,41 @@ function isStringArray(value: unknown): value is string[] {
     Array.isArray(value) &&
     value.every(item => typeof item === "string" && item.length > 0)
   );
+}
+
+function isRangeDate(value: unknown): value is string {
+  return (
+    typeof value === "string" &&
+    /^\d{4}-\d{2}-\d{2}$/.test(value) &&
+    Number.isFinite(Date.parse(`${value}T00:00:00Z`))
+  );
+}
+
+function hourCellOpsBody(
+  value: unknown
+): EmsStagingHourCellOp[] | null {
+  if (!isPlainObject(value) || !hasOnlyKeys(value, ["ops"])) return null;
+  if (!Array.isArray(value.ops) || value.ops.length > 24 * 62) return null;
+  const ops: EmsStagingHourCellOp[] = [];
+  for (const item of value.ops) {
+    if (!isPlainObject(item) || !hasOnlyKeys(item, ["date", "hour", "status"])) {
+      return null;
+    }
+    if (
+      !isRangeDate(item.date) ||
+      typeof item.hour !== "number" ||
+      !Number.isSafeInteger(item.hour) ||
+      item.hour < 0 ||
+      item.hour > 23 ||
+      (item.status !== null &&
+        item.status !== "available" &&
+        item.status !== "unavailable")
+    ) {
+      return null;
+    }
+    ops.push({ date: item.date, hour: item.hour, status: item.status });
+  }
+  return ops;
 }
 
 function validCustomFields(value: unknown) {
@@ -100,24 +147,44 @@ function validCustomFields(value: unknown) {
 }
 
 function profileBody(value: unknown) {
+  const optionalKeys = [
+    "phone",
+    "address",
+    "nationality",
+    "dateOfBirth",
+    "notes",
+  ] as const;
   if (
     !isPlainObject(value) ||
-    !hasOnlyKeys(value, ["firstName", "lastName", "phone"]) ||
+    !hasOnlyKeys(value, ["firstName", "lastName", ...optionalKeys]) ||
     typeof value.firstName !== "string" ||
     !value.firstName.trim() ||
     typeof value.lastName !== "string" ||
     !value.lastName.trim() ||
-    (value.phone !== undefined &&
-      value.phone !== null &&
-      typeof value.phone !== "string")
+    optionalKeys.some(
+      key =>
+        value[key] !== undefined &&
+        value[key] !== null &&
+        typeof value[key] !== "string"
+    )
   ) {
     return null;
   }
-  return {
+  const upstream: Record<string, unknown> = {
     first_name: value.firstName.trim(),
     last_name: value.lastName.trim(),
-    ...(value.phone !== undefined ? { phone: value.phone } : {}),
   };
+  const keyMap: Record<(typeof optionalKeys)[number], string> = {
+    phone: "phone",
+    address: "address",
+    nationality: "nationality",
+    dateOfBirth: "date_of_birth",
+    notes: "notes",
+  };
+  for (const key of optionalKeys) {
+    if (value[key] !== undefined) upstream[keyMap[key]] = value[key];
+  }
+  return upstream;
 }
 
 function invitationOneTime(payload: Record<string, unknown>) {
@@ -290,6 +357,59 @@ export function registerNccDirectoryRoutes(
     )
   );
 
+  app.get("/api/ncc/directory/users/:userId/statistics", (request, response) =>
+    handleDirectoryRead<EmsStagingUserStatistics>(
+      request,
+      response,
+      dependencies,
+      (api, token): Promise<RemoteResult> =>
+        api.userStatistics(token, request.params?.userId ?? ""),
+      normalizeEmsUserStatistics,
+      statistics => ({ statistics })
+    )
+  );
+
+  app.get("/api/ncc/directory/users/:userId/courses", (request, response) =>
+    handleDirectoryRead<string[]>(
+      request,
+      response,
+      dependencies,
+      (api, token): Promise<RemoteResult> =>
+        api.userCourses(token, request.params?.userId ?? ""),
+      normalizeEmsUserCourseIds,
+      courseIds => ({ courseIds })
+    )
+  );
+
+  app.get("/api/ncc/directory/users/:userId/hour-cells", (request, response) => {
+    const query = request.query ?? {};
+    if (Object.keys(query).some(key => !["from", "to"].includes(key))) {
+      response.status(400).json({ error: "Request query is invalid." });
+      return;
+    }
+    const { from, to } = query;
+    if (!isRangeDate(from) || !isRangeDate(to) || from > to) {
+      response.status(400).json({ error: "Request query is invalid." });
+      return;
+    }
+    const spanDays =
+      (Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) /
+      86_400_000;
+    if (spanDays > 62) {
+      response.status(400).json({ error: "Request query is invalid." });
+      return;
+    }
+    return handleDirectoryRead<EmsStagingHourCellRange>(
+      request,
+      response,
+      dependencies,
+      (api, token): Promise<RemoteResult> =>
+        api.userHourCells(token, request.params?.userId ?? "", from, to),
+      normalizeEmsHourCellRange,
+      range => ({ range })
+    );
+  });
+
   app.get("/api/ncc/directory/branches", (request, response) =>
     handleDirectoryRead<EmsStagingBranch[]>(
       request,
@@ -323,6 +443,362 @@ export function registerNccDirectoryRoutes(
     )
   );
 
+  app.get("/api/ncc/directory/branches/:branchId", (request, response) =>
+    handleDirectoryRead<EmsStagingBranch>(
+      request,
+      response,
+      dependencies,
+      (api, token): Promise<RemoteResult> =>
+        api.branch(token, request.params?.branchId ?? ""),
+      normalizeEmsBranch,
+      branch => ({ branch })
+    )
+  );
+
+  app.get(
+    "/api/ncc/directory/branches/:branchId/statistics",
+    (request, response) =>
+      handleDirectoryRead<EmsStagingBranchStatistics>(
+        request,
+        response,
+        dependencies,
+        (api, token): Promise<RemoteResult> =>
+          api.branchStatistics(token, request.params?.branchId ?? ""),
+        normalizeEmsBranchStatistics,
+        statistics => ({ statistics })
+      )
+  );
+
+  const catalogBody = (
+    body: unknown,
+    keys: string[],
+    requireName: boolean
+  ): Record<string, unknown> | null => {
+    if (!isPlainObject(body) || !hasOnlyKeys(body, keys)) return null;
+    const upstream: Record<string, unknown> = {};
+    if (body.name !== undefined) {
+      if (typeof body.name !== "string" || !body.name.trim()) return null;
+      upstream.name = body.name.trim();
+    } else if (requireName) {
+      return null;
+    }
+    if (body.code !== undefined) {
+      if (body.code !== null && typeof body.code !== "string") return null;
+      upstream.code = body.code === null ? null : body.code;
+    }
+    if (body.timezone !== undefined) {
+      if (typeof body.timezone !== "string" || !body.timezone.trim())
+        return null;
+      upstream.timezone = body.timezone.trim();
+    }
+    if (body.isOnline !== undefined) {
+      if (typeof body.isOnline !== "boolean") return null;
+      upstream.is_online = body.isOnline;
+    }
+    if (body.sortOrder !== undefined) {
+      if (
+        !Number.isSafeInteger(body.sortOrder) ||
+        (body.sortOrder as number) < -9999 ||
+        (body.sortOrder as number) > 9999
+      ) {
+        return null;
+      }
+      upstream.sort_order = body.sortOrder;
+    }
+    if (body.customFields !== undefined) {
+      if (!validCustomFields(body.customFields)) return null;
+      upstream.custom_fields = body.customFields;
+    }
+    return upstream;
+  };
+
+  const BRANCH_BODY_KEYS = [
+    "name",
+    "code",
+    "timezone",
+    "isOnline",
+    "sortOrder",
+    "customFields",
+  ];
+  const DEPARTMENT_BODY_KEYS = ["name", "code", "customFields"];
+
+  app.post("/api/ncc/directory/branches", async (request, response) => {
+    if (!prepareDirectoryWrite(request, response, dependencies)) return;
+    const upstream = catalogBody(request.body, BRANCH_BODY_KEYS, true);
+    if (!upstream) {
+      response.status(400).json({ error: "Request body is invalid." });
+      return;
+    }
+    try {
+      const payload = await runNccWrite(
+        request,
+        response,
+        (api, token) => api.createBranch(token, upstream),
+        dependencies
+      );
+      const branch = normalizeEmsBranch(payload);
+      if (!branch) {
+        response
+          .status(502)
+          .json({ error: "NCC EMS returned invalid directory data." });
+        return;
+      }
+      response.json({ branch });
+    } catch (error) {
+      if (!sendNccAuthError(error, response)) throw error;
+    }
+  });
+
+  app.patch?.(
+    "/api/ncc/directory/branches/:branchId",
+    async (request, response) => {
+      if (!prepareDirectoryWrite(request, response, dependencies)) return;
+      const upstream = catalogBody(request.body, BRANCH_BODY_KEYS, false);
+      if (!upstream) {
+        response.status(400).json({ error: "Request body is invalid." });
+        return;
+      }
+      try {
+        const payload = await runNccWrite(
+          request,
+          response,
+          (api, token) =>
+            api.patchBranch(
+              token,
+              request.params?.branchId ?? "",
+              upstream
+            ),
+          dependencies
+        );
+        const branch = normalizeEmsBranch(payload);
+        if (!branch) {
+          response
+            .status(502)
+            .json({ error: "NCC EMS returned invalid directory data." });
+          return;
+        }
+        response.json({ branch });
+      } catch (error) {
+        if (!sendNccAuthError(error, response)) throw error;
+      }
+    }
+  );
+
+  app.post(
+    "/api/ncc/directory/branches/:branchId/disable",
+    async (request, response) => {
+      if (!prepareDirectoryWrite(request, response, dependencies)) return;
+      const body = request.body;
+      if (
+        !isPlainObject(body) ||
+        !hasOnlyKeys(body, ["reasonId"]) ||
+        typeof body.reasonId !== "string" ||
+        !body.reasonId
+      ) {
+        response.status(400).json({ error: "Reason is required." });
+        return;
+      }
+      try {
+        const payload = await runNccWrite(
+          request,
+          response,
+          (api, token) =>
+            api.disableBranch(
+              token,
+              request.params?.branchId ?? "",
+              body.reasonId as string
+            ),
+          dependencies
+        );
+        const branch = normalizeEmsBranch(payload);
+        if (!branch) {
+          response
+            .status(502)
+            .json({ error: "NCC EMS returned invalid directory data." });
+          return;
+        }
+        response.json({ branch });
+      } catch (error) {
+        if (!sendNccAuthError(error, response)) throw error;
+      }
+    }
+  );
+
+  app.post(
+    "/api/ncc/directory/branches/:branchId/enable",
+    async (request, response) => {
+      if (!prepareDirectoryWrite(request, response, dependencies)) return;
+      if (
+        request.body !== undefined &&
+        request.body !== null &&
+        (!isPlainObject(request.body) ||
+          Object.keys(request.body).length > 0)
+      ) {
+        response.status(400).json({ error: "Request body is invalid." });
+        return;
+      }
+      try {
+        const payload = await runNccWrite(
+          request,
+          response,
+          (api, token) =>
+            api.enableBranch(token, request.params?.branchId ?? ""),
+          dependencies
+        );
+        const branch = normalizeEmsBranch(payload);
+        if (!branch) {
+          response
+            .status(502)
+            .json({ error: "NCC EMS returned invalid directory data." });
+          return;
+        }
+        response.json({ branch });
+      } catch (error) {
+        if (!sendNccAuthError(error, response)) throw error;
+      }
+    }
+  );
+
+  app.post("/api/ncc/directory/departments", async (request, response) => {
+    if (!prepareDirectoryWrite(request, response, dependencies)) return;
+    const upstream = catalogBody(request.body, DEPARTMENT_BODY_KEYS, true);
+    if (!upstream) {
+      response.status(400).json({ error: "Request body is invalid." });
+      return;
+    }
+    try {
+      const payload = await runNccWrite(
+        request,
+        response,
+        (api, token) => api.createDepartment(token, upstream),
+        dependencies
+      );
+      const department = normalizeEmsDepartment(payload);
+      if (!department) {
+        response
+          .status(502)
+          .json({ error: "NCC EMS returned invalid directory data." });
+        return;
+      }
+      response.json({ department });
+    } catch (error) {
+      if (!sendNccAuthError(error, response)) throw error;
+    }
+  });
+
+  app.patch?.(
+    "/api/ncc/directory/departments/:departmentId",
+    async (request, response) => {
+      if (!prepareDirectoryWrite(request, response, dependencies)) return;
+      const upstream = catalogBody(request.body, DEPARTMENT_BODY_KEYS, false);
+      if (!upstream) {
+        response.status(400).json({ error: "Request body is invalid." });
+        return;
+      }
+      try {
+        const payload = await runNccWrite(
+          request,
+          response,
+          (api, token) =>
+            api.patchDepartment(
+              token,
+              request.params?.departmentId ?? "",
+              upstream
+            ),
+          dependencies
+        );
+        const department = normalizeEmsDepartment(payload);
+        if (!department) {
+          response
+            .status(502)
+            .json({ error: "NCC EMS returned invalid directory data." });
+          return;
+        }
+        response.json({ department });
+      } catch (error) {
+        if (!sendNccAuthError(error, response)) throw error;
+      }
+    }
+  );
+
+  app.post(
+    "/api/ncc/directory/departments/:departmentId/disable",
+    async (request, response) => {
+      if (!prepareDirectoryWrite(request, response, dependencies)) return;
+      const body = request.body;
+      if (
+        !isPlainObject(body) ||
+        !hasOnlyKeys(body, ["reasonId"]) ||
+        typeof body.reasonId !== "string" ||
+        !body.reasonId
+      ) {
+        response.status(400).json({ error: "Reason is required." });
+        return;
+      }
+      try {
+        const payload = await runNccWrite(
+          request,
+          response,
+          (api, token) =>
+            api.disableDepartment(
+              token,
+              request.params?.departmentId ?? "",
+              body.reasonId as string
+            ),
+          dependencies
+        );
+        const department = normalizeEmsDepartment(payload);
+        if (!department) {
+          response
+            .status(502)
+            .json({ error: "NCC EMS returned invalid directory data." });
+          return;
+        }
+        response.json({ department });
+      } catch (error) {
+        if (!sendNccAuthError(error, response)) throw error;
+      }
+    }
+  );
+
+  app.post(
+    "/api/ncc/directory/departments/:departmentId/enable",
+    async (request, response) => {
+      if (!prepareDirectoryWrite(request, response, dependencies)) return;
+      if (
+        request.body !== undefined &&
+        request.body !== null &&
+        (!isPlainObject(request.body) ||
+          Object.keys(request.body).length > 0)
+      ) {
+        response.status(400).json({ error: "Request body is invalid." });
+        return;
+      }
+      try {
+        const payload = await runNccWrite(
+          request,
+          response,
+          (api, token) =>
+            api.enableDepartment(
+              token,
+              request.params?.departmentId ?? ""
+            ),
+          dependencies
+        );
+        const department = normalizeEmsDepartment(payload);
+        if (!department) {
+          response
+            .status(502)
+            .json({ error: "NCC EMS returned invalid directory data." });
+          return;
+        }
+        response.json({ department });
+      } catch (error) {
+        if (!sendNccAuthError(error, response)) throw error;
+      }
+    }
+  );
+
   app.post("/api/ncc/directory/users", async (request, response) => {
     if (!prepareDirectoryWrite(request, response, dependencies)) return;
     const body = request.body;
@@ -335,6 +811,8 @@ export function registerNccDirectoryRoutes(
         "profile",
         "branchIds",
         "departmentIds",
+        "courseIds",
+        "canTakePlacementTest",
         "customFields",
         "callerPassword",
       ])
@@ -346,7 +824,8 @@ export function registerNccDirectoryRoutes(
       response.status(400).json({ error: "Email is required." });
       return;
     }
-    if (!isLocalRole(body.role)) {
+    const assignedRole = resolveAssignedRole(body.role);
+    if (!assignedRole) {
       response.status(400).json({ error: "Role is required." });
       return;
     }
@@ -370,6 +849,19 @@ export function registerNccDirectoryRoutes(
       response.status(400).json({ error: "Department access is required." });
       return;
     }
+    if (body.courseIds !== undefined && !isStringArray(body.courseIds)) {
+      response.status(400).json({ error: "Course access is invalid." });
+      return;
+    }
+    if (
+      body.canTakePlacementTest !== undefined &&
+      typeof body.canTakePlacementTest !== "boolean"
+    ) {
+      response
+        .status(400)
+        .json({ error: "Placement test capability is invalid." });
+      return;
+    }
     if (
       body.customFields !== undefined &&
       !validCustomFields(body.customFields)
@@ -384,13 +876,8 @@ export function registerNccDirectoryRoutes(
       response.status(400).json({ error: "Current password is required." });
       return;
     }
-    const assignedRole = mapLocalRoleToEms(body.role);
-    if (!assignedRole) {
-      response.status(400).json({ error: "Role is required." });
-      return;
-    }
     const scopes =
-      body.role === "superadmin"
+      assignedRole === "super_admin"
         ? [{ scope_type: "global" }]
         : (body.branchIds ?? []).map(branchId => ({
             scope_type: "branch",
@@ -402,8 +889,12 @@ export function registerNccDirectoryRoutes(
       provisioning: body.provisioning,
       profile,
       scopes,
-      ...(body.role === "headofdepartment" && body.departmentIds
+      ...(assignedRole === "hod" && body.departmentIds
         ? { departments: body.departmentIds }
+        : {}),
+      ...(body.courseIds ? { course_ids: body.courseIds } : {}),
+      ...(body.canTakePlacementTest !== undefined
+        ? { can_take_placement_test: body.canTakePlacementTest }
         : {}),
       ...(body.customFields && Object.keys(body.customFields).length
         ? { custom_fields: body.customFields }
@@ -460,6 +951,8 @@ export function registerNccDirectoryRoutes(
         "profile",
         "branchIds",
         "departmentIds",
+        "courseIds",
+        "canTakePlacementTest",
         "customFields",
         "callerPassword",
       ])
@@ -468,6 +961,7 @@ export function registerNccDirectoryRoutes(
       return;
     }
     const upstreamBody: Record<string, unknown> = {};
+    let patchRole: EmsStagingRole | null = null;
     if (body.email !== undefined) {
       if (typeof body.email !== "string" || !body.email.trim()) {
         response.status(400).json({ error: "Email is required." });
@@ -476,12 +970,13 @@ export function registerNccDirectoryRoutes(
       upstreamBody.email = body.email.trim();
     }
     if (body.role !== undefined) {
-      if (!isLocalRole(body.role)) {
+      patchRole = resolveAssignedRole(body.role);
+      if (!patchRole) {
         response.status(400).json({ error: "Role is required." });
         return;
       }
-      upstreamBody.assigned_role = mapLocalRoleToEms(body.role);
-      if (body.role === "superadmin") {
+      upstreamBody.assigned_role = patchRole;
+      if (patchRole === "super_admin") {
         upstreamBody.scopes = [{ scope_type: "global" }];
       }
     }
@@ -498,7 +993,7 @@ export function registerNccDirectoryRoutes(
         response.status(400).json({ error: "Branch access is required." });
         return;
       }
-      if (body.role !== "superadmin") {
+      if (patchRole !== "super_admin") {
         upstreamBody.scopes = body.branchIds.map(branchId => ({
           scope_type: "branch",
           scope_id: branchId,
@@ -511,6 +1006,22 @@ export function registerNccDirectoryRoutes(
         return;
       }
       upstreamBody.departments = body.departmentIds;
+    }
+    if (body.courseIds !== undefined) {
+      if (!isStringArray(body.courseIds)) {
+        response.status(400).json({ error: "Course access is invalid." });
+        return;
+      }
+      upstreamBody.course_ids = body.courseIds;
+    }
+    if (body.canTakePlacementTest !== undefined) {
+      if (typeof body.canTakePlacementTest !== "boolean") {
+        response
+          .status(400)
+          .json({ error: "Placement test capability is invalid." });
+        return;
+      }
+      upstreamBody.can_take_placement_test = body.canTakePlacementTest;
     }
     if (body.customFields !== undefined) {
       if (!validCustomFields(body.customFields)) {
@@ -551,13 +1062,36 @@ export function registerNccDirectoryRoutes(
     (action: "disable" | "enable" | "cancel-invitation") =>
     async (request: DirectoryRequest, response: DirectoryResponse) => {
       if (!prepareDirectoryWrite(request, response, dependencies)) return;
+      let reasonId: string | undefined;
+      if (action === "disable") {
+        const body = request.body;
+        if (body !== undefined && !isPlainObject(body)) {
+          response.status(400).json({ error: "Request body is invalid." });
+          return;
+        }
+        if (
+          !body ||
+          !hasOnlyKeys(body, ["reasonId"]) ||
+          (body.reasonId !== undefined &&
+            (typeof body.reasonId !== "string" || !body.reasonId))
+        ) {
+          response.status(400).json({ error: "Request body is invalid." });
+          return;
+        }
+        reasonId =
+          typeof body?.reasonId === "string" ? body.reasonId : undefined;
+      }
       try {
         const payload = await runNccWrite(
           request,
           response,
           (api, token) =>
             action === "disable"
-              ? api.disableUser(token, request.params?.userId ?? "")
+              ? api.disableUser(
+                  token,
+                  request.params?.userId ?? "",
+                  reasonId
+                )
               : action === "enable"
                 ? api.enableUser(token, request.params?.userId ?? "")
                 : api.cancelUserInvitation(token, request.params?.userId ?? ""),
@@ -575,6 +1109,80 @@ export function registerNccDirectoryRoutes(
         if (!sendNccAuthError(error, response)) throw error;
       }
     };
+
+  app.put?.(
+    "/api/ncc/directory/users/:userId/courses",
+    async (request, response) => {
+      if (!prepareDirectoryWrite(request, response, dependencies)) return;
+      const body = request.body;
+      if (
+        !isPlainObject(body) ||
+        !hasOnlyKeys(body, ["courseIds"]) ||
+        !isStringArray(body.courseIds)
+      ) {
+        response.status(400).json({ error: "Course access is invalid." });
+        return;
+      }
+      try {
+        const payload = await runNccWrite(
+          request,
+          response,
+          (api, token) =>
+            api.putUserCourses(
+              token,
+              request.params?.userId ?? "",
+              body.courseIds as string[]
+            ),
+          dependencies
+        );
+        const user = normalizeEmsStaffUser(payload);
+        if (!user) {
+          response
+            .status(502)
+            .json({ error: "NCC EMS returned invalid directory data." });
+          return;
+        }
+        response.json({ user });
+      } catch (error) {
+        if (!sendNccAuthError(error, response)) throw error;
+      }
+    }
+  );
+
+  app.patch?.(
+    "/api/ncc/directory/users/:userId/hour-cells",
+    async (request, response) => {
+      if (!prepareDirectoryWrite(request, response, dependencies)) return;
+      const ops = hourCellOpsBody(request.body);
+      if (!ops) {
+        response.status(400).json({ error: "Request body is invalid." });
+        return;
+      }
+      try {
+        const payload = await runNccWrite(
+          request,
+          response,
+          (api, token) =>
+            api.patchUserHourCells(
+              token,
+              request.params?.userId ?? "",
+              ops
+            ),
+          dependencies
+        );
+        const result = normalizeEmsHourCellPatch(payload);
+        if (!result) {
+          response
+            .status(502)
+            .json({ error: "NCC EMS returned invalid directory data." });
+          return;
+        }
+        response.json(result);
+      } catch (error) {
+        if (!sendNccAuthError(error, response)) throw error;
+      }
+    }
+  );
 
   app.post("/api/ncc/directory/users/:userId/disable", lifecycle("disable"));
   app.post("/api/ncc/directory/users/:userId/enable", lifecycle("enable"));

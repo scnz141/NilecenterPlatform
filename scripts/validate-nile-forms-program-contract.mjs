@@ -44,10 +44,6 @@ const service = read("server/nileFormsService.ts");
 const verify = read("scripts/verify.sh");
 const migrations = fs.readdirSync(path.join(root, "supabase", "migrations"));
 const informationArchitecture = read("docs/UI_INFORMATION_ARCHITECTURE.md");
-const appRoutes = read("client/src/App.tsx");
-const builderPage = read("client/src/pages/platform/NileFormsBuilderPage.tsx");
-const managePage = read("client/src/pages/platform/NileFormsManagePage.tsx");
-const publishPage = read("client/src/pages/platform/NileFormsPublishPage.tsx");
 const renderer = read("client/src/components/forms/NileFormRenderer.tsx");
 const formsCss = read("client/src/styles/nile-forms.css");
 const rbac = read("client/src/lib/rbac.ts");
@@ -365,21 +361,6 @@ requireText(
   "stable slug assignment test"
 );
 requireText(
-  read("client/src/lib/forms/logicEditor.test.ts"),
-  'describe("Nile Forms typed logic editor"',
-  "typed condition editor tests"
-);
-requireText(
-  read("client/src/lib/forms/logicEditor.test.ts"),
-  'conditionValueFromInput(consentField, "equals", "true")',
-  "Boolean consent condition regression"
-);
-requireText(
-  read("client/src/lib/forms/logicEditor.test.ts"),
-  "defaultLogicConditionForField",
-  "typed new-rule regression"
-);
-requireText(
   read("client/src/lib/forms/server-nile-forms-service.test.ts"),
   'it("rejects new assignments for retired or expired publications',
   "publication assignment availability regression"
@@ -389,56 +370,23 @@ requireText(
   'it("replays a failed promotion attempt and retries only with a new command key',
   "promotion retry regression"
 );
-requireText(
-  read("client/src/pages/platform/NileFormsReviewDetailPage.tsx"),
-  "Retry promotion",
-  "promotion retry UI"
-);
 if (migrations.some(file => /phase13f1|forms_production_core/i.test(file))) {
   throw new Error(
     "Phase 13F1 SQL must remain outside pushable migration history"
   );
 }
 
-for (const route of [
-  "/forms/manage/new",
-  "/forms/manage/:formId/publications",
-  "/forms/manage/:formId/publications/:publicationId/assignments",
+requireText(
+  informationArchitecture,
   "/requests/:requestId",
-  "/approvals/:approvalId",
-  "/appointments/:bookingId",
-  "/surveys/results/:surveyId",
-  "/forms/manage/:formId/processing",
-]) {
-  requireText(
-    informationArchitecture,
-    route,
-    `Nile Forms route ownership ${route}`
-  );
-}
-for (const component of [
-  "NileFormsCreatePage",
-  "NileFormsPublicationsPage",
-  "NileFormsAssignmentsPage",
-]) {
-  requireText(appRoutes, component, `Nile Forms route component ${component}`);
-}
+  "Nile Forms route ownership /requests/:requestId"
+);
 requireText(
   rbac,
   'pageId === "form-assignments"',
   "assignment route permission owner"
 );
 requireText(rbac, 'return "forms:assign"', "assignment route permission");
-requireText(
-  builderPage,
-  'className="nile-form-builder-select"',
-  "builder keyboard selection control"
-);
-requireText(
-  builderPage,
-  "aria-pressed={field.id === fieldId}",
-  "builder selection state"
-);
 requireText(
   renderer,
   '"aria-labelledby": labelId',
@@ -448,16 +396,6 @@ requireText(
   renderer,
   '"aria-required": required',
   "grouped response required state"
-);
-rejectText(
-  managePage,
-  "nile-forms-modal-backdrop",
-  "manage list/create separation"
-);
-rejectText(
-  publishPage,
-  "NileFormsAssignmentManager",
-  "publish/assignment separation"
 );
 requireText(
   formsCss,

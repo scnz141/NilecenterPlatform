@@ -67,6 +67,13 @@ function me(
   };
 }
 
+const paged = (items: unknown[]) => ({
+  items,
+  total: items.length,
+  page: 1,
+  page_size: 100,
+});
+
 function student(overrides: Record<string, unknown> = {}) {
   return {
     id: "student-1",
@@ -89,7 +96,7 @@ function student(overrides: Record<string, unknown> = {}) {
         relationship: "Parent",
       },
     ],
-    branch_id: "branch-1",
+    home_branch_id: "branch-1",
     branch_name: "Cairo",
     moodle_user_id: 42,
     status: "active",
@@ -109,7 +116,8 @@ function lead(overrides: Record<string, unknown> = {}) {
     phone: null,
     branch_id: "branch-1",
     branch_name: "Cairo",
-    status: "new",
+    lead_type: "new",
+    status: "in_process",
     preferred_courses: [{ course_id: "course-1", course_name: "Arabic" }],
     wants_online: true,
     wants_onsite: false,
@@ -240,6 +248,12 @@ function captureRoutes(options: {
     patch(path: string, handler: Handler) {
       routes.set(`PATCH ${path}`, handler);
     },
+    put(path: string, handler: Handler) {
+      routes.set(`PUT ${path}`, handler);
+    },
+    delete(path: string, handler: Handler) {
+      routes.set(`DELETE ${path}`, handler);
+    },
   };
   registerNccOperationalRoutes(app, {
     env: options.env,
@@ -361,7 +375,7 @@ describe("NCC operational routes", () => {
       api: {
         students: vi.fn(async () => ({
           ok: true,
-          data: [
+          data: paged([
             student({
               guardians: [
                 {
@@ -381,7 +395,7 @@ describe("NCC operational routes", () => {
               ],
             }),
             withoutGuardians,
-          ],
+          ]),
         })),
       },
     });
@@ -444,11 +458,11 @@ describe("NCC operational routes", () => {
       api: {
         students: vi.fn(async () => ({
           ok: true,
-          data: [
+          data: paged([
             student({
               guardians: [duplicate, { ...duplicate, name: "Second" }],
             }),
-          ],
+          ]),
         })),
       },
     });
@@ -472,7 +486,7 @@ describe("NCC operational routes", () => {
       api: {
         students: vi.fn(async () => ({
           ok: true,
-          data: [student({ guardians: { name: "not-an-array" } })],
+          data: paged([student({ guardians: { name: "not-an-array" } })]),
         })),
       },
     });
@@ -531,7 +545,7 @@ describe("NCC operational routes", () => {
       api: {
         placementTests: vi.fn(async () => ({
           ok: true,
-          data: [placementTest()],
+          data: paged([placementTest()]),
         })),
       },
     });
@@ -565,7 +579,10 @@ describe("NCC operational routes", () => {
     const routes = captureRoutes({
       env: env(),
       api: {
-        classes: vi.fn(async () => ({ ok: true, data: [classRow()] })),
+        classes: vi.fn(async () => ({
+          ok: true,
+          data: paged([classRow()]),
+        })),
       },
     });
     const { response, result } = responseRecorder();
@@ -595,7 +612,7 @@ describe("NCC operational routes", () => {
       api: {
         rooms: vi.fn(async () => ({
           ok: true,
-          data: [roomRow()],
+          data: paged([roomRow()]),
         })),
       },
     });
@@ -682,7 +699,7 @@ describe("NCC operational routes", () => {
       api: {
         leads: vi.fn(async () => ({
           ok: true,
-          data: [
+          data: paged([
             {
               id: "lead-1",
               first_name: "Nile",
@@ -694,7 +711,7 @@ describe("NCC operational routes", () => {
               created_at: "2026-09-01T10:00:00Z",
               updated_at: "2026-09-12T10:00:00Z",
             },
-          ],
+          ]),
         })),
       },
     });
@@ -716,7 +733,7 @@ describe("NCC operational routes", () => {
         ok: false,
         error: { error: "Not authenticated", status: 401 },
       })
-      .mockResolvedValueOnce({ ok: true, data: [student()] });
+      .mockResolvedValueOnce({ ok: true, data: paged([student()]) });
     const refresh = vi.fn(async () => ({
       ok: true,
       data: tokens("ncc-session-2"),
@@ -738,7 +755,7 @@ describe("NCC operational routes", () => {
 
     expect(result.status).toBe(200);
     expect(refresh).toHaveBeenCalledWith("refresh-ncc-session-1");
-    expect(students).toHaveBeenNthCalledWith(2, "access-ncc-session-2");
+    expect(students).toHaveBeenNthCalledWith(2, "access-ncc-session-2", {});
     expect(meRequest).toHaveBeenCalledWith("access-ncc-session-2");
     expect(sessionCookie(headers)).toBeTruthy();
   });
@@ -894,34 +911,12 @@ describe("NCC operational routes", () => {
     });
   });
 
-  it("marks a lead ready through the dedicated provider action", async () => {
-    const cookie = await login("registrar", "branch-1");
-    const markLeadReady = vi.fn(async () => ({
-      ok: true,
-      data: lead({ status: "ready" }),
-    }));
-    const routes = captureRoutes({ env: env(), api: { markLeadReady } });
-    const result = responseRecorder();
-    await routes.get("POST /api/ncc/admissions/leads/:leadId/ready")?.(
-      request(cookie, { leadId: "lead-1" }),
-      result.response
-    );
-    expect(markLeadReady).toHaveBeenCalledWith(
-      "access-ncc-session-1",
-      "lead-1"
-    );
-    expect(result.result).toMatchObject({
-      status: 200,
-      body: { lead: { status: "ready" } },
-    });
-  });
-
   it("requires identity fields for conversion and maps them", async () => {
     const cookie = await login("registrar", "branch-1");
     const convertLead = vi.fn(async () => ({
       ok: true,
       data: {
-        lead: lead({ status: "converted", student_id: "student-1" }),
+        lead: lead({ status: "registered", student_id: "student-1" }),
         student: student(),
       },
     }));
@@ -975,7 +970,7 @@ describe("NCC operational routes", () => {
     });
     expect(result.result).toMatchObject({
       status: 200,
-      body: { lead: { status: "converted" }, student: { id: "student-1" } },
+      body: { lead: { status: "registered" }, student: { id: "student-1" } },
     });
   });
 
@@ -1007,6 +1002,7 @@ describe("NCC operational routes", () => {
         gender: "female",
         dateOfBirth: "2010-05-01",
         passportNumber: "A123",
+        registration: { toBePaid: 500, paid: 200 },
         guardians: [
           {
             sortOrder: 1,
@@ -1027,8 +1023,10 @@ describe("NCC operational routes", () => {
       ),
       patched.response
     );
+    expect(createStudent.mock.calls[0]?.[1]).not.toHaveProperty("branch_id");
     expect(createStudent.mock.calls[0]?.[1]).toMatchObject({
-      branch_id: "branch-1",
+      home_branch_id: "branch-1",
+      registration: { to_be_paid: 500, paid: 200 },
       nationality: "EGY",
       address: "12 Nile St",
       gender: "female",
@@ -1122,8 +1120,72 @@ describe("NCC operational routes", () => {
     );
     expect(emptyPatch.result.status).toBe(400);
     expect(missingCourse.result.body).toEqual({
-      error: "recommendedCourseId is required.",
+      error: "resultScore is required.",
     });
+  });
+
+  it("sends the EMS-required placement result and cancel reason fields", async () => {
+    const cookie = await login("registrar", "branch-1");
+    const recordPlacementResult = vi.fn(
+      async (_token: string, _id: string, _body: Record<string, unknown>) => ({
+        ok: true,
+        data: placementTest(),
+      })
+    );
+    const cancelPlacementTest = vi.fn(async () => ({
+      ok: true,
+      data: placementTest(),
+    }));
+    const routes = captureRoutes({
+      env: env(),
+      api: { recordPlacementResult, cancelPlacementTest },
+    });
+    const record =
+      "POST /api/ncc/admissions/placement-tests/:placementTestId/record-result";
+    const cancel =
+      "POST /api/ncc/admissions/placement-tests/:placementTestId/cancel";
+    const noTeacher = responseRecorder();
+    const recorded = responseRecorder();
+    const noReason = responseRecorder();
+    const cancelled = responseRecorder();
+    const params = { placementTestId: "placement-1" };
+
+    await routes.get(record)?.(
+      request(cookie, params, { resultScore: "B1" }),
+      noTeacher.response
+    );
+    await routes.get(record)?.(
+      request(cookie, params, {
+        resultScore: " B1 ",
+        mentoringTeacherId: "teacher-1",
+        resultNotes: "  ",
+      }),
+      recorded.response
+    );
+    await routes.get(cancel)?.(request(cookie, params, {}), noReason.response);
+    await routes.get(cancel)?.(
+      request(cookie, params, { reasonId: "reason-1" }),
+      cancelled.response
+    );
+
+    expect(noTeacher.result).toEqual({
+      status: 400,
+      body: { error: "mentoringTeacherId is required." },
+    });
+    expect(recordPlacementResult).toHaveBeenCalledTimes(1);
+    expect(recordPlacementResult.mock.calls[0]?.[2]).toEqual({
+      result_score: "B1",
+      mentoring_teacher_id: "teacher-1",
+    });
+    expect(recorded.result.status).toBe(200);
+    expect(noReason.result.status).toBe(400);
+    expect(cancelPlacementTest).toHaveBeenCalledTimes(1);
+    expect(cancelPlacementTest).toHaveBeenCalledWith(
+      "access-ncc-session-1",
+      "placement-1",
+      "reason-1"
+    );
+    expect(cancelled.result.status).toBe(200);
   });
 
   it("passes provider write errors through and translates courses", async () => {
@@ -1137,7 +1199,7 @@ describe("NCC operational routes", () => {
         })),
         courses: vi.fn(async () => ({
           ok: true,
-          data: [courseRow()],
+          data: paged([courseRow()]),
         })),
       },
     });
@@ -1554,7 +1616,11 @@ describe("NCC delivery write routes", () => {
     const short = responseRecorder();
 
     await routes.get("/api/ncc/delivery/moodle-courses")?.(
-      request(cookie, undefined, undefined, { q: "arab", refresh: "true" }),
+      request(cookie, undefined, undefined, {
+        q: "arab",
+        refresh: "true",
+        unmapped: "true",
+      }),
       picker.response
     );
     await routes.get("/api/ncc/delivery/moodle-groups")?.(
@@ -1575,6 +1641,7 @@ describe("NCC delivery write routes", () => {
     expect(moodleCourses).toHaveBeenCalledWith(
       "access-ncc-session-1",
       "arab",
+      true,
       true
     );
     expect(moodleGroups).toHaveBeenCalledWith(
@@ -1638,8 +1705,18 @@ describe("NCC delivery write routes", () => {
         departmentId: "department-1",
         moodleCourseId: 501,
         sortOrder: 2,
+        totalHours: 40,
+        areaOfStudyId: "area-1",
       }),
       created.response
+    );
+    const noHours = responseRecorder();
+    await routes.get("POST /api/ncc/delivery/courses")?.(
+      request(cookie, undefined, {
+        departmentId: "department-1",
+        moodleCourseId: 501,
+      }),
+      noHours.response
     );
     await routes.get("PATCH /api/ncc/delivery/courses/:courseId")?.(
       request(
@@ -1648,6 +1725,8 @@ describe("NCC delivery write routes", () => {
         {
           sortOrder: 4,
           moodleAttendanceId: 12,
+          totalHours: 48,
+          previousCourseId: null,
         }
       ),
       patched.response
@@ -1667,12 +1746,24 @@ describe("NCC delivery write routes", () => {
     expect(createCourse).toHaveBeenCalledWith("access-ncc-session-1", {
       department_id: "department-1",
       moodle_course_id: 501,
+      total_hours: 40,
+      area_of_study_id: "area-1",
       sort_order: 2,
+    });
+    // EMS rejects a course without total teaching hours (live 422).
+    expect(noHours.result).toEqual({
+      status: 400,
+      body: { error: "totalHours is required." },
     });
     expect(patchCourse).toHaveBeenCalledWith(
       "access-ncc-session-1",
       "course-1",
-      { sort_order: 4, moodle_attendance_id: 12 }
+      {
+        previous_course_id: null,
+        total_hours: 48,
+        sort_order: 4,
+        moodle_attendance_id: 12,
+      }
     );
     expect(created.result).toMatchObject({
       status: 200,
@@ -1684,7 +1775,7 @@ describe("NCC delivery write routes", () => {
     expect(createCourse).toHaveBeenCalledTimes(1);
   });
 
-  it("runs course lifecycle and refresh as empty POSTs with passthrough errors", async () => {
+  it("runs course lifecycle with a required disable reason and passthrough errors", async () => {
     const cookie = await login();
     const disableCourse = vi.fn(async () => ({
       ok: true,
@@ -1701,8 +1792,13 @@ describe("NCC delivery write routes", () => {
     const disabled = responseRecorder();
     const missing = responseRecorder();
 
+    const noReason = responseRecorder();
     await routes.get("POST /api/ncc/delivery/courses/:courseId/disable")?.(
       request(cookie, { courseId: "course-1" }),
+      noReason.response
+    );
+    await routes.get("POST /api/ncc/delivery/courses/:courseId/disable")?.(
+      request(cookie, { courseId: "course-1" }, { reasonId: "reason-1" }),
       disabled.response
     );
     await routes.get("POST /api/ncc/delivery/courses/:courseId/refresh")?.(
@@ -1710,9 +1806,12 @@ describe("NCC delivery write routes", () => {
       missing.response
     );
 
+    expect(noReason.result.status).toBe(400);
+    expect(disableCourse).toHaveBeenCalledTimes(1);
     expect(disableCourse).toHaveBeenCalledWith(
       "access-ncc-session-1",
-      "course-1"
+      "course-1",
+      "reason-1"
     );
     expect(disabled.result).toMatchObject({
       status: 200,
@@ -2008,8 +2107,13 @@ describe("NCC delivery write routes", () => {
       request(cookie, { roomId: "room-1" }, { branchId: "branch-2" }),
       branchPatch.response
     );
+    const noReason = responseRecorder();
     await routes.get("POST /api/ncc/delivery/rooms/:roomId/disable")?.(
       request(cookie, { roomId: "room-1" }),
+      noReason.response
+    );
+    await routes.get("POST /api/ncc/delivery/rooms/:roomId/disable")?.(
+      request(cookie, { roomId: "room-1" }, { reasonId: "reason-1" }),
       disabled.response
     );
 
@@ -2018,7 +2122,16 @@ describe("NCC delivery write routes", () => {
     });
     expect(branchPatch.result.status).toBe(400);
     expect(patchRoom).toHaveBeenCalledTimes(1);
-    expect(disableRoom).toHaveBeenCalledWith("access-ncc-session-1", "room-1");
+    expect(noReason.result).toEqual({
+      status: 400,
+      body: { error: "reasonId is required." },
+    });
+    expect(disableRoom).toHaveBeenCalledTimes(1);
+    expect(disableRoom).toHaveBeenCalledWith(
+      "access-ncc-session-1",
+      "room-1",
+      "reason-1"
+    );
     expect(disabled.result).toMatchObject({
       status: 200,
       body: { room: { status: "disabled" } },
@@ -2029,19 +2142,28 @@ describe("NCC delivery write routes", () => {
 describe("NCC delivery workflow routes", () => {
   const deliveryEnv = () => env({ NILE_NCC_DELIVERY_WRITES_ENABLED: "1" });
   const rosterRow = {
+    id: "enrolment-1",
     student_id: "student-1",
-    class_id: "class-1",
-    class_name: "Arabic A",
     course_id: "course-1",
     course_name: "Arabic",
+    kind: "group",
+    next_level: false,
+    branch_id: "branch-1",
+    branch_name: "Cairo",
+    class_id: "class-1",
+    class_name: "Arabic A",
     status: "enrolled",
     enrolled_at: "2026-09-10T10:00:00Z",
-    withdrawn_at: null,
+    cancelled_at: null,
+    student_name: "Nile Student",
+    to_be_paid: null,
+    paid: null,
+    remaining: null,
     student: {
       first_name: "Nile",
       last_name: "Student",
       email: "student@example.test",
-      branch_id: "branch-1",
+      home_branch_id: "branch-1",
       moodle_user_id: 42,
     },
   };
@@ -2207,9 +2329,10 @@ describe("NCC delivery workflow routes", () => {
       body: {
         items: [
           {
+            id: "enrolment-1",
             studentId: "student-1",
             status: "enrolled",
-            student: { moodleLinked: true, branchId: "branch-1" },
+            student: { moodleLinked: true, homeBranchId: "branch-1" },
           },
         ],
       },
@@ -2244,100 +2367,44 @@ describe("NCC delivery workflow routes", () => {
     });
   });
 
-  it("creates, withdraws, and completes enrolments with exact bodies", async () => {
+  it("attaches an enrolment to a class with the exact provider body", async () => {
     const cookie = await login();
-    const createClassEnrolment = vi.fn(async () => ({
+    const attachClassEnrolment = vi.fn(async () => ({
       ok: true,
       data: rosterRow,
     }));
-    const withdrawClassEnrolment = vi.fn(async () => ({
-      ok: true,
-      data: { ...rosterRow, status: "cancelled" },
-    }));
-    const completeClassEnrolment = vi.fn(async () => ({
-      ok: true,
-      data: { ...rosterRow, status: "completed" },
-    }));
     const routes = captureRoutes({
       env: deliveryEnv(),
-      api: {
-        createClassEnrolment,
-        withdrawClassEnrolment,
-        completeClassEnrolment,
-      },
+      api: { attachClassEnrolment },
     });
-    const created = responseRecorder();
-    const defaulted = responseRecorder();
+    const attached = responseRecorder();
     const invalid = responseRecorder();
     const extra = responseRecorder();
-    const withdrawn = responseRecorder();
-    const completed = responseRecorder();
 
     await routes.get("POST /api/ncc/delivery/classes/:classId/enrolments")?.(
-      request(cookie, { classId: "class-1" }, { studentId: "student-1", status: "pending" }),
-      created.response
+      request(cookie, { classId: "class-1" }, { enrolmentId: "enrolment-1" }),
+      attached.response
     );
     await routes.get("POST /api/ncc/delivery/classes/:classId/enrolments")?.(
-      request(cookie, { classId: "class-1" }, { studentId: "student-1" }),
-      defaulted.response
-    );
-    await routes.get("POST /api/ncc/delivery/classes/:classId/enrolments")?.(
-      request(cookie, { classId: "class-1" }, { studentId: "student-1", status: "cancelled" }),
+      request(cookie, { classId: "class-1" }, { enrolmentId: "  " }),
       invalid.response
     );
     await routes.get("POST /api/ncc/delivery/classes/:classId/enrolments")?.(
-      request(cookie, { classId: "class-1" }, { studentId: "student-1", note: "x" }),
+      request(cookie, { classId: "class-1" }, { enrolmentId: "enrolment-1", note: "x" }),
       extra.response
     );
-    await routes.get(
-      "POST /api/ncc/delivery/classes/:classId/enrolments/:studentId/withdraw"
-    )?.(
-      request(cookie, { classId: "class-1", studentId: "student-1" }),
-      withdrawn.response
-    );
-    await routes.get(
-      "POST /api/ncc/delivery/classes/:classId/enrolments/:studentId/complete"
-    )?.(
-      request(cookie, { classId: "class-1", studentId: "student-1" }),
-      completed.response
-    );
 
-    expect(createClassEnrolment).toHaveBeenNthCalledWith(
-      1,
+    expect(attachClassEnrolment).toHaveBeenCalledTimes(1);
+    expect(attachClassEnrolment).toHaveBeenCalledWith(
       "access-ncc-session-1",
       "class-1",
-      { student_id: "student-1", status: "pending" }
+      { enrolment_id: "enrolment-1" }
     );
-    expect(createClassEnrolment).toHaveBeenNthCalledWith(
-      2,
-      "access-ncc-session-1",
-      "class-1",
-      { student_id: "student-1" }
-    );
-    expect(createClassEnrolment).toHaveBeenCalledTimes(2);
     expect(invalid.result.status).toBe(400);
     expect(extra.result.status).toBe(400);
-    expect(withdrawClassEnrolment).toHaveBeenCalledWith(
-      "access-ncc-session-1",
-      "class-1",
-      "student-1"
-    );
-    expect(completeClassEnrolment).toHaveBeenCalledWith(
-      "access-ncc-session-1",
-      "class-1",
-      "student-1"
-    );
-    expect(created.result).toMatchObject({
+    expect(attached.result).toMatchObject({
       status: 200,
-      body: { enrolment: { studentId: "student-1" } },
-    });
-    expect(withdrawn.result).toMatchObject({
-      status: 200,
-      body: { enrolment: { status: "cancelled" } },
-    });
-    expect(completed.result).toMatchObject({
-      status: 200,
-      body: { enrolment: { status: "completed" } },
+      body: { enrolment: { id: "enrolment-1", studentId: "student-1" } },
     });
   });
 
@@ -2369,11 +2436,12 @@ describe("NCC delivery workflow routes", () => {
       "POST /api/ncc/delivery/classes/:classId/sessions/propose"
     )?.(
       request(cookie, { classId: "class-1" }, {
-        weekdays: [1, 3],
-        hoursPerDay: 2,
+        weekdayHours: [
+          { weekday: 0, hours: 2 },
+          { weekday: 3, hours: 1 },
+        ],
         fromDate: "2026-09-17",
         toDate: "2026-10-17",
-        startHour: 13,
       }),
       proposed.response
     );
@@ -2381,8 +2449,10 @@ describe("NCC delivery workflow routes", () => {
       "POST /api/ncc/delivery/classes/:classId/sessions/propose"
     )?.(
       request(cookie, { classId: "class-1" }, {
-        weekdays: [1, 1],
-        hoursPerDay: 2,
+        weekdayHours: [
+          { weekday: 1, hours: 2 },
+          { weekday: 1, hours: 1 },
+        ],
         fromDate: "2026-09-17",
         toDate: "2026-10-17",
       }),
@@ -2392,8 +2462,7 @@ describe("NCC delivery workflow routes", () => {
       "POST /api/ncc/delivery/classes/:classId/sessions/propose"
     )?.(
       request(cookie, { classId: "class-1" }, {
-        weekdays: [1],
-        hoursPerDay: 2,
+        weekdayHours: [{ weekday: 1, hours: 2 }],
         fromDate: "2026-10-17",
         toDate: "2026-09-17",
       }),
@@ -2403,11 +2472,10 @@ describe("NCC delivery workflow routes", () => {
       "POST /api/ncc/delivery/classes/:classId/sessions/propose"
     )?.(
       request(cookie, { classId: "class-1" }, {
-        weekdays: [1],
-        hoursPerDay: 2,
+        weekdayHours: [{ weekday: 1, hours: 2 }],
         fromDate: "2026-09-17",
         toDate: "2026-10-17",
-        roomId: "room-1",
+        startHour: 9,
       }),
       extra.response
     );
@@ -2417,11 +2485,12 @@ describe("NCC delivery workflow routes", () => {
       "access-ncc-session-1",
       "class-1",
       {
-        weekdays: [1, 3],
-        hours_per_day: 2,
+        weekday_hours: [
+          { weekday: 0, hours: 2 },
+          { weekday: 3, hours: 1 },
+        ],
         from_date: "2026-09-17",
         to_date: "2026-10-17",
-        start_hour: 13,
       }
     );
     expect(proposed.result).toEqual({
@@ -2720,19 +2789,28 @@ describe("NCC delivery workflow routes review hardening", () => {
     updated_at: "2026-09-12T09:00:00Z",
   };
   const rosterRow = {
+    id: "enrolment-1",
     student_id: "student-1",
-    class_id: "class-1",
-    class_name: "Arabic A",
     course_id: "course-1",
     course_name: "Arabic",
+    kind: "group",
+    next_level: false,
+    branch_id: "branch-1",
+    branch_name: "Cairo",
+    class_id: "class-1",
+    class_name: "Arabic A",
     status: "enrolled",
     enrolled_at: "2026-09-10T10:00:00Z",
-    withdrawn_at: null,
+    cancelled_at: null,
+    student_name: "Nile Student",
+    to_be_paid: null,
+    paid: null,
+    remaining: null,
     student: {
       first_name: "Nile",
       last_name: "Student",
       email: "student@example.test",
-      branch_id: "branch-1",
+      home_branch_id: "branch-1",
       moodle_user_id: 42,
     },
   };
@@ -2851,37 +2929,17 @@ describe("NCC delivery workflow routes review hardening", () => {
 
   it("rejects non-empty bodies on lifecycle actions before the provider", async () => {
     const cookie = await login();
-    const withdrawClassEnrolment = vi.fn();
-    const completeClassEnrolment = vi.fn();
     const cancelSession = vi.fn();
     const routes = captureRoutes({
       env: deliveryEnv(),
-      api: { withdrawClassEnrolment, completeClassEnrolment, cancelSession },
+      api: { cancelSession },
     });
-    const withdrawn = responseRecorder();
-    const completed = responseRecorder();
     const cancelled = responseRecorder();
-    await routes.get(
-      "POST /api/ncc/delivery/classes/:classId/enrolments/:studentId/withdraw"
-    )?.(
-      request(cookie, { classId: "class-1", studentId: "student-1" }, { reason: "x" }),
-      withdrawn.response
-    );
-    await routes.get(
-      "POST /api/ncc/delivery/classes/:classId/enrolments/:studentId/complete"
-    )?.(
-      request(cookie, { classId: "class-1", studentId: "student-1" }, { note: 1 }),
-      completed.response
-    );
     await routes.get("POST /api/ncc/delivery/sessions/:sessionId/cancel")?.(
       request(cookie, { sessionId: "session-1" }, { note: "x" }),
       cancelled.response
     );
-    expect(withdrawn.result.status).toBe(400);
-    expect(completed.result.status).toBe(400);
     expect(cancelled.result.status).toBe(400);
-    expect(withdrawClassEnrolment).not.toHaveBeenCalled();
-    expect(completeClassEnrolment).not.toHaveBeenCalled();
     expect(cancelSession).not.toHaveBeenCalled();
   });
 
@@ -2891,13 +2949,13 @@ describe("NCC delivery workflow routes review hardening", () => {
       ok: false,
       error: { error: "Access control exception", status: 400 },
     }));
-    const createClassEnrolment = vi.fn(async () => ({
+    const attachClassEnrolment = vi.fn(async () => ({
       ok: false,
       error: { error: "Student is already enrolled", status: 409 },
     }));
     const routes = captureRoutes({
       env: deliveryEnv(),
-      api: { markSessionAttendance, createClassEnrolment },
+      api: { markSessionAttendance, attachClassEnrolment },
     });
     const denied = responseRecorder();
     const conflict = responseRecorder();
@@ -2906,7 +2964,7 @@ describe("NCC delivery workflow routes review hardening", () => {
       denied.response
     );
     await routes.get("POST /api/ncc/delivery/classes/:classId/enrolments")?.(
-      request(cookie, { classId: "class-1" }, { studentId: "student-1" }),
+      request(cookie, { classId: "class-1" }, { enrolmentId: "enrolment-1" }),
       conflict.response
     );
     expect(denied.result).toEqual({
@@ -3066,6 +3124,7 @@ describe("NCC dashboard summary route", () => {
       active_classes: 1,
       enrolment_fill: 1,
       enrolment_capacity: 20,
+      pending_enrolments: 0,
       scheduled_placements: 0,
       scheduled_trials: 0,
       staff_count: 4,
@@ -3079,6 +3138,7 @@ describe("NCC dashboard summary route", () => {
         active_classes: 1,
         enrolment_fill: 1,
         enrolment_capacity: 20,
+        pending_enrolments: 0,
         scheduled_placements: 0,
         scheduled_trials: 0,
         staff_count: 4,
@@ -3152,6 +3212,7 @@ describe("NCC dashboard summary route", () => {
             activeClasses: 1,
             enrolmentFill: 1,
             enrolmentCapacity: 20,
+            pendingEnrolments: 0,
             scheduledPlacements: 0,
             scheduledTrials: 0,
             staffCount: 4,
@@ -3165,6 +3226,7 @@ describe("NCC dashboard summary route", () => {
               activeClasses: 1,
               enrolmentFill: 1,
               enrolmentCapacity: 20,
+              pendingEnrolments: 0,
               scheduledPlacements: 0,
               scheduledTrials: 0,
               staffCount: 4,
@@ -3183,6 +3245,30 @@ describe("NCC dashboard summary route", () => {
     });
     expect(read.headers.get("Cache-Control")).toBe("private, no-store");
     expect(read.headers.get("Vary")).toBe("Cookie");
+  });
+
+  it("forwards an optional branch and created-date window", async () => {
+    const cookie = await login();
+    const dashboardSummary = vi.fn(async () => ({ ok: false, error: { error: "Forbidden", status: 403 } }));
+    const routes = captureRoutes({ env: dashboardEnv(), api: { dashboardSummary } });
+    const ok = responseRecorder();
+    const reversed = responseRecorder();
+    const unknown = responseRecorder();
+    const handler = routes.get("/api/ncc/dashboard/summary");
+    await handler?.(
+      request(cookie, undefined, undefined, { branchId: "branch-1", createdFrom: "2026-10-01", createdTo: "2026-10-31" }),
+      ok.response
+    );
+    await handler?.(request(cookie, undefined, undefined, { createdFrom: "2026-10-31", createdTo: "2026-10-01" }), reversed.response);
+    await handler?.(request(cookie, undefined, undefined, { period: "30d" }), unknown.response);
+    expect(dashboardSummary).toHaveBeenCalledTimes(1);
+    expect(dashboardSummary).toHaveBeenCalledWith("access-ncc-session-1", {
+      branchId: "branch-1",
+      createdFrom: "2026-10-01",
+      createdTo: "2026-10-31",
+    });
+    expect(reversed.result.status).toBe(400);
+    expect(unknown.result.status).toBe(400);
   });
 
   it("passes provider errors through and fails closed on malformed payloads", async () => {
@@ -3569,5 +3655,1426 @@ describe("NCC notification routes", () => {
       status: 502,
       body: { error: "NCC EMS returned invalid notifications data." },
     });
+  });
+});
+
+describe("NCC staff auth routes", () => {
+  it("returns 404 while the staff flag is off or the cookie is missing", async () => {
+    const off = captureRoutes({
+      env: env({ NILE_NCC_STAFF_AUTH_ENABLED: "0" }),
+      api: {},
+    });
+    const flagOff = responseRecorder();
+    await off.get("POST /api/ncc/auth/switch-role")?.(
+      request("cookie=1", undefined, { targetRole: "registrar" }),
+      flagOff.response
+    );
+    expect(flagOff.result.status).toBe(404);
+
+    const on = captureRoutes({ env: env(), api: {} });
+    const noCookie = responseRecorder();
+    await on.get("POST /api/ncc/auth/switch-role")?.(
+      request("", undefined, { targetRole: "registrar" }),
+      noCookie.response
+    );
+    expect(noCookie.result.status).toBe(404);
+  });
+
+  it("rejects invalid switch-role bodies before the provider", async () => {
+    const cookie = await login();
+    const switchRole = vi.fn();
+    const routes = captureRoutes({ env: env(), api: { switchRole } });
+    for (const body of [
+      {},
+      { targetRole: "owner" },
+      { targetRole: "registrar", extra: 1 },
+      { role: "registrar" },
+    ]) {
+      const bad = responseRecorder();
+      await routes.get("POST /api/ncc/auth/switch-role")?.(
+        request(cookie, undefined, body),
+        bad.response
+      );
+      expect(bad.result.status).toBe(400);
+    }
+    expect(switchRole).not.toHaveBeenCalled();
+  });
+
+  it("rejects illegal role switches with 403 before the provider", async () => {
+    const switchRole = vi.fn();
+    const registrar = await login("registrar", "branch-1");
+    const routes = captureRoutes({ env: env(), api: { switchRole } });
+    const denied = responseRecorder();
+    await routes.get("POST /api/ncc/auth/switch-role")?.(
+      request(registrar, undefined, { targetRole: "teacher" }),
+      denied.response
+    );
+    expect(denied.result.status).toBe(403);
+
+    const hod = await login("hod");
+    const upward = responseRecorder();
+    await routes.get("POST /api/ncc/auth/switch-role")?.(
+      request(hod, undefined, { targetRole: "super_admin" }),
+      upward.response
+    );
+    expect(upward.result.status).toBe(403);
+    expect(switchRole).not.toHaveBeenCalled();
+  });
+
+  it("switches role, reseals the cookie, and returns the session", async () => {
+    const cookie = await login("super_admin");
+    const switchRole = vi.fn(async () => ({ ok: true, data: tokens("s2") }));
+    const meAfter = vi.fn(async () => ({
+      ok: true,
+      data: me("s2", "registrar", "branch-1"),
+    }));
+    const routes = captureRoutes({
+      env: env(),
+      api: { switchRole, me: meAfter },
+    });
+    const res = responseRecorder();
+    await routes.get("POST /api/ncc/auth/switch-role")?.(
+      request(cookie, undefined, { targetRole: "registrar" }),
+      res.response
+    );
+    expect(switchRole).toHaveBeenCalledWith("access-ncc-session-1", "registrar");
+    expect(res.result.status).toBe(200);
+    const session = (res.result.body as { session: { ncc: { activeRole: string } } }).session;
+    expect(session.ncc.activeRole).toBe("registrar");
+    expect(res.headers.get("Set-Cookie")).toBeTruthy();
+    expect(res.headers.get("Cache-Control")).toBe("private, no-store");
+    expect(res.headers.get("Vary")).toBe("Cookie");
+  });
+
+  it("passes provider switch errors through and rejects inconsistent roles", async () => {
+    const cookie = await login("super_admin");
+    const forbidden = vi.fn(async () => ({
+      ok: false,
+      error: { error: "Forbidden", status: 403 },
+    }));
+    const deniedRoutes = captureRoutes({
+      env: env(),
+      api: { switchRole: forbidden },
+    });
+    const denied = responseRecorder();
+    await deniedRoutes.get("POST /api/ncc/auth/switch-role")?.(
+      request(cookie, undefined, { targetRole: "teacher" }),
+      denied.response
+    );
+    expect(denied.result).toEqual({ status: 403, body: { error: "Forbidden" } });
+
+    const switchRole = vi.fn(async () => ({ ok: true, data: tokens("s3") }));
+    const wrongMe = vi.fn(async () => ({
+      ok: true,
+      data: me("s3", "hod"),
+    }));
+    const badRoutes = captureRoutes({
+      env: env(),
+      api: { switchRole, me: wrongMe },
+    });
+    const bad = responseRecorder();
+    await badRoutes.get("POST /api/ncc/auth/switch-role")?.(
+      request(cookie, undefined, { targetRole: "teacher" }),
+      bad.response
+    );
+    expect(bad.result.status).toBe(502);
+  });
+
+  it("sets session scopes with snake keys and validates the body", async () => {
+    const cookie = await login("super_admin");
+    const switchSessionScopes = vi.fn(async () => ({
+      ok: true,
+      data: me("ncc-session-1", "super_admin"),
+    }));
+    const routes = captureRoutes({ env: env(), api: { switchSessionScopes } });
+    const res = responseRecorder();
+    await routes.get("POST /api/ncc/auth/session-scopes")?.(
+      request(cookie, undefined, {
+        branchIds: ["branch-1"],
+        classIds: ["class-1"],
+      }),
+      res.response
+    );
+    expect(switchSessionScopes).toHaveBeenCalledWith("access-ncc-session-1", {
+      branch_ids: ["branch-1"],
+      class_ids: ["class-1"],
+    });
+    expect(res.result.status).toBe(200);
+
+    for (const body of [
+      {},
+      { bogus: [] },
+      { branchIds: ["", 1] },
+      { branchId: "" },
+    ]) {
+      const bad = responseRecorder();
+      await routes.get("POST /api/ncc/auth/session-scopes")?.(
+        request(cookie, undefined, body),
+        bad.response
+      );
+      expect(bad.result.status).toBe(400);
+    }
+  });
+
+  it("returns normalized scope options and fails closed on malformed data", async () => {
+    const cookie = await login();
+    const sessionScopeOptions = vi.fn(async () => ({
+      ok: true,
+      data: {
+        branches: [{ id: "b1", label: "Cairo" }],
+        departments: [{ id: "d1", label: "Languages" }],
+        classes: [{ id: "c1", label: "Arabic A" }],
+      },
+    }));
+    const routes = captureRoutes({
+      env: env(),
+      api: { sessionScopeOptions },
+    });
+    const res = responseRecorder();
+    await routes.get("/api/ncc/auth/session-scope-options")?.(
+      request(cookie),
+      res.response
+    );
+    expect(res.result).toEqual({
+      status: 200,
+      body: {
+        branches: [{ id: "b1", label: "Cairo" }],
+        departments: [{ id: "d1", label: "Languages" }],
+        classes: [{ id: "c1", label: "Arabic A" }],
+      },
+    });
+
+    const malformed = captureRoutes({
+      env: env(),
+      api: {
+        sessionScopeOptions: vi.fn(async () => ({
+          ok: true,
+          data: { branches: [{ id: "" }] },
+        })),
+      },
+    });
+    const bad = responseRecorder();
+    await malformed.get("/api/ncc/auth/session-scope-options")?.(
+      request(cookie),
+      bad.response
+    );
+    expect(bad.result.status).toBe(502);
+  });
+
+  it("lists auth sessions, revokes one, and logs out everywhere", async () => {
+    const cookie = await login();
+    const authSessions = vi.fn(async () => ({
+      ok: true,
+      data: [
+        {
+          id: "ncc-session-1",
+          issued_at: "2026-09-14T09:00:00Z",
+          last_seen_at: "2026-09-14T10:00:00Z",
+          is_current: true,
+          ip_address: null,
+          user_agent: "Test browser",
+        },
+      ],
+    }));
+    const revokeAuthSession = vi.fn(async () => ({ ok: true, data: null }));
+    const logoutAllSessions = vi.fn(async () => ({ ok: true, data: null }));
+    const routes = captureRoutes({
+      env: env(),
+      api: { authSessions, revokeAuthSession, logoutAllSessions },
+    });
+
+    const list = responseRecorder();
+    await routes.get("/api/ncc/auth/sessions")?.(request(cookie), list.response);
+    expect(list.result.status).toBe(200);
+    const items = (list.result.body as { items: { id: string; isCurrent: boolean }[] }).items;
+    expect(items).toEqual([
+      {
+        id: "ncc-session-1",
+        issuedAt: "2026-09-14T09:00:00Z",
+        lastSeenAt: "2026-09-14T10:00:00Z",
+        isCurrent: true,
+        ipAddress: null,
+        userAgent: "Test browser",
+      },
+    ]);
+
+    const revoked = responseRecorder();
+    await routes.get("DELETE /api/ncc/auth/sessions/:sessionId")?.(
+      request(cookie, { sessionId: "other-session" }),
+      revoked.response
+    );
+    expect(revokeAuthSession).toHaveBeenCalledWith(
+      "access-ncc-session-1",
+      "other-session"
+    );
+    expect(revoked.result).toEqual({ status: 200, body: { ok: true } });
+
+    const withBody = responseRecorder();
+    await routes.get("DELETE /api/ncc/auth/sessions/:sessionId")?.(
+      request(cookie, { sessionId: "other" }, { reason: "x" }),
+      withBody.response
+    );
+    expect(withBody.result.status).toBe(400);
+
+    const out = responseRecorder();
+    await routes.get("POST /api/ncc/auth/logout-all")?.(
+      request(cookie),
+      out.response
+    );
+    expect(logoutAllSessions).toHaveBeenCalledWith("access-ncc-session-1");
+    expect(out.result).toEqual({ status: 200, body: { ok: true } });
+
+    const outBody = responseRecorder();
+    await routes.get("POST /api/ncc/auth/logout-all")?.(
+      request(cookie, undefined, { a: 1 }),
+      outBody.response
+    );
+    expect(outBody.result.status).toBe(400);
+  });
+
+  it("fails closed on malformed auth sessions", async () => {
+    const cookie = await login();
+    const authSessions = vi.fn(async () => ({
+      ok: true,
+      data: [{ id: "", issued_at: "nope" }],
+    }));
+    const routes = captureRoutes({ env: env(), api: { authSessions } });
+    const res = responseRecorder();
+    await routes.get("/api/ncc/auth/sessions")?.(request(cookie), res.response);
+    expect(res.result.status).toBe(502);
+  });
+});
+
+describe("NCC notification delete routes", () => {
+  const notificationsEnv = () => env({ NILE_NCC_NOTIFICATIONS_ENABLED: "1" });
+
+  it("deletes one and all notifications with empty bodies only", async () => {
+    const cookie = await login();
+    const deleteNotification = vi.fn(async () => ({ ok: true, data: null }));
+    const deleteAllNotifications = vi.fn(async () => ({
+      ok: true,
+      data: { deleted: 3 },
+    }));
+    const routes = captureRoutes({
+      env: notificationsEnv(),
+      api: { deleteNotification, deleteAllNotifications },
+    });
+
+    const one = responseRecorder();
+    await routes.get("DELETE /api/ncc/notifications/:notificationId")?.(
+      request(cookie, { notificationId: "ntf-1" }),
+      one.response
+    );
+    expect(deleteNotification).toHaveBeenCalledWith(
+      "access-ncc-session-1",
+      "ntf-1"
+    );
+    expect(one.result).toEqual({ status: 200, body: { ok: true } });
+
+    const all = responseRecorder();
+    await routes.get("POST /api/ncc/notifications/delete-all")?.(
+      request(cookie),
+      all.response
+    );
+    expect(deleteAllNotifications).toHaveBeenCalledWith(
+      "access-ncc-session-1"
+    );
+    expect(all.result).toEqual({ status: 200, body: { deleted: 3 } });
+
+    const withBody = responseRecorder();
+    await routes.get("POST /api/ncc/notifications/delete-all")?.(
+      request(cookie, undefined, { reason: "x" }),
+      withBody.response
+    );
+    expect(withBody.result.status).toBe(400);
+    expect(deleteAllNotifications).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns 404 while the flag is off and fails closed on malformed data", async () => {
+    const off = captureRoutes({
+      env: env({ NILE_NCC_NOTIFICATIONS_ENABLED: "0" }),
+      api: {},
+    });
+    const denied = responseRecorder();
+    await off.get("DELETE /api/ncc/notifications/:notificationId")?.(
+      request("cookie=1", { notificationId: "ntf-1" }),
+      denied.response
+    );
+    expect(denied.result.status).toBe(503);
+
+    const cookie = await login();
+    const malformed = captureRoutes({
+      env: notificationsEnv(),
+      api: {
+        deleteAllNotifications: vi.fn(async () => ({
+          ok: true,
+          data: { deleted: "many" },
+        })),
+      },
+    });
+    const bad = responseRecorder();
+    await malformed.get("POST /api/ncc/notifications/delete-all")?.(
+      request(cookie),
+      bad.response
+    );
+    expect(bad.result).toEqual({
+      status: 502,
+      body: { error: "NCC EMS returned invalid notifications data." },
+    });
+  });
+});
+
+describe("NCC Moodle site routes", () => {
+  const siteEnv = () =>
+    env({
+      NILE_NCC_SYSTEM_READS_ENABLED: "1",
+      NILE_NCC_MOODLE_ACCOUNT_WRITES_ENABLED: "1",
+    });
+
+  const sitePayload = () => ({
+    configured: true,
+    has_token: true,
+    site_url: "https://moodle.example.test",
+    sitename: "Nile Moodle",
+    release: "4.5.1",
+    version_expected: true,
+    last_checked_at: "2026-10-06T10:00:00Z",
+    reachable: true,
+    last_error: null,
+    auto_create_student_moodle: true,
+    placement_test_moodle_course_id: 7,
+    warnings: [],
+  });
+
+  it("returns 503 while system reads are off and 404 without a session", async () => {
+    const off = captureRoutes({ env: env(), api: {} });
+    const denied = responseRecorder();
+    await off.get("/api/ncc/moodle/site")?.(request(), denied.response);
+    expect(denied.result.status).toBe(503);
+
+    const on = captureRoutes({ env: siteEnv(), api: {} });
+    const anon = responseRecorder();
+    await on.get("/api/ncc/moodle/site")?.(request(), anon.response);
+    expect(anon.result.status).toBe(404);
+  });
+
+  it("normalizes the site and never echoes a token", async () => {
+    const cookie = await login();
+    const moodleSite = vi.fn(async () => ({ ok: true, data: sitePayload() }));
+    const routes = captureRoutes({ env: siteEnv(), api: { moodleSite } });
+    const { response, result } = responseRecorder();
+
+    await routes.get("/api/ncc/moodle/site")?.(request(cookie), response);
+
+    expect(result.status).toBe(200);
+    expect(result.body).toMatchObject({
+      site: {
+        configured: true,
+        hasToken: true,
+        siteUrl: "https://moodle.example.test",
+        placementTestMoodleCourseId: 7,
+      },
+    });
+    expect(JSON.stringify(result.body)).not.toContain("ws_token");
+  });
+
+  it("tests the connection without exposing ws_token", async () => {
+    const cookie = await login();
+    const testMoodleSite = vi.fn(async () => ({
+      ok: true,
+      data: {
+        reachable: true,
+        sitename: "Nile Moodle",
+        release: "4.5.1",
+        version_expected: true,
+        warnings: [],
+        error: null,
+        ws_token: "provider-must-not-leak",
+      },
+    }));
+    const routes = captureRoutes({ env: siteEnv(), api: { testMoodleSite } });
+    const { response, result } = responseRecorder();
+
+    await routes.get("POST /api/ncc/moodle/site/test")?.(
+      request(cookie),
+      response
+    );
+
+    expect(result.status).toBe(200);
+    expect(result.body).toMatchObject({
+      result: { reachable: true, sitename: "Nile Moodle" },
+    });
+    expect(JSON.stringify(result.body)).not.toContain("provider-must-not-leak");
+  });
+
+  it("validates write bodies and maps them upstream", async () => {
+    const cookie = await login();
+    const putMoodleSite = vi.fn(async () => ({
+      ok: true,
+      data: sitePayload(),
+    }));
+    const patchMoodleSite = vi.fn(async () => ({
+      ok: true,
+      data: sitePayload(),
+    }));
+    const routes = captureRoutes({
+      env: siteEnv(),
+      api: { putMoodleSite, patchMoodleSite },
+    });
+    const put = routes.get("PUT /api/ncc/moodle/site");
+    const patch = routes.get("PATCH /api/ncc/moodle/site");
+
+    for (const [index, body] of [
+      {},
+      { siteUrl: "https://moodle.example.test" },
+      { siteUrl: "  ", wsToken: "token-1" },
+      { siteUrl: "https://m.example", wsToken: "t", unknown: true },
+      { siteUrl: "https://m.example", wsToken: "t".repeat(300) },
+    ].entries()) {
+      const { response, result } = responseRecorder();
+      await put?.(request(cookie, undefined, body), response);
+      expect(result.status, `body ${index}`).toBe(400);
+    }
+    expect(
+      putMoodleSite.mock.calls.map(call => JSON.stringify(call[1]))
+    ).toEqual([]);
+
+    const okPut = responseRecorder();
+    await put?.(
+      request(cookie, undefined, {
+        siteUrl: "https://moodle.example.test",
+        wsToken: "token-1",
+        autoCreateStudentMoodle: false,
+        placementTestMoodleCourseId: 12,
+      }),
+      okPut.response
+    );
+    expect(putMoodleSite).toHaveBeenCalledWith("access-ncc-session-1", {
+      site_url: "https://moodle.example.test",
+      ws_token: "token-1",
+      auto_create_student_moodle: false,
+      placement_test_moodle_course_id: 12,
+    });
+    expect(okPut.result.status).toBe(200);
+
+    const emptyPatch = responseRecorder();
+    await patch?.(request(cookie, undefined, {}), emptyPatch.response);
+    expect(emptyPatch.result.status).toBe(400);
+
+    const okPatch = responseRecorder();
+    await patch?.(
+      request(cookie, undefined, { autoCreateStudentMoodle: true }),
+      okPatch.response
+    );
+    expect(patchMoodleSite).toHaveBeenCalledWith("access-ncc-session-1", {
+      auto_create_student_moodle: true,
+    });
+    expect(okPatch.result.status).toBe(200);
+  });
+
+  it("disconnects and normalizes the cleared site", async () => {
+    const cookie = await login();
+    const disconnectMoodleSite = vi.fn(async () => ({
+      ok: true,
+      data: { ...sitePayload(), configured: false, has_token: false },
+    }));
+    const routes = captureRoutes({
+      env: siteEnv(),
+      api: { disconnectMoodleSite },
+    });
+    const { response, result } = responseRecorder();
+
+    await routes.get("POST /api/ncc/moodle/site/disconnect")?.(
+      request(cookie),
+      response
+    );
+
+    expect(disconnectMoodleSite).toHaveBeenCalledWith("access-ncc-session-1");
+    expect(result.body).toMatchObject({
+      site: { configured: false, hasToken: false },
+    });
+  });
+});
+
+describe("NCC admissions journey routes", () => {
+  const enrolmentRow = (overrides: Record<string, unknown> = {}) => ({
+    id: "enrolment-1",
+    student_id: "student-1",
+    course_id: "course-1",
+    course_name: "Arabic",
+    kind: "group",
+    next_level: false,
+    branch_id: "branch-1",
+    branch_name: "Cairo",
+    class_id: null,
+    class_name: null,
+    status: "pending_payment",
+    enrolled_at: "2026-09-10T10:00:00Z",
+    cancelled_at: null,
+    student_name: "Nile Student",
+    student: {
+      first_name: "Nile",
+      last_name: "Student",
+      email: "student@example.test",
+      home_branch_id: "branch-1",
+      moodle_user_id: null,
+    },
+    to_be_paid: 1000,
+    paid: 400,
+    remaining: 600,
+    ...overrides,
+  });
+  const trialRow = (overrides: Record<string, unknown> = {}) => ({
+    id: "trial-1",
+    branch_id: "branch-1",
+    branch_name: "Cairo",
+    subject: {
+      subject_type: "lead",
+      subject_id: "lead-1",
+      first_name: "Nile",
+      last_name: "Lead",
+      email: "lead@example.test",
+    },
+    scheduled_at: "2026-10-10T10:00:00Z",
+    room_id: null,
+    meeting_url: "https://meet.example/abc",
+    status: "scheduled",
+    created_at: "2026-10-01T10:00:00Z",
+    updated_at: "2026-10-01T10:00:00Z",
+    ...overrides,
+  });
+  const groupRow = {
+    id: "group-1",
+    branch_id: "branch-1",
+    branch_name: "Cairo",
+    label: "Siblings",
+    members: [
+      {
+        lead_id: "lead-1",
+        first_name: "A",
+        last_name: "One",
+        email: "a@example.test",
+        status: "in_process",
+        is_primary: true,
+      },
+      {
+        lead_id: "lead-2",
+        first_name: "B",
+        last_name: "Two",
+        email: "b@example.test",
+        status: "in_process",
+      },
+    ],
+    created_at: "2026-10-01T10:00:00Z",
+    updated_at: "2026-10-01T10:00:00Z",
+  };
+
+  it("maps allowlisted list filters, rejects unknown ones, and returns totals", async () => {
+    const cookie = await login();
+    const leads = vi.fn(async () => ({
+      ok: true,
+      data: { items: [lead()], total: 240, page: 3, page_size: 25 },
+    }));
+    const routes = captureRoutes({ env: env(), api: { leads } });
+    const ok = responseRecorder();
+    const unknown = responseRecorder();
+    const badStatus = responseRecorder();
+    const tooBig = responseRecorder();
+    const handler = routes.get("/api/ncc/admissions/leads");
+
+    await handler?.(
+      request(cookie, undefined, undefined, {
+        q: " sara ",
+        status: "in_process,follow_up",
+        wantsOnline: "true",
+        branchId: ["branch-1"],
+        page: "3",
+        pageSize: "25",
+        sort: "created_at",
+        order: "desc",
+      }),
+      ok.response
+    );
+    await handler?.(
+      request(cookie, undefined, undefined, { role: "x" }),
+      unknown.response
+    );
+    await handler?.(
+      request(cookie, undefined, undefined, { status: "won" }),
+      badStatus.response
+    );
+    await handler?.(
+      request(cookie, undefined, undefined, { pageSize: "500" }),
+      tooBig.response
+    );
+
+    expect(leads).toHaveBeenCalledTimes(1);
+    expect(leads).toHaveBeenCalledWith("access-ncc-session-1", {
+      q: "sara",
+      status: ["in_process", "follow_up"],
+      wants_online: true,
+      branch_id: ["branch-1"],
+      page: 3,
+      page_size: 25,
+      sort: "created_at",
+      order: "desc",
+    });
+    expect(ok.result.body).toMatchObject({ total: 240, page: 3, pageSize: 25 });
+    expect(unknown.result).toEqual({
+      status: 400,
+      body: { error: "role is not a supported filter." },
+    });
+    expect(badStatus.result.status).toBe(400);
+    expect(tooBig.result.status).toBe(400);
+  });
+
+  it("opens, updates, and closes course sales with workspace branch and reasons", async () => {
+    const cookie = await login("registrar", "branch-1");
+    const createEnrolment = vi.fn(async () => ({
+      ok: true,
+      data: enrolmentRow(),
+    }));
+    const patchEnrolment = vi.fn(async () => ({
+      ok: true,
+      data: enrolmentRow({ paid: 1000, remaining: 0, status: "pending_class" }),
+    }));
+    const cancelEnrolment = vi.fn(async () => ({
+      ok: true,
+      data: enrolmentRow({ status: "cancelled" }),
+    }));
+    const completeEnrolment = vi.fn(async () => ({
+      ok: true,
+      data: enrolmentRow({ status: "completed" }),
+    }));
+    const routes = captureRoutes({
+      env: env(),
+      api: { createEnrolment, patchEnrolment, cancelEnrolment, completeEnrolment },
+    });
+    const created = responseRecorder();
+    const overpaid = responseRecorder();
+    const otherBranch = responseRecorder();
+    const patched = responseRecorder();
+    const cancelNoReason = responseRecorder();
+    const cancelled = responseRecorder();
+    const completed = responseRecorder();
+    const sale = {
+      studentId: "student-1",
+      courseId: "course-1",
+      kind: "group",
+      toBePaid: 1000,
+      paid: 400,
+    };
+
+    await routes.get("POST /api/ncc/admissions/enrolments")?.(
+      request(cookie, undefined, sale),
+      created.response
+    );
+    await routes.get("POST /api/ncc/admissions/enrolments")?.(
+      request(cookie, undefined, { ...sale, paid: 1200 }),
+      overpaid.response
+    );
+    await routes.get("POST /api/ncc/admissions/enrolments")?.(
+      request(cookie, undefined, { ...sale, branchId: "branch-2" }),
+      otherBranch.response
+    );
+    await routes.get("PATCH /api/ncc/admissions/enrolments/:enrolmentId")?.(
+      request(cookie, { enrolmentId: "enrolment-1" }, { paid: 1000 }),
+      patched.response
+    );
+    await routes.get("POST /api/ncc/admissions/enrolments/:enrolmentId/cancel")?.(
+      request(cookie, { enrolmentId: "enrolment-1" }, {}),
+      cancelNoReason.response
+    );
+    await routes.get("POST /api/ncc/admissions/enrolments/:enrolmentId/cancel")?.(
+      request(cookie, { enrolmentId: "enrolment-1" }, { reasonId: "reason-1" }),
+      cancelled.response
+    );
+    await routes.get(
+      "POST /api/ncc/admissions/enrolments/:enrolmentId/complete"
+    )?.(request(cookie, { enrolmentId: "enrolment-1" }), completed.response);
+
+    expect(createEnrolment).toHaveBeenCalledTimes(1);
+    expect(createEnrolment).toHaveBeenCalledWith("access-ncc-session-1", {
+      student_id: "student-1",
+      course_id: "course-1",
+      kind: "group",
+      branch_id: "branch-1",
+      to_be_paid: 1000,
+      paid: 400,
+    });
+    expect(created.result.body).toMatchObject({
+      enrolment: { status: "pending_payment", remaining: 600 },
+    });
+    expect(overpaid.result.body).toEqual({
+      error: "paid cannot exceed toBePaid.",
+    });
+    expect(otherBranch.result.status).toBe(400);
+    expect(patchEnrolment).toHaveBeenCalledWith(
+      "access-ncc-session-1",
+      "enrolment-1",
+      { paid: 1000 }
+    );
+    expect(cancelNoReason.result.status).toBe(400);
+    expect(cancelEnrolment).toHaveBeenCalledWith(
+      "access-ncc-session-1",
+      "enrolment-1",
+      "reason-1"
+    );
+    expect(completed.result.body).toMatchObject({
+      enrolment: { status: "completed" },
+    });
+  });
+
+  it("books online trial lessons with https meeting links and records results", async () => {
+    const cookie = await login("registrar", "branch-1");
+    const createTrialLesson = vi.fn(async () => ({ ok: true, data: trialRow() }));
+    const recordTrialLessonResult = vi.fn(async () => ({
+      ok: true,
+      data: trialRow({ status: "completed", result_score: "Good" }),
+    }));
+    const routes = captureRoutes({
+      env: env(),
+      api: { createTrialLesson, recordTrialLessonResult },
+    });
+    const created = responseRecorder();
+    const insecure = responseRecorder();
+    const recorded = responseRecorder();
+    const base = {
+      subject: { type: "lead", id: "lead-1" },
+      scheduledAt: "2026-10-10T10:00:00Z",
+    };
+
+    await routes.get("POST /api/ncc/admissions/trial-lessons")?.(
+      request(cookie, undefined, {
+        ...base,
+        meetingUrl: "https://meet.example/abc",
+        courseId: "course-1",
+      }),
+      created.response
+    );
+    await routes.get("POST /api/ncc/admissions/trial-lessons")?.(
+      request(cookie, undefined, { ...base, meetingUrl: "http://meet.example" }),
+      insecure.response
+    );
+    await routes.get(
+      "POST /api/ncc/admissions/trial-lessons/:trialLessonId/record-result"
+    )?.(
+      request(cookie, { trialLessonId: "trial-1" }, { resultScore: " Good " }),
+      recorded.response
+    );
+
+    expect(createTrialLesson).toHaveBeenCalledWith("access-ncc-session-1", {
+      lead_id: "lead-1",
+      scheduled_at: "2026-10-10T10:00:00Z",
+      meeting_url: "https://meet.example/abc",
+      course_id: "course-1",
+      branch_id: "branch-1",
+    });
+    expect(created.result.body).toMatchObject({
+      trialLesson: { meetingUrl: "https://meet.example/abc", status: "scheduled" },
+    });
+    expect(insecure.result.body).toEqual({
+      error: "meetingUrl must be an https URL.",
+    });
+    expect(recordTrialLessonResult.mock.calls[0]).toEqual([
+      "access-ncc-session-1",
+      "trial-1",
+      { result_score: "Good" },
+    ]);
+  });
+
+  it("returns a placement test Moodle password once and syncs Moodle results", async () => {
+    const cookie = await login("registrar", "branch-1");
+    const createPlacementTest = vi.fn(async () => ({
+      ok: true,
+      data: { ...placementTest(), generated_moodle_password: "Once-Only-1" },
+    }));
+    const syncPlacementMoodleResult = vi.fn(async () => ({
+      ok: true,
+      data: placementTest(),
+    }));
+    const routes = captureRoutes({
+      env: env(),
+      api: { createPlacementTest, syncPlacementMoodleResult },
+    });
+    const created = responseRecorder();
+    const synced = responseRecorder();
+
+    await routes.get("POST /api/ncc/admissions/placement-tests")?.(
+      request(cookie, undefined, {
+        subject: { type: "lead", id: "lead-1" },
+        scheduledAt: "2026-10-10T10:00:00Z",
+        meetingUrl: "https://meet.example/pt",
+        placementMoodleCourseId: 12,
+      }),
+      created.response
+    );
+    await routes.get(
+      "POST /api/ncc/admissions/placement-tests/:placementTestId/sync-moodle-result"
+    )?.(request(cookie, { placementTestId: "placement-1" }), synced.response);
+
+    expect(createPlacementTest.mock.calls[0]?.[1]).toEqual({
+      lead_id: "lead-1",
+      scheduled_at: "2026-10-10T10:00:00Z",
+      meeting_url: "https://meet.example/pt",
+      placement_moodle_course_id: 12,
+      branch_id: "branch-1",
+    });
+    expect(created.result.body).toMatchObject({
+      oneTime: { generatedMoodlePassword: "Once-Only-1" },
+    });
+    expect(JSON.stringify((created.result.body as { placementTest: unknown }).placementTest)).not.toContain(
+      "Once-Only-1"
+    );
+    expect(syncPlacementMoodleResult).toHaveBeenCalledWith(
+      "access-ncc-session-1",
+      "placement-1"
+    );
+    expect(synced.result.status).toBe(200);
+  });
+
+  it("records lead and student registration fees", async () => {
+    const cookie = await login("registrar", "branch-1");
+    const registration = {
+      id: "reg-1",
+      branch_id: "branch-1",
+      to_be_paid: 300,
+      paid: 100,
+      remaining: 200,
+    };
+    const putLeadRegistration = vi.fn(async () => ({
+      ok: true,
+      data: lead({ registration }),
+    }));
+    const patchStudentRegistration = vi.fn(async () => ({
+      ok: true,
+      data: student({ registration }),
+    }));
+    const routes = captureRoutes({
+      env: env(),
+      api: { putLeadRegistration, patchStudentRegistration },
+    });
+    const leadResult = responseRecorder();
+    const studentResult = responseRecorder();
+    const negative = responseRecorder();
+
+    await routes.get("PUT /api/ncc/admissions/leads/:leadId/registration")?.(
+      request(cookie, { leadId: "lead-1" }, { toBePaid: 300, paid: 100 }),
+      leadResult.response
+    );
+    await routes.get(
+      "PATCH /api/ncc/admissions/students/:studentId/registration"
+    )?.(
+      request(cookie, { studentId: "student-1" }, { toBePaid: 300 }),
+      studentResult.response
+    );
+    await routes.get("PUT /api/ncc/admissions/leads/:leadId/registration")?.(
+      request(cookie, { leadId: "lead-1" }, { toBePaid: -1 }),
+      negative.response
+    );
+
+    expect(putLeadRegistration).toHaveBeenCalledWith(
+      "access-ncc-session-1",
+      "lead-1",
+      { to_be_paid: 300, paid: 100 }
+    );
+    expect(leadResult.result.body).toMatchObject({
+      lead: { registration: { toBePaid: 300, remaining: 200 } },
+    });
+    expect(studentResult.result.body).toMatchObject({
+      student: { registration: { paid: 100 } },
+    });
+    expect(negative.result.status).toBe(400);
+  });
+
+  it("creates lead groups in the workspace branch with a member primary", async () => {
+    const cookie = await login("registrar", "branch-1");
+    const createLeadGroup = vi.fn(async () => ({ ok: true, data: groupRow }));
+    const deleteLeadGroup = vi.fn(async () => ({ ok: true, data: null }));
+    const routes = captureRoutes({
+      env: env(),
+      api: { createLeadGroup, deleteLeadGroup },
+    });
+    const created = responseRecorder();
+    const single = responseRecorder();
+    const outsider = responseRecorder();
+    const deleted = responseRecorder();
+
+    await routes.get("POST /api/ncc/admissions/lead-groups")?.(
+      request(cookie, undefined, {
+        label: " Siblings ",
+        memberLeadIds: ["lead-1", "lead-2"],
+        primaryLeadId: "lead-1",
+      }),
+      created.response
+    );
+    await routes.get("POST /api/ncc/admissions/lead-groups")?.(
+      request(cookie, undefined, { memberLeadIds: ["lead-1"] }),
+      single.response
+    );
+    await routes.get("POST /api/ncc/admissions/lead-groups")?.(
+      request(cookie, undefined, {
+        memberLeadIds: ["lead-1", "lead-2"],
+        primaryLeadId: "lead-9",
+      }),
+      outsider.response
+    );
+    await routes.get("DELETE /api/ncc/admissions/lead-groups/:groupId")?.(
+      request(cookie, { groupId: "group-1" }),
+      deleted.response
+    );
+
+    expect(createLeadGroup).toHaveBeenCalledTimes(1);
+    expect(createLeadGroup).toHaveBeenCalledWith("access-ncc-session-1", {
+      member_lead_ids: ["lead-1", "lead-2"],
+      primary_lead_id: "lead-1",
+      label: "Siblings",
+      branch_id: "branch-1",
+    });
+    expect(created.result.body).toMatchObject({
+      group: { members: [{ isPrimary: true }, { isPrimary: false }] },
+    });
+    expect(single.result.status).toBe(400);
+    expect(outsider.result.body).toEqual({
+      error: "primaryLeadId must be a member.",
+    });
+    expect(deleted.result.body).toEqual({ deleted: true });
+  });
+
+  it("reads student learning, the printable report, and branch assignees", async () => {
+    const cookie = await login("registrar", "branch-1");
+    const learning = {
+      student_id: "student-1",
+      courses: [
+        {
+          class_id: "class-1",
+          class_name: "Arabic A",
+          course_id: "course-1",
+          moodle_course_id: 7,
+          course_name: "Arabic",
+          course_grade: "85.00",
+          course_completed: false,
+          completion_status: "in_progress",
+        },
+      ],
+      moodle_warning: null,
+    };
+    const studentLearning = vi.fn(async () => ({ ok: true, data: learning }));
+    const studentReport = vi.fn(async () => ({
+      ok: true,
+      data: {
+        identity: {
+          id: "student-1",
+          first_name: "Nile",
+          last_name: "Student",
+          email: "student@example.test",
+          home_branch_id: "branch-1",
+          branch_name: "Cairo",
+          guardians: [{ sort_order: 1, name: "G", relationship: "Parent" }],
+        },
+        enrolments: [enrolmentRow({ status: "enrolled", class_id: "class-1" })],
+        learning,
+      },
+    }));
+    const assignees = vi.fn(async () => ({
+      ok: true,
+      data: {
+        items: [
+          {
+            id: "ssa-1",
+            email: "ssa@example.test",
+            assigned_role: "ssa",
+            first_name: "Sara",
+            last_name: "Agent",
+          },
+        ],
+        total: 1,
+        page: 1,
+        page_size: 100,
+      },
+    }));
+    const routes = captureRoutes({
+      env: env(),
+      api: { studentLearning, studentReport, assignees },
+    });
+    const learned = responseRecorder();
+    const reported = responseRecorder();
+    const assigned = responseRecorder();
+
+    await routes.get("/api/ncc/admissions/students/:studentId/learning")?.(
+      request(cookie, { studentId: "student-1" }),
+      learned.response
+    );
+    await routes.get("/api/ncc/admissions/students/:studentId/report")?.(
+      request(cookie, { studentId: "student-1" }, undefined, {
+        classId: "class-1",
+      }),
+      reported.response
+    );
+    await routes.get("/api/ncc/admissions/assignees")?.(
+      request(cookie),
+      assigned.response
+    );
+
+    expect(learned.result.body).toMatchObject({
+      learning: { courses: [{ courseGrade: "85.00", moodleCourseId: 7 }] },
+    });
+    expect(studentReport).toHaveBeenCalledWith(
+      "access-ncc-session-1",
+      "student-1",
+      "class-1"
+    );
+    expect(reported.result.body).toMatchObject({
+      report: {
+        identity: { name: "Nile Student" },
+        enrolments: [{ status: "enrolled" }],
+      },
+    });
+    expect(assignees).toHaveBeenCalledWith(
+      "access-ncc-session-1",
+      "branch-1",
+      undefined
+    );
+    expect(assigned.result.body).toEqual({
+      items: [
+        { id: "ssa-1", name: "Sara Agent", email: "ssa@example.test", role: "ssa" },
+      ],
+    });
+  });
+});
+
+describe("NCC teaching contract routes", () => {
+  const deliveryEnv = () => env({ NILE_NCC_DELIVERY_WRITES_ENABLED: "1" });
+  const attendanceDetail = {
+    moodle_session_id: 7,
+    attendanceid: 3,
+    ems_session_id: null,
+    sessdate: "2026-09-17T10:00:00Z",
+    duration: 3600,
+    groupid: 4,
+    statuses: [
+      { id: 1, acronym: "P", description: "Present" },
+      { id: 2, acronym: "A", description: "Absent" },
+    ],
+    students: [
+      {
+        student_id: "student-1",
+        first_name: "Nile",
+        last_name: "Student",
+        email: "student@example.test",
+        moodle_user_id: 42,
+        status_id: null,
+        status_acronym: null,
+        status_description: null,
+        remarks: null,
+      },
+    ],
+  };
+
+  it("reads course statistics and refreshes the course list with filters", async () => {
+    const cookie = await login();
+    const courseStatistics = vi.fn(async () => ({
+      ok: true,
+      data: {
+        active_classes: 2,
+        enrolment_fill: 11,
+        enrolment_capacity: 30,
+        pending_enrolments: 3,
+        open_leads: 5,
+      },
+    }));
+    const refreshCourses = vi.fn(async () => ({
+      ok: true,
+      data: { items: [courseRow()], total: 1, page: 1, page_size: 25 },
+    }));
+    const routes = captureRoutes({
+      env: deliveryEnv(),
+      api: { courseStatistics, refreshCourses },
+    });
+    const stats = responseRecorder();
+    const refreshed = responseRecorder();
+    const badFilter = responseRecorder();
+
+    await routes.get("/api/ncc/delivery/courses/:courseId/statistics")?.(
+      request(cookie, { courseId: "course-1" }),
+      stats.response
+    );
+    await routes.get("POST /api/ncc/delivery/courses/refresh")?.(
+      request(cookie, undefined, undefined, {
+        departmentId: "department-1",
+        status: "active",
+        pageSize: "25",
+      }),
+      refreshed.response
+    );
+    await routes.get("POST /api/ncc/delivery/courses/refresh")?.(
+      request(cookie, undefined, undefined, { branchId: "x" }),
+      badFilter.response
+    );
+
+    expect(stats.result.body).toEqual({
+      statistics: {
+        activeClasses: 2,
+        enrolmentFill: 11,
+        enrolmentCapacity: 30,
+        pendingEnrolments: 3,
+        openLeads: 5,
+      },
+    });
+    expect(refreshCourses).toHaveBeenCalledWith("access-ncc-session-1", {
+      department_id: "department-1",
+      status: ["active"],
+      page_size: 25,
+    });
+    expect(refreshed.result.body).toMatchObject({ total: 1, pageSize: 25 });
+    expect(badFilter.result.status).toBe(400);
+    expect(refreshCourses).toHaveBeenCalledTimes(1);
+  });
+
+  it("maps class kind, meeting link, owner, and branch moves", async () => {
+    const cookie = await login();
+    const patchClass = vi.fn(async () => ({ ok: true, data: classRow() }));
+    const routes = captureRoutes({ env: deliveryEnv(), api: { patchClass } });
+    const patched = responseRecorder();
+    const badLink = responseRecorder();
+    const badKind = responseRecorder();
+    const handler = routes.get("PATCH /api/ncc/delivery/classes/:classId");
+
+    await handler?.(
+      request(
+        cookie,
+        { classId: "class-1" },
+        {
+          kind: "individual",
+          meetingUrl: "https://meet.example/abc",
+          assignedSsaId: null,
+          branchId: "branch-2",
+        }
+      ),
+      patched.response
+    );
+    await handler?.(
+      request(cookie, { classId: "class-1" }, { meetingUrl: "http://x" }),
+      badLink.response
+    );
+    await handler?.(
+      request(cookie, { classId: "class-1" }, { kind: "duo" }),
+      badKind.response
+    );
+
+    expect(patchClass).toHaveBeenCalledWith("access-ncc-session-1", "class-1", {
+      kind: "individual",
+      meeting_url: "https://meet.example/abc",
+      assigned_ssa_id: null,
+      branch_id: "branch-2",
+    });
+    expect(badLink.result.status).toBe(400);
+    expect(badKind.result.status).toBe(400);
+  });
+
+  it("returns Moodle sync steps and warnings", async () => {
+    const cookie = await login();
+    const syncClassMoodle = vi.fn(async () => ({
+      ok: true,
+      data: {
+        ...classRow(),
+        warnings: ["2 students have no Moodle account"],
+        steps: [
+          { step: "group", status: "ok", detail: null, warnings: [] },
+          { step: "students", status: "error", detail: "Not linked" },
+        ],
+      },
+    }));
+    const routes = captureRoutes({
+      env: deliveryEnv(),
+      api: { syncClassMoodle },
+    });
+    const synced = responseRecorder();
+    await routes.get("POST /api/ncc/delivery/classes/:classId/moodle/sync")?.(
+      request(cookie, { classId: "class-1" }, {}),
+      synced.response
+    );
+    expect(synced.result.body).toMatchObject({
+      class: { id: "class-1" },
+      warnings: ["2 students have no Moodle account"],
+      steps: [
+        { step: "group", status: "ok", detail: null, warnings: [] },
+        { step: "students", status: "error", detail: "Not linked", warnings: [] },
+      ],
+    });
+  });
+
+  it("reads and paints room availability within a bounded range", async () => {
+    const cookie = await login();
+    const roomHourCells = vi.fn(async () => ({
+      ok: true,
+      data: {
+        timezone: "Africa/Cairo",
+        from: "2026-11-02",
+        to: "2026-11-08",
+        cells: [{ date: "2026-11-02", hour: 9, status: "available" }],
+        sessions: [],
+      },
+    }));
+    const patchRoomHourCells = vi.fn(async () => ({
+      ok: true,
+      data: { applied: 1 },
+    }));
+    const routes = captureRoutes({
+      env: deliveryEnv(),
+      api: { roomHourCells, patchRoomHourCells },
+    });
+    const range = responseRecorder();
+    const tooLong = responseRecorder();
+    const painted = responseRecorder();
+    const badOp = responseRecorder();
+
+    await routes.get("/api/ncc/delivery/rooms/:roomId/hour-cells")?.(
+      request(cookie, { roomId: "room-1" }, undefined, {
+        from: "2026-11-02",
+        to: "2026-11-08",
+      }),
+      range.response
+    );
+    await routes.get("/api/ncc/delivery/rooms/:roomId/hour-cells")?.(
+      request(cookie, { roomId: "room-1" }, undefined, {
+        from: "2026-01-01",
+        to: "2026-06-01",
+      }),
+      tooLong.response
+    );
+    await routes.get("PATCH /api/ncc/delivery/rooms/:roomId/hour-cells")?.(
+      request(
+        cookie,
+        { roomId: "room-1" },
+        {
+          ops: [
+            { date: "2026-11-02", hour: 9, status: "available" },
+            { date: "2026-11-02", hour: 10, status: null },
+          ],
+        }
+      ),
+      painted.response
+    );
+    await routes.get("PATCH /api/ncc/delivery/rooms/:roomId/hour-cells")?.(
+      request(
+        cookie,
+        { roomId: "room-1" },
+        { ops: [{ date: "2026-11-02", hour: 24, status: "available" }] }
+      ),
+      badOp.response
+    );
+
+    expect(roomHourCells).toHaveBeenCalledWith(
+      "access-ncc-session-1",
+      "room-1",
+      "2026-11-02",
+      "2026-11-08"
+    );
+    expect(range.result.body).toMatchObject({
+      range: { timezone: "Africa/Cairo" },
+    });
+    expect(tooLong.result.status).toBe(400);
+    expect(patchRoomHourCells).toHaveBeenCalledWith(
+      "access-ncc-session-1",
+      "room-1",
+      [
+        { date: "2026-11-02", hour: 9, status: "available" },
+        { date: "2026-11-02", hour: 10, status: null },
+      ]
+    );
+    expect(badOp.result.status).toBe(400);
+    expect(patchRoomHourCells).toHaveBeenCalledTimes(1);
+  });
+
+  it("lists and marks Moodle attendance sessions for a class", async () => {
+    const cookie = await login();
+    const classAttendanceSessions = vi.fn(async () => ({
+      ok: true,
+      data: [
+        {
+          moodle_session_id: 7,
+          sessdate: "2026-09-17T10:00:00Z",
+          duration: 3600,
+          groupid: 4,
+          ems_session_id: "session-1",
+        },
+      ],
+    }));
+    const markClassAttendance = vi.fn(async () => ({
+      ok: true,
+      data: attendanceDetail,
+    }));
+    const routes = captureRoutes({
+      env: deliveryEnv(),
+      api: { classAttendanceSessions, markClassAttendance },
+    });
+    const list = responseRecorder();
+    const marked = responseRecorder();
+    const duplicate = responseRecorder();
+    const badId = responseRecorder();
+    const mark = routes.get(
+      "POST /api/ncc/delivery/classes/:classId/attendance/sessions/:moodleSessionId"
+    );
+
+    await routes.get("/api/ncc/delivery/classes/:classId/attendance/sessions")?.(
+      request(cookie, { classId: "class-1" }),
+      list.response
+    );
+    await mark?.(
+      request(
+        cookie,
+        { classId: "class-1", moodleSessionId: "7" },
+        { marks: [{ studentId: " student-1 ", statusId: 1 }] }
+      ),
+      marked.response
+    );
+    await mark?.(
+      request(
+        cookie,
+        { classId: "class-1", moodleSessionId: "7" },
+        {
+          marks: [
+            { studentId: "student-1", statusId: 1 },
+            { studentId: "student-1", statusId: 2 },
+          ],
+        }
+      ),
+      duplicate.response
+    );
+    await mark?.(
+      request(
+        cookie,
+        { classId: "class-1", moodleSessionId: "abc" },
+        { marks: [] }
+      ),
+      badId.response
+    );
+
+    expect(list.result.body).toEqual({
+      items: [
+        {
+          moodleSessionId: 7,
+          sessionDate: "2026-09-17T10:00:00Z",
+          durationSeconds: 3600,
+          moodleGroupId: 4,
+          lastTaken: null,
+          description: null,
+          emsSessionId: "session-1",
+        },
+      ],
+    });
+    expect(markClassAttendance).toHaveBeenCalledWith(
+      "access-ncc-session-1",
+      "class-1",
+      7,
+      { marks: [{ student_id: "student-1", status_id: 1 }] }
+    );
+    expect(marked.result.body).toMatchObject({
+      attendance: { moodleSessionId: 7 },
+    });
+    expect(duplicate.result.status).toBe(400);
+    expect(badId.result.status).toBe(400);
+    expect(markClassAttendance).toHaveBeenCalledTimes(1);
   });
 });

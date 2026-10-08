@@ -8,7 +8,6 @@ import {
 } from "lucide-react";
 import { Link, useLocation } from "wouter";
 
-import NileFormsNavigation from "@/components/forms/NileFormsNavigation";
 import PlatformShell from "@/components/platform/PlatformShell";
 import {
   fetchOwnFormSubmission,
@@ -218,7 +217,6 @@ export default function NileFormsResponsePage({
     return (
       <PlatformShell role={role} title="Form response">
         <div className="nile-forms-page">
-          <NileFormsNavigation role={role} />
           <section
             className="nile-forms-state"
             role={status === "error" ? "alert" : undefined}
@@ -272,7 +270,6 @@ export default function NileFormsResponsePage({
         className="nile-forms-page nile-form-response-detail"
         dir={direction}
       >
-        <NileFormsNavigation role={role} />
         <header className="nile-forms-page-header compact">
           <div>
             <Link href={formsRoute(role)} className="nile-forms-back-link">

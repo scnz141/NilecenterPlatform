@@ -374,15 +374,13 @@ const getScopeConfig = (role: Role, defaultScope: string): ScopeConfig => {
 
 function canShowSearchResult(role: Role, href: string) {
   if (href.startsWith("/courses")) return true;
-  if (role === "superadmin")
-    return href.startsWith("/app/admin") || href.startsWith("/courses");
   const rolePrefix: Record<Role, string> = {
     student: "/app/student",
-    teacher: "/app/teacher",
-    registrar: "/app/registrar",
-    headofdepartment: "/app/hod",
-    branchadmin: "/app/branch",
-    superadmin: "/app/admin",
+    teacher: "/app",
+    registrar: "/app",
+    headofdepartment: "/app",
+    branchadmin: "/app",
+    superadmin: "/app",
   };
   return href.startsWith(rolePrefix[role]);
 }
@@ -1225,6 +1223,16 @@ export default function PlatformShell({ role, children, title }: ShellProps) {
                         <UserCircle size={15} />
                         {t(locale, "profile")}
                       </Link>
+                      {isNcc ? (
+                        <Link
+                          href="/app/notifications"
+                          className="platform-account-menu-item"
+                          role="menuitem"
+                        >
+                          <Bell size={15} />
+                          New staff app (preview)
+                        </Link>
+                      ) : null}
                       <Link
                         href="/auth/logout"
                         className="platform-account-menu-item danger"

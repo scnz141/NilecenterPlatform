@@ -12,6 +12,18 @@
       "sourceType": "github",
       "skillPath": "skills/appllama-usage/SKILL.md",
       "computedHash": "44c7559f5c0264ecb5eea37f03b5672b38c9f887d71a4f58c4b52c959cec8071"
+    },
+    "better-ui": {
+      "source": "jakubkrehel/skills",
+      "sourceType": "github",
+      "skillPath": "skills/better-ui/SKILL.md",
+      "computedHash": "6f69968c0d1ed034753d64aa22f2bf4332f1471164f110db720d05faf76c3551"
+    },
+    "karpathy-guidelines": {
+      "source": "forrestchang/andrej-karpathy-skills",
+      "sourceType": "github",
+      "skillPath": "skills/karpathy-guidelines/SKILL.md",
+      "computedHash": "41e8ca055bbde13d240776a14a076a59614057200340c243130a76ba4e64cac8"
     }
   }
 }

@@ -1,13 +1,8 @@
 import { useEffect, useState } from "react";
 import type { Role } from "@/lib/platformData";
 
-const roleStyleLoaders: Record<Role, () => Promise<unknown>> = {
+const roleStyleLoaders: Partial<Record<Role, () => Promise<unknown>>> = {
   student: () => import("@/styles/roles/student"),
-  teacher: () => import("@/styles/roles/teacher"),
-  registrar: () => import("@/styles/roles/registrar"),
-  headofdepartment: () => import("@/styles/roles/hod"),
-  branchadmin: () => import("@/styles/roles/branch"),
-  superadmin: () => import("@/styles/roles/admin"),
 };
 
 const loadedRoles = new Set<Role>();
@@ -19,7 +14,12 @@ function loadPortalRoleStyles(role: Role) {
   const pending = pendingLoads.get(role);
   if (pending) return pending;
 
-  const load = roleStyleLoaders[role]()
+  const loader = roleStyleLoaders[role];
+  if (!loader) {
+    loadedRoles.add(role);
+    return Promise.resolve();
+  }
+  const load = loader()
     .then(() => {
       loadedRoles.add(role);
     })

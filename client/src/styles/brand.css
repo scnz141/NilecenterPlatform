@@ -1,0 +1,59 @@
+/* Nile Center brand mark: shared by the landing, sign-in, public forms, staff. */
+.nile-logo {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55em;
+  line-height: 0;
+}
+
+.nile-logo img {
+  display: block;
+}
+
+.nile-rosette {
+  display: block;
+  flex-shrink: 0;
+  overflow: visible;
+}
+
+/* Bloom: petals open one by one, then the core settles. Motion-safe only. */
+@media (prefers-reduced-motion: no-preference) {
+  .nile-rosette[data-bloom] .nile-rosette-petal {
+    transform-box: fill-box;
+    transform-origin: center;
+    animation: nile-petal-in 700ms cubic-bezier(0.2, 0, 0, 1) both;
+    animation-delay: calc(var(--i) * 70ms + 120ms);
+  }
+  .nile-rosette[data-bloom] .nile-rosette-wedge,
+  .nile-rosette[data-bloom] .nile-rosette-core {
+    transform-box: fill-box;
+    transform-origin: center;
+    animation: nile-core-in 600ms cubic-bezier(0.2, 0, 0, 1) both 760ms;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nile-rosette[data-bloom] {
+    animation: nile-fade 400ms ease-out both;
+  }
+}
+
+@keyframes nile-petal-in {
+  from {
+    opacity: 0;
+    transform: scale(0.6) translateY(6px);
+  }
+}
+
+@keyframes nile-core-in {
+  from {
+    opacity: 0;
+    transform: scale(0.4) rotate(-45deg);
+  }
+}
+
+@keyframes nile-fade {
+  from {
+    opacity: 0;
+  }
+}

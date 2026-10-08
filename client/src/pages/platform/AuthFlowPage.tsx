@@ -41,15 +41,15 @@ type AuthFlowMode =
 
 const roleOptions: { label: string; value: Role; href: string }[] = [
   { label: "Student", value: "student", href: "/app/student/dashboard" },
-  { label: "Teacher", value: "teacher", href: "/app/teacher/dashboard" },
-  { label: "Registrar", value: "registrar", href: "/app/registrar/dashboard" },
-  { label: "HOD", value: "headofdepartment", href: "/app/hod/dashboard" },
+  { label: "Teacher", value: "teacher", href: "/app/dashboard" },
+  { label: "Registrar", value: "registrar", href: "/app/dashboard" },
+  { label: "HOD", value: "headofdepartment", href: "/app/dashboard" },
   {
     label: "Branch Admin",
     value: "branchadmin",
-    href: "/app/branch/dashboard",
+    href: "/app/dashboard",
   },
-  { label: "Super Admin", value: "superadmin", href: "/app/admin/dashboard" },
+  { label: "Super Admin", value: "superadmin", href: "/app/dashboard" },
 ];
 
 function initialLocale(): Locale {

@@ -163,7 +163,7 @@ export const roleMeta: Record<
   teacher: {
     label: "Teacher",
     shortLabel: "Teacher",
-    defaultRoute: "/app/teacher/dashboard",
+    defaultRoute: "/app/dashboard",
     color: "#1A3A5C",
     tint: "#E9F0F7",
     accent: "#C4A35A",
@@ -173,7 +173,7 @@ export const roleMeta: Record<
   registrar: {
     label: "Registrar",
     shortLabel: "Registrar",
-    defaultRoute: "/app/registrar/dashboard",
+    defaultRoute: "/app/dashboard",
     color: "#5C2D00",
     tint: "#F5ECE4",
     accent: "#B8A898",
@@ -183,7 +183,7 @@ export const roleMeta: Record<
   headofdepartment: {
     label: "Head of Department",
     shortLabel: "HOD",
-    defaultRoute: "/app/hod/dashboard",
+    defaultRoute: "/app/dashboard",
     color: "#3D1A5C",
     tint: "#F0EAF5",
     accent: "#C4A35A",
@@ -193,7 +193,7 @@ export const roleMeta: Record<
   branchadmin: {
     label: "Branch Admin",
     shortLabel: "Branch",
-    defaultRoute: "/app/branch/dashboard",
+    defaultRoute: "/app/dashboard",
     color: "#1A4A3A",
     tint: "#EAF3EF",
     accent: "#C4A35A",
@@ -203,7 +203,7 @@ export const roleMeta: Record<
   superadmin: {
     label: "Super Admin",
     shortLabel: "Admin",
-    defaultRoute: "/app/admin/dashboard",
+    defaultRoute: "/app/dashboard",
     color: "#4A3A1A",
     tint: "#F1EDE4",
     accent: "#1A1A1A",
@@ -506,183 +506,14 @@ export const sidebarByRole: Record<Role, NavItem[]> = {
     },
     { label: "Settings", href: "/app/student/settings", icon: "Settings" },
   ],
-  teacher: [
-    {
-      label: "Dashboard",
-      href: "/app/teacher/dashboard",
-      icon: "LayoutDashboard",
-    },
-    { label: "Classes", href: "/app/teacher/classes", icon: "Presentation" },
-    { label: "Moodle", href: "/app/teacher/moodle-source", icon: "PlugZap" },
-    {
-      label: "Assignments",
-      href: "/app/teacher/assignments",
-      icon: "ClipboardCheck",
-    },
-    {
-      label: "Grading",
-      href: "/app/teacher/grading",
-      icon: "PenLine",
-    },
-    { label: "Quizzes", href: "/app/teacher/quizzes", icon: "ListChecks" },
-    {
-      label: "Question Bank",
-      href: "/app/teacher/question-bank",
-      icon: "Database",
-    },
-    { label: "Calendar", href: "/app/teacher/calendar", icon: "CalendarDays" },
-    {
-      label: "Availability",
-      href: "/app/teacher/availability",
-      icon: "CalendarDays",
-    },
-    { label: "Forms", href: "/app/teacher/forms", icon: "ClipboardList" },
-    {
-      label: "Requests",
-      href: "/app/teacher/requests",
-      icon: "ClipboardCheck",
-    },
-    { label: "Messages", href: "/app/teacher/messages", icon: "MessageSquare" },
-    { label: "Reports", href: "/app/teacher/reports", icon: "BarChart3" },
-    {
-      label: "Quran Review",
-      href: "/app/teacher/quran-review",
-      icon: "BookMarked",
-    },
-    { label: "Settings", href: "/app/teacher/settings", icon: "Settings" },
-  ],
-  registrar: [
-    {
-      label: "Dashboard",
-      href: "/app/registrar/dashboard",
-      icon: "LayoutDashboard",
-    },
-    {
-      label: "Leads",
-      href: "/app/registrar/leads",
-      icon: "Megaphone",
-    },
-    {
-      label: "Applications",
-      href: "/app/registrar/applications",
-      icon: "FileText",
-    },
-    { label: "Students", href: "/app/registrar/students", icon: "Users" },
-    {
-      label: "Placement Tests",
-      href: "/app/registrar/placement-tests",
-      icon: "ClipboardList",
-    },
-    {
-      label: "Enrollments",
-      href: "/app/registrar/enrollments",
-      icon: "UserPlus",
-    },
-    { label: "Classes", href: "/app/registrar/classes", icon: "Presentation" },
-    {
-      label: "Schedule",
-      href: "/app/registrar/schedule",
-      icon: "CalendarDays",
-    },
-    { label: "Payments", href: "/app/registrar/payments", icon: "CreditCard" },
-    {
-      label: "Messages",
-      href: "/app/registrar/messages",
-      icon: "MessageSquare",
-    },
-    { label: "Reports", href: "/app/registrar/reports", icon: "BarChart3" },
-    { label: "Forms", href: "/app/registrar/forms", icon: "ClipboardList" },
-    {
-      label: "Requests",
-      href: "/app/registrar/requests",
-      icon: "ClipboardCheck",
-    },
-    { label: "Settings", href: "/app/registrar/settings", icon: "Settings" },
-  ],
-  headofdepartment: [
-    { label: "Dashboard", href: "/app/hod/dashboard", icon: "LayoutDashboard" },
-    { label: "Departments", href: "/app/hod/departments", icon: "Building2" },
-    { label: "Programs", href: "/app/hod/programs", icon: "Library" },
-    { label: "Courses", href: "/app/hod/courses", icon: "BookOpen" },
-    { label: "Moodle", href: "/app/hod/moodle-source", icon: "PlugZap" },
-    { label: "Levels", href: "/app/hod/levels", icon: "Layers" },
-    { label: "Curriculum", href: "/app/hod/curriculum", icon: "BookCopy" },
-    { label: "Teachers", href: "/app/hod/teachers", icon: "GraduationCap" },
-    { label: "Classes", href: "/app/hod/classes", icon: "Presentation" },
-    { label: "Schedule", href: "/app/hod/schedule", icon: "CalendarDays" },
-    { label: "Assessments", href: "/app/hod/assessments", icon: "ListChecks" },
-    {
-      label: "Certificates",
-      href: "/app/hod/certificates",
-      icon: "Award",
-    },
-    { label: "Reports", href: "/app/hod/reports", icon: "BarChart3" },
-    { label: "Forms", href: "/app/hod/forms", icon: "ClipboardList" },
-    { label: "Requests", href: "/app/hod/requests", icon: "ClipboardCheck" },
-    { label: "Messages", href: "/app/hod/messages", icon: "MessageSquare" },
-    { label: "Settings", href: "/app/hod/settings", icon: "Settings" },
-  ],
-  branchadmin: [
-    {
-      label: "Dashboard",
-      href: "/app/branch/dashboard",
-      icon: "LayoutDashboard",
-    },
-    { label: "Students", href: "/app/branch/students", icon: "Users" },
-    { label: "Teachers", href: "/app/branch/teachers", icon: "GraduationCap" },
-    { label: "Classes", href: "/app/branch/classes", icon: "Presentation" },
-    { label: "Rooms", href: "/app/branch/rooms", icon: "DoorOpen" },
-    { label: "Schedule", href: "/app/branch/schedule", icon: "CalendarDays" },
-    {
-      label: "Attendance",
-      href: "/app/branch/attendance",
-      icon: "CheckSquare",
-    },
-    { label: "Payments", href: "/app/branch/payments", icon: "CreditCard" },
-    { label: "Reports", href: "/app/branch/reports", icon: "BarChart3" },
-    { label: "Forms", href: "/app/branch/forms", icon: "ClipboardList" },
-    { label: "Requests", href: "/app/branch/requests", icon: "ClipboardCheck" },
-    { label: "Messages", href: "/app/branch/messages", icon: "MessageSquare" },
-    { label: "Settings", href: "/app/branch/settings", icon: "Settings" },
-  ],
-  superadmin: [
-    {
-      label: "Dashboard",
-      href: "/app/admin/dashboard",
-      icon: "LayoutDashboard",
-    },
-    {
-      label: "Blueprint",
-      href: "/app/admin/platform-blueprint",
-      icon: "Network",
-    },
-    { label: "Users", href: "/app/admin/users", icon: "Users" },
-    { label: "Roles & access", href: "/app/admin/roles", icon: "ShieldCheck" },
-    { label: "Access rules", href: "/app/admin/permissions", icon: "KeyRound" },
-    { label: "Branches", href: "/app/admin/branches", icon: "Building2" },
-    { label: "Departments", href: "/app/admin/departments", icon: "Network" },
-    { label: "Programs", href: "/app/admin/programs", icon: "Library" },
-    { label: "Courses", href: "/app/admin/courses", icon: "BookOpen" },
-    { label: "Messages", href: "/app/admin/messages", icon: "MessageSquare" },
-    { label: "Certificates", href: "/app/admin/certificates", icon: "Award" },
-    { label: "Schedule", href: "/app/admin/schedule", icon: "CalendarDays" },
-    { label: "Moodle", href: "/app/admin/moodle-source", icon: "PlugZap" },
-    { label: "Settings", href: "/app/admin/settings", icon: "Settings" },
-    { label: "Connections", href: "/app/admin/integrations", icon: "PlugZap" },
-    {
-      label: "Activity log",
-      href: "/app/admin/audit-logs",
-      icon: "ScrollText",
-    },
-    { label: "Reports", href: "/app/admin/reports", icon: "BarChart3" },
-    { label: "Forms", href: "/app/admin/forms", icon: "ClipboardList" },
-    { label: "Requests", href: "/app/admin/requests", icon: "ClipboardCheck" },
-    { label: "Health", href: "/app/admin/system-health", icon: "Activity" },
-  ],
+  teacher: [],
+  registrar: [],
+  headofdepartment: [],
+  branchadmin: [],
+  superadmin: [],
 };
-
 export const dashboardByRole: Record<
-  Role,
+  "student",
   {
     title: string;
     subtitle: string;
@@ -768,352 +599,6 @@ export const dashboardByRole: Record<
         "Fatima Al-Zahra",
         "Tomorrow",
         "45%",
-        "green"
-      ),
-    ],
-  },
-  teacher: {
-    title: "Teacher workspace",
-    subtitle: "Two classes today, attendance pending for Arabic L2.",
-    stats: [
-      { label: "Active classes", value: "6", change: "3 online", tone: "teal" },
-      {
-        label: "Students",
-        value: "74",
-        change: "8 need attention",
-        tone: "amber",
-      },
-      {
-        label: "Pending grading",
-        value: "14",
-        change: "5 overdue",
-        tone: "red",
-      },
-      {
-        label: "Attendance saved",
-        value: "91%",
-        change: "+4% vs last week",
-        tone: "green",
-      },
-    ],
-    spotlight: {
-      title: "Mark attendance for Standard Arabic L2",
-      description:
-        "Class ended 22 minutes ago. Save attendance before the registrar cutoff.",
-      progress: 76,
-      action: "Open attendance",
-    },
-    actions: [
-      "Create assignment",
-      "Upload material",
-      "Mark attendance",
-      "Create quiz",
-    ],
-    records: [
-      record(
-        "class_a",
-        "Standard Arabic L3 - Group A",
-        "14 students, Module 3",
-        "Today",
-        "Ahmed Hassan",
-        "09:00",
-        "68%",
-        "teal"
-      ),
-      record(
-        "grading_queue",
-        "Essay submissions",
-        "Arabic writing assignment",
-        "Needs grading",
-        "6 students",
-        "Friday",
-        "6 left",
-        "amber"
-      ),
-      record(
-        "quran_queue",
-        "Recitation queue",
-        "Tajweed review submissions",
-        "Review",
-        "Fatima Al-Zahra",
-        "Today",
-        "9 clips",
-        "green"
-      ),
-    ],
-  },
-  registrar: {
-    title: "Registrar operations",
-    subtitle: "Lead, placement, enrollment, and payment queues for Cairo B1.",
-    stats: [
-      { label: "New leads", value: "18", change: "+6 today", tone: "teal" },
-      {
-        label: "Placement pending",
-        value: "6",
-        change: "2 unassigned",
-        tone: "amber",
-      },
-      {
-        label: "Ready to enroll",
-        value: "11",
-        change: "4 paid",
-        tone: "green",
-      },
-      {
-        label: "Payments pending",
-        value: "EGP 42K",
-        change: "9 invoices",
-        tone: "purple",
-      },
-    ],
-    spotlight: {
-      title: "Placement test pipeline",
-      description: "Six bookings need examiner assignment or result entry.",
-      progress: 58,
-      action: "Manage placement",
-    },
-    actions: [
-      "Add lead",
-      "Book placement test",
-      "Register student",
-      "Send message",
-    ],
-    records: [
-      record(
-        "lead_184",
-        "Amina Rahman",
-        "Interested in Quran and Tajweed",
-        "New lead",
-        "Website",
-        "Today",
-        "WhatsApp",
-        "teal"
-      ),
-      record(
-        "pt_338",
-        "Placement test: Yusuf Karim",
-        "Arabic language",
-        "Assign teacher",
-        "Registrar",
-        "Tomorrow",
-        "B1",
-        "amber"
-      ),
-      record(
-        "inv_778",
-        "Invoice due: Omar Sayed",
-        "Academic English package",
-        "Pending",
-        "Finance",
-        "Jun 29",
-        "EGP 1,600",
-        "purple"
-      ),
-    ],
-  },
-  headofdepartment: {
-    title: "Academic department overview",
-    subtitle:
-      "Arabic and Quran programs, curriculum coverage, and quality signals.",
-    stats: [
-      {
-        label: "Active courses",
-        value: "42",
-        change: "7 categories",
-        tone: "teal",
-      },
-      {
-        label: "Teacher load",
-        value: "84%",
-        change: "Balanced",
-        tone: "green",
-      },
-      {
-        label: "At-risk students",
-        value: "23",
-        change: "-5 this week",
-        tone: "amber",
-      },
-      {
-        label: "Certificates pending",
-        value: "5",
-        change: "Need approval",
-        tone: "purple",
-      },
-    ],
-    spotlight: {
-      title: "Certificate approvals",
-      description:
-        "Five students meet grade and attendance requirements and are waiting for review.",
-      progress: 84,
-      action: "Review certificates",
-    },
-    actions: [
-      "Create course",
-      "Edit curriculum",
-      "Assign teacher",
-      "Approve certificate",
-    ],
-    records: [
-      record(
-        "curr_ar",
-        "Arabic Level 4 curriculum",
-        "Outcome mapping in review",
-        "Draft",
-        "Curriculum team",
-        "Jul 4",
-        "82%",
-        "teal"
-      ),
-      record(
-        "teacher_quality",
-        "Teacher quality review",
-        "Observation notes ready",
-        "Review",
-        "HOD",
-        "This week",
-        "12 notes",
-        "amber"
-      ),
-      record(
-        "cert_quran",
-        "Quran Tajweed certificate",
-        "Eligibility confirmed",
-        "Pending approval",
-        "Student Demo",
-        "Today",
-        "94%",
-        "green"
-      ),
-    ],
-  },
-  branchadmin: {
-    title: "Cairo B1 branch operations",
-    subtitle:
-      "Rooms, branch classes, attendance exceptions, and local payments.",
-    stats: [
-      { label: "Classes today", value: "28", change: "4 online", tone: "teal" },
-      {
-        label: "Rooms in use",
-        value: "9/12",
-        change: "2 conflicts",
-        tone: "amber",
-      },
-      {
-        label: "Branch students",
-        value: "384",
-        change: "+21 month",
-        tone: "green",
-      },
-      { label: "Payment issues", value: "12", change: "EGP 38K", tone: "red" },
-    ],
-    spotlight: {
-      title: "Room conflict at 17:00",
-      description: "Room 4 is double-booked for Arabic L1 and Kids Quran.",
-      progress: 42,
-      action: "Resolve conflict",
-    },
-    actions: [
-      "Add room",
-      "View schedule",
-      "Contact student",
-      "Resolve conflict",
-    ],
-    records: [
-      record(
-        "room_4",
-        "Room 4 conflict",
-        "Arabic L1 and Kids Quran",
-        "Conflict",
-        "Operations",
-        "17:00",
-        "2 classes",
-        "red"
-      ),
-      record(
-        "late_list",
-        "Late arrivals",
-        "Seven attendance exceptions",
-        "Needs review",
-        "Front desk",
-        "Today",
-        "7 records",
-        "amber"
-      ),
-      record(
-        "branch_payments",
-        "Overdue payments",
-        "Branch invoices",
-        "Follow up",
-        "Registrar",
-        "Jun 30",
-        "12 invoices",
-        "purple"
-      ),
-    ],
-  },
-  superadmin: {
-    title: "Platform administration",
-    subtitle:
-      "Global users, roles, branches, connections, and system activity.",
-    stats: [
-      { label: "Total users", value: "6,412", change: "+3.2%", tone: "teal" },
-      {
-        label: "Active students",
-        value: "5,284",
-        change: "+12%",
-        tone: "green",
-      },
-      {
-        label: "Active classes",
-        value: "318",
-        change: "26 live today",
-        tone: "amber",
-      },
-      {
-        label: "Health",
-        value: "99.9%",
-        change: "All checks passing",
-        tone: "purple",
-      },
-    ],
-    spotlight: {
-      title: "Connections",
-      description:
-        "Moodle, EMS, email, WhatsApp, meeting, and payment providers are configured as placeholders.",
-      progress: 66,
-      action: "Open connections",
-    },
-    actions: ["Create user", "Manage roles", "Review activity", "Health"],
-    records: [
-      record(
-        "audit_1",
-        "Role changed",
-        "Teacher Demo assigned to Arabic Dept.",
-        "Audited",
-        "Admin Demo",
-        "Today",
-        "Roles & access",
-        "teal"
-      ),
-      record(
-        "integration_moodle",
-        "Moodle connector",
-        "Test mode until token is configured",
-        "Placeholder",
-        "System",
-        "Now",
-        "Ready",
-        "amber"
-      ),
-      record(
-        "branch_report",
-        "Branch comparison",
-        "Cairo B1 outpacing Alexandria",
-        "Report",
-        "Analytics",
-        "Jun 26",
-        "+9%",
         "green"
       ),
     ],

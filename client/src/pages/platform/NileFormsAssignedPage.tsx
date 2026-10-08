@@ -9,7 +9,6 @@ import {
 import { Link, useLocation } from "wouter";
 
 import NileFormRenderer from "@/components/forms/NileFormRenderer";
-import NileFormsNavigation from "@/components/forms/NileFormsNavigation";
 import PlatformShell from "@/components/platform/PlatformShell";
 import { fetchAssignedForm, fetchAssignedForms } from "@/lib/forms/api";
 import { formsRoute } from "@/lib/forms/routes";
@@ -96,8 +95,6 @@ export default function NileFormsAssignedPage({
   return (
     <PlatformShell role={role} title="Forms">
       <div className="nile-forms-page">
-        <NileFormsNavigation role={role} />
-
         {status === "loading" ? (
           <section className="nile-forms-state" aria-live="polite">
             <span className="nile-forms-spinner" />

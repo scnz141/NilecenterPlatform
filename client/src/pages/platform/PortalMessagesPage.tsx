@@ -69,9 +69,7 @@ function initialsFromName(name?: string) {
 }
 
 function messagesHref(role: Role) {
-  if (role === "headofdepartment") return "/app/hod/messages";
-  if (role === "branchadmin") return "/app/branch/messages";
-  if (role === "superadmin") return "/app/admin/messages";
+  if (role !== "student") return "/app/notifications";
   return `/app/${role}/messages`;
 }
 

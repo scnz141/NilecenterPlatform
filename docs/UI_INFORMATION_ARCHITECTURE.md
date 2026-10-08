@@ -136,14 +136,14 @@ Move away:
 - Do not expose every possible route directly in the sidebar.
 - Use human names, not system names.
 
-Preferred Super Admin sidebar:
+Preferred staff sidebar (unified staff app):
 
-- Dashboard
-- People: Users, Roles and access
-- Learning: Courses, Classes, Certificates
-- Operations: Branches, Departments, Schedule, Forms
-- Business: Payments, Reports
-- System: Connections, Activity log, Settings
+- Home: Dashboard, Notifications
+- Admissions: Students, Leads, Enrolments, Placement tests, Trial lessons
+- Teaching: Courses, Classes, Sessions, Rooms
+- People and places: Staff, Branches, Departments
+- Setup: Lost reasons, Action reasons, Areas of study, Custom fields
+- System: Moodle, System health, Audit log
 
 Portal sidebars should follow the same principle:
 
@@ -155,28 +155,9 @@ Portal sidebars should follow the same principle:
 Preferred role sidebar intent:
 
 - Student: Dashboard, Courses, Assignments, Quizzes, Grades, Attendance, Calendar, Forms, Messages, Certificates, Reports, Support, Profile, Quran progress.
-- Teacher: Dashboard, Classes, Assignments, Grading, Quizzes, Question bank, Calendar, Forms, Messages, Reports, Profile, Quran review.
-- Registrar: Dashboard, Leads, Applications, Placement tests, Students, Enrollments, Classes, Schedule, Forms, Payments, Messages, Reports, Settings.
-- HOD: Dashboard, Departments, Programs, Courses, Curriculum, Teachers, Classes, Assessments, Forms, Certificates, Reports, Messages.
-- Branch admin: Dashboard, Students, Teachers, Classes, Rooms, Schedule, Attendance, Forms, Payments, Reports, Messages, Settings.
-
-### Teacher Classes
-
-Status: Current.
-
-- `/app/teacher/classes`: ListPage for assigned classes only.
-- `/app/teacher/classes/:classId`: DetailPage overview for one assigned class.
-- `/app/teacher/classes/:classId/sessions`: session list for that class.
-- `/app/teacher/classes/:classId/attendance`: Nile-owned attendance workspace.
-- `/app/teacher/classes/:classId/students`: scoped class roster.
-- `/app/teacher/classes/:classId/students/:studentId`: scoped learner detail.
-- `/app/teacher/availability`: signed-in teacher weekly scheduling
-  availability and status.
-- `/app/teacher/classes/:classId/materials`: ownership handoff to the verified
-  Moodle course projection.
-
-Do not restore Nile-native lesson or material mutations. Moodle owns sections,
-resources, assignments, quizzes, completion, grades, and feedback.
+- Staff (all roles): the unified staff navigation in `client/src/staff/nav.ts`,
+  grouped as Home, Admissions, Teaching, People and places, Setup, and System,
+  filtered per role by `canAccess`.
 
 ## Sub-Navigation Rules
 
@@ -188,160 +169,110 @@ resources, assignments, quizzes, completion, grades, and feedback.
 
 ## Content Placement Rules
 
-### Users
+### Staff
 
-Status: Current.
+Status: Current. Staff accounts live in the unified staff app; the former
+`/app/admin/users*` routes redirect here.
 
-- `/app/admin/users`: ListPage for finding users and opening detail.
-- `/app/admin/users/new`: CreateFlowPage for creating one staff account.
-- `/app/admin/users/:userId`: DetailPage overview for one user.
-- `/app/admin/users/:userId/access`: Access tab for role and branch access.
-- `/app/admin/users/:userId/activity`: Activity tab for recent account changes.
+- `/app/staff`: ListPage for finding staff and opening detail.
+- `/app/staff/:id`: DetailPage overview for one staff member.
 
 Do not show the create flow, selected-user editor, access rules, branch access, and activity log on the list page.
 
 ### Schedule
 
-Status: Current for the listed admin routes.
+Status: Current.
 
-- `/app/admin/schedule`: Calendar view only.
-- `/app/admin/schedule/calendar`: Calendar view only.
-- `/app/admin/schedule/sessions`: Session list and session management.
-- `/app/admin/schedule/conflicts`: Conflicts and pending reviews.
-- `/app/admin/schedule/rooms`: Room bookings and availability.
-- `/app/admin/schedule/activity`: Schedule activity.
+- `/app/sessions`: Session list and the signed-in staff member's week view.
+- `/app/classes`: Class list and class detail.
+- `/app/rooms`: Room list and room detail.
 
 Do not combine schedule board, create form, conflict review, room metrics, audit, and boundary notes on one screen.
 
 ### Reports
 
-Status: Current for the listed admin routes.
-
-- `/app/admin/reports`: Report area overview and high-level summary.
-- `/app/admin/reports/attendance`: Attendance report only.
-- `/app/admin/reports/finance`: Finance report only.
-- `/app/admin/reports/certificates`: Certificate report only.
-- `/app/admin/reports/admissions`: Admissions report only.
-- `/app/admin/reports/classes`: Class report only.
-- `/app/admin/reports/saved-views`: Saved report views only.
-
-Do not combine attendance evidence, certificate health, finance presets, class stats, activity rows, and connections on one report page.
+Status: Removed for staff. The old per-portal report pages had no unified-app
+equivalent and were removed with the old portals; `/app/student/reports`
+remains for students.
 
 ### Roles And Access
 
-- `/app/admin/roles`: Current role overview and summaries.
-- `/app/admin/permissions`: Current access-rule editing.
-- `/app/admin/branches`: Current branch management and branch status.
-- Role-specific access detail routes are Target only when a workflow cannot be
-  kept clear on these three owners.
-
-Do not show the full permission matrix by default.
+Status: Removed. `/app/admin/roles` and `/app/admin/permissions` had no
+unified-app equivalent and were removed with the old portals.
 
 ### Courses
 
-Status: Current for catalog, programs, levels, curriculum, teachers, resources,
-and course detail. Nested course-detail routes below are Target.
+Status: Current.
 
-- `/app/admin/courses`: Course catalog.
-- `/app/admin/courses/programs`: Programs.
-- `/app/admin/courses/levels`: Levels.
-- `/app/admin/courses/curriculum`: Curriculum overview.
-- `/app/admin/courses/teachers`: Teaching assignment overview.
-- `/app/admin/courses/resources`: Lesson resources overview.
-- `/app/admin/courses/:courseId`: Course detail.
-- `/app/admin/courses/:courseId/curriculum`: Curriculum builder.
-- `/app/admin/courses/:courseId/teachers`: Teaching assignment.
-- `/app/admin/courses/:courseId/resources`: Resources.
+- `/app/courses`: Course catalog.
+- `/app/courses/:id`: Course detail.
 
 Do not show catalog, programs, levels, teachers, curriculum builder, lessons, and resources all on one page.
 
 ### Branches
 
-Status: Current for `/app/admin/branches`; nested routes are Target.
+Status: Current.
 
-- `/app/admin/branches`: Branch list.
-- `/app/admin/branches/rooms`: Rooms.
-- `/app/admin/branches/staff`: Staff.
-- `/app/admin/branches/schedule`: Branch schedule.
-- `/app/admin/branches/activity`: Branch activity.
+- `/app/branches`: Branch list.
+- `/app/branches/:id`: Branch detail.
+- `/app/departments`: Department list.
 
 ### System Workspaces
 
 Status: Current for the listed routes. They are separate System pages, not one
 technical control center.
 
-- `/app/admin/settings`: SettingsPage for global school setup only.
-- `/app/admin/integrations`: SettingsPage for connection readiness and reviewed
-  connection status only. Protected credentials and provider configuration stay
-  outside browser UI.
-- `/app/admin/integrations/moodle-commands`: ListPage for safe, server-derived
-  Moodle command status and reconciliation-required evidence only. It does not
-  activate Moodle, expose command payloads, or configure credentials.
-- `/app/admin/system-health`: ReportPage for concise service-health review and
-  the existing health-check action only.
-- `/app/admin/audit-logs`: ReportPage for searchable, exportable activity only.
+- `/app/moodle`: Moodle connection status and reviewed readiness only.
+  Protected credentials and provider configuration stay outside browser UI.
+- `/app/system`: ReportPage for concise service-health review.
+- `/app/audit`: ReportPage for searchable, exportable activity only.
 
 Do not merge settings, connection status, health checks, activity, provider
 configuration, or audit evidence into one page.
 
-### Registrar Admissions
+### Admissions
 
-Status: Current for the listed routes.
+Status: Current.
 
-- `/app/registrar/leads`: Lead intake and lead follow-up only.
-- `/app/registrar/applications`: Application intake and application files only.
-- `/app/registrar/placement-tests`: Placement booking and result recording only.
-- `/app/registrar/students`: Student records and direct student creation only.
-- `/app/registrar/enrollments`: Enrollment handoff and activation only.
-- `/app/registrar/classes`: Class assignment overview only.
-- `/app/registrar/payments`: Payment ledger and receipt recording only.
-- `/app/registrar/messages`: Admissions follow-up messages only.
-- `/app/registrar/reports`: Registrar reports and activity only.
-- `/app/registrar/settings`: Admissions configuration only.
-- `/app/registrar/leads/:leadId`: Lead detail only.
-- `/app/registrar/applications/:applicationId`: Application detail only.
-- `/app/registrar/students/:studentId`: Student detail only.
-- `/app/registrar/placement-tests/:bookingId`: Placement detail only.
+- `/app/leads`: Lead intake and lead follow-up only.
+- `/app/leads/:id`: Lead detail only.
+- `/app/students`: Student records only.
+- `/app/students/:id`: Student detail only.
+- `/app/enrolments`: Enrolment handoff and activation only.
+- `/app/placement-tests`: Placement booking and result recording only.
+- `/app/trial-lessons`: Trial lesson booking only.
 
-Do not show the full admissions pipeline, placement desk, enrollment handoff, payment ledger, student creation, and activity feed together on registrar pages. Detail routes must not render list or create desks underneath the selected record.
+Do not show the full admissions pipeline, placement desk, enrolment handoff, payment ledger, student creation, and activity feed together on one page. Detail routes must not render list or create desks underneath the selected record.
 
 ### Nile Forms
 
 Status: Current internal-alpha route ownership. Production persistence and
-legacy cutover remain separately gated.
+legacy cutover remain separately gated. Staff forms live in the unified staff
+app; the old `/app/{staff-role}/forms/...` addresses redirect to it.
 
-- `/app/{role}/forms`: assigned forms and response status only.
-- `/app/{role}/forms/:publicationId`: one assigned form response flow only.
-- `/app/{role}/forms/:publicationId/responses/:submissionId`: the respondent's
+- `/app/student/forms`: assigned forms and response status only.
+- `/app/student/forms/:publicationId`: one assigned form response flow only.
+- `/app/student/forms/:publicationId/responses/:submissionId`: the respondent's
   own submitted response, review status, and permitted withdrawal only.
-- `/app/{role}/forms/manage`: scoped form definitions only.
-- `/app/{role}/forms/manage/new`: create one scoped form definition only.
-- `/app/{role}/forms/manage/:formId/builder`: one draft version only.
-- `/app/{role}/forms/manage/:formId/publish`: preview and publication settings only.
-- `/app/{role}/forms/manage/:formId/publications`: publication history and
-  retirement only.
-- `/app/{role}/forms/manage/:formId/publications/:publicationId/assignments`:
-  assignment targets for one active assigned publication only.
-- `/app/{role}/forms/review`: scoped submission queue only.
-- `/app/{role}/forms/review/:submissionId`: one submission, review decision,
+- `/app/forms`: staff scoped form definitions and submission queue only.
+- `/app/forms/:formId`: one form definition: builder, publications, and
+  assignments for one draft or published form only.
+- `/app/forms/responses/:submissionId`: one submission, review decision,
   promotion state, and evidence timeline only.
-- `/app/{staff-role}/forms/offline`: one enrolled device, downloaded forms,
-  encrypted capture, and foreground sync queue only.
-- `/app/admin/forms/migration`: one finite Jotform import job: source/target
-  inspection, mapping, dry-run evidence, explicit commit, or run reconciliation.
+- `/app/forms/fill/:publicationId`: one publication fill/preview flow only.
+- `/app/forms/import`: one finite Jotform import job: source/target inspection,
+  mapping, dry-run evidence, explicit commit, or run reconciliation.
 - `/forms/:slug`: one public form response flow only.
 
-The top-level Forms item opens assigned work. Staff page sub-navigation exposes
-Offline, Manage, and Review according to server permissions; Super Admin also
-receives Migration. Do not combine assigned
-forms, definition management, the builder, publication settings, the inbox,
-exports, migration, and review detail on one page.
+Do not combine assigned forms, definition management, the builder, publication
+settings, the inbox, exports, migration, and review detail on one page.
 
 Future ADR-007 typed modules own separate route families. They must not be
-embedded in Forms Manage, Builder, Publish, or Review:
+embedded in Forms management, builder, or review:
 
-- `/app/{role}/requests`, `/requests/new`, and `/requests/:requestId` own the
-  request queue, creation, and one request record respectively.
+- `/app/student/requests` and `/app/student/requests/:requestId` own the
+  student request queue and one request record (`/requests/:requestId` is the
+  route-family shape).
 - `/app/{role}/approvals` and `/approvals/:approvalId` own the approval queue and
   one bounded approval decision.
 - `/app/{role}/appointments`, `/appointments/services`, and
@@ -349,88 +280,91 @@ embedded in Forms Manage, Builder, Publish, or Review:
   and one booking respectively.
 - `/app/{role}/surveys/results` and `/surveys/results/:surveyId` own aggregate
   results and one privacy-filtered survey result.
-- `/app/{role}/forms/manage/:formId/processing` may select one registered,
-  versioned processing profile. Processing execution and case management never
-  occur inside the builder.
+- `/app/forms/:formId` may select one registered, versioned processing
+  profile. Processing execution and case management never occur inside the
+  builder.
 
-### Teacher Assessments
-
-Status: Transitional. Route jobs remain separate, but Moodle owns every
-learning record under ADR-010.
-
-- `/app/teacher/quizzes`: ListPage for projected quizzes in assigned Moodle
-  delivery courses.
-- `/app/teacher/quizzes/new`: supported simple Moodle command flow or an
-  authenticated Moodle authoring launch; never a local quiz create.
-- `/app/teacher/quizzes/review`: projected attempt queue with an authorized
-  Moodle review launch.
-- `/app/teacher/question-bank`: projected question-bank directory for assigned
-  course contexts.
-- `/app/teacher/question-bank/new`: supported Moodle command flow or native
-  Moodle editor launch; never a local question create.
-
-Student assignment and quiz routes likewise show exact Moodle projections and
-use authenticated Moodle launches for submissions and attempts. Nile Learn
-must not persist local learning outcomes from these pages.
-
-Do not combine assignment queue, quiz list, quiz creation, question creation, question attachment, manual review, recent activity, and score metrics on one teacher assessment page.
-
-### HOD Moodle Governance
+### Student Moodle-Projected Assessments
 
 Status: Moodle-authority boundary active.
 
-- `/app/hod/curriculum`: Department Moodle template and curriculum mapping overview.
-- `/app/hod/curriculum/new`: Capability-gated Moodle curriculum release entry.
-- `/app/hod/assessments`: Department Moodle assessment and outcome overview.
-- `/app/hod/assessments/new`: Capability-gated Moodle assessment entry.
-- `/app/hod/assessments/review`: Moodle moderation and outcome review.
-- `/app/hod/moodle-source/:courseId`: Verified Moodle course projection.
+- `/app/student/assignments` and `/app/student/quizzes` show exact Moodle
+  projections and use authenticated Moodle launches for submissions and
+  attempts. Nile Learn must not persist local learning outcomes from these
+  pages.
+- `/app/student/moodle-source` and `/app/student/moodle-source/:courseId`:
+  verified Moodle course projections.
 
-Nile Learn must not create local curriculum modules, assignments, quizzes, grades, or feedback from these routes. Course runs, schedules, attendance, certificates, and operational governance remain Nile-owned.
+Nile Learn must not create local curriculum modules, assignments, quizzes,
+grades, or feedback from these routes. Course runs, schedules, attendance,
+certificates, and operational governance remain Nile-owned.
 
-### Role-Wide Report Pages
+### Student Report Pages
 
-Status: Pattern. A concrete route is Current only when registered in
-`client/src/App.tsx`.
+- `/app/student/reports`: the student's report overview only.
 
-- `/app/{role}/reports`: Report overview or the role's primary report only.
-- `/app/{role}/reports/attendance`: Attendance report only when the role owns attendance data.
-- `/app/{role}/reports/finance`: Finance report only for registrar, branch admin, and super admin roles.
-- `/app/{role}/reports/academic`: Academic progress and course outcomes only.
-- `/app/{role}/reports/saved-views`: Saved report views only.
+### Student Schedule Page
 
-Do not place finance, attendance, academic, audit, and certificate report controls on one generic reports page.
-
-### Role-Wide Schedule Pages
-
-Status: Pattern. A concrete route is Current only when registered in
-`client/src/App.tsx`.
-
-- `/app/{role}/schedule` or `/app/{role}/calendar`: Calendar view only.
-- `/app/{role}/schedule/sessions`: Sessions only.
-- `/app/{role}/schedule/conflicts`: Conflicts and pending reviews only.
-- `/app/{role}/schedule/rooms`: Room availability only for branch and admin roles.
-- `/app/{role}/schedule/activity`: Schedule activity only for admin roles.
-
-Do not combine create schedule forms, conflict review, room status, audit, and schedule board on one page.
+- `/app/student/calendar`: calendar view only.
 
 ### Class Workspaces
 
-Status: Target route family. Existing teacher class routes remain Current until
-the bounded class-workspace migration is implemented.
+Status: Target route family. The unified staff app currently exposes
+`/app/classes` and `/app/classes/:id`; the nested workspace routes below remain
+Target.
 
-- `/app/{role}/classes`: class list only.
-- `/app/{role}/classes/:classId`: class overview only.
-- `/app/{role}/classes/:classId/roster`: roster and membership only.
-- `/app/{role}/classes/:classId/schedule`: recurring schedule only.
-- `/app/{role}/classes/:classId/sessions`: delivered sessions only.
-- `/app/{role}/classes/:classId/attendance`: attendance only.
-- `/app/{role}/classes/:classId/grades`: grades and feedback only.
-- `/app/{role}/classes/:classId/content`: linked learning content only.
-- `/app/{role}/classes/:classId/activity`: class activity only.
+- `/app/classes`: class list only.
+- `/app/classes/:id`: class overview only.
+- `/app/classes/:classId/roster`: roster and membership only.
+- `/app/classes/:classId/schedule`: recurring schedule only.
+- `/app/classes/:classId/sessions`: delivered sessions only.
+- `/app/classes/:classId/attendance`: attendance only.
+- `/app/classes/:classId/grades`: grades and feedback only.
+- `/app/classes/:classId/content`: linked learning content only.
+- `/app/classes/:classId/activity`: class activity only.
 
 Do not expand every class tab into one page. Teacher assignment, membership,
 schedule, session, attendance, and content are distinct records and jobs.
+
+## Unified Staff App
+
+ADR-013 adds one unified staff application for NCC sessions under `/app/...`,
+modeled on the NCC EMS frontend's interaction model. It is now the only staff
+UI: the old `/app/admin`, `/app/registrar`, `/app/hod`, `/app/branch`, and
+`/app/teacher` portals were removed, and every old staff address redirects
+into the unified app through `legacyStaffTarget` in
+`client/src/staff/legacy-redirects.ts`.
+
+### Routes
+
+- Overview: `/app/dashboard`, `/app/notifications`.
+- Profile: `/app/profile`.
+- Admissions: `/app/students`, `/app/students/:id`, `/app/leads`,
+  `/app/leads/:id`, `/app/enrolments`, `/app/placement-tests`,
+  `/app/trial-lessons`.
+- Teaching: `/app/courses`, `/app/courses/:id`, `/app/classes`,
+  `/app/classes/:id`, `/app/sessions`, `/app/rooms`, `/app/rooms/:id`.
+- People and places: `/app/staff`, `/app/staff/:id`, `/app/branches`,
+  `/app/branches/:id`, `/app/departments`.
+- Setup: `/app/lost-reasons`, `/app/action-reasons`, `/app/areas-of-study`,
+  `/app/custom-fields`.
+- System: `/app/moodle`, `/app/system`, `/app/audit`.
+- Nile Forms: `/app/forms`, `/app/forms/:formId`,
+  `/app/forms/responses/:submissionId`, `/app/forms/fill/:publicationId`,
+  `/app/forms/import`.
+
+### Role visibility
+
+`canAccess(path, activeRole)` gates every route. `/app/profile`,
+`/app/dashboard`, and `/app/notifications` are open to all seven EMS roles.
+Admissions items are visible to `super_admin`, `branch_admin`, `vice_manager`,
+`registrar`, and `ssa`. Rooms add `hod`; classes also add `teacher`. Sessions
+are teacher-only. Staff, audit, and the remaining organisation items are
+`super_admin`, `branch_admin`, and `vice_manager`; departments and the
+settings-style items are `super_admin` only. `branch_admin`, `vice_manager`,
+`registrar`, and `ssa` must pick a workspace branch before operating;
+management roles may open a role view restricted to strictly lower-privileged
+roles.
 
 ## Label Rules
 
@@ -448,50 +382,24 @@ only where a job lives. Do not duplicate or locally override those labels.
 - Navigation that exposes every internal route at the same level.
 - Generic generated layouts used for unrelated work.
 
-## Protected Reference Route Inventory
+## Removed Legacy Staff Portals
 
-The following splits are current and form the reference architecture. Preserve
-them while migrating other route families.
+The `/app/admin`, `/app/registrar`, `/app/hod`, `/app/branch`, and
+`/app/teacher` route families were removed together with their pages,
+layouts, and role stylesheets. Old addresses keep working through five
+catch-all redirect routes in `client/src/App.tsx` that call
+`legacyStaffTarget(path)` in `client/src/staff/legacy-redirects.ts`:
 
-The protected reference split includes:
+- Forms review/manage/migration paths map to the unified `/app/forms` family
+  and preserve Nile Forms IDs only.
+- Profile, messages, staff, departments, rooms, audit, system health, Moodle,
+  courses, students, leads, placement tests, enrolments, sessions, and classes
+  map to the matching `/app/*` family.
+- Every other old staff address falls back to `/app/dashboard`.
+- Old demo-store record IDs are never carried into the new app except Nile
+  Forms IDs, which share the same Forms service.
 
-- `/app/admin/users`
-- `/app/admin/users/new`
-- `/app/admin/users/:userId`
-- `/app/admin/schedule`
-- `/app/admin/schedule/sessions`
-- `/app/admin/schedule/conflicts`
-- `/app/admin/schedule/rooms`
-- `/app/admin/schedule/activity`
-- `/app/admin/reports`
-- `/app/admin/reports/attendance`
-
-Additional Current reference splits:
-
-- `/app/teacher/quizzes`
-- `/app/teacher/quizzes/new`
-- `/app/teacher/quizzes/review`
-- `/app/teacher/question-bank`
-- `/app/teacher/question-bank/new`
-- `/app/admin/courses`
-- `/app/admin/courses/programs`
-- `/app/admin/courses/levels`
-- `/app/admin/courses/curriculum`
-- `/app/admin/courses/teachers`
-- `/app/admin/courses/resources`
-- `/app/registrar/leads`
-- `/app/registrar/applications`
-- `/app/registrar/placement-tests`
-- `/app/registrar/students`
-- `/app/registrar/enrollments`
-- `/app/registrar/classes`
-- `/app/registrar/payments`
-- `/app/registrar/messages`
-- `/app/registrar/reports`
-- `/app/registrar/settings`
-- `/app/registrar/leads/:leadId`
-- `/app/registrar/applications/:applicationId`
-- `/app/registrar/students/:studentId`
-- `/app/registrar/placement-tests/:bookingId`
+Do not restore per-role staff portals under the removed prefixes; new staff
+work goes into the unified staff app.
 
 Do not refactor every route at once. Finish one top-level area, review it visually, then continue route by route.

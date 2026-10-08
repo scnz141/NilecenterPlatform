@@ -9,6 +9,7 @@ import {
   NileFormsRequestSecurityError,
   requireNileFormsMutationRequest,
 } from "./nileFormsRequestSecurity.js";
+import { NileFormsCompatibilityRepositoryUnavailableError } from "./nileFormsCompatibilityRepository.js";
 
 type RequestApiRequest = {
   method: string;
@@ -71,6 +72,13 @@ function respondWithError(res: RequestApiResponse, error: unknown) {
     res.status(503).json({
       error: "Session service is temporarily unavailable.",
       code: "session_unavailable",
+    });
+    return;
+  }
+  if (error instanceof NileFormsCompatibilityRepositoryUnavailableError) {
+    res.status(503).json({
+      error: error.message,
+      code: error.code,
     });
     return;
   }

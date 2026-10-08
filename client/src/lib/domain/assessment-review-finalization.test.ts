@@ -114,7 +114,7 @@ describe("assessment review finalization", () => {
       expect.objectContaining({
         userId: "usr_teacher_demo",
         title: "Quiz submitted",
-        href: "/app/teacher/quizzes/review",
+        href: "/app/classes",
       })
     );
 

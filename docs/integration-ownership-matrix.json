@@ -64,7 +64,8 @@
         "clientRoutes": ["^/app$", "^/auth(?:/.*)?$", "^/login$"],
         "serverApiRoutes": [
           "^(GET|POST) /api/auth(?:/.*)?$",
-          "^POST /api/ncc/invitations/(?:validate|accept)$"
+          "^POST /api/ncc/invitations/(?:validate|accept)$",
+          "^(GET|POST|DELETE) /api/ncc/auth(?:/.*)?$"
         ]
       }
     },
@@ -89,7 +90,9 @@
       "futureWriteStatus": "no_writes",
       "selectors": {
         "clientRoutes": [
-          "^/(dashboard|messages|notifications|payments|profile|registrar(?:/.*)?|reports|schedule|settings|student(?:/.*)?|students|teacher(?:/.*)?|users)$"
+          "^/(dashboard|messages|notifications|payments|profile|registrar(?:/.*)?|reports|schedule|settings|student(?:/.*)?|students|teacher(?:/.*)?|users)$",
+          "^/app/(admin|branch|hod|registrar|teacher)(?:/.*)?$",
+          "^expression:`\\$\\{prefix\\}/\\*`$"
         ]
       }
     },
@@ -113,9 +116,8 @@
       "failureBehavior": "Show scoped unavailable states without substituting demo records.",
       "futureWriteStatus": "no_direct_writes",
       "selectors": {
-        "clientRoutes": [
-          "^/app/(admin|branch|hod|registrar|student|teacher)/dashboard$"
-        ]
+        "clientRoutes": ["^/app/student/dashboard$", "^/app/dashboard$"],
+        "serverApiRoutes": ["^GET /api/ncc/dashboard/summary$"]
       }
     },
     {
@@ -141,7 +143,8 @@
       "selectors": {
         "clientRoutes": [
           "^/forms/:slug$",
-          "^/app/(admin|branch|hod|registrar|student|teacher)/forms(?:/.*)?$"
+          "^/app/student/forms(?:/.*)?$",
+          "^/app/forms(?:/.*)?$"
         ],
         "serverApiRoutes": ["^(GET|POST) /api/forms(?:/.*)?$"]
       }
@@ -166,7 +169,7 @@
       "failureBehavior": "Deny stale, replay-conflicting, terminal, malformed, or out-of-scope commands atomically and preserve the prior request and source submission.",
       "futureWriteStatus": "memory_backed_internal_alpha",
       "selectors": {
-        "clientRoutes": ["^expression:.*[/]requests(?:[/].*)?`$"],
+        "clientRoutes": ["^/app/student/requests(?:/.*)?$"],
         "serverApiRoutes": ["^(GET|POST) /api/requests(?:/.*)?$"]
       }
     },
@@ -191,11 +194,12 @@
       "futureWriteStatus": "nile_learn_writable",
       "selectors": {
         "clientRoutes": [
-          "^/app/(admin|branch|hod|registrar|student|teacher)/profile$",
-          "^/app/(admin|branch|hod|registrar)/settings/profile$",
-          "^/app/(student|teacher)/settings$"
+          "^/app/student/profile$",
+          "^/app/student/settings$",
+          "^/app/profile$"
         ],
-        "workflowActions": ["^(profile[.]update|portal[.]settings[.]save)$"]
+        "workflowActions": ["^(profile[.]update|portal[.]settings[.]save)$"],
+        "serverApiRoutes": ["^(GET|PATCH) /api/ncc/account/profile$"]
       }
     },
     {
@@ -216,20 +220,16 @@
       "failureBehavior": "Deny the whole command on permission or scope mismatch.",
       "futureWriteStatus": "nile_learn_writable",
       "selectors": {
-        "clientRoutes": [
-          "^/app/admin/(users(?:/.*)?|roles|permissions)$",
-          "^/app/branch/(students(?:/.*)?|teachers)$",
-          "^/app/hod/teachers$",
-          "^/app/registrar/students(?:/.*)?$"
-        ],
+        "clientRoutes": ["^/app/staff(?:/.*)?$"],
         "workflowActions": [
           "^(permission[.]update|staff[.]user[.]create|user[.](create|update))$"
         ],
         "serverApiRoutes": [
           "^POST /api/admin/user-invitations$",
-          "^GET /api/ncc/directory/users(?:/[^/]+)?$",
+          "^GET /api/ncc/directory/users(?:/[^/]+(?:/(?:statistics|courses|hour-cells))?)?$",
           "^GET /api/ncc/directory/custom-fields$",
-          "^(POST|PATCH) /api/ncc/directory/users(?:/[^/]+(?:/(?:disable|enable|password|invite|cancel-invitation))?)?$"
+          "^(POST|PATCH) /api/ncc/directory/users(?:/[^/]+(?:/(?:disable|enable|password|invite|cancel-invitation|moodle(?:/password)?))?)?$",
+          "^(PUT|PATCH) /api/ncc/directory/users/[^/]+/(?:courses|hour-cells)$"
         ]
       }
     },
@@ -247,12 +247,14 @@
       "futureWriteStatus": "nile_learn_writable",
       "selectors": {
         "clientRoutes": [
-          "^/app/admin/(branches|departments)$",
-          "^/app/(branch|hod|registrar)/settings$",
-          "^/app/hod/departments$"
+          "^/app/(branches(?:/.*)?|departments|lost-reasons|action-reasons|areas-of-study|custom-fields)$"
         ],
         "workflowActions": ["^branch[.]update$"],
-        "serverApiRoutes": ["^GET /api/ncc/directory/(branches|departments)$"]
+        "serverApiRoutes": [
+          "^GET /api/ncc/directory/(branches|departments)$",
+          "^(GET|POST|PATCH) /api/ncc/directory/(branches|departments)(?:/[^/]+(?:/(?:disable|enable|statistics))?)?$",
+          "^(GET|POST|PATCH) /api/ncc/settings/(action-reasons|lost-reasons|areas-of-study|custom-fields)(?:/(?:import|[^/]+(?:/(?:disable|enable))?))?$"
+        ]
       }
     },
     {
@@ -269,7 +271,7 @@
       "futureWriteStatus": "nile_learn_writable",
       "selectors": {
         "clientRoutes": [
-          "^/app/registrar/(applications(?:/.*)?|enrollments(?:/.*)?|leads(?:/.*)?|placement-tests(?:/.*)?)$"
+          "^/app/(leads|students|enrolments|placement-tests|trial-lessons)(?:/.*)?$"
         ],
         "workflowActions": [
           "^(application[.](convert|create)|enrollment[.](activate|status[.]update|transfer)|lead[.](convert|create)|placement[.](create|result[.]record)|student[.](create|document[.]add|status[.]update))$"
@@ -277,7 +279,11 @@
         "serverApiRoutes": [
           "^POST /api/registrar/student-invitations$",
           "^GET /api/ncc/admissions/(students(?:/[^/]+(?:/enrolments)?)?|leads(?:/[^/]+)?|placement-tests(?:/[^/]+)?)$",
-          "^(POST|PATCH) /api/ncc/admissions/(students(?:/[^/]+(?:/(?:disable|enable))?)?|leads(?:/[^/]+(?:/convert)?)?|placement-tests(?:/[^/]+(?:/(?:cancel|record-result))?)?)$"
+          "^(POST|PATCH) /api/ncc/admissions/(students(?:/[^/]+(?:/(?:disable|enable|moodle(?:/password)?))?)?|leads(?:/[^/]+(?:/convert)?)?|placement-tests(?:/[^/]+(?:/(?:cancel|record-result))?)?)$",
+          "^GET /api/ncc/admissions/(students/[^/]+/(?:learning|report)|assignees|enrolments|trial-lessons(?:/[^/]+)?|lead-groups(?:/[^/]+)?)$",
+          "^(POST|PATCH) /api/ncc/admissions/(enrolments(?:/[^/]+(?:/(?:leave|cancel|complete))?)?|trial-lessons(?:/[^/]+(?:/(?:cancel|record-result))?)?|lead-groups(?:/[^/]+)?|students/[^/]+/registration|placement-tests/[^/]+/sync-moodle-result)$",
+          "^PUT /api/ncc/admissions/leads/[^/]+/registration$",
+          "^DELETE /api/ncc/admissions/lead-groups/[^/]+$"
         ]
       }
     },
@@ -294,10 +300,7 @@
       "failureBehavior": "Reject invalid catalog status transitions and retain the prior institutional delivery configuration.",
       "futureWriteStatus": "nile_learn_writable",
       "selectors": {
-        "clientRoutes": [
-          "^/app/admin/(courses(?:/.*)?|programs)$",
-          "^/app/hod/(courses(?:/.*)?|levels|programs)$"
-        ],
+        "clientRoutes": ["^/app/courses(?:/:id)?$"],
         "workflowActions": ["^course[.]status[.]update$"]
       }
     },
@@ -321,20 +324,20 @@
       "futureWriteStatus": "nile_learn_writable",
       "selectors": {
         "clientRoutes": [
-          "^/app/admin/schedule(?:/.*)?$",
-          "^/app/branch/(classes(?:/.*)?|rooms(?:/.*)?|schedule(?:/.*)?)$",
-          "^/app/hod/(classes(?:/.*)?|schedule(?:/.*)?)$",
-          "^/app/registrar/(classes|schedule(?:/.*)?)$",
-          "^/app/teacher/calendar(?:/.*)?$",
-          "^/app/teacher/availability$",
-          "^/app/teacher/classes(?:$|/:classId(?:$|/sessions$|/students(?:$|/:studentId$)))$",
-          "^/app/student/calendar$"
+          "^/app/student/calendar$",
+          "^/app/(classes|rooms)(?:/:id)?$",
+          "^/app/sessions$"
         ],
         "workflowActions": [
           "^(calendar[.](create|conflict[.]resolve)|class[.](create|session[.](cancel|reschedule)|status[.]update|update)|course-run[.]create|room[.](create|status[.]update)|teacher[.](assign|availability[.]update))$"
         ],
         "serverApiRoutes": [
-          "^GET /api/ncc/delivery/(classes(?:/[^/]+)?|courses|rooms|teacher-workspace)$"
+          "^GET /api/ncc/delivery/(classes(?:/[^/]+)?|courses|rooms|teacher-workspace)$",
+          "^GET /api/ncc/delivery/(classes(?:/[^/]+(?:/(?:enrolments|grades|sessions))?)?|courses(?:/[^/]+)?|rooms(?:/[^/]+)?|sessions(?:/[^/]+(?:/attendance)?)?|moodle-(?:courses|groups)|teacher-workspace)$",
+          "^(POST|PATCH) /api/ncc/delivery/(classes(?:/[^/]+(?:/(?:disable|enable|enrolments|moodle(?:/sync)?|sessions(?:/(?:batch|confirm|propose))?))?)?|courses(?:/[^/]+(?:/(?:disable|enable|refresh))?)?|rooms(?:/[^/]+(?:/(?:disable|enable))?)?|sessions(?:/[^/]+(?:/(?:attendance|cancel))?)?)$",
+          "^GET /api/ncc/delivery/(courses/[^/]+/statistics|rooms/[^/]+/hour-cells|classes/[^/]+/attendance/sessions(?:/[^/]+)?)$",
+          "^PATCH /api/ncc/delivery/rooms/[^/]+/hour-cells$",
+          "^POST /api/ncc/delivery/classes/[^/]+/attendance/sessions/[^/]+$"
         ]
       }
     },
@@ -357,10 +360,7 @@
       "failureBehavior": "Reject out-of-scope sessions and preserve the last saved roster.",
       "futureWriteStatus": "moodle_write_blocked",
       "selectors": {
-        "clientRoutes": [
-          "^/app/(branch|student)/attendance$",
-          "^/app/teacher/classes/:classId/attendance$"
-        ],
+        "clientRoutes": ["^/app/student/attendance$"],
         "workflowActions": ["^attendance[.](exception[.](review|submit)|save)$"]
       }
     },
@@ -382,10 +382,7 @@
       "failureBehavior": "Reject local mutation, stale or missing mappings, and unrelated-class access without changing projected state.",
       "futureWriteStatus": "moodle_command_required",
       "selectors": {
-        "clientRoutes": [
-          "^/app/student/assignments(?:/.*)?$",
-          "^/app/teacher/(assignments(?:/.*)?|grading(?:/.*)?)$"
-        ],
+        "clientRoutes": ["^/app/student/assignments(?:/.*)?$"],
         "workflowActions": [
           "^assignment[.](create|grade|status[.]update|submit|update)$"
         ]
@@ -409,11 +406,7 @@
       "failureBehavior": "Reject local mutation, unsigned launches, stale mappings, and attempts outside the assigned class scope.",
       "futureWriteStatus": "moodle_command_required",
       "selectors": {
-        "clientRoutes": [
-          "^/app/student/quizzes(?:/.*)?$",
-          "^/app/teacher/(question-bank(?:/.*)?|quizzes(?:/.*)?)$",
-          "^/app/hod/assessments(?:/.*)?$"
-        ],
+        "clientRoutes": ["^/app/student/quizzes(?:/.*)?$"],
         "workflowActions": [
           "^(question[.]create|quiz[.](create|questions[.]set|review|status[.]update|submit|update))$"
         ]
@@ -437,11 +430,7 @@
       "failureBehavior": "Reject local mutation and unknown enrollment, mapping, or ownership while preserving the last verified projection as stale.",
       "futureWriteStatus": "moodle_command_or_launch_required",
       "selectors": {
-        "clientRoutes": [
-          "^/app/student/(courses(?:/.*)?|grades)$",
-          "^/app/teacher/classes/:classId/materials$",
-          "^/app/hod/curriculum(?:/.*)?$"
-        ],
+        "clientRoutes": ["^/app/student/(courses(?:/.*)?|grades)$"],
         "workflowActions": [
           "^(curriculum[.]module[.]create|lesson[.](complete|start)|material[.]publish[.]update)$"
         ]
@@ -465,10 +454,7 @@
       "failureBehavior": "Reject unrelated learner or recitation changes and preserve the prior review.",
       "futureWriteStatus": "nile_learn_writable",
       "selectors": {
-        "clientRoutes": [
-          "^/app/student/quran-progress$",
-          "^/app/teacher/quran-review(?:/.*)?$"
-        ],
+        "clientRoutes": ["^/app/student/quran-progress$"],
         "workflowActions": [
           "^(quran[.]progress[.]update|recitation[.](review|submit))$"
         ]
@@ -495,9 +481,13 @@
       "futureWriteStatus": "internal_only_no_external_delivery",
       "selectors": {
         "clientRoutes": [
-          "^/app/(admin|branch|hod|registrar|student|teacher)/messages(?:/new)?$"
+          "^/app/student/messages(?:/new)?$",
+          "^/app/notifications$"
         ],
-        "workflowActions": ["^(message[.](read|send)|notification[.]read)$"]
+        "workflowActions": ["^(message[.](read|send)|notification[.]read)$"],
+        "serverApiRoutes": [
+          "^(GET|POST|DELETE) /api/ncc/notifications(?:/.*)?$"
+        ]
       }
     },
     {
@@ -513,7 +503,7 @@
       "failureBehavior": "Reject invalid invoice or scope and never report external settlement.",
       "futureWriteStatus": "internal_placeholder_no_gateway",
       "selectors": {
-        "clientRoutes": ["^/app/(branch|registrar)/payments(?:/.*)?$"],
+        "clientRoutes": [],
         "workflowActions": ["^payment[.]record$"]
       }
     },
@@ -530,11 +520,7 @@
       "failureBehavior": "Reject invalid transitions and preserve the current certificate state.",
       "futureWriteStatus": "nile_learn_writable",
       "selectors": {
-        "clientRoutes": [
-          "^/app/admin/certificates$",
-          "^/app/hod/certificates(?:/.*)?$",
-          "^/app/student/certificates$"
-        ],
+        "clientRoutes": ["^/app/student/certificates$"],
         "workflowActions": ["^certificate[.](approve|issue|reject)$"],
         "serverApiRoutes": ["^GET /api/certificates/verify$"]
       }
@@ -559,16 +545,11 @@
       "failureBehavior": "Show unavailable or stale-at timestamps; never substitute demo metrics.",
       "futureWriteStatus": "saved_presets_only",
       "selectors": {
-        "clientRoutes": [
-          "^/app/admin/(audit-logs|reports(?:/.*)?|system-health)$",
-          "^/app/(branch|hod)/reports$",
-          "^/app/registrar/reports(?:/.*)?$",
-          "^/app/student/reports$",
-          "^/app/teacher/reports(?:/.*)?$"
-        ],
+        "clientRoutes": ["^/app/student/reports$", "^/app/(system|audit)$"],
         "workflowActions": [
           "^(audit[.]export|report[.]preset[.]save|system[.]health_check)$"
-        ]
+        ],
+        "serverApiRoutes": ["^GET /api/ncc/(audit/events|system/health)$"]
       }
     },
     {
@@ -603,9 +584,7 @@
       "failureBehavior": "Remain visibly disconnected or unavailable and fail provider operations closed.",
       "futureWriteStatus": "configuration_only_provider_writes_blocked",
       "selectors": {
-        "clientRoutes": [
-          "^/app/admin/(integrations|platform-blueprint|settings)$"
-        ],
+        "clientRoutes": ["^/app/moodle$"],
         "workflowActions": [
           "^(integration[.](local_check|status[.]update)|settings[.]save)$"
         ],
@@ -613,7 +592,9 @@
           "^GET /api/integrations/health$",
           "^GET /api/integrations/(moodle|resend|supabase)/status$",
           "^GET /api/ems-staging/status$",
-          "^POST /api/ems-staging/(session|logout)$"
+          "^POST /api/ems-staging/(session|logout)$",
+          "^(GET|PUT|PATCH) /api/ncc/moodle/site$",
+          "^POST /api/ncc/moodle/site/(?:disconnect|test)$"
         ]
       }
     },
@@ -700,7 +681,8 @@
       "selectors": {
         "moodleReadFunctions": [
           "^(core_user_get_users_by_field|core_webservice_get_site_info)$"
-        ]
+        ],
+        "serverApiRoutes": ["^GET /api/ncc/moodle/users$"]
       }
     },
     {
@@ -721,9 +703,7 @@
       "failureBehavior": "Retain the last successful projection as stale and expose reconciliation errors.",
       "futureWriteStatus": "production_write_blocked",
       "selectors": {
-        "clientRoutes": [
-          "^/app/(admin|hod|student|teacher)/moodle-source(?:/:courseId)?$"
-        ],
+        "clientRoutes": ["^/app/student/moodle-source(?:/:courseId)?$"],
         "serverApiRoutes": [
           "^GET /api/integrations/moodle/projections/courses(?:/:courseId/content)?$",
           "^GET /api/integrations/moodle/projections/classes/:classGroupId/assessment-status$"
@@ -878,7 +858,7 @@
       "failureBehavior": "Fail closed on missing mappings, stale authority, unsupported operations, provider uncertainty, expired launches, or unauthorized file access; unknown outcomes require reconciliation before retry.",
       "futureWriteStatus": "isolated_staging_and_sandbox_only_production_write_blocked",
       "selectors": {
-        "clientRoutes": ["^/app/admin/integrations/moodle-commands$"],
+        "clientRoutes": [],
         "serverApiRoutes": [
           "^GET /api/integrations/moodle/capabilities$",
           "^GET /api/integrations/moodle/commands$",

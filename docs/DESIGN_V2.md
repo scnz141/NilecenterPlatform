@@ -738,3 +738,163 @@ Before a UI V2 page is considered complete, verify:
 - Loading, empty, error, disabled, and success states exist where relevant.
 - Desktop, tablet, mobile, and RTL behavior are considered.
 - RBAC, auth, route behavior, and backend boundaries are preserved.
+
+## 25. Unified Staff App Design Language
+
+The unified staff app (ADR-013) owns its design system in
+`client/src/staff/staff.css`, scoped to `html.staff-ui` while the app is
+mounted. It takes feature flows from the NCC frontend and keeps its own
+visual language. It does not change the global stylesheet or legacy portals.
+
+Direction ("Quiet Pro", chosen 2026-10-07 from three rendered mockups):
+the landing page's off-white, near-black ink, and Nile gold, applied with
+the density and calm of a pro tool. White cards on a quiet canvas, a warm
+sunk sidebar, system text, and Instrument Serif only for page titles,
+record names, and dashboard figures.
+
+Principles:
+
+- Canvas, ink, and gold. Words before icons. One page, one job.
+- Readable from a meeting-room distance on 75 and 105 inch displays.
+- Not allowed: gradients, pastel or neon colour, purple, colored side
+  stripes, bento grids, rows of three feature cards, emojis, em dashes, and
+  hover animations.
+- Icons are allowed but rationed: lucide-react only, and only for sidebar
+  navigation items, primary actions, the topbar search and notifications,
+  chevrons and pagination, and row "more" menus. Statuses never get icons.
+
+Tokens:
+
+- Canvas `#fcfbf9`, cards and controls `#ffffff`, sidebar and tracks
+  `#f4f2ed`, table header `#faf9f6`. Ink `#1a1a1a`, secondary `#4a4a4a`,
+  tertiary `#6f6a64`. Hairlines `#efebe5` and `#e3ddd3`, input border
+  `#958c80` (3:1 non-text contrast).
+- Gold `#c4a35a` is decorative only: the active nav glyph, meters, and
+  dots. Its deep shade `#8a6a28` carries text-level meaning: links, focus,
+  and counts. Primary actions are ink.
+- Status uses a round swatch and a word in a tinted pill: positive
+  `#2f6b3f`, caution `#8a6420`, critical `#a33a24`, neutral outline for
+  disabled or ended. Avatars use warm identity tones, never status colours.
+- Type: the system text face (`-apple-system`, SF Pro on Apple devices)
+  for UI text and tabular figures, as DESIGN.md requires; IBM Plex Sans
+  Arabic for Arabic; a system monospace only for keyboard hints. Instrument
+  Serif stays the Nile signature for page and record titles in English only.
+- Radius tokens `--r-sm` 6 px (badges, kbd), `--r-md` 8 px (controls, nav
+  and menu items), `--r-lg` and `--r-xl` 12 px (cards, panels, tables,
+  dialogs, sheets), `--r-menu` 14 px. Nested radius follows the concentric
+  rule.
+- Elevation comes from shadow tokens, structure from hairlines:
+  `--shadow-ring`, `--shadow-raised`, `--shadow-card`, `--shadow-overlay`.
+  Any ringed element also carries `border: 1px solid transparent` for forced
+  colors.
+- Material: the top bar, menus, listboxes, and the command palette use a
+  translucent surface with `saturate(180%) blur(20px)` where supported, and
+  fall back to solid raised paper.
+
+Scale:
+
+- Every size is in rem. The root size is fluid: 16 px on laptops, about
+  17 px at 1920 x 1080, 18 px at 2560, and 28 px at 3840 x 2160. Height also
+  limits it, so 21:9 boards at 5120 x 2160 match 4K.
+- Display size (user menu) multiplies the root by 1, 1.25, or 1.5 for
+  viewing distance. It is stored per device.
+
+Motion (exact values):
+
+- Enter 300 ms ease-out with opacity, 12 px rise, and 4 px blur. The page
+  header enters first, the work area 100 ms later.
+- Exit 150 ms. Menus and listboxes fade with a 4 px offset. Dialogs scale
+  from 0.96. Sheets slide from the inline-end edge, 420 ms in on
+  `cubic-bezier(0.32, 0.72, 0, 1)`, 200 ms out.
+- Segmented controls and tab rows have one selected mark that slides
+  between options (spring, 0.35 s, bounce 0). The selected option's colour
+  and weight remain the static cue.
+- Large titles: once the page title scrolls under the top bar, a compact
+  title fades into the bar (200 ms, 4 px rise) and the bar's hairline
+  appears. A new page always opens at the top.
+- Buttons scale to 0.96 on press over 150 ms. Hover changes colour only,
+  with no transition.
+- Movement and blur run only under `prefers-reduced-motion: no-preference`.
+  Otherwise only opacity changes.
+
+Patterns:
+
+- Cards: detail-page sections, the facts strip, tables, and dashboard
+  panels are white cards (`--r-xl`, `--shadow-card`) with a 17 px semibold
+  title. Table headers are sentence case on `#faf9f6`.
+- Menus and the command palette highlight the active row in warm grey;
+  destructive rows tint critical.
+- Dashboards (`/app/dashboard`) follow the role's job: admissions and
+  management (EMS summary, today's bookings, needs-attention counts, lead
+  pipeline, branches), teaching (workspace classes and sessions), and
+  department (class fill and teacher coverage). Every figure links to the
+  list behind it.
+- Teaching: the class page is the hub (facts strip, then Sessions,
+  Students, Attendance, and Grades tabs). Session planning is a two-step
+  sheet: weekday hours, then a gold-tinted preview of proposed times before
+  booking. Weekdays always run Monday to Sunday (EMS order). Attendance is a
+  roll call with one chip per Moodle status, tinted by meaning and labelled
+  in words. Rooms reuse the staff availability grid.
+- Brand: Nile Center's official eight-petal rosette (navy `#1d4a6c` core,
+  orange `#f68b43` wedges, eight petal colours) and the traced NILE CENTER
+  wordmark, both as vectors in `client/public/brand/` and
+  `components/brand/NileLogo.tsx`. The landing, public forms, sign-in, and
+  the staff sidebar use the same mark. Public pages use navy for primary
+  actions and petal colours to tag programmes and steps.
+- Landing: Cairo is the image, the rosette is the mark. The hero is the
+  Cairene arch photo (`client/public/home/`) with the headline on its plaster
+  wall (mirrored for left-to-right languages), followed by "العلم نور" in Aref
+  Ruqaa, programmes as a numbered index, teaching habits beside a khatam
+  lattice, online and campus as two open columns, and one large learner
+  quote with a name switcher. Avoid card grids, floating chips and repeated
+  rosettes. Motion is scroll-driven CSS only and stops under reduced motion.
+- Sidebar folds into a 68 px icon rail (button, `[` or Cmd/Ctrl+\\),
+  remembered per device, with floating labels on hover and focus.
+- Viewing as another role is a gold chip in the top bar with an exit, and a
+  popover for role and scope; it never takes a full-width strip.
+- Dashboard insights compare the chosen period with the one before it and
+  draw small dependency-free SVG charts (`staff/ui/charts.tsx`).
+- Forms (`/app/forms`): one hub with My forms, Responses, and To fill. The
+  builder is a question list (compact rows that open into an editor) beside
+  a sticky live preview rendered by the same engine respondents use. Every
+  label needs English and Arabic; Turkish falls back to English. Responses
+  read as question and answer pairs, take a decision, and an admissions
+  enquiry becomes an EMS lead with one prefilled sheet, linked back on the
+  response.
+- Toasts are a compact dark pill at the top centre with a tinted icon.
+- Empty and error states are centred with a 48 px soft circle glyph.
+- Loading placeholders are content-shaped bars with a soft light sweep, or
+  a slow fade under reduced motion.
+- Shell: a warm sunk sidebar with the ink nun mark, and a full-height
+  canvas column with its own scroll and a translucent top bar. Below
+  900 px the sidebar becomes a Sheet.
+- Sidebar navigation is grouped (Home, Admissions, Teaching, People and
+  places, Setup, System) and role-filtered; items carry a 16 px lucide
+  icon, and the active item is a white pill that slides between
+  items via one `layoutId` motion element. The sidebar footer pins the
+  branch switcher and the user card (avatar, name, role, menu: profile,
+  view as role, display size, language, sign out).
+- The topbar inside the canvas holds a breadcrumb (group / page / optional
+  record name), a "Search or jump to" button, and a notifications icon
+  with a river count badge. `Cmd/Ctrl-K` opens a command menu (pages,
+  staff search, actions) in a top-anchored dialog.
+- People are shown with initials avatars; the tone is a stable hash of the
+  user id over the five status tones.
+- Controls come from `client/src/staff/ui/kit.tsx` (select, dialog, sheet,
+  menu, popover, searchable list) and `glyphs.tsx` (drawn glyphs for
+  close, chevrons, search, menu, check, and more).
+- Lists: a segmented status control with counts, always-visible URL-backed
+  search (`/` focuses it) and filters, sort, column picker, flat tables at
+  900 px and wider, stacked rows below, "1–25 of 40" icon pagination, and
+  a floating ink bulk bar.
+- Loading uses quiet content-shaped placeholders with a slow fade and no
+  shimmer. Empty values read "Not set".
+
+Language:
+
+- `copy.ts` is the English source. `copy.ar.ts` must match every key, and
+  TypeScript enforces this. `i18n.ts` switches language in place, sets `lang`
+  and `dir` on the document, and shares the `nilelearn.locale` preference.
+- Dates use the active language with Latin digits. Codes, emails, and URLs
+  stay left to right inside Arabic layouts.
+- Logical CSS properties keep RTL correct. Sheets and menus mirror.

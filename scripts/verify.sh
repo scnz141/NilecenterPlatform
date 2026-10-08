@@ -299,7 +299,7 @@ assert_portal_qa_baseline() {
       process.exit(1);
     }
     console.log(`Portal QA baseline protected: ${summary.totalChecks} checks, 0 failures.`);
-  ' "$summary_path" "1667"
+  ' "$summary_path" "375"
 }
 
 run_portal_qa() {
@@ -374,6 +374,7 @@ start_portal_qa_server() {
     NILE_FORMS_PUBLIC_HMAC_KEY_VERSION=1 \
     NILE_FORMS_ALLOWED_ORIGINS="$base_url" \
     NILE_LOCAL_DATA_DIR="$data_dir" \
+    NILE_NCC_STAFF_AUTH_ENABLED=0 \
     SUPABASE_URL= \
     SUPABASE_PUBLISHABLE_KEY= \
     SUPABASE_SECRET_KEY= \

@@ -21,10 +21,8 @@ const service = read("server/nileRequestsService.ts");
 const routes = read("server/nileRequestsRoutes.ts");
 const app = read("client/src/App.tsx");
 const rbac = read("client/src/lib/rbac.ts");
-const review = read("client/src/pages/platform/NileFormsReviewDetailPage.tsx");
 const listPage = read("client/src/pages/platform/NileRequestsListPage.tsx");
 const detailPage = read("client/src/pages/platform/NileRequestDetailPage.tsx");
-const createPage = read("client/src/pages/platform/NileRequestCreatePage.tsx");
 const serviceTests = read(
   "client/src/lib/forms/server-nile-requests-service.test.ts"
 );
@@ -109,17 +107,11 @@ requireText(
   "first-party mutation gate"
 );
 
-requireText(
-  app,
-  "/requests/from-submission/:submissionId",
-  "request confirmation route"
-);
-requireText(app, "/requests/:requestId", "request detail route");
-requireText(app, "/requests`", "request list route");
+requireText(app, "/app/student/requests/:requestId", "request detail route");
+requireText(app, "/app/student/requests", "request list route");
 requireText(rbac, 'pageId === "requests"', "request page permission mapping");
-requireText(review, "Continue to request", "review-to-request handoff");
 
-for (const page of [listPage, detailPage, createPage]) {
+for (const page of [listPage, detailPage]) {
   for (const locale of ['"en"', '"ar"', '"tr"']) {
     requireText(
       read("client/src/lib/requests/copy.ts"),

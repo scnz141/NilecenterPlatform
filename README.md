@@ -192,7 +192,7 @@ Each role sidebar links to its planned feature pages for courses, classes, asses
 - `client/src/components/platform/PlatformShell.tsx`: role-aware sidebar/header/search/notifications/language shell.
 - `client/src/components/platform/ProtectedRoute.tsx`: route guard with clean sign-in/access-denied states.
 - `client/src/components/platform/LegacyRouteRedirect.tsx`: redirects older prototype URLs into the maintained `/app/...` portals.
-- `client/src/components/platform/FeaturePage.tsx`: reusable feature-page renderer for list, form, calendar, assessment, attendance, certificate, Quran, reports, messages, settings, profile, and support pages.
+- `client/src/staff/`: unified staff app (ADR-013): shell, role-filtered navigation, shared list/form primitives, and NCC-backed pages under `/app/...`.
 - `client/src/components/platform/WorkflowExperiences.tsx`: stateful local workflows for learning, assignments, quizzes, attendance, scheduling, certificates, Quran review, messages, payments, admissions, and reports.
 - `client/src/pages/public/PublicSitePage.tsx`: public course catalog/detail and booking pages with zod validation.
 - `client/src/pages/platform/PlatformBlueprintPage.tsx`: super-admin operating map for modules, entities, owners, integrations, seeded record counts, and remaining backend work.

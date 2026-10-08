@@ -101,6 +101,30 @@ describe("NCC cutover routing", () => {
     });
   });
 
+  it("opens Nile Forms writes for NCC staff only behind its own flag", async () => {
+    configureNcc();
+    const run = async () => {
+      const { middlewares } = captureRoutes();
+      const boundary = middlewares.filter(item => item.path === "/api")[1];
+      const forms = { next: vi.fn(), response: responseRecorder() };
+      const platform = { next: vi.fn(), response: responseRecorder() };
+      await boundary.handler(request("/forms/definitions"), forms.response.response, forms.next);
+      await boundary.handler(request("/platform/state/actions"), platform.response.response, platform.next);
+      return { forms, platform };
+    };
+
+    vi.stubEnv("NILE_FORMS_NCC_WRITES_ENABLED", "0");
+    const closed = await run();
+    expect(closed.forms.next).not.toHaveBeenCalled();
+    expect(closed.forms.response.result.status).toBe(503);
+
+    vi.stubEnv("NILE_FORMS_NCC_WRITES_ENABLED", "1");
+    const open = await run();
+    expect(open.forms.next).toHaveBeenCalledOnce();
+    expect(open.platform.next).not.toHaveBeenCalled();
+    expect(open.platform.response.result.status).toBe(503);
+  });
+
   it("validates and accepts public NCC invitations without exposing tokens", async () => {
     configureNcc();
     const fetcher = vi

@@ -1,13 +1,13 @@
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { Redirect, Route, Switch } from "wouter";
+import { Redirect, Route, Switch, useLocation } from "wouter";
 import { Fragment, lazy, Suspense } from "react";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { ThemeProvider } from "./contexts/ThemeContext";
 import ProtectedRoute from "./components/platform/ProtectedRoute";
 import LegacyRouteRedirect from "./components/platform/LegacyRouteRedirect";
 import { nileFormsCutoverEnabled } from "./lib/forms/cutover";
-import { getStoredAuthSession } from "./lib/auth/session";
+import { legacyStaffTarget } from "./staff/legacy-redirects";
 import type { Role } from "./lib/platformData";
 
 // Public
@@ -19,108 +19,11 @@ const PublicNileFormPage = lazy(
 );
 const RoleDashboard = lazy(() => import("./pages/platform/RoleDashboard"));
 const AuthFlowPage = lazy(() => import("./pages/platform/AuthFlowPage"));
-const PlatformBlueprintPage = lazy(
-  () => import("./pages/platform/PlatformBlueprintPage")
-);
-const AdminUsersPage = lazy(() => import("./pages/platform/AdminUsersPage"));
-const AdminUserDetailPage = lazy(
-  () => import("./pages/platform/AdminUserDetailPage")
-);
-const AdminRolesPage = lazy(() => import("./pages/platform/AdminRolesPage"));
-const AdminPermissionsPage = lazy(
-  () => import("./pages/platform/AdminPermissionsPage")
-);
-const AdminSchedulePage = lazy(
-  () => import("./pages/platform/AdminSchedulePage")
-);
-const AdminReportsPage = lazy(
-  () => import("./pages/platform/AdminReportsPage")
-);
-const AdminCoursesPage = lazy(
-  () => import("./pages/platform/AdminCoursesPage")
-);
-const AdminAuditLogsPage = lazy(
-  () => import("./pages/platform/AdminAuditLogsPage")
-);
-const AdminSystemHealthPage = lazy(
-  () => import("./pages/platform/AdminSystemHealthPage")
-);
-const AdminSettingsPage = lazy(
-  () => import("./pages/platform/AdminSettingsPage")
-);
-const AdminIntegrationsPage = lazy(
-  () => import("./pages/platform/AdminIntegrationsPage")
-);
-const AdminMoodleCommandsPage = lazy(
-  () => import("./pages/platform/AdminMoodleCommandsPage")
-);
-const AdminDirectoryPage = lazy(
-  () => import("./pages/platform/AdminDirectoryPage")
-);
-const RegistrarStudentsPage = lazy(
-  () => import("./pages/platform/RegistrarStudentsPage")
-);
-const RegistrarAdmissionsPage = lazy(
-  () => import("./pages/platform/RegistrarAdmissionsPage")
-);
-const RegistrarEnrollmentsPage = lazy(
-  () => import("./pages/platform/RegistrarEnrollmentsPage")
-);
-const RegistrarEnrollmentRecordsPage = lazy(
-  () => import("./pages/platform/RegistrarEnrollmentRecordsPage")
-);
-const RegistrarPaymentsPage = lazy(
-  () => import("./pages/platform/RegistrarPaymentsPage")
-);
-const RegistrarSchedulePage = lazy(
-  () => import("./pages/platform/RegistrarSchedulePage")
-);
-const RegistrarClassesPage = lazy(
-  () => import("./pages/platform/RegistrarClassesPage")
-);
-const BranchRoomsPage = lazy(() => import("./pages/platform/BranchRoomsPage"));
-const BranchSchedulePage = lazy(
-  () => import("./pages/platform/BranchSchedulePage")
-);
-const BranchSessionDetailPage = lazy(
-  () => import("./pages/platform/BranchSessionDetailPage")
-);
-const BranchAttendancePage = lazy(
-  () => import("./pages/platform/BranchAttendancePage")
-);
-const BranchPaymentsPage = lazy(
-  () => import("./pages/platform/BranchPaymentsPage")
-);
-const BranchReportsPage = lazy(
-  () => import("./pages/platform/BranchReportsPage")
-);
-const TeacherWorkPage = lazy(() => import("./pages/platform/TeacherWorkPage"));
-const TeacherClassesPage = lazy(
-  () => import("./pages/platform/TeacherClassesPage")
-);
-const TeacherClassDetailPage = lazy(
-  () => import("./pages/platform/TeacherClassDetailPage")
-);
-const TeacherClassWorkspacePage = lazy(
-  () => import("./pages/platform/TeacherClassWorkspacePage")
-);
-const TeacherStudentDetailPage = lazy(
-  () => import("./pages/platform/TeacherStudentDetailPage")
-);
-const TeacherAvailabilityPage = lazy(
-  () => import("./pages/platform/TeacherAvailabilityPage")
-);
-const TeacherMoodleLearningPage = lazy(
-  () => import("./pages/platform/TeacherMoodleLearningPage")
-);
 const MoodleSourcePage = lazy(
   () => import("./pages/platform/MoodleSourcePage")
 );
 const MoodleCourseContentPage = lazy(
   () => import("./pages/platform/MoodleCourseContentPage")
-);
-const PortalReportsPage = lazy(
-  () => import("./pages/platform/PortalReportsPage")
 );
 const PortalMessagesPage = lazy(
   () => import("./pages/platform/PortalMessagesPage")
@@ -140,76 +43,91 @@ const StudentLearningPage = lazy(
 const StudentWorkspacePage = lazy(
   () => import("./pages/platform/StudentWorkspacePage")
 );
-const PortalSettingsPage = lazy(
-  () => import("./pages/platform/PortalSettingsPage")
-);
 const ProfileWorkspace = lazy(
   () => import("./pages/platform/ProfileWorkspace")
-);
-const BranchDirectoryPage = lazy(
-  () => import("./pages/platform/BranchDirectoryPage")
-);
-const NccStudentCreate = lazy(
-  () => import("./components/platform/ncc/NccStudentCreate")
-);
-const NccStudentRecord = lazy(
-  () => import("./components/platform/ncc/NccStudentRecord")
-);
-const BranchClassCreatePage = lazy(
-  () => import("./pages/platform/BranchClassCreatePage")
-);
-const BranchClassDetailPage = lazy(
-  () => import("./pages/platform/BranchClassDetailPage")
-);
-const HodCourseRunCreatePage = lazy(
-  () => import("./pages/platform/HodCourseRunCreatePage")
-);
-const HodDirectoryPage = lazy(
-  () => import("./pages/platform/HodDirectoryPage")
-);
-const HodReportsPage = lazy(() => import("./pages/platform/HodReportsPage"));
-const HodWorkflowPage = lazy(() => import("./pages/platform/HodWorkflowPage"));
-const HodMoodleGovernancePage = lazy(
-  () => import("./pages/platform/HodMoodleGovernancePage")
-);
-const SimplePortalPage = lazy(
-  () => import("./pages/platform/SimplePortalPage")
 );
 const NileFormsAssignedPage = lazy(
   () => import("./pages/platform/NileFormsAssignedPage")
 );
-const NileFormsManagePage = lazy(
-  () => import("./pages/platform/NileFormsManagePage")
+const StaffRoute = lazy(() =>
+  import("./staff/shell/staff-route").then(m => ({ default: m.StaffRoute }))
 );
-const NileFormsCreatePage = lazy(
-  () => import("./pages/platform/NileFormsCreatePage")
+const StaffNotificationsPage = lazy(
+  () => import("./staff/pages/notifications-page")
 );
-const NileFormsBuilderPage = lazy(
-  () => import("./pages/platform/NileFormsBuilderPage")
+const StaffProfilePage = lazy(() => import("./staff/pages/profile-page"));
+const StaffBranchesPage = lazy(() => import("./staff/pages/branches-page"));
+const StaffBranchDetailPage = lazy(
+  () => import("./staff/pages/branch-detail-page")
 );
-const NileFormsPublishPage = lazy(
-  () => import("./pages/platform/NileFormsPublishPage")
+const StaffDepartmentsPage = lazy(
+  () => import("./staff/pages/departments-page")
 );
-const NileFormsPublicationsPage = lazy(
-  () => import("./pages/platform/NileFormsPublicationsPage")
+const StaffLostReasonsPage = lazy(
+  () => import("./staff/pages/lost-reasons-page")
 );
-const NileFormsAssignmentsPage = lazy(
-  () => import("./pages/platform/NileFormsAssignmentsPage")
+const StaffActionReasonsPage = lazy(
+  () => import("./staff/pages/action-reasons-page")
 );
-const NileFormsReviewPage = lazy(
-  () => import("./pages/platform/NileFormsReviewPage")
+const StaffAreasOfStudyPage = lazy(
+  () => import("./staff/pages/areas-of-study-page")
 );
-const NileFormsReviewDetailPage = lazy(
-  () => import("./pages/platform/NileFormsReviewDetailPage")
+const StaffCustomFieldsPage = lazy(
+  () => import("./staff/pages/custom-fields-page")
+);
+const StaffUsersPage = lazy(() => import("./staff/pages/staff-page"));
+const StaffUserDetailPage = lazy(
+  () => import("./staff/pages/staff-detail-page")
+);
+const StaffMoodleSitePage = lazy(
+  () => import("./staff/pages/moodle-page")
+);
+const StaffSystemPage = lazy(() => import("./staff/pages/system-page"));
+const StaffAuditPage = lazy(() => import("./staff/pages/audit-page"));
+const StaffLeadsPage = lazy(() => import("./staff/pages/leads-page"));
+const StaffDashboardPage = lazy(() => import("./staff/pages/dashboard-page"));
+const StaffCoursesPage = lazy(() => import("./staff/pages/courses-page"));
+const StaffCourseDetailPage = lazy(
+  () => import("./staff/pages/course-detail-page")
+);
+const StaffClassesPage = lazy(() => import("./staff/pages/classes-page"));
+const StaffClassDetailPage = lazy(
+  () => import("./staff/pages/class-detail-page")
+);
+const StaffRoomsPage = lazy(() => import("./staff/pages/rooms-page"));
+const StaffMyWeekPage = lazy(() => import("./staff/pages/my-week-page"));
+const StaffFormsPage = lazy(() => import("./staff/pages/forms-page"));
+const StaffFormPage = lazy(() => import("./staff/pages/form-page"));
+const StaffFormResponsePage = lazy(
+  () => import("./staff/pages/form-response-page")
+);
+const StaffFormFillPage = lazy(() => import("./staff/pages/form-fill-page"));
+const StaffFormsImportPage = lazy(
+  () => import("./staff/pages/forms-import-page")
+);
+const StaffRoomDetailPage = lazy(
+  () => import("./staff/pages/room-detail-page")
+);
+const StaffLeadDetailPage = lazy(
+  () => import("./staff/pages/lead-detail-page")
+);
+const StaffStudentsPage = lazy(() => import("./staff/pages/students-page"));
+const StaffStudentDetailPage = lazy(
+  () => import("./staff/pages/student-detail-page")
+);
+const StaffEnrolmentsPage = lazy(() => import("./staff/pages/enrolments-page"));
+const StaffPlacementTestsPage = lazy(() =>
+  import("./staff/pages/bookings-page").then(m => ({
+    default: m.PlacementTestsPage,
+  }))
+);
+const StaffTrialLessonsPage = lazy(() =>
+  import("./staff/pages/bookings-page").then(m => ({
+    default: m.TrialLessonsPage,
+  }))
 );
 const NileFormsResponsePage = lazy(
   () => import("./pages/platform/NileFormsResponsePage")
-);
-const NileFormsOfflinePage = lazy(
-  () => import("./pages/platform/NileFormsOfflinePage")
-);
-const NileFormsMigrationPage = lazy(
-  () => import("./pages/platform/NileFormsMigrationPage")
 );
 const NileRequestsListPage = lazy(
   () => import("./pages/platform/NileRequestsListPage")
@@ -217,40 +135,18 @@ const NileRequestsListPage = lazy(
 const NileRequestDetailPage = lazy(
   () => import("./pages/platform/NileRequestDetailPage")
 );
-const NileRequestCreatePage = lazy(
-  () => import("./pages/platform/NileRequestCreatePage")
-);
 const NotFound = lazy(() => import("./pages/NotFound"));
-
-function AdminBranchesRoute() {
-  return getStoredAuthSession()?.provider === "ncc" ? (
-    <AdminDirectoryPage view="branches" />
-  ) : (
-    <SimplePortalPage role="superadmin" pageId="branches" />
-  );
-}
 
 const dashboardRoutes: { path: string; role: Role }[] = [
   { path: "/app/student/dashboard", role: "student" },
-  { path: "/app/teacher/dashboard", role: "teacher" },
-  { path: "/app/registrar/dashboard", role: "registrar" },
-  { path: "/app/hod/dashboard", role: "headofdepartment" },
-  { path: "/app/branch/dashboard", role: "branchadmin" },
-  { path: "/app/admin/dashboard", role: "superadmin" },
 ];
 
-const simplePortalRoutes: { path: string; role: Role; pageId: string }[] = [
-  { path: "/app/admin/branches", role: "superadmin", pageId: "branches" },
-];
-
-const formsRoleRoutes: { prefix: string; role: Role; manage: boolean }[] = [
-  { prefix: "/app/student", role: "student", manage: false },
-  { prefix: "/app/teacher", role: "teacher", manage: false },
-  { prefix: "/app/registrar", role: "registrar", manage: true },
-  { prefix: "/app/hod", role: "headofdepartment", manage: true },
-  { prefix: "/app/branch", role: "branchadmin", manage: true },
-  { prefix: "/app/admin", role: "superadmin", manage: true },
-];
+function LegacyStaffRedirect() {
+  const [location] = useLocation();
+  return (
+    <Redirect to={legacyStaffTarget(location) ?? "/app/dashboard"} replace />
+  );
+}
 
 function RouteLoading() {
   return (
@@ -378,6 +274,110 @@ function Router() {
           <AuthFlowPage mode="select-role" />
         </Route>
 
+        {/* Unified staff app (NCC sessions only) */}
+        <StaffRoute path="/app/dashboard">
+          <StaffDashboardPage />
+        </StaffRoute>
+        <StaffRoute path="/app/notifications">
+          <StaffNotificationsPage />
+        </StaffRoute>
+        <StaffRoute path="/app/profile">
+          <StaffProfilePage />
+        </StaffRoute>
+        <StaffRoute path="/app/branches/:id">
+          <StaffBranchDetailPage />
+        </StaffRoute>
+        <StaffRoute path="/app/branches">
+          <StaffBranchesPage />
+        </StaffRoute>
+        <StaffRoute path="/app/departments">
+          <StaffDepartmentsPage />
+        </StaffRoute>
+        <StaffRoute path="/app/lost-reasons">
+          <StaffLostReasonsPage />
+        </StaffRoute>
+        <StaffRoute path="/app/action-reasons">
+          <StaffActionReasonsPage />
+        </StaffRoute>
+        <StaffRoute path="/app/areas-of-study">
+          <StaffAreasOfStudyPage />
+        </StaffRoute>
+        <StaffRoute path="/app/custom-fields">
+          <StaffCustomFieldsPage />
+        </StaffRoute>
+        <StaffRoute path="/app/staff/:id">
+          <StaffUserDetailPage />
+        </StaffRoute>
+        <StaffRoute path="/app/staff">
+          <StaffUsersPage />
+        </StaffRoute>
+        <StaffRoute path="/app/moodle">
+          <StaffMoodleSitePage />
+        </StaffRoute>
+        <StaffRoute path="/app/system">
+          <StaffSystemPage />
+        </StaffRoute>
+        <StaffRoute path="/app/audit">
+          <StaffAuditPage />
+        </StaffRoute>
+        <StaffRoute path="/app/leads/:id">
+          <StaffLeadDetailPage />
+        </StaffRoute>
+        <StaffRoute path="/app/leads">
+          <StaffLeadsPage />
+        </StaffRoute>
+        <StaffRoute path="/app/students/:id">
+          <StaffStudentDetailPage />
+        </StaffRoute>
+        <StaffRoute path="/app/students">
+          <StaffStudentsPage />
+        </StaffRoute>
+        <StaffRoute path="/app/enrolments">
+          <StaffEnrolmentsPage />
+        </StaffRoute>
+        <StaffRoute path="/app/courses/:id">
+          <StaffCourseDetailPage />
+        </StaffRoute>
+        <StaffRoute path="/app/courses">
+          <StaffCoursesPage />
+        </StaffRoute>
+        <StaffRoute path="/app/classes/:id">
+          <StaffClassDetailPage />
+        </StaffRoute>
+        <StaffRoute path="/app/classes">
+          <StaffClassesPage />
+        </StaffRoute>
+        <StaffRoute path="/app/forms/import">
+          <StaffFormsImportPage />
+        </StaffRoute>
+        <StaffRoute path="/app/forms/responses/:submissionId">
+          <StaffFormResponsePage />
+        </StaffRoute>
+        <StaffRoute path="/app/forms/fill/:publicationId">
+          <StaffFormFillPage />
+        </StaffRoute>
+        <StaffRoute path="/app/forms/:formId">
+          <StaffFormPage />
+        </StaffRoute>
+        <StaffRoute path="/app/forms">
+          <StaffFormsPage />
+        </StaffRoute>
+        <StaffRoute path="/app/sessions">
+          <StaffMyWeekPage />
+        </StaffRoute>
+        <StaffRoute path="/app/rooms/:id">
+          <StaffRoomDetailPage />
+        </StaffRoute>
+        <StaffRoute path="/app/rooms">
+          <StaffRoomsPage />
+        </StaffRoute>
+        <StaffRoute path="/app/placement-tests">
+          <StaffPlacementTestsPage />
+        </StaffRoute>
+        <StaffRoute path="/app/trial-lessons">
+          <StaffTrialLessonsPage />
+        </StaffRoute>
+
         {dashboardRoutes.map(route => (
           <Route key={route.path} path={route.path}>
             <ProtectedRoute role={route.role} pageId="dashboard">
@@ -386,1034 +386,52 @@ function Router() {
           </Route>
         ))}
 
-        {formsRoleRoutes.map(route => (
-          <Fragment key={route.prefix}>
-            {route.role === "branchadmin" || route.role === "superadmin" ? (
-              <Route
-                path={`${route.prefix}/requests/from-submission/:submissionId`}
-              >
-                {params => (
-                  <ProtectedRoute role={route.role} pageId="request-create">
-                    <NileRequestCreatePage
-                      role={route.role}
-                      submissionId={params.submissionId}
-                    />
-                  </ProtectedRoute>
-                )}
-              </Route>
-            ) : null}
-            <Route path={`${route.prefix}/requests/:requestId`}>
-              {params => (
-                <ProtectedRoute role={route.role} pageId="request-detail">
-                  <NileRequestDetailPage
-                    role={route.role}
-                    requestId={params.requestId}
-                  />
-                </ProtectedRoute>
-              )}
-            </Route>
-            <Route path={`${route.prefix}/requests`}>
-              <ProtectedRoute role={route.role} pageId="requests">
-                <NileRequestsListPage role={route.role} />
-              </ProtectedRoute>
-            </Route>
-            {route.manage ? (
-              <>
-                <Route path={`${route.prefix}/forms/manage/new`}>
-                  <ProtectedRoute role={route.role} pageId="forms-manage">
-                    <NileFormsCreatePage role={route.role} />
-                  </ProtectedRoute>
-                </Route>
-                <Route path={`${route.prefix}/forms/manage/:formId/builder`}>
-                  {params => (
-                    <ProtectedRoute role={route.role} pageId="form-builder">
-                      <NileFormsBuilderPage
-                        role={route.role}
-                        formId={params.formId}
-                      />
-                    </ProtectedRoute>
-                  )}
-                </Route>
-                <Route path={`${route.prefix}/forms/manage/:formId/publish`}>
-                  {params => (
-                    <ProtectedRoute role={route.role} pageId="form-publish">
-                      <NileFormsPublishPage
-                        role={route.role}
-                        formId={params.formId}
-                      />
-                    </ProtectedRoute>
-                  )}
-                </Route>
-                <Route
-                  path={`${route.prefix}/forms/manage/:formId/publications/:publicationId/assignments`}
-                >
-                  {params => (
-                    <ProtectedRoute role={route.role} pageId="form-assignments">
-                      <NileFormsAssignmentsPage
-                        role={route.role}
-                        formId={params.formId}
-                        publicationId={params.publicationId}
-                      />
-                    </ProtectedRoute>
-                  )}
-                </Route>
-                <Route
-                  path={`${route.prefix}/forms/manage/:formId/publications`}
-                >
-                  {params => (
-                    <ProtectedRoute role={route.role} pageId="form-publish">
-                      <NileFormsPublicationsPage
-                        role={route.role}
-                        formId={params.formId}
-                      />
-                    </ProtectedRoute>
-                  )}
-                </Route>
-                <Route path={`${route.prefix}/forms/review/:submissionId`}>
-                  {params => (
-                    <ProtectedRoute role={route.role} pageId="form-submission">
-                      <NileFormsReviewDetailPage
-                        role={route.role}
-                        submissionId={params.submissionId}
-                      />
-                    </ProtectedRoute>
-                  )}
-                </Route>
-                <Route path={`${route.prefix}/forms/manage`}>
-                  <ProtectedRoute role={route.role} pageId="forms-manage">
-                    <NileFormsManagePage role={route.role} />
-                  </ProtectedRoute>
-                </Route>
-                <Route path={`${route.prefix}/forms/review`}>
-                  <ProtectedRoute role={route.role} pageId="forms-review">
-                    <NileFormsReviewPage role={route.role} />
-                  </ProtectedRoute>
-                </Route>
-                {route.role === "superadmin" ? (
-                  <Route path={`${route.prefix}/forms/migration`}>
-                    <ProtectedRoute role="superadmin" pageId="forms-manage">
-                      <NileFormsMigrationPage />
-                    </ProtectedRoute>
-                  </Route>
-                ) : null}
-              </>
-            ) : null}
-            {route.role !== "student" ? (
-              <Route path={`${route.prefix}/forms/offline`}>
-                <ProtectedRoute role={route.role} pageId="forms">
-                  <NileFormsOfflinePage role={route.role} />
-                </ProtectedRoute>
-              </Route>
-            ) : null}
-            <Route
-              path={`${route.prefix}/forms/:publicationId/responses/:submissionId`}
-            >
-              {params => (
-                <ProtectedRoute role={route.role} pageId="forms">
-                  <NileFormsResponsePage
-                    role={route.role}
-                    publicationId={params.publicationId}
-                    submissionId={params.submissionId}
-                  />
-                </ProtectedRoute>
-              )}
-            </Route>
-            <Route path={`${route.prefix}/forms/:publicationId`}>
-              {params => (
-                <ProtectedRoute role={route.role} pageId="forms">
-                  <NileFormsAssignedPage
-                    role={route.role}
-                    publicationId={params.publicationId}
-                  />
-                </ProtectedRoute>
-              )}
-            </Route>
-            <Route path={`${route.prefix}/forms`}>
-              <ProtectedRoute role={route.role} pageId="forms">
-                <NileFormsAssignedPage role={route.role} />
-              </ProtectedRoute>
-            </Route>
-          </Fragment>
-        ))}
-
-        <Route path="/app/admin/platform-blueprint">
-          <ProtectedRoute role="superadmin" pageId="platform-blueprint">
-            <PlatformBlueprintPage />
-          </ProtectedRoute>
-        </Route>
-
-        <Route path="/app/registrar/students/new">
-          <ProtectedRoute role="registrar" pageId="students">
-            <RegistrarStudentsPage view="create" />
-          </ProtectedRoute>
-        </Route>
-
-        <Route path="/app/registrar/students/:studentId">
+        <Route path="/app/student/requests/:requestId">
           {params => (
-            <ProtectedRoute role="registrar" pageId="student-detail">
-              <RegistrarStudentsPage
-                view="detail"
-                studentId={params.studentId}
+            <ProtectedRoute role="student" pageId="request-detail">
+              <NileRequestDetailPage
+                role="student"
+                requestId={params.requestId}
               />
             </ProtectedRoute>
           )}
         </Route>
 
-        <Route path="/app/registrar/students">
-          <ProtectedRoute role="registrar" pageId="students">
-            <RegistrarStudentsPage view="list" />
+        <Route path="/app/student/requests">
+          <ProtectedRoute role="student" pageId="requests">
+            <NileRequestsListPage role="student" />
           </ProtectedRoute>
         </Route>
 
-        <Route path="/app/registrar/leads/new">
-          <ProtectedRoute role="registrar" pageId="leads">
-            <RegistrarAdmissionsPage view="lead-create" />
-          </ProtectedRoute>
-        </Route>
-
-        <Route path="/app/registrar/leads/:leadId">
+        <Route
+          path="/app/student/forms/:publicationId/responses/:submissionId"
+        >
           {params => (
-            <ProtectedRoute role="registrar" pageId="leads">
-              <RegistrarAdmissionsPage
-                view="lead-detail"
-                leadId={params.leadId}
+            <ProtectedRoute role="student" pageId="forms">
+              <NileFormsResponsePage
+                role="student"
+                publicationId={params.publicationId}
+                submissionId={params.submissionId}
               />
             </ProtectedRoute>
           )}
         </Route>
 
-        <Route path="/app/registrar/leads">
-          <ProtectedRoute role="registrar" pageId="leads">
-            <RegistrarAdmissionsPage view="leads" />
-          </ProtectedRoute>
-        </Route>
-
-        <Route path="/app/registrar/applications/new">
-          <ProtectedRoute role="registrar" pageId="applications">
-            <RegistrarAdmissionsPage view="application-create" />
-          </ProtectedRoute>
-        </Route>
-
-        <Route path="/app/registrar/applications/:applicationId/placement">
+        <Route path="/app/student/forms/:publicationId">
           {params => (
-            <ProtectedRoute role="registrar" pageId="placement-tests">
-              <RegistrarAdmissionsPage
-                view="placement-create"
-                applicationId={params.applicationId}
+            <ProtectedRoute role="student" pageId="forms">
+              <NileFormsAssignedPage
+                role="student"
+                publicationId={params.publicationId}
               />
             </ProtectedRoute>
           )}
         </Route>
 
-        <Route path="/app/registrar/applications/:applicationId">
-          {params => (
-            <ProtectedRoute role="registrar" pageId="applications">
-              <RegistrarAdmissionsPage
-                view="application-detail"
-                applicationId={params.applicationId}
-              />
-            </ProtectedRoute>
-          )}
-        </Route>
-
-        <Route path="/app/registrar/applications">
-          <ProtectedRoute role="registrar" pageId="applications">
-            <RegistrarAdmissionsPage view="applications" />
+        <Route path="/app/student/forms">
+          <ProtectedRoute role="student" pageId="forms">
+            <NileFormsAssignedPage role="student" />
           </ProtectedRoute>
-        </Route>
-
-        <Route path="/app/registrar/placement-tests/new">
-          <ProtectedRoute role="registrar" pageId="placement-tests">
-            <RegistrarAdmissionsPage view="placement-create" />
-          </ProtectedRoute>
-        </Route>
-
-        <Route path="/app/registrar/placement-tests/:bookingId">
-          {params => (
-            <ProtectedRoute role="registrar" pageId="placement-tests">
-              <RegistrarAdmissionsPage
-                view="placement-detail"
-                bookingId={params.bookingId}
-              />
-            </ProtectedRoute>
-          )}
-        </Route>
-
-        <Route path="/app/registrar/placement-tests">
-          <ProtectedRoute role="registrar" pageId="placement-tests">
-            <RegistrarAdmissionsPage view="placement-tests" />
-          </ProtectedRoute>
-        </Route>
-
-        <Route path="/app/registrar/enrollments/records/:enrollmentId">
-          {params => (
-            <ProtectedRoute role="registrar" pageId="enrollments">
-              <RegistrarEnrollmentRecordsPage
-                enrollmentId={params.enrollmentId}
-              />
-            </ProtectedRoute>
-          )}
-        </Route>
-
-        <Route path="/app/registrar/enrollments/records">
-          <ProtectedRoute role="registrar" pageId="enrollments">
-            <RegistrarEnrollmentRecordsPage />
-          </ProtectedRoute>
-        </Route>
-
-        <Route path="/app/registrar/enrollments/:workflowId">
-          {params => (
-            <ProtectedRoute role="registrar" pageId="enrollments">
-              <RegistrarEnrollmentsPage workflowId={params.workflowId} />
-            </ProtectedRoute>
-          )}
-        </Route>
-
-        <Route path="/app/registrar/enrollments">
-          <ProtectedRoute role="registrar" pageId="enrollments">
-            <RegistrarEnrollmentsPage />
-          </ProtectedRoute>
-        </Route>
-
-        <Route path="/app/registrar/payments/:invoiceId">
-          {params => (
-            <ProtectedRoute role="registrar" pageId="payments">
-              <RegistrarPaymentsPage invoiceId={params.invoiceId} />
-            </ProtectedRoute>
-          )}
-        </Route>
-
-        <Route path="/app/registrar/payments">
-          <ProtectedRoute role="registrar" pageId="payments">
-            <RegistrarPaymentsPage />
-          </ProtectedRoute>
-        </Route>
-
-        <Route path="/app/registrar/schedule/new">
-          <ProtectedRoute role="registrar" pageId="schedule">
-            <RegistrarSchedulePage view="create" />
-          </ProtectedRoute>
-        </Route>
-
-        <Route path="/app/registrar/schedule">
-          <ProtectedRoute role="registrar" pageId="schedule">
-            <RegistrarSchedulePage />
-          </ProtectedRoute>
-        </Route>
-
-        <Route path="/app/registrar/classes">
-          <ProtectedRoute role="registrar" pageId="classes">
-            <RegistrarClassesPage />
-          </ProtectedRoute>
-        </Route>
-
-        <Route path="/app/admin/users/new">
-          <ProtectedRoute role="superadmin" pageId="users">
-            <AdminUsersPage mode="create" />
-          </ProtectedRoute>
-        </Route>
-
-        <Route path="/app/admin/users/:userId/access">
-          {params => (
-            <ProtectedRoute role="superadmin" pageId="user-detail">
-              <AdminUserDetailPage userId={params.userId} view="access" />
-            </ProtectedRoute>
-          )}
-        </Route>
-
-        <Route path="/app/admin/users/:userId/activity">
-          {params => (
-            <ProtectedRoute role="superadmin" pageId="user-detail">
-              <AdminUserDetailPage userId={params.userId} view="activity" />
-            </ProtectedRoute>
-          )}
-        </Route>
-
-        <Route path="/app/admin/users/:userId/related">
-          {params => (
-            <ProtectedRoute role="superadmin" pageId="user-detail">
-              <AdminUserDetailPage userId={params.userId} view="related" />
-            </ProtectedRoute>
-          )}
-        </Route>
-
-        <Route path="/app/admin/users/:userId/assignment">
-          {params => (
-            <ProtectedRoute role="superadmin" pageId="user-detail">
-              <AdminUserDetailPage userId={params.userId} view="assignment" />
-            </ProtectedRoute>
-          )}
-        </Route>
-
-        <Route path="/app/admin/users/:userId">
-          {params => (
-            <ProtectedRoute role="superadmin" pageId="user-detail">
-              <AdminUserDetailPage userId={params.userId} />
-            </ProtectedRoute>
-          )}
-        </Route>
-
-        <Route path="/app/admin/users">
-          <ProtectedRoute role="superadmin" pageId="users">
-            <AdminUsersPage />
-          </ProtectedRoute>
-        </Route>
-
-        <Route path="/app/admin/roles">
-          <ProtectedRoute role="superadmin" pageId="roles">
-            <AdminRolesPage />
-          </ProtectedRoute>
-        </Route>
-
-        <Route path="/app/admin/permissions">
-          <ProtectedRoute role="superadmin" pageId="permissions">
-            <AdminPermissionsPage />
-          </ProtectedRoute>
-        </Route>
-
-        <Route path="/app/admin/departments">
-          <ProtectedRoute role="superadmin" pageId="departments">
-            <AdminDirectoryPage view="departments" />
-          </ProtectedRoute>
-        </Route>
-
-        <Route path="/app/admin/programs">
-          <ProtectedRoute role="superadmin" pageId="programs">
-            <AdminDirectoryPage view="programs" />
-          </ProtectedRoute>
-        </Route>
-
-        <Route path="/app/admin/certificates">
-          <ProtectedRoute role="superadmin" pageId="certificates">
-            <AdminDirectoryPage view="certificates" />
-          </ProtectedRoute>
-        </Route>
-
-        <Route path="/app/admin/schedule/conflicts">
-          <ProtectedRoute role="superadmin" pageId="schedule">
-            <AdminSchedulePage view="conflicts" />
-          </ProtectedRoute>
-        </Route>
-
-        <Route path="/app/admin/schedule/sessions">
-          <ProtectedRoute role="superadmin" pageId="schedule">
-            <AdminSchedulePage view="sessions" />
-          </ProtectedRoute>
-        </Route>
-
-        <Route path="/app/admin/schedule/rooms">
-          <ProtectedRoute role="superadmin" pageId="schedule">
-            <AdminSchedulePage view="rooms" />
-          </ProtectedRoute>
-        </Route>
-
-        <Route path="/app/admin/schedule/activity">
-          <ProtectedRoute role="superadmin" pageId="schedule">
-            <AdminSchedulePage view="activity" />
-          </ProtectedRoute>
-        </Route>
-
-        <Route path="/app/admin/schedule/calendar">
-          <ProtectedRoute role="superadmin" pageId="schedule">
-            <AdminSchedulePage view="calendar" />
-          </ProtectedRoute>
-        </Route>
-
-        <Route path="/app/admin/schedule">
-          <ProtectedRoute role="superadmin" pageId="schedule">
-            <AdminSchedulePage view="calendar" />
-          </ProtectedRoute>
-        </Route>
-
-        <Route path="/app/admin/reports/attendance">
-          <ProtectedRoute role="superadmin" pageId="reports">
-            <AdminReportsPage view="attendance" />
-          </ProtectedRoute>
-        </Route>
-
-        <Route path="/app/admin/reports/finance">
-          <ProtectedRoute role="superadmin" pageId="reports">
-            <AdminReportsPage view="finance" />
-          </ProtectedRoute>
-        </Route>
-
-        <Route path="/app/admin/reports/certificates">
-          <ProtectedRoute role="superadmin" pageId="reports">
-            <AdminReportsPage view="certificates" />
-          </ProtectedRoute>
-        </Route>
-
-        <Route path="/app/admin/reports/admissions">
-          <ProtectedRoute role="superadmin" pageId="reports">
-            <AdminReportsPage view="admissions" />
-          </ProtectedRoute>
-        </Route>
-
-        <Route path="/app/admin/reports/classes">
-          <ProtectedRoute role="superadmin" pageId="reports">
-            <AdminReportsPage view="classes" />
-          </ProtectedRoute>
-        </Route>
-
-        <Route path="/app/admin/reports/saved-views">
-          <ProtectedRoute role="superadmin" pageId="reports">
-            <AdminReportsPage view="saved-views" />
-          </ProtectedRoute>
-        </Route>
-
-        <Route path="/app/admin/reports">
-          <ProtectedRoute role="superadmin" pageId="reports">
-            <AdminReportsPage view="overview" />
-          </ProtectedRoute>
-        </Route>
-
-        <Route path="/app/admin/courses/programs">
-          <ProtectedRoute role="superadmin" pageId="courses">
-            <AdminCoursesPage view="programs" />
-          </ProtectedRoute>
-        </Route>
-
-        <Route path="/app/admin/courses/levels">
-          <ProtectedRoute role="superadmin" pageId="courses">
-            <AdminCoursesPage view="levels" />
-          </ProtectedRoute>
-        </Route>
-
-        <Route path="/app/admin/courses/curriculum">
-          <ProtectedRoute role="superadmin" pageId="courses">
-            <AdminCoursesPage view="curriculum" />
-          </ProtectedRoute>
-        </Route>
-
-        <Route path="/app/admin/courses/teachers">
-          <ProtectedRoute role="superadmin" pageId="courses">
-            <AdminCoursesPage view="teachers" />
-          </ProtectedRoute>
-        </Route>
-
-        <Route path="/app/admin/courses/resources">
-          <ProtectedRoute role="superadmin" pageId="courses">
-            <AdminCoursesPage view="resources" />
-          </ProtectedRoute>
-        </Route>
-
-        <Route path="/app/admin/courses/new">
-          <ProtectedRoute role="superadmin" pageId="courses">
-            <AdminCoursesPage view="create" />
-          </ProtectedRoute>
-        </Route>
-
-        <Route path="/app/admin/courses/:courseId">
-          {params => (
-            <ProtectedRoute role="superadmin" pageId="courses">
-              <AdminCoursesPage view="detail" courseId={params.courseId} />
-            </ProtectedRoute>
-          )}
-        </Route>
-
-        <Route path="/app/admin/courses">
-          <ProtectedRoute role="superadmin" pageId="courses">
-            <AdminCoursesPage view="catalog" />
-          </ProtectedRoute>
-        </Route>
-
-        <Route path="/app/admin/audit-logs">
-          <ProtectedRoute role="superadmin" pageId="audit-logs">
-            <AdminAuditLogsPage />
-          </ProtectedRoute>
-        </Route>
-
-        <Route path="/app/admin/system-health">
-          <ProtectedRoute role="superadmin" pageId="system-health">
-            <AdminSystemHealthPage />
-          </ProtectedRoute>
-        </Route>
-
-        <Route path="/app/admin/settings">
-          <ProtectedRoute role="superadmin" pageId="settings">
-            <AdminSettingsPage />
-          </ProtectedRoute>
-        </Route>
-
-        <Route path="/app/admin/settings/profile">
-          <ProtectedRoute role="superadmin" pageId="profile">
-            <ProfileWorkspace role="superadmin" />
-          </ProtectedRoute>
-        </Route>
-
-        <Route path="/app/admin/integrations">
-          <ProtectedRoute role="superadmin" pageId="integrations">
-            <AdminIntegrationsPage />
-          </ProtectedRoute>
-        </Route>
-
-        <Route path="/app/admin/integrations/moodle-commands">
-          <ProtectedRoute role="superadmin" pageId="integrations">
-            <AdminMoodleCommandsPage />
-          </ProtectedRoute>
-        </Route>
-
-        <Route path="/app/branch/rooms/new">
-          <ProtectedRoute role="branchadmin" pageId="rooms">
-            <BranchRoomsPage view="create" />
-          </ProtectedRoute>
-        </Route>
-
-        <Route path="/app/branch/rooms/:roomId">
-          {params => (
-            <ProtectedRoute role="branchadmin" pageId="rooms">
-              <BranchRoomsPage view="detail" roomId={params.roomId} />
-            </ProtectedRoute>
-          )}
-        </Route>
-
-        <Route path="/app/branch/rooms">
-          <ProtectedRoute role="branchadmin" pageId="rooms">
-            <BranchRoomsPage />
-          </ProtectedRoute>
-        </Route>
-
-        <Route path="/app/branch/schedule/new">
-          <ProtectedRoute role="branchadmin" pageId="schedule">
-            <BranchSchedulePage view="create" />
-          </ProtectedRoute>
-        </Route>
-
-        <Route path="/app/branch/schedule/conflicts">
-          <ProtectedRoute role="branchadmin" pageId="schedule">
-            <BranchSchedulePage view="conflicts" />
-          </ProtectedRoute>
-        </Route>
-
-        <Route path="/app/branch/schedule/sessions/:sessionId">
-          {params => (
-            <ProtectedRoute role="branchadmin" pageId="schedule">
-              <BranchSessionDetailPage sessionId={params.sessionId} />
-            </ProtectedRoute>
-          )}
-        </Route>
-
-        <Route path="/app/branch/schedule">
-          <ProtectedRoute role="branchadmin" pageId="schedule">
-            <BranchSchedulePage />
-          </ProtectedRoute>
-        </Route>
-
-        <Route path="/app/branch/attendance">
-          <ProtectedRoute role="branchadmin" pageId="attendance">
-            <BranchAttendancePage />
-          </ProtectedRoute>
-        </Route>
-
-        <Route path="/app/branch/payments/:invoiceId">
-          {params => (
-            <ProtectedRoute role="branchadmin" pageId="payments">
-              <BranchPaymentsPage invoiceId={params.invoiceId} />
-            </ProtectedRoute>
-          )}
-        </Route>
-
-        <Route path="/app/branch/payments">
-          <ProtectedRoute role="branchadmin" pageId="payments">
-            <BranchPaymentsPage />
-          </ProtectedRoute>
-        </Route>
-
-        <Route path="/app/branch/reports">
-          <ProtectedRoute role="branchadmin" pageId="reports">
-            <BranchReportsPage />
-          </ProtectedRoute>
-        </Route>
-
-        <Route path="/app/branch/students/new">
-          <ProtectedRoute role="branchadmin" pageId="students">
-            <NccStudentCreate
-              role="branchadmin"
-              backHref="/app/branch/students"
-            />
-          </ProtectedRoute>
-        </Route>
-
-        <Route path="/app/branch/students/:studentId">
-          {params => (
-            <ProtectedRoute role="branchadmin" pageId="students">
-              <NccStudentRecord
-                studentId={params.studentId}
-                role="branchadmin"
-                backHref="/app/branch/students"
-              />
-            </ProtectedRoute>
-          )}
-        </Route>
-
-        <Route path="/app/branch/students">
-          <ProtectedRoute role="branchadmin" pageId="students">
-            <BranchDirectoryPage view="students" />
-          </ProtectedRoute>
-        </Route>
-
-        <Route path="/app/branch/teachers">
-          <ProtectedRoute role="branchadmin" pageId="teachers">
-            <BranchDirectoryPage view="teachers" />
-          </ProtectedRoute>
-        </Route>
-
-        <Route path="/app/branch/classes">
-          <ProtectedRoute role="branchadmin" pageId="classes">
-            <BranchDirectoryPage view="classes" />
-          </ProtectedRoute>
-        </Route>
-
-        <Route path="/app/branch/classes/new">
-          <ProtectedRoute role="branchadmin" pageId="classes">
-            <BranchClassCreatePage />
-          </ProtectedRoute>
-        </Route>
-
-        <Route path="/app/branch/classes/:classGroupId">
-          <ProtectedRoute role="branchadmin" pageId="classes">
-            <BranchClassDetailPage />
-          </ProtectedRoute>
-        </Route>
-
-        <Route path="/app/hod/departments">
-          <ProtectedRoute role="headofdepartment" pageId="departments">
-            <HodDirectoryPage view="departments" />
-          </ProtectedRoute>
-        </Route>
-
-        <Route path="/app/hod/programs">
-          <ProtectedRoute role="headofdepartment" pageId="programs">
-            <HodDirectoryPage view="programs" />
-          </ProtectedRoute>
-        </Route>
-
-        <Route path="/app/hod/levels">
-          <ProtectedRoute role="headofdepartment" pageId="levels">
-            <HodDirectoryPage view="levels" />
-          </ProtectedRoute>
-        </Route>
-
-        <Route path="/app/hod/teachers">
-          <ProtectedRoute role="headofdepartment" pageId="teachers">
-            <HodDirectoryPage view="teachers" />
-          </ProtectedRoute>
-        </Route>
-
-        <Route path="/app/hod/classes">
-          <ProtectedRoute role="headofdepartment" pageId="classes">
-            <HodDirectoryPage view="classes" />
-          </ProtectedRoute>
-        </Route>
-
-        <Route path="/app/hod/classes/runs/new">
-          <ProtectedRoute role="headofdepartment" pageId="classes">
-            <HodCourseRunCreatePage />
-          </ProtectedRoute>
-        </Route>
-
-        <Route path="/app/hod/courses/:courseId">
-          {params => (
-            <ProtectedRoute role="headofdepartment" pageId="courses">
-              <HodWorkflowPage
-                pageId="courses"
-                mode="course-detail"
-                courseId={params.courseId}
-              />
-            </ProtectedRoute>
-          )}
-        </Route>
-
-        <Route path="/app/hod/courses">
-          <ProtectedRoute role="headofdepartment" pageId="courses">
-            <HodWorkflowPage pageId="courses" />
-          </ProtectedRoute>
-        </Route>
-
-        <Route path="/app/hod/curriculum/new">
-          <ProtectedRoute role="headofdepartment" pageId="curriculum">
-            <HodMoodleGovernancePage area="curriculum" mode="create" />
-          </ProtectedRoute>
-        </Route>
-
-        <Route path="/app/hod/curriculum">
-          <ProtectedRoute role="headofdepartment" pageId="curriculum">
-            <HodMoodleGovernancePage area="curriculum" />
-          </ProtectedRoute>
-        </Route>
-
-        <Route path="/app/hod/schedule/sessions">
-          <ProtectedRoute role="headofdepartment" pageId="schedule">
-            <HodWorkflowPage pageId="schedule" mode="sessions" />
-          </ProtectedRoute>
-        </Route>
-
-        <Route path="/app/hod/schedule">
-          <ProtectedRoute role="headofdepartment" pageId="schedule">
-            <HodWorkflowPage pageId="schedule" />
-          </ProtectedRoute>
-        </Route>
-
-        <Route path="/app/hod/assessments/new">
-          <ProtectedRoute role="headofdepartment" pageId="assessments">
-            <HodMoodleGovernancePage area="assessments" mode="create" />
-          </ProtectedRoute>
-        </Route>
-
-        <Route path="/app/hod/assessments/review/:submissionId">
-          {params => (
-            <ProtectedRoute role="headofdepartment" pageId="assessments">
-              <HodMoodleGovernancePage
-                area="assessments"
-                mode="review-detail"
-                recordId={params.submissionId}
-              />
-            </ProtectedRoute>
-          )}
-        </Route>
-
-        <Route path="/app/hod/assessments/review">
-          <ProtectedRoute role="headofdepartment" pageId="assessments">
-            <HodMoodleGovernancePage area="assessments" mode="review" />
-          </ProtectedRoute>
-        </Route>
-
-        <Route path="/app/hod/assessments">
-          <ProtectedRoute role="headofdepartment" pageId="assessments">
-            <HodMoodleGovernancePage area="assessments" />
-          </ProtectedRoute>
-        </Route>
-
-        <Route path="/app/hod/certificates/:certificateId">
-          {params => (
-            <ProtectedRoute role="headofdepartment" pageId="certificates">
-              <HodWorkflowPage
-                pageId="certificates"
-                mode="certificate-detail"
-                certificateId={params.certificateId}
-              />
-            </ProtectedRoute>
-          )}
-        </Route>
-
-        <Route path="/app/hod/certificates">
-          <ProtectedRoute role="headofdepartment" pageId="certificates">
-            <HodWorkflowPage pageId="certificates" />
-          </ProtectedRoute>
-        </Route>
-
-        <Route path="/app/hod/reports">
-          <ProtectedRoute role="headofdepartment" pageId="reports">
-            <HodReportsPage />
-          </ProtectedRoute>
-        </Route>
-
-        <Route path="/app/teacher/quizzes/new">
-          <ProtectedRoute role="teacher" pageId="quizzes">
-            <TeacherMoodleLearningPage area="quizzes" mode="create" />
-          </ProtectedRoute>
-        </Route>
-
-        <Route path="/app/teacher/quizzes/review/:attemptId">
-          {params => (
-            <ProtectedRoute role="teacher" pageId="quizzes">
-              <TeacherMoodleLearningPage
-                area="quizzes"
-                mode="review"
-                recordId={params.attemptId}
-              />
-            </ProtectedRoute>
-          )}
-        </Route>
-
-        <Route path="/app/teacher/quizzes/review">
-          <ProtectedRoute role="teacher" pageId="quizzes">
-            <TeacherMoodleLearningPage area="quizzes" mode="review" />
-          </ProtectedRoute>
-        </Route>
-
-        <Route path="/app/teacher/quizzes/:quizId">
-          {params => (
-            <ProtectedRoute role="teacher" pageId="quizzes">
-              <TeacherMoodleLearningPage
-                area="quizzes"
-                mode="detail"
-                recordId={params.quizId}
-              />
-            </ProtectedRoute>
-          )}
-        </Route>
-
-        <Route path="/app/teacher/quizzes">
-          <ProtectedRoute role="teacher" pageId="quizzes">
-            <TeacherMoodleLearningPage area="quizzes" />
-          </ProtectedRoute>
-        </Route>
-
-        <Route path="/app/teacher/question-bank/new">
-          <ProtectedRoute role="teacher" pageId="question-bank">
-            <TeacherMoodleLearningPage area="question-bank" mode="create" />
-          </ProtectedRoute>
-        </Route>
-
-        <Route path="/app/teacher/question-bank">
-          <ProtectedRoute role="teacher" pageId="question-bank">
-            <TeacherMoodleLearningPage area="question-bank" />
-          </ProtectedRoute>
-        </Route>
-
-        <Route path="/app/teacher/assignments/new">
-          <ProtectedRoute role="teacher" pageId="assignments">
-            <TeacherMoodleLearningPage area="assignments" mode="create" />
-          </ProtectedRoute>
-        </Route>
-
-        <Route path="/app/teacher/assignments/:assignmentId">
-          {params => (
-            <ProtectedRoute role="teacher" pageId="assignment-detail">
-              <TeacherMoodleLearningPage
-                area="assignments"
-                mode="detail"
-                recordId={params.assignmentId}
-              />
-            </ProtectedRoute>
-          )}
-        </Route>
-
-        <Route path="/app/teacher/assignments">
-          <ProtectedRoute role="teacher" pageId="assignments">
-            <TeacherMoodleLearningPage area="assignments" />
-          </ProtectedRoute>
-        </Route>
-
-        <Route path="/app/teacher/grading/:submissionId">
-          {params => (
-            <ProtectedRoute role="teacher" pageId="grading">
-              <TeacherMoodleLearningPage
-                area="grading"
-                mode="detail"
-                recordId={params.submissionId}
-              />
-            </ProtectedRoute>
-          )}
-        </Route>
-
-        <Route path="/app/teacher/grading">
-          <ProtectedRoute role="teacher" pageId="grading">
-            <TeacherMoodleLearningPage area="grading" />
-          </ProtectedRoute>
-        </Route>
-
-        <Route path="/app/teacher/calendar/new">
-          <ProtectedRoute role="teacher" pageId="calendar">
-            <TeacherWorkPage view="calendar-new" />
-          </ProtectedRoute>
-        </Route>
-
-        <Route path="/app/teacher/calendar">
-          <ProtectedRoute role="teacher" pageId="calendar">
-            <TeacherWorkPage view="calendar" />
-          </ProtectedRoute>
-        </Route>
-
-        <Route path="/app/teacher/availability">
-          <ProtectedRoute role="teacher" pageId="availability">
-            <TeacherAvailabilityPage />
-          </ProtectedRoute>
-        </Route>
-
-        <Route path="/app/teacher/quran-review/:recitationId">
-          {params => (
-            <ProtectedRoute role="teacher" pageId="quran-review">
-              <TeacherWorkPage
-                view="quran-detail"
-                recitationId={params.recitationId}
-              />
-            </ProtectedRoute>
-          )}
-        </Route>
-
-        <Route path="/app/teacher/quran-review">
-          <ProtectedRoute role="teacher" pageId="quran-review">
-            <TeacherWorkPage view="quran" />
-          </ProtectedRoute>
-        </Route>
-
-        <Route path="/app/teacher/classes">
-          <ProtectedRoute role="teacher" pageId="classes">
-            <TeacherClassesPage />
-          </ProtectedRoute>
-        </Route>
-
-        <Route path="/app/teacher/classes/:classId">
-          {params => (
-            <ProtectedRoute role="teacher" pageId="class-detail">
-              <TeacherClassDetailPage classId={params.classId} />
-            </ProtectedRoute>
-          )}
-        </Route>
-
-        <Route path="/app/teacher/classes/:classId/sessions">
-          {params => (
-            <ProtectedRoute role="teacher" pageId="sessions">
-              <TeacherClassWorkspacePage
-                classId={params.classId}
-                view="sessions"
-              />
-            </ProtectedRoute>
-          )}
-        </Route>
-
-        <Route path="/app/teacher/classes/:classId/attendance">
-          {params => (
-            <ProtectedRoute role="teacher" pageId="attendance">
-              <TeacherClassWorkspacePage
-                classId={params.classId}
-                view="attendance"
-              />
-            </ProtectedRoute>
-          )}
-        </Route>
-
-        <Route path="/app/teacher/classes/:classId/students">
-          {params => (
-            <ProtectedRoute role="teacher" pageId="students">
-              <TeacherClassWorkspacePage
-                classId={params.classId}
-                view="students"
-              />
-            </ProtectedRoute>
-          )}
-        </Route>
-
-        <Route path="/app/teacher/classes/:classId/students/:studentId">
-          {params => (
-            <ProtectedRoute role="teacher" pageId="student-detail">
-              <TeacherStudentDetailPage
-                classId={params.classId}
-                studentId={params.studentId}
-              />
-            </ProtectedRoute>
-          )}
-        </Route>
-
-        <Route path="/app/teacher/classes/:classId/grades">
-          {params => (
-            <ProtectedRoute role="teacher" pageId="grades">
-              <TeacherClassWorkspacePage classId={params.classId} view="grades" />
-            </ProtectedRoute>
-          )}
-        </Route>
-
-        <Route path="/app/teacher/classes/:classId/materials">
-          {params => (
-            <ProtectedRoute role="teacher" pageId="materials">
-              <TeacherClassWorkspacePage
-                classId={params.classId}
-                view="materials"
-              />
-            </ProtectedRoute>
-          )}
         </Route>
 
         <Route path="/app/student/moodle-source/:courseId">
@@ -1507,57 +525,6 @@ function Router() {
           </ProtectedRoute>
         </Route>
 
-        <Route path="/app/teacher/moodle-source/:courseId">
-          {params => (
-            <ProtectedRoute role="teacher" pageId="moodle-source">
-              <MoodleCourseContentPage
-                role="teacher"
-                courseId={params.courseId}
-              />
-            </ProtectedRoute>
-          )}
-        </Route>
-
-        <Route path="/app/teacher/moodle-source">
-          <ProtectedRoute role="teacher" pageId="moodle-source">
-            <MoodleSourcePage role="teacher" />
-          </ProtectedRoute>
-        </Route>
-
-        <Route path="/app/hod/moodle-source/:courseId">
-          {params => (
-            <ProtectedRoute role="headofdepartment" pageId="moodle-source">
-              <MoodleCourseContentPage
-                role="headofdepartment"
-                courseId={params.courseId}
-              />
-            </ProtectedRoute>
-          )}
-        </Route>
-
-        <Route path="/app/hod/moodle-source">
-          <ProtectedRoute role="headofdepartment" pageId="moodle-source">
-            <MoodleSourcePage role="headofdepartment" />
-          </ProtectedRoute>
-        </Route>
-
-        <Route path="/app/admin/moodle-source/:courseId">
-          {params => (
-            <ProtectedRoute role="superadmin" pageId="moodle-source">
-              <MoodleCourseContentPage
-                role="superadmin"
-                courseId={params.courseId}
-              />
-            </ProtectedRoute>
-          )}
-        </Route>
-
-        <Route path="/app/admin/moodle-source">
-          <ProtectedRoute role="superadmin" pageId="moodle-source">
-            <MoodleSourcePage role="superadmin" />
-          </ProtectedRoute>
-        </Route>
-
         <Route path="/app/student/profile">
           <ProtectedRoute role="student" pageId="profile">
             <Redirect to="/app/student/settings" replace />
@@ -1619,78 +586,6 @@ function Router() {
           </ProtectedRoute>
         </Route>
 
-        <Route path="/app/teacher/profile">
-          <ProtectedRoute role="teacher" pageId="profile">
-            <Redirect to="/app/teacher/settings" replace />
-          </ProtectedRoute>
-        </Route>
-
-        <Route path="/app/teacher/settings">
-          <ProtectedRoute role="teacher" pageId="profile">
-            <ProfileWorkspace role="teacher" />
-          </ProtectedRoute>
-        </Route>
-
-        <Route path="/app/registrar/profile">
-          <ProtectedRoute role="registrar" pageId="profile">
-            <Redirect to="/app/registrar/settings/profile" replace />
-          </ProtectedRoute>
-        </Route>
-
-        <Route path="/app/registrar/settings/profile">
-          <ProtectedRoute role="registrar" pageId="profile">
-            <ProfileWorkspace role="registrar" />
-          </ProtectedRoute>
-        </Route>
-
-        <Route path="/app/hod/profile">
-          <ProtectedRoute role="headofdepartment" pageId="profile">
-            <Redirect to="/app/hod/settings/profile" replace />
-          </ProtectedRoute>
-        </Route>
-
-        <Route path="/app/hod/settings/profile">
-          <ProtectedRoute role="headofdepartment" pageId="profile">
-            <ProfileWorkspace role="headofdepartment" />
-          </ProtectedRoute>
-        </Route>
-
-        <Route path="/app/branch/profile">
-          <ProtectedRoute role="branchadmin" pageId="profile">
-            <Redirect to="/app/branch/settings/profile" replace />
-          </ProtectedRoute>
-        </Route>
-
-        <Route path="/app/branch/settings/profile">
-          <ProtectedRoute role="branchadmin" pageId="profile">
-            <ProfileWorkspace role="branchadmin" />
-          </ProtectedRoute>
-        </Route>
-
-        <Route path="/app/admin/profile">
-          <ProtectedRoute role="superadmin" pageId="profile">
-            <Redirect to="/app/admin/settings/profile" replace />
-          </ProtectedRoute>
-        </Route>
-
-        <Route path="/app/teacher/reports/attendance">
-          <ProtectedRoute role="teacher" pageId="reports">
-            <PortalReportsPage role="teacher" view="attendance" />
-          </ProtectedRoute>
-        </Route>
-
-        <Route path="/app/teacher/reports/grades">
-          <ProtectedRoute role="teacher" pageId="reports">
-            <PortalReportsPage role="teacher" view="grades" />
-          </ProtectedRoute>
-        </Route>
-
-        <Route path="/app/teacher/reports">
-          <ProtectedRoute role="teacher" pageId="reports">
-            <PortalReportsPage role="teacher" view="overview" />
-          </ProtectedRoute>
-        </Route>
-
         <Route path="/app/student/messages/new">
           <ProtectedRoute role="student" pageId="messages">
             <PortalMessagesPage role="student" mode="compose" />
@@ -1702,114 +597,6 @@ function Router() {
             <PortalMessagesPage role="student" />
           </ProtectedRoute>
         </Route>
-
-        <Route path="/app/teacher/messages/new">
-          <ProtectedRoute role="teacher" pageId="messages">
-            <PortalMessagesPage role="teacher" mode="compose" />
-          </ProtectedRoute>
-        </Route>
-
-        <Route path="/app/teacher/messages">
-          <ProtectedRoute role="teacher" pageId="messages">
-            <PortalMessagesPage role="teacher" />
-          </ProtectedRoute>
-        </Route>
-
-        <Route path="/app/registrar/messages/new">
-          <ProtectedRoute role="registrar" pageId="messages">
-            <PortalMessagesPage role="registrar" mode="compose" />
-          </ProtectedRoute>
-        </Route>
-
-        <Route path="/app/registrar/messages">
-          <ProtectedRoute role="registrar" pageId="messages">
-            <PortalMessagesPage role="registrar" />
-          </ProtectedRoute>
-        </Route>
-
-        <Route path="/app/hod/messages/new">
-          <ProtectedRoute role="headofdepartment" pageId="messages">
-            <PortalMessagesPage role="headofdepartment" mode="compose" />
-          </ProtectedRoute>
-        </Route>
-
-        <Route path="/app/hod/messages">
-          <ProtectedRoute role="headofdepartment" pageId="messages">
-            <PortalMessagesPage role="headofdepartment" />
-          </ProtectedRoute>
-        </Route>
-
-        <Route path="/app/branch/messages/new">
-          <ProtectedRoute role="branchadmin" pageId="messages">
-            <PortalMessagesPage role="branchadmin" mode="compose" />
-          </ProtectedRoute>
-        </Route>
-
-        <Route path="/app/branch/messages">
-          <ProtectedRoute role="branchadmin" pageId="messages">
-            <PortalMessagesPage role="branchadmin" />
-          </ProtectedRoute>
-        </Route>
-
-        <Route path="/app/admin/messages/new">
-          <ProtectedRoute role="superadmin" pageId="messages">
-            <PortalMessagesPage role="superadmin" mode="compose" />
-          </ProtectedRoute>
-        </Route>
-
-        <Route path="/app/admin/messages">
-          <ProtectedRoute role="superadmin" pageId="messages">
-            <PortalMessagesPage role="superadmin" />
-          </ProtectedRoute>
-        </Route>
-
-        <Route path="/app/registrar/reports/admissions">
-          <ProtectedRoute role="registrar" pageId="reports">
-            <PortalReportsPage role="registrar" view="admissions" />
-          </ProtectedRoute>
-        </Route>
-
-        <Route path="/app/registrar/reports/payments">
-          <ProtectedRoute role="registrar" pageId="reports">
-            <PortalReportsPage role="registrar" view="payments" />
-          </ProtectedRoute>
-        </Route>
-
-        <Route path="/app/registrar/reports">
-          <ProtectedRoute role="registrar" pageId="reports">
-            <PortalReportsPage role="registrar" view="overview" />
-          </ProtectedRoute>
-        </Route>
-
-        <Route path="/app/registrar/settings">
-          <ProtectedRoute role="registrar" pageId="settings">
-            <PortalSettingsPage role="registrar" />
-          </ProtectedRoute>
-        </Route>
-
-        <Route path="/app/hod/settings">
-          <ProtectedRoute role="headofdepartment" pageId="settings">
-            <PortalSettingsPage role="headofdepartment" />
-          </ProtectedRoute>
-        </Route>
-
-        <Route path="/app/branch/settings">
-          <ProtectedRoute role="branchadmin" pageId="settings">
-            <PortalSettingsPage role="branchadmin" />
-          </ProtectedRoute>
-        </Route>
-
-        {simplePortalRoutes.map(route => (
-          <Route key={route.path} path={route.path}>
-            <ProtectedRoute role={route.role} pageId={route.pageId}>
-              {route.pageId === "branches" ? (
-                <AdminBranchesRoute />
-              ) : (
-                <SimplePortalPage role={route.role} pageId={route.pageId} />
-              )}
-            </ProtectedRoute>
-          </Route>
-        ))}
 
         {/* Legacy prototype routes now land in the maintained /app platform. */}
         {[
@@ -1844,6 +631,24 @@ function Router() {
           </Route>
         ))}
 
+        {/* Removed staff portals redirect into the unified staff app. */}
+        {[
+          "/app/admin",
+          "/app/registrar",
+          "/app/hod",
+          "/app/branch",
+          "/app/teacher",
+        ].map(prefix => (
+          <Fragment key={prefix}>
+            <Route path={prefix}>
+              <LegacyStaffRedirect />
+            </Route>
+            <Route path={`${prefix}/*`}>
+              <LegacyStaffRedirect />
+            </Route>
+          </Fragment>
+        ))}
+
         <Route path="/404" component={NotFound} />
         <Route component={NotFound} />
       </Switch>
@@ -1851,12 +656,22 @@ function Router() {
   );
 }
 
+const STUDENT_PORTAL_PATH = /^\/app\/student(\/|$)/;
+
+/** Staff sheets open from the inline-end edge; keep toasts clear of their footer. */
+function AppToaster() {
+  const [location] = useLocation();
+  const staffApp =
+    location.startsWith("/app/") && !STUDENT_PORTAL_PATH.test(location);
+  return <Toaster position={staffApp ? "top-center" : undefined} />;
+}
+
 function App() {
   return (
     <ErrorBoundary>
       <ThemeProvider defaultTheme="light">
         <TooltipProvider>
-          <Toaster />
+          <AppToaster />
           <Router />
         </TooltipProvider>
       </ThemeProvider>

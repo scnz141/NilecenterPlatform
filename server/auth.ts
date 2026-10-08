@@ -3,6 +3,10 @@ import {
   getSessionRepository,
   SessionAuthorityDeniedError,
 } from "./sessionRepository.js";
+import type {
+  EmsStagingEffectiveScopes,
+  EmsStagingRole,
+} from "./emsStagingClient.js";
 import {
   getNccRequestSession,
   hasNccAuthCookie,
@@ -36,6 +40,15 @@ export type ServerRole =
   | "branchadmin"
   | "superadmin";
 
+/** EMS-native session facts sealed into the NCC cookie. */
+export type NccSessionBlock = {
+  assignedRole: EmsStagingRole;
+  activeRole: EmsStagingRole;
+  workspaceBranchId: string | null;
+  workspaceAccess: "manage" | "view" | null;
+  effectiveScopes: EmsStagingEffectiveScopes | null;
+};
+
 export type ServerSession = {
   id: string;
   userId: string;
@@ -45,6 +58,7 @@ export type ServerSession = {
   activeRole: ServerRole;
   assignedRole?: ServerRole;
   workspaceBranchId?: string | null;
+  ncc?: NccSessionBlock;
   authUserId?: string;
   activeRoleGrantId?: string;
   branchIds?: string[];
@@ -603,6 +617,7 @@ export function sessionDto(session: ServerSession) {
     activeRole: session.activeRole,
     assignedRole: session.assignedRole,
     workspaceBranchId: session.workspaceBranchId,
+    ncc: session.ncc ?? null,
     provider: session.provider,
     authorizationModel: session.authorizationModel ?? "snapshot",
     branchIds: session.branchIds ?? [],

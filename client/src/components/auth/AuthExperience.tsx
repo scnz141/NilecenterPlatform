@@ -2,6 +2,7 @@ import { useRef, type ReactNode } from "react";
 import "@/styles/auth-v2.css";
 import { ChevronDown, Globe2 } from "lucide-react";
 import { Link } from "wouter";
+import { NileLogo, NileRosette } from "@/components/brand/NileLogo";
 import {
   getDirection,
   localeOptions,
@@ -94,11 +95,11 @@ export function AuthExperience({
     >
       <section className="auth-v2-visual" aria-label={ui(copy.description)}>
         <div className="auth-v2-visual-shade" aria-hidden="true" />
-        <Link href="/" className="auth-v2-brand auth-v2-brand-light">
-          <span aria-hidden="true">ن</span>
+        <Link href="/" className="auth-v2-brand auth-v2-brand-light" aria-label="Nile Center">
+          <NileRosette size={40} />
           <span>
-            <strong>Nile Learn</strong>
-            <small>Nile Center</small>
+            <strong>Nile Center</strong>
+            <small>Nile Learn</small>
           </span>
         </Link>
 
@@ -115,22 +116,13 @@ export function AuthExperience({
 
       <section className="auth-v2-surface">
         <header className="auth-v2-surface-header">
-          <Link href="/" className="auth-v2-brand auth-v2-brand-dark">
-            <span aria-hidden="true">ن</span>
-            <span>
-              <strong>Nile Learn</strong>
-              <small>Nile Center</small>
-            </span>
+          <Link href="/" className="auth-v2-brand auth-v2-brand-dark" aria-label="Nile Center">
+            <NileLogo height={34} />
           </Link>
           <AuthLanguageMenu locale={locale} onChange={onLocaleChange} />
         </header>
         <div className="auth-v2-content">
-          <span className="auth-v2-landing-mark" aria-hidden="true">
-            <i />
-            <i />
-            <i />
-            <i />
-          </span>
+          <NileRosette size={36} className="auth-v2-landing-mark" />
           {children}
         </div>
       </section>

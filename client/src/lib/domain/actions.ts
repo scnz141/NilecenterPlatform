@@ -1315,7 +1315,7 @@ export function applySubmitAssignment(
     userId: courseRun.teacherId,
     title: "Assignment submitted",
     body: `${assignment.title} is ready for review.`,
-    href: "/app/teacher/grading",
+    href: "/app/classes",
   });
   appendAudit(
     state,
@@ -1447,7 +1447,7 @@ export function applySubmitQuizAttempt(
       userId: courseRun.teacherId,
       title: "Quiz submitted",
       body: `${quiz.title} is ready for review.`,
-      href: "/app/teacher/quizzes/review",
+      href: "/app/classes",
     });
   } else {
     const feedback =
@@ -1502,15 +1502,11 @@ function messageRouteForUser(user?: PlatformState["users"][number]) {
     case "student":
       return "/app/student/messages";
     case "teacher":
-      return "/app/teacher/messages";
     case "registrar":
-      return "/app/registrar/messages";
     case "headofdepartment":
-      return "/app/hod/messages";
     case "branchadmin":
-      return "/app/branch/messages";
     case "superadmin":
-      return "/app/admin/dashboard";
+      return "/app/notifications";
     default:
       return "/app";
   }
@@ -3217,7 +3213,7 @@ export function applySubmitAttendanceException(
       userId: run.teacherId,
       title: "Attendance exception submitted",
       body: `${classSession.title} has a learner exception awaiting branch review.`,
-      href: "/app/branch/attendance",
+      href: "/app/classes",
     });
   }
   appendAudit(
@@ -7844,7 +7840,7 @@ function applySubmitRecitation(
     userId: input.teacherId,
     title: "Recitation submitted",
     body: `${submission.title} is ready for review.`,
-    href: "/app/teacher/quran-review",
+    href: "/app/classes",
   });
   appendAudit(
     state,

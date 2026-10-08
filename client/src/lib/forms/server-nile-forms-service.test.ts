@@ -1371,3 +1371,109 @@ describe("Nile Forms server authority", () => {
     ).toBe("promoted");
   });
 });
+
+describe("Nile Forms with NCC staff sessions", () => {
+  const BRANCH = "ems-branch-1";
+  function ncc(
+    role: ServerSession["activeRole"],
+    emsRole: NonNullable<ServerSession["ncc"]>["activeRole"],
+    scope: { branchIds?: string[]; departmentIds?: string[] } = {}
+  ): ServerSession {
+    return {
+      id: `ncc_${emsRole}`,
+      userId: `ems-user-${emsRole}`,
+      email: `${emsRole}@ems.test`,
+      name: emsRole,
+      roles: [role],
+      activeRole: role,
+      provider: "ncc",
+      authorizationModel: "external",
+      ncc: {
+        assignedRole: emsRole,
+        activeRole: emsRole,
+        workspaceBranchId: scope.branchIds?.[0] ?? null,
+        workspaceAccess: null,
+        effectiveScopes: null,
+      },
+      branchIds: scope.branchIds ?? [],
+      departmentIds: scope.departmentIds ?? [],
+      createdAt: "2026-07-11T12:00:00.000Z",
+      expiresAt: "2026-07-12T00:00:00.000Z",
+    };
+  }
+  const emsRegistrar = ncc("registrar", "registrar", { branchIds: [BRANCH] });
+  const emsSuperAdmin = ncc("superadmin", "super_admin");
+
+  it("accepts sealed EMS identity and scope that the user store does not know", async () => {
+    const service = createService();
+    const created = await service.createDefinition(emsRegistrar, {
+      key: "ems_branch_intake",
+      titleEn: "Branch intake",
+      titleAr: "استمارة الفرع",
+      titleTr: "Şube başvurusu",
+      category: "admissions",
+      branchId: BRANCH,
+    });
+    expect(created.definition).toMatchObject({
+      ownerUserId: "ems-user-registrar",
+      ownerRole: "registrar",
+      branchId: BRANCH,
+    });
+    expect((await service.listDefinitions(emsRegistrar)).map(item => item.key)).toContain(
+      "ems_branch_intake"
+    );
+    await expect(
+      service.createDefinition(emsRegistrar, {
+        key: "ems_other_branch",
+        titleEn: "Other branch",
+        titleAr: "فرع آخر",
+        titleTr: "Diğer şube",
+        category: "admissions",
+        branchId: "ems-branch-2",
+      })
+    ).rejects.toMatchObject({ statusCode: 403 });
+  });
+
+  it("assigns by role, branch, or department inside the sealed scope only", async () => {
+    const service = createService();
+    const { definition, version } = await service.createDefinition(emsSuperAdmin, {
+      key: "ems_staff_check_in",
+      titleEn: "Staff check-in",
+      titleAr: "تسجيل حضور الموظفين",
+      titleTr: "Personel girişi",
+      category: "branch_operations",
+    });
+    const publication = (
+      await service.publishVersion(emsSuperAdmin, definition.id, version.id, {
+        slug: "ems-staff-check-in",
+        audience: "assigned",
+      })
+    ).publication;
+
+    await expect(
+      service.assignPublication(emsSuperAdmin, publication.id, { type: "role", role: "registrar" })
+    ).resolves.toBeTruthy();
+    await expect(
+      service.assignPublication(emsSuperAdmin, publication.id, { type: "branch", branchId: BRANCH })
+    ).resolves.toBeTruthy();
+    await expect(
+      service.assignPublication(emsSuperAdmin, publication.id, { type: "user", userId: "someone" })
+    ).rejects.toMatchObject({ statusCode: 400, code: "assignment_target_unsupported" });
+
+    const assigned = await service.listAssigned(emsRegistrar);
+    expect(assigned.map(item => item.publication.id)).toContain(publication.id);
+    expect((await service.getManagementOptions(emsSuperAdmin)).branches).toEqual([]);
+  });
+
+  it("denies EMS staff whose sealed scope is empty", async () => {
+    const service = createService();
+    await expect(service.listDefinitions(ncc("headofdepartment", "hod"))).rejects.toMatchObject({
+      statusCode: 403,
+      code: "session_scope_denied",
+    });
+    await expect(service.listDefinitions(ncc("registrar", "ssa"))).rejects.toMatchObject({
+      statusCode: 403,
+      code: "session_scope_denied",
+    });
+  });
+});

@@ -64,7 +64,7 @@ Do not duplicate or infer that status in companion files.
 
 Current QA baseline:
 
-- Portal QA: 1,667 checks, 0 failures.
+- Portal QA: 375 checks, 0 failures.
 - This baseline must not be broken.
 
 ### Frontend And Backend Team Boundary
@@ -271,6 +271,17 @@ Use the commands that exist in `package.json`:
 - `npm test -- --run` for Vitest in this local workspace.
 - `npm run build` for production build.
 - `scripts/verify.sh` runs a non-mutating Prettier check for `CLAUDE.md`, `AGENTS.md`, `.codex/hooks.json`, and `.codex/prompts/*.md` by default.
+- Portal QA drives `playwright-cli`, which defaults to the Google Chrome
+  channel. On machines without Chrome, run
+  `PLAYWRIGHT_MCP_BROWSER=chromium QA_PORT=3011 scripts/verify.sh` to use the
+  bundled Chromium and a free port when the dev servers hold 3000/3001.
+- Nile Forms in the unified staff app (`/app/forms`) needs
+  `NILE_FORMS_NCC_WRITES_ENABLED=1` for NCC staff writes (author, publish,
+  review, fill). Reads work without it. The compatibility forms store is
+  in-memory in local development, so forms reset when the server restarts;
+  set `NILE_FORMS_COMPATIBILITY_STORE=blob` to persist it in a private
+  Vercel Blob JSON snapshot (`NILE_FORMS_BLOB_PATH`, default
+  `nile-forms/state.json`) for serverless deployments.
 - `npm run verify:integration-fast` runs the integration ownership/evidence contracts, TypeScript, unit tests, and build in a bounded parallel inner loop. It does not replace the final database and portal gates.
 - `npm run verify:phase6b-fast` runs the Phase 6 contracts, Phase 6A/6B portable PostgreSQL gates, TypeScript, and the focused Moodle projection tests in parallel. Use it while implementing Phase 6B; it intentionally omits the full unit suite, build, and portal QA.
 - `VERIFY_SCOPE=focused SKIP_PORTAL_QA=1 scripts/verify.sh` is the explicit focused verifier when portal QA is not relevant. Filtered portal runs also require `VERIFY_SCOPE=focused`.
@@ -371,7 +382,7 @@ Use the commands that exist in `package.json`:
   drills rollback/reapply, invalidates the temporary fake login, and writes
   redacted evidence. It must never target production or enable Moodle calls,
   Moodle writes, or the normalized runtime.
-- Plain `scripts/verify.sh` is the final gate. It rejects portal filters/skips and asserts the protected `1,667/0` summary.
+- Plain `scripts/verify.sh` is the final gate. It rejects portal filters/skips and asserts the protected `375/0` summary.
 - `FULL_FORMAT_CHECK=1 scripts/verify.sh` runs the repo-wide Prettier audit. Use this intentionally because the current app has existing formatting drift.
 - `npm run qa:portals` for portal route QA when browser/runtime context is available.
 - `npm run seed:supabase` only when explicitly working on Supabase demo seeding.

@@ -19,7 +19,6 @@ const fixtures = read("shared/nileFormsFixtures.ts");
 const catalog = read("shared/nileFormsTemplateCatalog.ts");
 const service = read("server/nileFormsService.ts");
 const routes = read("server/nileFormsRoutes.ts");
-const builder = read("client/src/pages/platform/NileFormsBuilderPage.tsx");
 const renderer = read("client/src/components/forms/NileFormRenderer.tsx");
 const formsCss = read("client/src/styles/nile-forms.css");
 const coreTests = read("client/src/lib/forms/nileForms.test.ts");
@@ -63,14 +62,6 @@ requireText(service, "template_invalid", "template category validation");
 requireText(service, "formLocale(input.locale", "server locale validation");
 requireText(routes, "locale: body.locale", "locale route forwarding");
 
-requireText(builder, 'id: "calculations"', "builder calculation tab");
-requireText(builder, "Turkish label", "builder Turkish field editor");
-requireText(builder, "Turkish help text", "builder Turkish help editor");
-requireText(
-  builder,
-  "aria-label={`${formLocaleNames[language]} title`}",
-  "builder locale-specific accessible labels"
-);
 requireText(renderer, "displayedAnswers", "derived renderer values");
 requireText(renderer, 'language === "ar" ? "ع" : "TR"', "Turkish switcher");
 requireText(

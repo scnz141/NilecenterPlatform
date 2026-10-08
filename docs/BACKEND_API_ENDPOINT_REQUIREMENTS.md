@@ -82,6 +82,102 @@ site-status reads. It still has no `Idempotency-Key`, `If-Match`/expected
 version, `allowedActions`, correlation ID, cursor pagination, or freshness
 contract. Twenty successful collection responses are bare arrays.
 
+### 2026-10-07 Live Admissions Journey Findings
+
+The live OpenAPI now publishes 140 paths and 178 operations, and
+`/system/health` reports Moodle `reachable: true`, so item 6 below is resolved.
+A marker-bound journey through the Nile Learn BFF (lead, sibling group,
+onsite and online placement and trial bookings, registration fees,
+conversion, course sale, payment, class attach, learning, report, teacher
+denials, cleanup) passed 64 of 74 steps. Every remaining failure traces to the
+first item:
+
+1. `BLOCKER` EMS-generated Moodle passwords violate the Moodle password
+   policy (`Passwords must have at least 1 lower case letter(s)` and `at least
+1 special character(s)`). This rejects every placement-test booking for a
+   lead (EMS creates the test taker's Moodle login), `POST
+/students/{id}/moodle` with `mode: create`, and therefore class attach for
+   any new student (`Student is not linked to Moodle`). Generate passwords
+   that satisfy the site policy, or read it from Moodle.
+2. `GAP` `GET /students/{id}/enrolments` returns class-attached enrolments
+   only, and `GET /enrolments` has no `student_id` filter, so a student's
+   unpaid or unattached course sales cannot be listed exactly. Add
+   `student_id` to `/enrolments` or include unattached sales.
+3. `CLARIFY` `POST /enrolments` returns `409 This student already has an open
+enrolment for this course` when the only existing enrolment is
+   `completed`. Confirm whether completed sales block a repeat sale or whether
+   `next_level` is required.
+4. `CLARIFY` `POST /placement-tests/{id}/sync-moodle-result` completes the
+   test from the Moodle course grade (`result_recorded_auto: true`) even when
+   the placement course is also a teaching course. Confirm it only reads a
+   placement-course attempt.
+5. `GAP` Registrar and SSA receive `403` from `GET /users`, and
+   `/users/assignees` returns only Registrar/SSA staff, yet
+   `record-result` requires a `mentoring_teacher_id`. The frontend derives
+   mentors from the branch's class teachers for those roles. Add a teacher
+   picker (for example `/users/assignees?role=teacher` filtered to
+   `can_take_placement_test`).
+6. Undocumented business rules the frontend now enforces or explains:
+   `room_id` is required for bookings on onsite branches;
+   `meeting_url` is allowed only on online branches; trial lessons need
+   exactly one of `area_of_study_id` or `course_id`; minors need guardian
+   `sort_order` 1; Egyptian nationals need a 14-digit `national_id`;
+   placement tests need a linked placement Moodle course (area of study or
+   site default); `page_size` is capped at 100. Publish these in the OpenAPI
+   descriptions or as stable error codes.
+
+Fixed in the Nile Learn BFF in the same pass (contract drift, all confirmed
+with live 422s): disable student, course, room, and class and cancel
+placement test now send the required `reason_id`; placement results send the
+required `result_score` and `mentoring_teacher_id`; student create sends the
+required `registration` and `home_branch_id` (was `branch_id`) and returns
+the one-time Moodle password; list reads forward filters and paging instead
+of silently truncating at the first 100 rows.
+
+### 2026-10-07 Live Teaching Journey Findings
+
+A marker-bound teaching journey through the Nile Learn BFF (teacher and room
+availability, guided session proposal, confirm, conflict replay, reschedule,
+cancel, roster, Moodle sync, attendance, grades, role denials, cleanup)
+passed 18 of 21 steps. The browser suite for courses, classes, sessions,
+attendance, grades, and rooms passed 18 of 18. Remaining failures:
+
+1. `BLOCKER` `POST /classes/{id}/moodle/sync` returns `400 Access control
+exception` from Moodle, so groups, students, attendance sessions, and
+   grades never sync. The EMS Moodle service account lacks a capability the
+   sync calls. Grant it, and return the per-step `steps[]` result (published
+   in `Class_Moodle_Sync_Response`) instead of failing the whole request.
+2. `BLOCKER` With item 1 above (password policy) and item 3 (no repeat sale),
+   staging has no student who can be enrolled in a class, so roster,
+   attendance marking, and grades cannot be proven end to end with data.
+3. `RULE` Marking attendance requires the caller's own account to be linked
+   to Moodle (`400 Your account must be linked to Moodle to mark
+attendance`). Branch Admin, Vice Manager, HOD, Registrar, and SSA QA
+   accounts are unlinked. Confirm which roles should mark attendance and
+   expose the caller's `moodle_user_id` on the session so the frontend can say
+   so before the attempt.
+4. `CLARIFY` `POST /classes/{id}/sessions/confirm` returns every session of
+   the class in `sessions[]`, not only the new ones; `created_count` is
+   correct. The frontend uses `created_count` and refetches.
+5. `GAP` `GET /enrolments?student_id=` is ignored (returns other students),
+   confirming item 2 above.
+6. Contract facts the frontend now encodes: weekdays are `0 = Monday … 6 =
+Sunday` for both `weekday_hours` and `schedule_days_of_week` (the NCC
+   frontend agrees); propose no longer accepts `start_hour`; slots must fit
+   both teacher and room hour cells; past sessions cannot be changed; course
+   writes are Super Admin only, and non-Super-Admin roles see only active
+   courses (`404` on a disabled course).
+
+Fixed in the Nile Learn BFF in the same pass (all confirmed with live 422s):
+session propose now sends `weekday_hours` (it sent `weekdays`,
+`hours_per_day`, `start_hour`); course create sends the required
+`total_hours` and the new `area_of_study_id` and `previous_course_id`; class
+writes accept `kind`, `meeting_url`, and `assigned_ssa_id`; Moodle sync
+returns its per-step result; new same-origin routes cover course statistics
+and bulk refresh, room hour cells, and class-level Moodle attendance. The
+legacy class pages labelled schedule days Sunday-first, one day off from
+EMS; they now use the EMS order.
+
 ### Immediate Backend Corrections
 
 1. Add Student identity and own-scope APIs or explicitly version a separate

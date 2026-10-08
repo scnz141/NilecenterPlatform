@@ -11,6 +11,12 @@ import {
   normalizeEmsClassGrades,
   normalizeEmsCourses,
   normalizeEmsCustomFieldDefinitions,
+  normalizeEmsActionReason,
+  normalizeEmsActionReasonImportResult,
+  normalizeEmsAreaOfStudy,
+  normalizeEmsBranchStatistics,
+  normalizeEmsCustomFieldRow,
+  normalizeEmsLostReason,
   normalizeEmsLead,
   normalizeEmsMe,
   normalizeEmsMoodleCoursePicker,
@@ -72,6 +78,14 @@ function mePayload() {
     assigned_role: "super_admin",
     active_role: "super_admin",
     workspace_branch_id: null,
+    workspace_access: "manage",
+    effective_scopes: {
+      branch_id: null,
+      branch_ids: [],
+      department_ids: [],
+      class_ids: [],
+      course_ids: [],
+    },
     scopes: [{ scope_type: "global", scope_id: null, is_live: true }],
   };
 }
@@ -129,7 +143,9 @@ describe("EMS staging role mapping", () => {
     expect(mapEmsRoleToLocal("super_admin")).toBe("superadmin");
     expect(mapEmsRoleToLocal("branch_admin")).toBe("branchadmin");
     expect(mapEmsRoleToLocal("hod")).toBe("headofdepartment");
+    expect(mapEmsRoleToLocal("vice_manager")).toBe("branchadmin");
     expect(mapEmsRoleToLocal("registrar")).toBe("registrar");
+    expect(mapEmsRoleToLocal("ssa")).toBe("registrar");
     expect(mapEmsRoleToLocal("teacher")).toBe("teacher");
     expect(mapEmsRoleToLocal("student")).toBeNull();
     expect(mapLocalRoleToEms("superadmin")).toBe("super_admin");
@@ -170,6 +186,13 @@ describe("EMS staging error translation", () => {
   });
 });
 
+const paged = (items: unknown[]) => ({
+  items,
+  total: items.length,
+  page: 1,
+  page_size: 100,
+});
+
 describe("EMS staging payload guards", () => {
   it("extracts complete token pairs with their server expiries", () => {
     expect(extractTokens(authPayload())).toEqual({
@@ -194,6 +217,14 @@ describe("EMS staging payload guards", () => {
       assignedRole: "super_admin",
       activeRole: "super_admin",
       workspaceBranchId: null,
+      workspaceAccess: "manage",
+      effectiveScopes: {
+        branchId: null,
+        branchIds: [],
+        departmentIds: [],
+        classIds: [],
+        courseIds: [],
+      },
       departmentIds: [],
       scopes: [{ scopeType: "global", scopeId: null, isLive: true }],
     });
@@ -237,7 +268,8 @@ describe("EMS staging payload guards", () => {
       ],
       custom_fields: { ignored: true },
     };
-    const users = normalizeEmsStaffUsers([
+    const users = normalizeEmsStaffUsers(
+      paged([
       base,
       {
         ...base,
@@ -250,7 +282,8 @@ describe("EMS staging payload guards", () => {
         scopes: [{ scope_type: "branch", scope_id: "branch-2" }],
         departments: null,
       },
-    ]);
+      ])
+    );
 
     expect(users).toEqual([
       {
@@ -269,6 +302,14 @@ describe("EMS staging payload guards", () => {
           { id: "department-1", name: "Academic", status: "active" },
         ],
         moodleLinked: true,
+        moodleUserId: 42,
+        emsRole: "hod",
+        courseIds: [],
+        canTakePlacementTest: false,
+        address: null,
+        nationality: null,
+        dateOfBirth: null,
+        notes: null,
         lastLoginAt: "2026-09-12T10:00:00Z",
         createdAt: "2026-09-01T10:00:00Z",
         updatedAt: "2026-09-12T10:00:00Z",
@@ -288,6 +329,14 @@ describe("EMS staging payload guards", () => {
         branchIds: ["branch-2"],
         departments: [],
         moodleLinked: false,
+        moodleUserId: null,
+        emsRole: "teacher",
+        courseIds: [],
+        canTakePlacementTest: false,
+        address: null,
+        nationality: null,
+        dateOfBirth: null,
+        notes: null,
         lastLoginAt: null,
         createdAt: "2026-09-01T10:00:00Z",
         updatedAt: "2026-09-12T10:00:00Z",
@@ -295,14 +344,16 @@ describe("EMS staging payload guards", () => {
       },
     ]);
     expect(
-      normalizeEmsStaffUsers([
-        {
-          ...base,
-          scopes: [
-            { scope_type: "branch", scope_id: "branch-1", is_live: "false" },
-          ],
-        },
-      ])
+      normalizeEmsStaffUsers(
+        paged([
+          {
+            ...base,
+            scopes: [
+              { scope_type: "branch", scope_id: "branch-1", is_live: "false" },
+            ],
+          },
+        ])
+      )
     ).toBeNull();
   });
 
@@ -319,7 +370,7 @@ describe("EMS staging payload guards", () => {
       scopes: [{ scope_type: "branch", scope_id: "branch-1" }],
     };
 
-    expect(normalizeEmsStaffUsers([row])).toEqual([
+    expect(normalizeEmsStaffUsers(paged([row]))).toEqual([
       expect.objectContaining({
         id: "user-optional",
         departments: [],
@@ -328,11 +379,13 @@ describe("EMS staging payload guards", () => {
         customFields: {},
       }),
     ]);
-    expect(normalizeEmsStaffUsers([{ ...row, departments: "x" }])).toBeNull();
     expect(
-      normalizeEmsStaffUsers([
-        { ...row, custom_fields: { nested: { value: true } } },
-      ])
+      normalizeEmsStaffUsers(paged([{ ...row, departments: "x" }]))
+    ).toBeNull();
+    expect(
+      normalizeEmsStaffUsers(
+        paged([{ ...row, custom_fields: { nested: { value: true } } }])
+      )
     ).toBeNull();
   });
 
@@ -355,15 +408,164 @@ describe("EMS staging payload guards", () => {
     ).toEqual([
       {
         id: "field-1",
+        entityType: "user_profile",
         fieldKey: "employee_number",
         label: "Employee number",
         fieldType: "text",
         isRequired: true,
+        isActive: true,
         helpText: "Use the EMS number.",
         options: null,
         sortOrder: 1,
       },
     ]);
+  });
+
+  it("normalizes catalog rows and rejects malformed payloads", () => {
+    const timestamps = {
+      created_at: "2026-01-01T00:00:00Z",
+      updated_at: "2026-01-02T00:00:00Z",
+    };
+    expect(
+      normalizeEmsLostReason({
+        id: "r1",
+        name: "Moved",
+        status: "active",
+        sort_order: 2,
+        ...timestamps,
+      })
+    ).toEqual({
+      id: "r1",
+      name: "Moved",
+      status: "active",
+      sortOrder: 2,
+      createdAt: timestamps.created_at,
+      updatedAt: timestamps.updated_at,
+    });
+    expect(
+      normalizeEmsLostReason({ id: "r1", name: "", status: "active" })
+    ).toBeNull();
+    expect(
+      normalizeEmsLostReason({ ...timestamps, id: "r2", name: "X", status: "gone", sort_order: 0 })
+    ).toBeNull();
+
+    expect(
+      normalizeEmsActionReason({
+        id: "r3",
+        kind: "disable_branch",
+        name: "Consolidation",
+        status: "disabled",
+        sort_order: 0,
+        ...timestamps,
+      })
+    ).toMatchObject({ id: "r3", kind: "disable_branch", status: "disabled" });
+    expect(
+      normalizeEmsActionReason({
+        id: "r4",
+        kind: "not_a_kind",
+        name: "X",
+        status: "active",
+        sort_order: 0,
+        ...timestamps,
+      })
+    ).toBeNull();
+
+    expect(
+      normalizeEmsActionReasonImportResult({ created: 3, updated: 2 })
+    ).toEqual({ created: 3, updated: 2 });
+    // The published schema leaves the response open — tolerate any object.
+    expect(normalizeEmsActionReasonImportResult({})).toEqual({
+      created: null,
+      updated: null,
+    });
+    expect(normalizeEmsActionReasonImportResult("nope")).toBeNull();
+
+    expect(
+      normalizeEmsAreaOfStudy({
+        id: "a1",
+        name: "English",
+        status: "active",
+        sort_order: 1,
+        placement_test_courses: [
+          { moodle_course_id: 7, shortname: "PT", fullname: "Placement" },
+        ],
+        ...timestamps,
+      })
+    ).toMatchObject({
+      id: "a1",
+      placementCourses: [
+        { moodleCourseId: 7, shortname: "PT", fullname: "Placement" },
+      ],
+    });
+    expect(
+      normalizeEmsAreaOfStudy({
+        id: "a2",
+        name: "X",
+        status: "active",
+        sort_order: 0,
+        placement_test_courses: [{ moodle_course_id: "7" }],
+        ...timestamps,
+      })
+    ).toBeNull();
+
+    expect(
+      normalizeEmsBranchStatistics({
+        active_students: 10,
+        open_leads: 2,
+        active_classes: 4,
+        enrolment_fill: 8,
+        enrolment_capacity: 12,
+        pending_enrolments: 1,
+        scheduled_placements: 0,
+        scheduled_trials: 3,
+        staff_count: null,
+      })
+    ).toEqual({
+      activeStudents: 10,
+      openLeads: 2,
+      activeClasses: 4,
+      enrolmentFill: 8,
+      enrolmentCapacity: 12,
+      pendingEnrolments: 1,
+      scheduledPlacements: 0,
+      scheduledTrials: 3,
+      staffCount: null,
+    });
+    expect(
+      normalizeEmsBranchStatistics({ active_students: "10" })
+    ).toBeNull();
+
+    expect(
+      normalizeEmsCustomFieldRow({
+        id: "f1",
+        entity_type: "branch",
+        field_key: "license_no",
+        label: "License",
+        field_type: "select",
+        is_required: false,
+        is_active: true,
+        options_json: ["A", "B"],
+        help_text: null,
+        sort_order: 0,
+      })
+    ).toMatchObject({
+      entityType: "branch",
+      fieldKey: "license_no",
+      fieldType: "select",
+      options: ["A", "B"],
+      isActive: true,
+    });
+    expect(
+      normalizeEmsCustomFieldRow({
+        id: "f2",
+        entity_type: "branch",
+        field_key: "x",
+        label: "X",
+        field_type: "widget",
+        is_required: false,
+        is_active: true,
+      })
+    ).toBeNull();
   });
 });
 
@@ -387,7 +589,7 @@ describe("EMS operational payload guards", () => {
         relationship: "Parent",
       },
     ],
-    branch_id: "branch-1",
+    home_branch_id: "branch-1",
     branch_name: "Cairo",
     status: "active",
     created_at: "2026-09-01T10:00:00Z",
@@ -407,7 +609,8 @@ describe("EMS operational payload guards", () => {
     entry_path: "placement",
     branch_id: "branch-1",
     branch_name: "Cairo",
-    status: "new",
+    lead_type: "new",
+    status: "in_process",
     created_at: "2026-09-01T10:00:00Z",
     updated_at: "2026-09-12T10:00:00Z",
   };
@@ -499,9 +702,30 @@ describe("EMS operational payload guards", () => {
 
   it("normalizes enrolment class summaries and rejects malformed summaries", () => {
     const enrolment = {
+      id: "enrolment-1",
       student_id: "student-1",
+      course_id: "course-1",
+      course_name: "Arabic",
+      kind: "group",
+      next_level: false,
+      branch_id: "branch-1",
+      branch_name: "Cairo",
       class_id: "class-1",
-      status: "active",
+      class_name: "Arabic A",
+      status: "enrolled",
+      enrolled_at: null,
+      cancelled_at: null,
+      student_name: "Nile Student",
+      to_be_paid: null,
+      paid: null,
+      remaining: null,
+      student: {
+        first_name: "Nile",
+        last_name: "Student",
+        email: "student@example.test",
+        home_branch_id: "branch-1",
+        moodle_user_id: null,
+      },
       class_summary: {
         class_name: "Arabic A",
         branch_id: "branch-1",
@@ -514,14 +738,15 @@ describe("EMS operational payload guards", () => {
       },
     };
     expect(normalizeEmsStudentEnrolments([enrolment])).toEqual([
-      {
+      expect.objectContaining({
+        id: "enrolment-1",
         classId: "class-1",
         className: "Arabic A",
         courseName: "Arabic",
-        status: "active",
+        status: "enrolled",
         enrolledAt: null,
-        withdrawnAt: null,
-      },
+        cancelledAt: null,
+      }),
     ]);
     expect(
       normalizeEmsStudentEnrolments([
@@ -547,6 +772,8 @@ describe("EMS operational payload guards", () => {
       entryPath: null,
       source: null,
       studentId: null,
+      leadType: "new",
+      status: "in_process",
     });
     expect(normalizeEmsLead(lead)).toMatchObject({
       preferredCourses: [{ id: "course-1", name: "Arabic" }],
@@ -606,7 +833,7 @@ describe("EMS operational payload guards", () => {
       created_at: "2026-09-01T10:00:00Z",
       updated_at: "2026-09-12T10:00:00Z",
     };
-    expect(normalizeEmsRooms([room])).toEqual([
+    expect(normalizeEmsRooms(paged([room]))).toEqual([
       {
         id: "room-1",
         branchId: "branch-1",
@@ -619,9 +846,11 @@ describe("EMS operational payload guards", () => {
         updatedAt: "2026-09-12T10:00:00Z",
       },
     ]);
-    expect(normalizeEmsRooms([{ ...room, status: "closed" }])).toBeNull();
     expect(
-      normalizeEmsRooms([{ ...room, sort_order: "first" }])
+      normalizeEmsRooms(paged([{ ...room, status: "closed" }]))
+    ).toBeNull();
+    expect(
+      normalizeEmsRooms(paged([{ ...room, sort_order: "first" }]))
     ).toBeNull();
   });
 
@@ -686,7 +915,7 @@ describe("EMS operational payload guards", () => {
       created_at: "2026-09-01T10:00:00Z",
       updated_at: "2026-09-12T10:00:00Z",
     };
-    expect(normalizeEmsCourses([course])).toEqual([
+    expect(normalizeEmsCourses(paged([course]))).toEqual([
       {
         id: "course-1",
         fullname: "Arabic Language",
@@ -706,6 +935,11 @@ describe("EMS operational payload guards", () => {
         warnings: ["catalog stale"],
         status: "active",
         sortOrder: 1,
+        totalHours: null,
+        areaOfStudyId: null,
+        areaOfStudyName: null,
+        previousCourseId: null,
+        previousCourseName: null,
         createdAt: "2026-09-01T10:00:00Z",
         updatedAt: "2026-09-12T10:00:00Z",
       },
@@ -980,22 +1214,20 @@ describe("EMS staging client requests", () => {
     );
   });
 
-  it("sends empty POSTs for delivery lifecycle and Moodle sync", async () => {
+  it("sends empty POSTs for refresh/sync and the reason body for disable", async () => {
     const fetchImpl = vi.fn(async () => jsonResponse(200, {}));
     const client = createEmsStagingClient({
       baseUrl: "https://staging.example/api",
       fetchImpl,
     });
     await client.refreshCourse("access-1", "course-1");
-    await client.disableRoom("access-1", "room-1");
+    await client.disableRoom("access-1", "room-1", "reason-1");
     await client.syncClassMoodle("access-1", "class-1");
-    for (const [url, init] of fetchImpl.mock.calls as [
-      string,
-      RequestInit,
-    ][]) {
-      expect(init.method).toBe("POST");
-      expect(init.body).toBeUndefined();
-    }
+    const calls = fetchImpl.mock.calls as unknown as [string, RequestInit][];
+    for (const [, init] of calls) expect(init.method).toBe("POST");
+    expect(calls[0]?.[1].body).toBeUndefined();
+    expect(calls[1]?.[1].body).toBe(JSON.stringify({ reason_id: "reason-1" }));
+    expect(calls[2]?.[1].body).toBeUndefined();
     expect(fetchImpl).toHaveBeenNthCalledWith(
       1,
       "https://staging.example/api/courses/course-1/refresh",
@@ -1374,19 +1606,28 @@ describe("EMS staging routes", () => {
 
 describe("EMS delivery workflow payload guards", () => {
   const rosterRow = {
+    id: "enrolment-1",
     student_id: "student-1",
-    class_id: "class-1",
-    class_name: "Arabic A",
     course_id: "course-1",
     course_name: "Arabic",
+    kind: "group",
+    next_level: false,
+    branch_id: "branch-1",
+    branch_name: "Cairo",
+    class_id: "class-1",
+    class_name: "Arabic A",
     status: "enrolled",
     enrolled_at: "2026-09-10T10:00:00Z",
-    withdrawn_at: null,
+    cancelled_at: null,
+    student_name: "Nile Student",
+    to_be_paid: null,
+    paid: null,
+    remaining: null,
     student: {
       first_name: "Nile",
       last_name: "Student",
       email: "student@example.test",
-      branch_id: "branch-1",
+      home_branch_id: "branch-1",
       moodle_user_id: 42,
     },
   };
@@ -1466,21 +1707,31 @@ describe("EMS delivery workflow payload guards", () => {
     const items = normalizeEmsClassEnrolments([rosterRow]);
     expect(items).toEqual([
       {
+        id: "enrolment-1",
         studentId: "student-1",
-        classId: "class-1",
-        className: "Arabic A",
+        studentName: "Nile Student",
         courseId: "course-1",
         courseName: "Arabic",
+        kind: "group",
+        nextLevel: false,
+        branchId: "branch-1",
+        branchName: "Cairo",
+        classId: "class-1",
+        className: "Arabic A",
         status: "enrolled",
         enrolledAt: "2026-09-10T10:00:00Z",
-        withdrawnAt: null,
+        cancelledAt: null,
+        toBePaid: null,
+        paid: null,
+        remaining: null,
         student: {
-          branchId: "branch-1",
+          homeBranchId: "branch-1",
           email: "student@example.test",
           firstName: "Nile",
           lastName: "Student",
           moodleLinked: true,
         },
+        classSummary: null,
       },
     ]);
     expect(
@@ -1493,14 +1744,17 @@ describe("EMS delivery workflow payload guards", () => {
     ).toBeNull();
     expect(
       normalizeEmsClassEnrolments([
-        { ...rosterRow, student: { ...rosterRow.student, branch_id: "" } },
+        {
+          ...rosterRow,
+          student: { ...rosterRow.student, home_branch_id: "" },
+        },
       ])
     ).toBeNull();
     expect(
       normalizeEmsClassEnrolments([{ ...rosterRow, enrolled_at: "not-a-date" }])
     ).toBeNull();
     expect(
-      normalizeEmsClassEnrolments([{ ...rosterRow, withdrawn_at: 5 }])
+      normalizeEmsClassEnrolments([{ ...rosterRow, cancelled_at: 5 }])
     ).toBeNull();
     expect(normalizeEmsClassEnrolments("x")).toBeNull();
   });
@@ -1665,12 +1919,9 @@ describe("EMS delivery workflow client requests", () => {
       fetchImpl,
     });
     await client.classEnrolments("t", "class 1");
-    await client.createClassEnrolment("t", "class-1", {
-      student_id: "s-1",
-      status: "enrolled",
+    await client.attachClassEnrolment("t", "class-1", {
+      enrolment_id: "enrolment-1",
     });
-    await client.withdrawClassEnrolment("t", "class-1", "stu 1");
-    await client.completeClassEnrolment("t", "class-1", "s-1");
     await client.classSessions("t", "class-1");
     await client.proposeClassSessions("t", "class-1", {
       weekdays: [1],
@@ -1694,8 +1945,6 @@ describe("EMS delivery workflow client requests", () => {
     expect(calls.map(([url]) => url)).toEqual([
       "https://staging.example/api/classes/class%201/enrolments",
       "https://staging.example/api/classes/class-1/enrolments",
-      "https://staging.example/api/classes/class-1/enrolments/stu%201/withdraw",
-      "https://staging.example/api/classes/class-1/enrolments/s-1/complete",
       "https://staging.example/api/classes/class-1/sessions",
       "https://staging.example/api/classes/class-1/sessions/propose",
       "https://staging.example/api/classes/class-1/sessions/confirm",
@@ -1710,8 +1959,6 @@ describe("EMS delivery workflow client requests", () => {
     expect(calls.map(([, init]) => init.method)).toEqual([
       "GET",
       "POST",
-      "POST",
-      "POST",
       "GET",
       "POST",
       "POST",
@@ -1724,20 +1971,17 @@ describe("EMS delivery workflow client requests", () => {
       "GET",
     ]);
     expect(JSON.parse(calls[1][1].body as string)).toEqual({
-      student_id: "s-1",
-      status: "enrolled",
+      enrolment_id: "enrolment-1",
     });
-    expect(JSON.parse(calls[5][1].body as string)).toEqual({
+    expect(JSON.parse(calls[3][1].body as string)).toEqual({
       weekdays: [1],
       hours_per_day: 1,
       from_date: "2026-09-17",
       to_date: "2026-09-24",
       start_hour: 13,
     });
-    expect(calls[2][1].body).toBeUndefined();
-    expect(calls[3][1].body).toBeUndefined();
-    expect(calls[10][1].body).toBeUndefined();
-    expect(JSON.parse(calls[12][1].body as string)).toEqual({
+    expect(calls[8][1].body).toBeUndefined();
+    expect(JSON.parse(calls[10][1].body as string)).toEqual({
       marks: [{ student_id: "s-1", status_id: 1 }],
     });
   });
@@ -1873,6 +2117,7 @@ const dashboardSummaryRow = {
     active_classes: 1,
     enrolment_fill: 1,
     enrolment_capacity: 20,
+    pending_enrolments: 0,
     scheduled_placements: 0,
     scheduled_trials: 0,
     staff_count: 4,
@@ -1886,6 +2131,7 @@ const dashboardSummaryRow = {
       active_classes: 1,
       enrolment_fill: 1,
       enrolment_capacity: 20,
+      pending_enrolments: 0,
       scheduled_placements: 0,
       scheduled_trials: 0,
       staff_count: 4,
@@ -1920,6 +2166,7 @@ describe("EMS dashboard summary payload guard", () => {
       activeClasses: 1,
       enrolmentFill: 1,
       enrolmentCapacity: 20,
+      pendingEnrolments: 0,
       scheduledPlacements: 0,
       scheduledTrials: 0,
       staffCount: 4,
@@ -2172,5 +2419,30 @@ describe("EMS notifications client requests", () => {
     ]);
     expect(calls[3][1].body).toBeUndefined();
     expect(calls[4][1].body).toBeUndefined();
+  });
+});
+
+describe("EMS staff directory paging", () => {
+  it("reads every page instead of stopping at 100 staff", async () => {
+    const user = (id: number) => ({ id: `u${id}` });
+    const fetchImpl = vi.fn(async (url: string) => {
+      const page = Number(new URL(url).searchParams.get("page"));
+      const items = page === 1 ? Array.from({ length: 100 }, (_, i) => user(i)) : page === 2 ? [user(100), user(101)] : [];
+      return jsonResponse(200, { items, total: 102, page, page_size: 100 });
+    });
+    const client = createEmsStagingClient({ baseUrl: "https://staging.example/api", fetchImpl });
+    const result = await client.users("access-1");
+    expect(result.ok).toBe(true);
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    expect((result as { data: { items: unknown[] } }).data.items).toHaveLength(102);
+  });
+
+  it("returns the provider error when a later page fails", async () => {
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse(200, { items: [{ id: "u1" }], total: 2 }))
+      .mockResolvedValueOnce(jsonResponse(403, { detail: "Forbidden" }));
+    const client = createEmsStagingClient({ baseUrl: "https://staging.example/api", fetchImpl });
+    expect((await client.users("access-1")).ok).toBe(false);
   });
 });

@@ -66,11 +66,7 @@ function NileRequestsListContent({ role }: { role: Role }) {
   }, [items, search, status]);
 
   const reviewHref =
-    role === "branchadmin"
-      ? "/app/branch/forms/review"
-      : role === "superadmin"
-        ? "/app/admin/forms/review"
-        : null;
+    role === "branchadmin" || role === "superadmin" ? "/app/forms" : null;
 
   return (
     <main className="nile-requests-page" dir={direction} lang={locale}>

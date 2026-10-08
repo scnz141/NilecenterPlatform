@@ -6,18 +6,23 @@ describe that run's evidence and do not restrict the current sandbox order.
 
 Nile Learn is currently in internal alpha stabilization. The protected portal QA baseline is:
 
-- Portal QA: 1,667 checks, 0 failures.
-- Checked at: `2026-09-10T12:26:03.547Z`.
+- Portal QA: 375 checks, 0 failures.
+- Checked at: `2026-10-08T03:30:31.791Z`.
 - Validation command: `scripts/verify.sh`.
 - QA summary artifact: `output/playwright/portal-qa-summary.json`.
 - Artifact SHA-256:
-  `d2b2075d35adb6e8298b48cf04844e9c56f038905739642eeb967fd4f11f64db`.
+  `0f77e6a9f4810cc5ea9f395c9d8ba8a971872bcdedb1020f9901b4d51ef18447`.
+- Scope note: the old demo-store staff portals were removed at the user's
+  request, so staff browser coverage moved to the NCC-backed unified staff app
+  (`/app/*`) browser suites. This baseline counts only public, authentication,
+  student-portal, Nile Forms API denial, and server/API checks; the previous
+  1,667/0 run below is superseded historical evidence.
 
 `docs/NILE_LEARN_MASTER_PLAN.md` defines the next architecture phases, and
 `docs/MODERNIZATION_EXECUTION_CONTRACT.md` defines how this baseline is
 protected during each slice.
 
-## Latest Preservation Evidence
+## Superseded Preservation Evidence (1,667/0)
 
 The bounded NCC staff-auth and shell-session foundation is accepted locally:
 

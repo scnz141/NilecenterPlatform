@@ -69,6 +69,7 @@ import { registerIntegrationHealthRoutes } from "./integrationHealthRoutes.js";
 import { registerEmsStagingRoutes } from "./emsStagingRoutes.js";
 import { registerNccDirectoryRoutes } from "./nccDirectoryRoutes.js";
 import { registerNccOperationalRoutes } from "./nccOperationalRoutes.js";
+import { registerNccSettingsRoutes } from "./nccSettingsRoutes.js";
 import { registerEmailRoutes } from "./emailRoutes.js";
 import { getEmailIntegrationStatus } from "./emailDeliveryService.js";
 import { registerUserInvitationRoutes } from "./userInvitationRoutes.js";
@@ -317,7 +318,11 @@ export function registerApiRoutes(app: ApiApp) {
       !nccStaffAuthEnabled() ||
       !hasNccAuthCookie(req) ||
       (req.path ?? "").startsWith("/auth/") ||
-      (req.path ?? "").startsWith("/ncc/")
+      (req.path ?? "").startsWith("/ncc/") ||
+      // Nile Forms has no EMS equivalent; NCC staff may author and review
+      // forms once the product owner enables this family.
+      (process.env.NILE_FORMS_NCC_WRITES_ENABLED === "1" &&
+        (req.path ?? "").startsWith("/forms/"))
     ) {
       next();
       return;
@@ -333,6 +338,7 @@ export function registerApiRoutes(app: ApiApp) {
   registerEmsStagingRoutes(app);
   registerNccDirectoryRoutes(app);
   registerNccOperationalRoutes(app);
+  registerNccSettingsRoutes(app);
   registerUserInvitationRoutes(app);
 
   app.get("/api/integrations/supabase/status", async (req, res) => {

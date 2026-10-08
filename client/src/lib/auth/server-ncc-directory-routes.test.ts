@@ -14,6 +14,7 @@ type RouteHandler = (
 type Request = {
   headers: { cookie?: string };
   params?: Record<string, string>;
+  query?: Record<string, unknown>;
   body?: Record<string, unknown>;
 };
 type Response = {
@@ -108,6 +109,9 @@ function captureRoutes(options: {
     patch(path: string, handler: RouteHandler) {
       routes.set(`PATCH ${path}`, handler);
     },
+    put(path: string, handler: RouteHandler) {
+      routes.set(`PUT ${path}`, handler);
+    },
   };
   registerNccDirectoryRoutes(app, {
     env: options.env,
@@ -137,9 +141,10 @@ function responseRecorder() {
 function request(
   cookie = "",
   params?: Record<string, string>,
-  body?: Record<string, unknown>
+  body?: Record<string, unknown>,
+  query?: Record<string, unknown>
 ): Request {
-  return { headers: cookie ? { cookie } : {}, params, body };
+  return { headers: cookie ? { cookie } : {}, params, query, body };
 }
 
 function sessionCookie(headers: Map<string, string | string[]>) {
@@ -165,6 +170,13 @@ async function login() {
   });
   return sessionCookie(headers);
 }
+
+const paged = (items: unknown[]) => ({
+  items,
+  total: items.length,
+  page: 1,
+  page_size: 100,
+});
 
 describe("NCC directory routes", () => {
   it("returns 503 while the directory flag is off", async () => {
@@ -198,7 +210,7 @@ describe("NCC directory routes", () => {
     const cookie = await login();
     const users = vi.fn(async () => ({
       ok: true,
-      data: [
+      data: paged([
         staffUser(),
         staffUser({
           id: "staff-user-2",
@@ -216,7 +228,7 @@ describe("NCC directory routes", () => {
           ],
           departments: null,
         }),
-      ],
+      ]),
     }));
     const routes = captureRoutes({ env: env(), api: { users } });
     const { headers, response, result } = responseRecorder();
@@ -257,7 +269,7 @@ describe("NCC directory routes", () => {
     const routes = captureRoutes({
       env: env(),
       api: {
-        users: vi.fn(async () => ({ ok: true, data: [user] })),
+        users: vi.fn(async () => ({ ok: true, data: paged([user]) })),
       },
     });
     const { response, result } = responseRecorder();
@@ -304,7 +316,7 @@ describe("NCC directory routes", () => {
       api: {
         users: vi.fn(async () => ({
           ok: true,
-          data: [staffUser({ assigned_role: "student" })],
+          data: paged([staffUser({ assigned_role: "student" })]),
         })),
       },
     });
@@ -325,7 +337,7 @@ describe("NCC directory routes", () => {
       api: {
         users: vi.fn(async () => ({
           ok: true,
-          data: [
+          data: paged([
             staffUser({
               scopes: [
                 {
@@ -335,7 +347,7 @@ describe("NCC directory routes", () => {
                 },
               ],
             }),
-          ],
+          ]),
         })),
       },
     });
@@ -354,7 +366,7 @@ describe("NCC directory routes", () => {
         ok: false,
         error: { error: "Not authenticated", status: 401 },
       })
-      .mockResolvedValueOnce({ ok: true, data: [staffUser()] });
+      .mockResolvedValueOnce({ ok: true, data: paged([staffUser()]) });
     const refresh = vi.fn(async () => ({
       ok: true,
       data: tokens("ncc-session-2"),
@@ -427,14 +439,23 @@ describe("NCC directory routes", () => {
             {
               id: "branch-1",
               name: "Cairo",
+              code: null,
               status: "active",
               timezone: "Africa/Cairo",
+              is_online: false,
+              sort_order: 1,
+              created_at: "2026-01-01T00:00:00Z",
+              updated_at: "2026-01-02T00:00:00Z",
             },
             {
               id: "branch-2",
               name: "Closed",
               status: "disabled",
               timezone: "UTC",
+              is_online: true,
+              sort_order: 2,
+              created_at: "2026-01-01T00:00:00Z",
+              updated_at: "2026-01-02T00:00:00Z",
             },
           ],
         })),
@@ -446,6 +467,9 @@ describe("NCC directory routes", () => {
               name: "Academic",
               code: "ACA",
               status: "active",
+              sort_order: 1,
+              created_at: "2026-01-01T00:00:00Z",
+              updated_at: "2026-01-02T00:00:00Z",
             },
           ],
         })),
@@ -470,14 +494,27 @@ describe("NCC directory routes", () => {
           {
             id: "branch-1",
             name: "Cairo",
+            code: null,
             status: "active",
+            isOnline: false,
             timezone: "Africa/Cairo",
+            sortOrder: 1,
+            createdAt: "2026-01-01T00:00:00Z",
+            updatedAt: "2026-01-02T00:00:00Z",
+            customFields: {},
+            access: null,
           },
           {
             id: "branch-2",
             name: "Closed",
             status: "disabled",
+            isOnline: true,
             timezone: "UTC",
+            sortOrder: 2,
+            createdAt: "2026-01-01T00:00:00Z",
+            updatedAt: "2026-01-02T00:00:00Z",
+            customFields: {},
+            access: null,
           },
         ],
       },
@@ -491,6 +528,10 @@ describe("NCC directory routes", () => {
             name: "Academic",
             code: "ACA",
             status: "active",
+            sortOrder: 1,
+            createdAt: "2026-01-01T00:00:00Z",
+            updatedAt: "2026-01-02T00:00:00Z",
+            customFields: {},
           },
         ],
       },
@@ -796,10 +837,12 @@ describe("NCC directory routes", () => {
         items: [
           {
             id: "field-1",
+            entityType: "user_profile",
             fieldKey: "employee_number",
             label: "Employee number",
             fieldType: "text",
             isRequired: true,
+            isActive: true,
             helpText: null,
             options: null,
             sortOrder: 1,
@@ -1023,5 +1066,292 @@ describe("NCC Moodle staff account routes", () => {
       status: 404,
       body: { error: "User is outside your scope" },
     });
+  });
+});
+
+describe("NCC staff extras routes", () => {
+  it("returns normalized user statistics", async () => {
+    const cookie = await login();
+    const userStatistics = vi.fn(async () => ({
+      ok: true,
+      data: {
+        user_id: "staff-user-1",
+        assigned_role: "teacher",
+        leads_created: 0,
+        leads_assigned: 0,
+        leads_open: 0,
+        leads_registered: 0,
+        leads_lost: 0,
+        students_assigned: 0,
+        classes_teaching: 2,
+        sessions_scheduled: 9,
+        students_taught: 14,
+      },
+    }));
+    const routes = captureRoutes({ env: env(), api: { userStatistics } });
+    const { response, result } = responseRecorder();
+
+    await routes.get("/api/ncc/directory/users/:userId/statistics")?.(
+      request(cookie, { userId: "staff-user-1" }),
+      response
+    );
+
+    expect(userStatistics).toHaveBeenCalledWith(
+      "access-ncc-session-1",
+      "staff-user-1"
+    );
+    expect(result).toEqual({
+      status: 200,
+      body: {
+        statistics: {
+          userId: "staff-user-1",
+          emsRole: "teacher",
+          leadsCreated: 0,
+          leadsAssigned: 0,
+          leadsOpen: 0,
+          leadsRegistered: 0,
+          leadsLost: 0,
+          studentsAssigned: 0,
+          classesTeaching: 2,
+          sessionsScheduled: 9,
+          studentsTaught: 14,
+        },
+      },
+    });
+  });
+
+  it("fails closed on malformed statistics", async () => {
+    const cookie = await login();
+    const routes = captureRoutes({
+      env: env(),
+      api: {
+        userStatistics: vi.fn(async () => ({
+          ok: true,
+          data: { user_id: "staff-user-1", assigned_role: "teacher" },
+        })),
+      },
+    });
+    const { response, result } = responseRecorder();
+
+    await routes.get("/api/ncc/directory/users/:userId/statistics")?.(
+      request(cookie, { userId: "staff-user-1" }),
+      response
+    );
+
+    expect(result).toEqual({
+      status: 502,
+      body: { error: "NCC EMS returned invalid directory data." },
+    });
+  });
+
+  it("returns user course ids", async () => {
+    const cookie = await login();
+    const userCourses = vi.fn(async () => ({
+      ok: true,
+      data: ["course-1", "course-1", "course-2"],
+    }));
+    const routes = captureRoutes({ env: env(), api: { userCourses } });
+    const { response, result } = responseRecorder();
+
+    await routes.get("/api/ncc/directory/users/:userId/courses")?.(
+      request(cookie, { userId: "staff-user-1" }),
+      response
+    );
+
+    expect(result).toEqual({
+      status: 200,
+      body: { courseIds: ["course-1", "course-2"] },
+    });
+  });
+
+  it("validates hour-cell range queries before the provider call", async () => {
+    const cookie = await login();
+    const userHourCells = vi.fn(async () => ({ ok: true, data: {} }));
+    const routes = captureRoutes({ env: env(), api: { userHourCells } });
+
+    for (const query of [
+      { from: "2026-11-02" },
+      { from: "not-a-date", to: "2026-11-08" },
+      { from: "2026-11-08", to: "2026-11-02" },
+      { from: "2026-01-01", to: "2026-04-01" },
+      { from: "2026-11-02", to: "2026-11-08", extra: "x" },
+    ]) {
+      const { response, result } = responseRecorder();
+      await routes.get("/api/ncc/directory/users/:userId/hour-cells")?.(
+        request(cookie, { userId: "staff-user-1" }, undefined, query),
+        response
+      );
+      expect(result).toEqual({
+        status: 400,
+        body: { error: "Request query is invalid." },
+      });
+    }
+    expect(userHourCells).not.toHaveBeenCalled();
+  });
+
+  it("returns a normalized hour-cell range with sessions", async () => {
+    const cookie = await login();
+    const userHourCells = vi.fn(async () => ({
+      ok: true,
+      data: {
+        timezone: "Africa/Cairo",
+        from: "2026-11-02",
+        to: "2026-11-08",
+        cells: [{ date: "2026-11-02", hour: 9, status: "available" }],
+        sessions: [
+          {
+            id: "session-1",
+            class_id: "class-1",
+            class_name: "Math A",
+            room_name: null,
+            teacher_name: null,
+            starts_at: "2026-11-02T07:00:00Z",
+            ends_at: "2026-11-02T09:00:00Z",
+            duration_hours: 2,
+            status: "scheduled",
+          },
+        ],
+      },
+    }));
+    const routes = captureRoutes({ env: env(), api: { userHourCells } });
+    const { response, result } = responseRecorder();
+
+    await routes.get("/api/ncc/directory/users/:userId/hour-cells")?.(
+      request(cookie, { userId: "staff-user-1" }, undefined, {
+        from: "2026-11-02",
+        to: "2026-11-08",
+      }),
+      response
+    );
+
+    expect(userHourCells).toHaveBeenCalledWith(
+      "access-ncc-session-1",
+      "staff-user-1",
+      "2026-11-02",
+      "2026-11-08"
+    );
+    expect(result).toEqual({
+      status: 200,
+      body: {
+        range: {
+          timezone: "Africa/Cairo",
+          from: "2026-11-02",
+          to: "2026-11-08",
+          cells: [{ date: "2026-11-02", hour: 9, status: "available" }],
+          sessions: [
+            {
+              id: "session-1",
+              classId: "class-1",
+              className: "Math A",
+              roomName: null,
+              teacherName: null,
+              startsAt: "2026-11-02T07:00:00Z",
+              endsAt: "2026-11-02T09:00:00Z",
+              durationHours: 2,
+              status: "scheduled",
+            },
+          ],
+        },
+      },
+    });
+  });
+
+  it("rejects invalid hour-cell ops and writes a batch patch", async () => {
+    const cookie = await login();
+    const patchUserHourCells = vi.fn(async () => ({
+      ok: true,
+      data: { applied: 2, skipped_booked: 1 },
+    }));
+    const routes = captureRoutes({ env: env(), api: { patchUserHourCells } });
+    const route = routes.get(
+      "PATCH /api/ncc/directory/users/:userId/hour-cells"
+    );
+
+    for (const body of [
+      {},
+      { ops: "nope" },
+      { ops: [{ date: "2026-11-02", hour: 25, status: "available" }] },
+      { ops: [{ date: "2026-11-02", hour: 9, status: "booked" }] },
+      { ops: [], unknown: true },
+    ]) {
+      const { response, result } = responseRecorder();
+      await route?.(
+        request(cookie, { userId: "staff-user-1" }, body),
+        response
+      );
+      expect(result.status).toBe(400);
+    }
+    expect(patchUserHourCells).not.toHaveBeenCalled();
+
+    const { response, result } = responseRecorder();
+    await route?.(
+      request(
+        cookie,
+        { userId: "staff-user-1" },
+        {
+          ops: [
+            { date: "2026-11-02", hour: 9, status: "available" },
+            { date: "2026-11-02", hour: 10, status: null },
+          ],
+        }
+      ),
+      response
+    );
+
+    expect(patchUserHourCells).toHaveBeenCalledWith(
+      "access-ncc-session-1",
+      "staff-user-1",
+      [
+        { date: "2026-11-02", hour: 9, status: "available" },
+        { date: "2026-11-02", hour: 10, status: null },
+      ]
+    );
+    expect(result).toEqual({
+      status: 200,
+      body: { applied: 2, skippedBooked: 1 },
+    });
+  });
+
+  it("rejects invalid course lists and writes the PUT body upstream", async () => {
+    const cookie = await login();
+    const putUserCourses = vi.fn(async () => ({
+      ok: true,
+      data: staffUser(),
+    }));
+    const routes = captureRoutes({ env: env(), api: { putUserCourses } });
+    const route = routes.get("PUT /api/ncc/directory/users/:userId/courses");
+
+    for (const body of [
+      {},
+      { courseIds: "course-1" },
+      { courseIds: ["course-1", ""] },
+      { courseIds: [], unknown: true },
+    ]) {
+      const { response, result } = responseRecorder();
+      await route?.(
+        request(cookie, { userId: "staff-user-1" }, body),
+        response
+      );
+      expect(result.status).toBe(400);
+    }
+    expect(putUserCourses).not.toHaveBeenCalled();
+
+    const { response, result } = responseRecorder();
+    await route?.(
+      request(
+        cookie,
+        { userId: "staff-user-1" },
+        { courseIds: ["course-1", "course-2"] }
+      ),
+      response
+    );
+
+    expect(putUserCourses).toHaveBeenCalledWith(
+      "access-ncc-session-1",
+      "staff-user-1",
+      ["course-1", "course-2"]
+    );
+    expect(result.status).toBe(200);
+    expect(result.body).toHaveProperty("user");
   });
 });

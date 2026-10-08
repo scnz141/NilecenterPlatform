@@ -118,9 +118,9 @@ describe("Moodle source display state", () => {
 
   it.each([
     ["student", "/app/student/moodle-source/course_ar_l3"],
-    ["teacher", "/app/teacher/moodle-source/course_ar_l3"],
-    ["headofdepartment", "/app/hod/moodle-source/course_ar_l3"],
-    ["superadmin", "/app/admin/moodle-source/course_ar_l3"],
+    ["teacher", "/app/classes"],
+    ["headofdepartment", "/app/moodle"],
+    ["superadmin", "/app/moodle"],
   ] as const)("builds the exact %s course-content route", (role, route) => {
     expect(moodleCourseContentRoute(role, "course_ar_l3")).toBe(route);
   });

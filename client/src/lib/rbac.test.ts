@@ -56,20 +56,13 @@ describe("RBAC page permission mapping", () => {
 
   it("filters sidebar entries using the same permission map", () => {
     const studentSidebar = getSidebarForRole("student").map(item => item.href);
-    const superAdminSidebar = getSidebarForRole("superadmin").map(
-      item => item.href
-    );
-    const teacherSidebar = getSidebarForRole("teacher").map(item => item.href);
 
     expect(studentSidebar).toContain("/app/student/attendance");
     expect(studentSidebar).toContain("/app/student/settings");
     expect(studentSidebar).not.toContain("/app/student/profile");
-    expect(teacherSidebar).toContain("/app/teacher/settings");
-    expect(teacherSidebar).not.toContain("/app/teacher/profile");
-    expect(superAdminSidebar).toContain("/app/admin/users");
-    expect(superAdminSidebar).toContain("/app/admin/audit-logs");
-    expect(superAdminSidebar).not.toContain("/app/admin/profile");
     expect(studentSidebar).toContain("/app/student/forms");
-    expect(superAdminSidebar).toContain("/app/admin/forms");
+    // Staff roles navigate the unified /app shell, not portal sidebars.
+    expect(getSidebarForRole("superadmin")).toEqual([]);
+    expect(getSidebarForRole("teacher")).toEqual([]);
   });
 });

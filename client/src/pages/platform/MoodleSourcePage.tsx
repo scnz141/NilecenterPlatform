@@ -28,22 +28,18 @@ type MoodleSourcePageProps = {
 
 function courseRoute(role: MoodleSourceRole) {
   if (role === "student") return "/app/student/courses";
-  if (role === "teacher") return "/app/teacher/classes";
-  if (role === "headofdepartment") return "/app/hod/courses";
-  return "/app/admin/courses";
+  if (role === "teacher") return "/app/classes";
+  return "/app/courses";
 }
 
 export function moodleCourseContentRoute(
   role: MoodleSourceRole,
   courseId: string
 ) {
-  const rolePath =
-    role === "headofdepartment"
-      ? "hod"
-      : role === "superadmin"
-        ? "admin"
-        : role;
-  return `/app/${rolePath}/moodle-source/${encodeURIComponent(courseId)}`;
+  // Staff moodle-source pages were removed; staff land on the unified app.
+  if (role === "teacher") return "/app/classes";
+  if (role !== "student") return "/app/moodle";
+  return `/app/student/moodle-source/${encodeURIComponent(courseId)}`;
 }
 
 export function filterMoodleCourseRows(

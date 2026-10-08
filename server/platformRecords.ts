@@ -100,6 +100,10 @@ export async function savePlatformBackendRecord(
     createdAt: new Date().toISOString(),
   };
 
+  if (process.env.NILE_PLATFORM_STATE_LOCAL_ONLY === "1") {
+    return saveLocalRecord(record);
+  }
+
   try {
     return await saveSupabaseRecord(record);
   } catch (error) {

@@ -137,15 +137,11 @@ function messageRouteForUser(user?: PlatformState["users"][number]) {
     case "student":
       return "/app/student/messages";
     case "teacher":
-      return "/app/teacher/messages";
     case "registrar":
-      return "/app/registrar/messages";
     case "headofdepartment":
-      return "/app/hod/messages";
     case "branchadmin":
-      return "/app/branch/messages";
     case "superadmin":
-      return "/app/admin/dashboard";
+      return "/app/notifications";
     default:
       return "/app";
   }
@@ -824,7 +820,7 @@ class PlatformStore {
       ...state.users.map(item => ({
         type: "User",
         label: item.name,
-        href: `/app/admin/users/${item.id}`,
+        href: "/app/staff",
       })),
       ...state.teachers
         .map(teacher => state.users.find(user => user.id === teacher.userId))
@@ -832,7 +828,7 @@ class PlatformStore {
         .map(item => ({
           type: "Teacher",
           label: item!.name,
-          href: "/app/hod/teachers",
+          href: "/app/staff",
         })),
       ...state.courses.map(item => ({
         type: "Course",
@@ -847,7 +843,7 @@ class PlatformStore {
       ...state.classGroups.map(item => ({
         type: "Class",
         label: item.name,
-        href: `/app/teacher/classes/${item.id}`,
+        href: "/app/classes",
       })),
       ...state.assignments.map(item => ({
         type: "Assignment",
@@ -862,27 +858,27 @@ class PlatformStore {
       ...state.leads.map(item => ({
         type: "Lead",
         label: item.fullName,
-        href: `/app/registrar/leads/${item.id}`,
+        href: "/app/leads",
       })),
       ...state.placementTests.map(item => ({
         type: "Placement",
         label: item.fullName,
-        href: `/app/registrar/placement-tests/${item.id}`,
+        href: "/app/placement-tests",
       })),
       ...state.events.map(item => ({
         type: "Event",
         label: item.title,
-        href: "/app/branch/schedule",
+        href: "/app/classes",
       })),
       ...state.invoices.map(item => ({
         type: "Invoice",
         label: item.id,
-        href: "/app/registrar/payments",
+        href: "/app/enrolments",
       })),
       ...state.certificates.map(item => ({
         type: "Certificate",
         label: item.verificationCode,
-        href: "/app/hod/certificates",
+        href: "/app/dashboard",
       })),
     ];
     return rows

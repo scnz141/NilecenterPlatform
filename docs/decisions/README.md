@@ -18,6 +18,7 @@ runtime changes.
 | [ADR-010](ADR-010-moodle-owned-learning-authority.md)                | Accepted           | Moodle-owned learning records and controlled command boundary |
 | [ADR-011](ADR-011-full-moodle-sandbox-crud.md)                       | Accepted           | Full synthetic Moodle sandbox CRUD authorization              |
 | [ADR-012](ADR-012-ncc-ems-primary-backend.md)                        | Accepted           | NCC EMS production backend and session authority              |
+| [ADR-013](ADR-013-unified-staff-app.md)                              | Accepted           | Unified staff app on the NCC interaction model                |
 
 Changing an accepted decision requires a superseding ADR, affected threat and
 data review, rollback plan, updated tests, and explicit approval. Do not edit an

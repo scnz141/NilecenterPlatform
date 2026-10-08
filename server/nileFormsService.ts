@@ -68,6 +68,8 @@ export type NileFormsActor = {
   courseIds: string[];
   classIds: string[];
   platformState: PlatformState;
+  /** NCC staff: identity and scope come from the sealed EMS session. */
+  external?: boolean;
 };
 
 export type FormDefinitionBundle = {
@@ -392,10 +394,72 @@ export function actorHasDepartment(
   );
 }
 
+/**
+ * NCC staff are not in the compatibility user store. Their role, branches,
+ * and departments were verified by EMS at sign-in and sealed into the
+ * HttpOnly session, so they are trusted here; nothing comes from the browser.
+ */
+function externalActor(
+  state: PlatformState,
+  session: ServerSession
+): NileFormsActor | null {
+  if (
+    session.provider !== "ncc" ||
+    session.authorizationModel !== "external" ||
+    !session.ncc
+  ) {
+    return null;
+  }
+  const role = session.activeRole;
+  if (role === "student") {
+    throw new NileFormsError(
+      "The active session no longer has an eligible user or role grant.",
+      403,
+      "session_authority_denied"
+    );
+  }
+  const superAdmin = role === "superadmin";
+  const scopes = session.ncc.effectiveScopes;
+  const branchIds = unique(scopes?.branchIds ?? session.branchIds ?? []);
+  const departmentIds = unique(
+    scopes?.departmentIds ?? session.departmentIds ?? []
+  );
+  // EMS scopes heads of department by department; every other staff role
+  // works across departments inside its branches.
+  const allDepartments = superAdmin || role !== "headofdepartment";
+  const allBranches =
+    superAdmin || (role === "headofdepartment" && branchIds.length === 0);
+  if (
+    !superAdmin &&
+    ((!allBranches && branchIds.length === 0) ||
+      (!allDepartments && departmentIds.length === 0))
+  ) {
+    throw new NileFormsError(
+      "The active session scope no longer overlaps the assigned role scope.",
+      403,
+      "session_scope_denied"
+    );
+  }
+  return {
+    userId: session.userId,
+    role,
+    branchIds: superAdmin ? [] : branchIds,
+    departmentIds: allDepartments ? [] : departmentIds,
+    allBranches,
+    allDepartments,
+    courseIds: unique(scopes?.courseIds ?? []),
+    classIds: unique(scopes?.classIds ?? []),
+    platformState: state,
+    external: true,
+  };
+}
+
 export function resolveActor(
   state: PlatformState,
   session: ServerSession
 ): NileFormsActor {
+  const external = externalActor(state, session);
+  if (external) return external;
   const user = state.users.find(item => item.id === session.userId);
   if (
     !user ||
@@ -1069,6 +1133,10 @@ function validateAssignmentTarget(
   state: PlatformState,
   definition?: FormDefinition
 ) {
+  if (actor.external) {
+    validateExternalAssignmentTarget(actor, target, definition);
+    return;
+  }
   const definitionAllowsTarget = () => {
     if (!definition?.branchId && !definition?.departmentId) return true;
     if (target.type === "role") return true;
@@ -1280,6 +1348,61 @@ function validateAssignmentTarget(
   }
 }
 
+/**
+ * NCC staff target respondents by EMS role, branch, or department, checked
+ * against the sealed session scope and the form's own scope. Person, course,
+ * and class targets need EMS lookups the compatibility runtime cannot make.
+ */
+function validateExternalAssignmentTarget(
+  actor: NileFormsActor,
+  target: FormAssignmentTarget,
+  definition?: FormDefinition
+) {
+  const outOfScope = () =>
+    new NileFormsError(
+      "The assignment target is outside the form scope.",
+      403,
+      "assignment_scope_denied"
+    );
+  if (target.type === "role") return;
+  if (target.type === "branch") {
+    if (!target.branchId.trim()) {
+      throw new NileFormsError(
+        "The assignment branch is invalid.",
+        400,
+        "assignment_target_invalid"
+      );
+    }
+    if (definition?.branchId && definition.branchId !== target.branchId) {
+      throw outOfScope();
+    }
+    if (!actorHasBranch(actor, target.branchId)) throw outOfScope();
+    return;
+  }
+  if (target.type === "department") {
+    if (!target.departmentId.trim()) {
+      throw new NileFormsError(
+        "The assignment department is invalid.",
+        400,
+        "assignment_target_invalid"
+      );
+    }
+    if (
+      definition?.departmentId &&
+      definition.departmentId !== target.departmentId
+    ) {
+      throw outOfScope();
+    }
+    if (!actorHasDepartment(actor, target.departmentId)) throw outOfScope();
+    return;
+  }
+  throw new NileFormsError(
+    "Assign this form by role, branch, or department.",
+    400,
+    "assignment_target_unsupported"
+  );
+}
+
 function managementOptionsForActor(
   actor: NileFormsActor,
   definition?: FormDefinition
@@ -1295,10 +1418,17 @@ function managementOptionsForActor(
     }
   };
 
+  const roles = respondentRoleOrder
+    .filter(role => allowed({ type: "role", role }))
+    .map(role => ({ id: role, label: respondentRoleLabels[role] }));
+  // Compatibility records use local ids; NCC staff pick EMS branches and
+  // departments from the EMS directory instead.
+  if (actor.external) {
+    return { roles, users: [], branches: [], departments: [], courses: [], classes: [] };
+  }
+
   return {
-    roles: respondentRoleOrder
-      .filter(role => allowed({ type: "role", role }))
-      .map(role => ({ id: role, label: respondentRoleLabels[role] })),
+    roles,
     users: state.users
       .filter(user => user.status === "active")
       .filter(user => allowed({ type: "user", userId: user.id }))

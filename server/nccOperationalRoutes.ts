@@ -1,16 +1,32 @@
 import {
   normalizeEmsAttendanceDetail,
+  normalizeEmsAttendanceSessions,
+  normalizeEmsClassSync,
+  normalizeEmsCourseStatistics,
+  normalizeEmsHourCellPatch,
+  normalizeEmsHourCellRange,
+  type EmsStagingHourCellOp,
   normalizeEmsClass,
   normalizeEmsClasses,
-  normalizeEmsClassEnrolment,
   normalizeEmsClassEnrolments,
+  normalizeEmsEnrolment,
   normalizeEmsClassGrades,
   normalizeEmsCourses,
   normalizeEmsLead,
   normalizeEmsLeads,
+  normalizeEmsLeadGroup,
+  normalizeEmsLeadGroups,
+  normalizeEmsTrialLesson,
+  normalizeEmsStudentLearning,
+  normalizeEmsStudentReport,
+  normalizeEmsAssignee,
+  normalizeEmsPage,
+  type EmsStagingListQuery,
   normalizeEmsCourse,
   normalizeEmsMoodleCoursePicker,
   normalizeEmsMoodleGroups,
+  normalizeEmsMoodleSite,
+  normalizeEmsMoodleSiteTest,
   normalizeEmsMoodleUsers,
   normalizeEmsRoom,
   normalizeEmsPlacementTest,
@@ -28,7 +44,10 @@ import {
   normalizeEmsNotification,
   normalizeEmsNotifications,
   normalizeEmsNotificationUnreadCount,
+  normalizeEmsNotificationsDeleted,
   normalizeEmsNotificationsMarkedRead,
+  isEmsStagingRole,
+  type EmsStagingRole,
   normalizeEmsSystemHealth,
   normalizeEmsTeacherWorkspace,
   type EmsStagingAttendanceDetail,
@@ -37,6 +56,8 @@ import {
   type EmsStagingClassGrades,
   type EmsStagingCourse,
   type EmsStagingLead,
+  type EmsStagingMoodleSite,
+  type EmsStagingMoodleSiteTest,
   type EmsStagingMoodleUser,
   type EmsStagingMoodleCoursePicker,
   type EmsStagingMoodleGroup,
@@ -53,14 +74,22 @@ import {
   type EmsStagingSystemHealth,
   type EmsStagingTeacherWorkspace,
 } from "./emsStagingClient.js";
+import { sessionDto } from "./auth.js";
 import {
   getNccRequestSession,
+  getNccSessionScopeOptions,
   hasNccAuthCookie,
+  isSwitchableEmsRole,
+  listNccAuthSessions,
+  logoutAllNccSessions,
   nccMoodleAccountWritesEnabled,
   nccStaffAuthEnabled,
+  revokeNccAuthSession,
   runNccRead,
   runNccWrite,
   sendNccAuthError,
+  setNccSessionScopes,
+  switchNccEmsRole,
   type NccAuthDependencies,
   type RemoteResult,
 } from "./nccAuthSession.js";
@@ -87,6 +116,8 @@ type OperationalApp = {
   get(path: string, handler: OperationalHandler): void;
   post?(path: string, handler: OperationalHandler): void;
   patch?(path: string, handler: OperationalHandler): void;
+  put?(path: string, handler: OperationalHandler): void;
+  delete?(path: string, handler: OperationalHandler): void;
 };
 
 type OperationalFamily =
@@ -164,11 +195,13 @@ function hasOnlyKeys(record: Record<string, unknown>, allowed: string[]) {
 }
 
 const LEAD_PATCH_STATUSES = [
-  "new",
+  "in_process",
+  "follow_up",
+  "future_registration",
   "placement_test",
   "trial_lesson",
-  "pending",
-  "cancelled",
+  "registered",
+  "lost",
 ];
 const LEAD_ENTRY_PATHS = ["direct", "placement", "trial", "unset"];
 const STUDENT_GENDERS = ["male", "female"];
@@ -335,6 +368,311 @@ function identityUpstream(body: Record<string, unknown>) {
   };
 }
 
+const LEAD_TYPES = ["new", "old", "old_student", "current_student"];
+const BOOKING_STATUSES = ["scheduled", "completed", "cancelled", "no_show"];
+const ENROLMENT_LIST_STATUSES = [
+  "fill",
+  "waiting",
+  "pending",
+  "pending_payment",
+  "pending_class",
+  "pending_group",
+  "enrolled",
+  "cancelled",
+  "completed",
+  "left",
+  "all",
+];
+const LEAD_REFERENCE_KEYS = [
+  "leadType",
+  "lostReasonId",
+  "lostActionReasonId",
+  "areaOfStudyId",
+  "assignedSsaId",
+] as const;
+
+function leadReferenceError(body: Record<string, unknown>): string | null {
+  if (
+    body.leadType !== undefined &&
+    !LEAD_TYPES.includes(String(body.leadType))
+  ) {
+    return "leadType is invalid.";
+  }
+  for (const key of [
+    "lostReasonId",
+    "lostActionReasonId",
+    "areaOfStudyId",
+    "assignedSsaId",
+  ] as const) {
+    const value = body[key];
+    if (
+      value !== undefined &&
+      value !== null &&
+      (typeof value !== "string" || !value.trim())
+    ) {
+      return `${key} is invalid.`;
+    }
+  }
+  return null;
+}
+
+function leadReferenceUpstream(body: Record<string, unknown>) {
+  const upstream: Record<string, unknown> = {};
+  for (const [source, target] of [
+    ["leadType", "lead_type"],
+    ["lostReasonId", "lost_reason_id"],
+    ["lostActionReasonId", "lost_action_reason_id"],
+    ["areaOfStudyId", "area_of_study_id"],
+    ["assignedSsaId", "assigned_ssa_id"],
+  ] as const) {
+    if (body[source] !== undefined) upstream[target] = body[source];
+  }
+  return upstream;
+}
+
+/** Money fields: finite, non-negative, at most two decimals. */
+function isMoney(value: unknown): value is number {
+  return (
+    typeof value === "number" &&
+    Number.isFinite(value) &&
+    value >= 0 &&
+    value <= 1_000_000_000 &&
+    Math.round(value * 100) === value * 100
+  );
+}
+
+/** `{ toBePaid, paid? }` registration or sale amounts. */
+function readAmounts(
+  value: unknown,
+  { requireToBePaid }: { requireToBePaid: boolean }
+): { to_be_paid?: number; paid?: number } | string {
+  if (!isPlainObject(value)) return "Amounts are required.";
+  const unknown = hasOnlyKeys(value, ["toBePaid", "paid"]);
+  if (unknown) return `${unknown} is not allowed.`;
+  if (value.toBePaid === undefined) {
+    if (requireToBePaid) return "toBePaid is required.";
+  } else if (!isMoney(value.toBePaid)) {
+    return "toBePaid is invalid.";
+  }
+  if (value.paid !== undefined && value.paid !== null && !isMoney(value.paid)) {
+    return "paid is invalid.";
+  }
+  if (
+    isMoney(value.toBePaid) &&
+    isMoney(value.paid) &&
+    value.paid > value.toBePaid
+  ) {
+    return "paid cannot exceed toBePaid.";
+  }
+  return {
+    ...(value.toBePaid !== undefined ? { to_be_paid: value.toBePaid } : {}),
+    ...(isMoney(value.paid) ? { paid: value.paid } : {}),
+  };
+}
+
+function isHttpsUrl(value: unknown): value is string {
+  if (typeof value !== "string" || value.length > 2000) return false;
+  try {
+    return new URL(value).protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
+type ListParam = {
+  /** Browser query name (camelCase). */
+  name: string;
+  /** EMS query name. */
+  ems: string;
+  kind: "string" | "array" | "boolean" | "enum";
+  values?: readonly string[];
+};
+
+const PAGING_KEYS = ["q", "page", "pageSize", "sort", "order"];
+
+/**
+ * Validates browser list filters against an allowlist and maps them to EMS
+ * query names. Unknown filters are rejected instead of silently dropped.
+ */
+function readListQuery(
+  request: OperationalRequest,
+  response: OperationalResponse,
+  params: ListParam[]
+): EmsStagingListQuery | null {
+  const query = request.query ?? {};
+  const out: EmsStagingListQuery = {};
+  const fail = (key: string) => {
+    response.status(400).json({ error: `${key} is invalid.` });
+    return null;
+  };
+  for (const key of Object.keys(query)) {
+    if (!PAGING_KEYS.includes(key) && !params.some(param => param.name === key)) {
+      response.status(400).json({ error: `${key} is not a supported filter.` });
+      return null;
+    }
+  }
+  const single = (key: string) => {
+    const value = query[key];
+    return Array.isArray(value) ? undefined : value;
+  };
+  if (query.q !== undefined) {
+    const q = single("q");
+    if (typeof q !== "string" || q.length > 200) return fail("q");
+    if (q.trim()) out.q = q.trim();
+  }
+  for (const [key, ems, max] of [
+    ["page", "page", 100_000],
+    ["pageSize", "page_size", 100],
+  ] as const) {
+    if (query[key] === undefined) continue;
+    const value = Number(single(key));
+    if (!Number.isSafeInteger(value) || value < 1 || value > max) {
+      return fail(key);
+    }
+    out[ems] = value;
+  }
+  if (query.sort !== undefined) {
+    const sort = single("sort");
+    if (typeof sort !== "string" || !/^[a-z_]{1,40}$/.test(sort)) {
+      return fail("sort");
+    }
+    out.sort = sort;
+  }
+  if (query.order !== undefined) {
+    const order = single("order");
+    if (order !== "asc" && order !== "desc") return fail("order");
+    out.order = order;
+  }
+  for (const param of params) {
+    const raw = query[param.name];
+    if (raw === undefined) continue;
+    if (param.kind === "array") {
+      const values = (Array.isArray(raw) ? raw : String(raw).split(","))
+        .map(item => String(item).trim())
+        .filter(Boolean);
+      if (values.length === 0 || values.length > 50) return fail(param.name);
+      if (param.values && values.some(item => !param.values!.includes(item))) {
+        return fail(param.name);
+      }
+      out[param.ems] = values;
+      continue;
+    }
+    const value = single(param.name);
+    if (typeof value !== "string" || !value.trim()) return fail(param.name);
+    if (param.kind === "boolean") {
+      if (value !== "true" && value !== "false") return fail(param.name);
+      out[param.ems] = value === "true";
+    } else if (param.kind === "enum") {
+      if (!param.values?.includes(value)) return fail(param.name);
+      out[param.ems] = value;
+    } else {
+      out[param.ems] = value.trim();
+    }
+  }
+  return out;
+}
+
+function pageBody<T>(page: {
+  items: T[];
+  total: number;
+  page: number;
+  pageSize: number;
+}) {
+  return {
+    items: page.items,
+    total: page.total,
+    page: page.page,
+    pageSize: page.pageSize,
+  };
+}
+
+/**
+ * Runs one NCC write, normalizes the payload, and replies `{ [key]: value }`
+ * (plus any one-time secrets). Shared by the admissions write routes.
+ */
+async function sendNccWrite<T>(
+  request: OperationalRequest,
+  response: OperationalResponse,
+  dependencies: NccAuthDependencies,
+  operation: Parameters<typeof runNccWrite>[2],
+  normalize: (payload: unknown) => T | null,
+  key: string,
+  oneTime?: (payload: Record<string, unknown>) => Record<string, unknown> | null
+) {
+  try {
+    const payload = await runNccWrite(request, response, operation, dependencies);
+    const value = normalize(payload);
+    if (!value) {
+      response
+        .status(502)
+        .json({ error: "NCC EMS returned invalid admissions data." });
+      return;
+    }
+    const secrets =
+      oneTime && isPlainObject(payload) ? oneTime(payload) : null;
+    response.json({ [key]: value, ...(secrets ? { oneTime: secrets } : {}) });
+  } catch (error) {
+    if (!sendNccAuthError(error, response)) throw error;
+  }
+}
+
+/** Placement and trial bookings share a subject + schedule shape. */
+function bookingBody(
+  body: Record<string, unknown>,
+  allowed: string[],
+  { create }: { create: boolean }
+): Record<string, unknown> | string {
+  const unknown = hasOnlyKeys(body, allowed);
+  if (unknown) return `${unknown} is not allowed.`;
+  const upstream: Record<string, unknown> = {};
+  if (create) {
+    if (
+      !isPlainObject(body.subject) ||
+      hasOnlyKeys(body.subject, ["type", "id"]) !== undefined ||
+      (body.subject.type !== "lead" && body.subject.type !== "student") ||
+      !isNonBlankString(body.subject.id)
+    ) {
+      return "subject is required.";
+    }
+    upstream[body.subject.type === "lead" ? "lead_id" : "student_id"] =
+      body.subject.id;
+  }
+  if (create || body.scheduledAt !== undefined) {
+    if (!isValidDateTime(body.scheduledAt)) return "scheduledAt is required.";
+    upstream.scheduled_at = body.scheduledAt;
+  }
+  for (const [source, target] of [
+    ["roomId", "room_id"],
+    ["areaOfStudyId", "area_of_study_id"],
+    ["courseId", "course_id"],
+  ] as const) {
+    const value = body[source];
+    if (value === undefined) continue;
+    if (value !== null && !isNonBlankString(value)) return `${source} is invalid.`;
+    upstream[target] = value;
+  }
+  if (body.meetingUrl !== undefined) {
+    if (body.meetingUrl !== null && !isHttpsUrl(body.meetingUrl)) {
+      return "meetingUrl must be an https URL.";
+    }
+    upstream.meeting_url = body.meetingUrl;
+  }
+  if (body.placementMoodleCourseId !== undefined) {
+    if (
+      body.placementMoodleCourseId !== null &&
+      !isPositiveInteger(body.placementMoodleCourseId)
+    ) {
+      return "placementMoodleCourseId is invalid.";
+    }
+    upstream.placement_moodle_course_id = body.placementMoodleCourseId;
+  }
+  if (body.status !== undefined) {
+    if (body.status !== "no_show") return "status is invalid.";
+    upstream.status = "no_show";
+  }
+  return upstream;
+}
+
 function prepareAdmissionsWrite(
   request: OperationalRequest,
   response: OperationalResponse,
@@ -416,6 +754,14 @@ function moodleGeneratedPassword(
   return { password: generated };
 }
 
+/** Placement bookings may create a Moodle login for the test taker. */
+function placementSecrets(payload: Record<string, unknown>) {
+  const generated = payload.generated_moodle_password;
+  return typeof generated === "string" && generated
+    ? { generatedMoodlePassword: generated }
+    : null;
+}
+
 function prepareDeliveryWrite(
   request: OperationalRequest,
   response: OperationalResponse,
@@ -460,8 +806,53 @@ function prepareNotificationsWrite(
   return true;
 }
 
+/**
+ * Guard for staff-session BFF routes (role switching, session scopes,
+ * auth-session management). Gated only by the staff-auth flag plus cookie.
+ */
+function prepareStaffAuth(
+  request: OperationalRequest,
+  response: OperationalResponse,
+  dependencies: NccAuthDependencies
+) {
+  response.setHeader("Cache-Control", "private, no-store");
+  response.setHeader("Vary", "Cookie");
+  const env = dependencies.env ?? process.env;
+  if (!nccStaffAuthEnabled(env) || !hasNccAuthCookie(request)) {
+    response
+      .status(404)
+      .json({ error: "EMS data is unavailable for this session." });
+    return false;
+  }
+  return true;
+}
+
+function isStringArray(value: unknown): value is string[] {
+  return (
+    Array.isArray(value) &&
+    value.every(item => typeof item === "string" && item.trim())
+  );
+}
+
 function isNonBlankString(value: unknown): value is string {
   return typeof value === "string" && value.trim().length > 0;
+}
+
+/** Disable/cancel actions require an action reason id in the body. */
+function requireReasonId(
+  request: OperationalRequest,
+  response: OperationalResponse
+): string | null {
+  const body = request.body;
+  if (
+    !isPlainObject(body) ||
+    hasOnlyKeys(body, ["reasonId"]) !== undefined ||
+    !isNonBlankString(body.reasonId)
+  ) {
+    response.status(400).json({ error: "reasonId is required." });
+    return null;
+  }
+  return body.reasonId.trim();
 }
 
 function isPositiveInteger(value: unknown): value is number {
@@ -546,6 +937,36 @@ function classMoodleBindBody(body: unknown) {
 }
 
 const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
+
+/** `{ marks: [{ studentId, statusId }] }`, one mark per student. */
+function attendanceMarksBody(
+  body: unknown
+): Array<{ student_id: string; status_id: number }> | null {
+  if (
+    !isPlainObject(body) ||
+    hasOnlyKeys(body, ["marks"]) !== undefined ||
+    !Array.isArray(body.marks)
+  ) {
+    return null;
+  }
+  const students = new Set<string>();
+  const marks: Array<{ student_id: string; status_id: number }> = [];
+  for (const mark of body.marks) {
+    if (
+      !isPlainObject(mark) ||
+      hasOnlyKeys(mark, ["studentId", "statusId"]) !== undefined ||
+      !isNonBlankString(mark.studentId) ||
+      !isPositiveInteger(mark.statusId)
+    ) {
+      return null;
+    }
+    const studentId = mark.studentId.trim();
+    if (students.has(studentId)) return null;
+    students.add(studentId);
+    marks.push({ student_id: studentId, status_id: mark.statusId as number });
+  }
+  return marks;
+}
 
 function isDateOnly(value: unknown): value is string {
   if (typeof value !== "string" || !DATE_ONLY.test(value)) return false;
@@ -697,17 +1118,27 @@ export function registerNccOperationalRoutes(
   app: OperationalApp,
   dependencies: NccAuthDependencies = {}
 ) {
-  app.get("/api/ncc/admissions/students", (request, response) =>
-    handleOperationalRead<EmsStagingStudent[]>(
+  app.get("/api/ncc/admissions/students", (request, response) => {
+    const query = readListQuery(request, response, [
+      { name: "homeBranchId", ems: "home_branch_id", kind: "array" },
+      {
+        name: "status",
+        ems: "status",
+        kind: "array",
+        values: ["active", "disabled"],
+      },
+    ]);
+    if (!query) return;
+    return handleOperationalRead(
       request,
       response,
       dependencies,
       "admissions",
-      (api, token) => api.students(token),
-      normalizeEmsStudents,
-      items => ({ items })
-    )
-  );
+      (api, token) => api.students(token, query),
+      payload => normalizeEmsPage(payload, normalizeEmsStudent),
+      pageBody
+    );
+  });
   app.get("/api/ncc/admissions/students/:studentId", (request, response) =>
     handleOperationalRead<EmsStagingStudent>(
       request,
@@ -733,17 +1164,35 @@ export function registerNccOperationalRoutes(
         items => ({ items })
       )
   );
-  app.get("/api/ncc/admissions/leads", (request, response) =>
-    handleOperationalRead<EmsStagingLead[]>(
+  app.get("/api/ncc/admissions/leads", (request, response) => {
+    const query = readListQuery(request, response, [
+      { name: "branchId", ems: "branch_id", kind: "array" },
+      {
+        name: "status",
+        ems: "status",
+        kind: "array",
+        values: LEAD_PATCH_STATUSES,
+      },
+      { name: "type", ems: "type", kind: "array", values: LEAD_TYPES },
+      { name: "wantsOnline", ems: "wants_online", kind: "boolean" },
+      { name: "wantsOnsite", ems: "wants_onsite", kind: "boolean" },
+      { name: "groupId", ems: "group_id", kind: "string" },
+      { name: "ungrouped", ems: "ungrouped", kind: "boolean" },
+      { name: "assignedSsaId", ems: "assigned_ssa_id", kind: "array" },
+      { name: "unassigned", ems: "unassigned", kind: "boolean" },
+      { name: "areaOfStudyId", ems: "area_of_study_id", kind: "array" },
+    ]);
+    if (!query) return;
+    return handleOperationalRead(
       request,
       response,
       dependencies,
       "admissions",
-      (api, token) => api.leads(token),
-      normalizeEmsLeads,
-      items => ({ items })
-    )
-  );
+      (api, token) => api.leads(token, query),
+      payload => normalizeEmsPage(payload, normalizeEmsLead),
+      pageBody
+    );
+  });
   app.get("/api/ncc/admissions/leads/:leadId", (request, response) =>
     handleOperationalRead<EmsStagingLead>(
       request,
@@ -755,17 +1204,24 @@ export function registerNccOperationalRoutes(
       lead => ({ lead })
     )
   );
-  app.get("/api/ncc/admissions/placement-tests", (request, response) =>
-    handleOperationalRead<EmsStagingPlacementTest[]>(
+  app.get("/api/ncc/admissions/placement-tests", (request, response) => {
+    const query = readListQuery(request, response, [
+      { name: "branchId", ems: "branch_id", kind: "string" },
+      { name: "status", ems: "status", kind: "enum", values: BOOKING_STATUSES },
+      { name: "leadId", ems: "lead_id", kind: "string" },
+      { name: "studentId", ems: "student_id", kind: "string" },
+    ]);
+    if (!query) return;
+    return handleOperationalRead(
       request,
       response,
       dependencies,
       "admissions",
-      (api, token) => api.placementTests(token),
-      normalizeEmsPlacementTests,
-      items => ({ items })
-    )
-  );
+      (api, token) => api.placementTests(token, query),
+      payload => normalizeEmsPage(payload, normalizeEmsPlacementTest),
+      pageBody
+    );
+  });
   app.get(
     "/api/ncc/admissions/placement-tests/:placementTestId",
     (request, response) =>
@@ -780,17 +1236,29 @@ export function registerNccOperationalRoutes(
         placementTest => ({ placementTest })
       )
   );
-  app.get("/api/ncc/delivery/classes", (request, response) =>
-    handleOperationalRead<EmsStagingClass[]>(
+  app.get("/api/ncc/delivery/classes", (request, response) => {
+    const query = readListQuery(request, response, [
+      { name: "courseId", ems: "course_id", kind: "string" },
+      { name: "branchId", ems: "branch_id", kind: "string" },
+      { name: "departmentId", ems: "department_id", kind: "string" },
+      {
+        name: "status",
+        ems: "status",
+        kind: "enum",
+        values: ["active", "disabled"],
+      },
+    ]);
+    if (!query) return;
+    return handleOperationalRead(
       request,
       response,
       dependencies,
       "delivery",
-      (api, token) => api.classes(token),
-      normalizeEmsClasses,
-      items => ({ items })
-    )
-  );
+      (api, token) => api.classes(token, query),
+      payload => normalizeEmsPage(payload, normalizeEmsClass),
+      pageBody
+    );
+  });
   app.get("/api/ncc/delivery/classes/:classId", (request, response) =>
     handleOperationalRead<EmsStagingClass>(
       request,
@@ -824,16 +1292,41 @@ export function registerNccOperationalRoutes(
       workspace => ({ workspace })
     )
   );
-  app.get("/api/ncc/delivery/courses", (request, response) =>
-    handleOperationalRead<EmsStagingCourse[]>(
+  const COURSE_LIST_FILTERS: ListParam[] = [
+    { name: "departmentId", ems: "department_id", kind: "string" },
+    {
+      name: "status",
+      ems: "status",
+      kind: "array",
+      values: ["active", "disabled"],
+    },
+  ];
+  app.get("/api/ncc/delivery/courses", (request, response) => {
+    const query = readListQuery(request, response, COURSE_LIST_FILTERS);
+    if (!query) return;
+    return handleOperationalRead(
       request,
       response,
       dependencies,
       "delivery",
-      (api, token) => api.courses(token),
-      normalizeEmsCourses,
-      items => ({ items })
-    )
+      (api, token) => api.courses(token, query),
+      payload => normalizeEmsPage(payload, normalizeEmsCourse),
+      pageBody
+    );
+  });
+  app.get(
+    "/api/ncc/delivery/courses/:courseId/statistics",
+    (request, response) =>
+      handleOperationalRead(
+        request,
+        response,
+        dependencies,
+        "delivery",
+        (api, token): Promise<RemoteResult> =>
+          api.courseStatistics(token, request.params?.courseId ?? ""),
+        normalizeEmsCourseStatistics,
+        statistics => ({ statistics })
+      )
   );
   app.get("/api/ncc/system/health", (request, response) =>
     handleOperationalRead<EmsStagingSystemHealth>(
@@ -846,17 +1339,36 @@ export function registerNccOperationalRoutes(
       health => ({ health })
     )
   );
-  app.get("/api/ncc/dashboard/summary", (request, response) =>
-    handleOperationalRead<EmsStagingDashboardSummary>(
+  app.get("/api/ncc/dashboard/summary", (request, response) => {
+    // Optional branch and created-date window (YYYY-MM-DD, inclusive).
+    const query = (request.query ?? {}) as Record<string, unknown>;
+    const allowed = ["branchId", "createdFrom", "createdTo"];
+    const { branchId, createdFrom, createdTo } = query;
+    if (
+      Object.keys(query).some(key => !allowed.includes(key)) ||
+      (branchId !== undefined && !isNonBlankString(branchId)) ||
+      (createdFrom !== undefined && !isDateOnly(createdFrom)) ||
+      (createdTo !== undefined && !isDateOnly(createdTo)) ||
+      (isDateOnly(createdFrom) && isDateOnly(createdTo) && createdFrom > createdTo)
+    ) {
+      response.status(400).json({ error: "Request query is invalid." });
+      return;
+    }
+    return handleOperationalRead<EmsStagingDashboardSummary>(
       request,
       response,
       dependencies,
       "dashboard",
-      (api, token) => api.dashboardSummary(token),
+      (api, token) =>
+        api.dashboardSummary(token, {
+          branchId: branchId as string | undefined,
+          createdFrom: createdFrom as string | undefined,
+          createdTo: createdTo as string | undefined,
+        }),
       normalizeEmsDashboardSummary,
       summary => ({ summary })
-    )
-  );
+    );
+  });
   app.get("/api/ncc/audit/events", (request, response) => {
     const query = request.query ?? {};
     const queryKeys = Object.keys(query);
@@ -1010,6 +1522,237 @@ export function registerNccOperationalRoutes(
       }
     }
   );
+  app.post?.(
+    "/api/ncc/notifications/delete-all",
+    async (request, response) => {
+      if (!prepareNotificationsWrite(request, response, dependencies)) return;
+      if (!isEmptyBody(request.body)) {
+        response.status(400).json({ error: "Request body must be empty." });
+        return;
+      }
+      try {
+        const deleted = normalizeEmsNotificationsDeleted(
+          await runNccWrite(
+            request,
+            response,
+            (api, token): Promise<RemoteResult> =>
+              api.deleteAllNotifications(token),
+            dependencies
+          )
+        );
+        if (!deleted) {
+          response
+            .status(502)
+            .json({ error: "NCC EMS returned invalid notifications data." });
+          return;
+        }
+        response.json({ deleted: deleted.deleted });
+      } catch (error) {
+        if (!sendNccAuthError(error, response)) throw error;
+      }
+    }
+  );
+  app.delete?.(
+    "/api/ncc/notifications/:notificationId",
+    async (request, response) => {
+      if (!prepareNotificationsWrite(request, response, dependencies)) return;
+      if (!isEmptyBody(request.body)) {
+        response.status(400).json({ error: "Request body must be empty." });
+        return;
+      }
+      const notificationId = request.params?.notificationId;
+      if (!isNonBlankString(notificationId)) {
+        response.status(400).json({ error: "Notification id is required." });
+        return;
+      }
+      try {
+        await runNccWrite(
+          request,
+          response,
+          (api, token): Promise<RemoteResult> =>
+            api.deleteNotification(token, notificationId),
+          dependencies
+        );
+        response.json({ ok: true });
+      } catch (error) {
+        if (!sendNccAuthError(error, response)) throw error;
+      }
+    }
+  );
+
+  app.post?.("/api/ncc/auth/switch-role", async (request, response) => {
+    if (!prepareStaffAuth(request, response, dependencies)) return;
+    const body = request.body;
+    if (!isPlainObject(body) || hasOnlyKeys(body, ["targetRole"])) {
+      response.status(400).json({ error: "Request body is invalid." });
+      return;
+    }
+    const targetRole = body.targetRole;
+    if (!isEmsStagingRole(String(targetRole ?? ""))) {
+      response.status(400).json({ error: "targetRole is invalid." });
+      return;
+    }
+    const env = dependencies.env ?? process.env;
+    const session = getNccRequestSession(request, env);
+    if (!session?.ncc) {
+      response.status(401).json({ error: "Sign in required." });
+      return;
+    }
+    if (
+      !isSwitchableEmsRole(
+        session.ncc.assignedRole,
+        targetRole as EmsStagingRole
+      )
+    ) {
+      response
+        .status(403)
+        .json({ error: "You cannot switch to that role." });
+      return;
+    }
+    try {
+      const next = await switchNccEmsRole(
+        request,
+        response,
+        targetRole as EmsStagingRole,
+        dependencies
+      );
+      response.json({ session: sessionDto(next) });
+    } catch (error) {
+      if (!sendNccAuthError(error, response)) throw error;
+    }
+  });
+
+  app.post?.("/api/ncc/auth/session-scopes", async (request, response) => {
+    if (!prepareStaffAuth(request, response, dependencies)) return;
+    const body = request.body;
+    if (!isPlainObject(body) || !Object.keys(body).length) {
+      response.status(400).json({ error: "Request body is required." });
+      return;
+    }
+    const unknown = hasOnlyKeys(body, [
+      "branchId",
+      "branchIds",
+      "departmentIds",
+      "classIds",
+      "courseIds",
+    ]);
+    if (unknown) {
+      response.status(400).json({ error: `${unknown} is not allowed.` });
+      return;
+    }
+    if (
+      (body.branchId !== undefined &&
+        body.branchId !== null &&
+        (typeof body.branchId !== "string" || !body.branchId.trim())) ||
+      (body.branchIds !== undefined && !isStringArray(body.branchIds)) ||
+      (body.departmentIds !== undefined &&
+        !isStringArray(body.departmentIds)) ||
+      (body.classIds !== undefined && !isStringArray(body.classIds)) ||
+      (body.courseIds !== undefined && !isStringArray(body.courseIds))
+    ) {
+      response.status(400).json({ error: "Session scopes are invalid." });
+      return;
+    }
+    try {
+      const next = await setNccSessionScopes(
+        request,
+        response,
+        {
+          ...(body.branchId !== undefined
+            ? {
+                branchId:
+                  body.branchId === null
+                    ? null
+                    : (body.branchId as string).trim(),
+              }
+            : {}),
+          ...(body.branchIds !== undefined
+            ? { branchIds: body.branchIds }
+            : {}),
+          ...(body.departmentIds !== undefined
+            ? { departmentIds: body.departmentIds }
+            : {}),
+          ...(body.classIds !== undefined
+            ? { classIds: body.classIds }
+            : {}),
+          ...(body.courseIds !== undefined
+            ? { courseIds: body.courseIds }
+            : {}),
+        },
+        dependencies
+      );
+      response.json({ session: sessionDto(next) });
+    } catch (error) {
+      if (!sendNccAuthError(error, response)) throw error;
+    }
+  });
+
+  app.get(
+    "/api/ncc/auth/session-scope-options",
+    async (request, response) => {
+      if (!prepareStaffAuth(request, response, dependencies)) return;
+      try {
+        const options = await getNccSessionScopeOptions(
+          request,
+          response,
+          dependencies
+        );
+        response.json(options);
+      } catch (error) {
+        if (!sendNccAuthError(error, response)) throw error;
+      }
+    }
+  );
+
+  app.get("/api/ncc/auth/sessions", async (request, response) => {
+    if (!prepareStaffAuth(request, response, dependencies)) return;
+    try {
+      const items = await listNccAuthSessions(
+        request,
+        response,
+        dependencies
+      );
+      response.json({ items });
+    } catch (error) {
+      if (!sendNccAuthError(error, response)) throw error;
+    }
+  });
+
+  app.delete?.(
+    "/api/ncc/auth/sessions/:sessionId",
+    async (request, response) => {
+      if (!prepareStaffAuth(request, response, dependencies)) return;
+      if (!isEmptyBody(request.body)) {
+        response.status(400).json({ error: "Request body must be empty." });
+        return;
+      }
+      const sessionId = request.params?.sessionId;
+      if (!isNonBlankString(sessionId)) {
+        response.status(400).json({ error: "Session id is required." });
+        return;
+      }
+      try {
+        await revokeNccAuthSession(request, response, sessionId, dependencies);
+        response.json({ ok: true });
+      } catch (error) {
+        if (!sendNccAuthError(error, response)) throw error;
+      }
+    }
+  );
+
+  app.post?.("/api/ncc/auth/logout-all", async (request, response) => {
+    if (!prepareStaffAuth(request, response, dependencies)) return;
+    if (!isEmptyBody(request.body)) {
+      response.status(400).json({ error: "Request body must be empty." });
+      return;
+    }
+    try {
+      await logoutAllNccSessions(request, response, dependencies);
+      response.json({ ok: true });
+    } catch (error) {
+      if (!sendNccAuthError(error, response)) throw error;
+    }
+  });
 
   app.post?.("/api/ncc/admissions/leads", async (request, response) => {
     if (!prepareAdmissionsWrite(request, response, dependencies)) return;
@@ -1030,9 +1773,15 @@ export function registerNccOperationalRoutes(
       "wantsOnsite",
       "entryPath",
       "branchId",
+      ...LEAD_REFERENCE_KEYS,
     ]);
     if (unknown) {
       response.status(400).json({ error: `${unknown} is not allowed.` });
+      return;
+    }
+    const leadRefError = leadReferenceError(body);
+    if (leadRefError) {
+      response.status(400).json({ error: leadRefError });
       return;
     }
     for (const [key, label] of [
@@ -1091,6 +1840,7 @@ export function registerNccOperationalRoutes(
     ] as const) {
       if (body[source] !== undefined) upstream[target] = body[source];
     }
+    Object.assign(upstream, leadReferenceUpstream(body));
     try {
       const lead = normalizeEmsLead(
         await runNccWrite(
@@ -1134,9 +1884,21 @@ export function registerNccOperationalRoutes(
         entryPath: "entry_path",
         status: "status",
       } as const;
-      const unknown = hasOnlyKeys(body, Object.keys(mapping));
+      const unknown = hasOnlyKeys(body, [
+        ...Object.keys(mapping),
+        ...LEAD_REFERENCE_KEYS,
+      ]);
       if (unknown) {
         response.status(400).json({ error: `${unknown} is not allowed.` });
+        return;
+      }
+      if (Object.keys(body).length === 0) {
+        response.status(400).json({ error: "At least one field is required." });
+        return;
+      }
+      const leadRefError = leadReferenceError(body);
+      if (leadRefError) {
+        response.status(400).json({ error: leadRefError });
         return;
       }
       if (
@@ -1170,11 +1932,14 @@ export function registerNccOperationalRoutes(
         response.status(400).json({ error: "entryPath is invalid." });
         return;
       }
-      const upstream = Object.fromEntries(
-        Object.entries(mapping)
-          .filter(([key]) => body[key] !== undefined)
-          .map(([key, target]) => [target, body[key]])
-      );
+      const upstream = {
+        ...Object.fromEntries(
+          Object.entries(mapping)
+            .filter(([key]) => body[key] !== undefined)
+            .map(([key, target]) => [target, body[key]])
+        ),
+        ...leadReferenceUpstream(body),
+      };
       try {
         const lead = normalizeEmsLead(
           await runNccWrite(
@@ -1182,33 +1947,6 @@ export function registerNccOperationalRoutes(
             response,
             (api, token) =>
               api.patchLead(token, request.params?.leadId ?? "", upstream),
-            dependencies
-          )
-        );
-        if (!lead) {
-          response
-            .status(502)
-            .json({ error: "NCC EMS returned invalid admissions data." });
-          return;
-        }
-        response.json({ lead });
-      } catch (error) {
-        if (!sendNccAuthError(error, response)) throw error;
-      }
-    }
-  );
-
-  app.post?.(
-    "/api/ncc/admissions/leads/:leadId/ready",
-    async (request, response) => {
-      if (!prepareAdmissionsWrite(request, response, dependencies)) return;
-      try {
-        const lead = normalizeEmsLead(
-          await runNccWrite(
-            request,
-            response,
-            (api, token) =>
-              api.markLeadReady(token, request.params?.leadId ?? ""),
             dependencies
           )
         );
@@ -1310,6 +2048,9 @@ export function registerNccOperationalRoutes(
       "nationalId",
       "guardians",
       "branchId",
+      "registration",
+      "note",
+      "assignedSsaId",
     ]);
     if (unknown) {
       response.status(400).json({ error: `${unknown} is not allowed.` });
@@ -1320,6 +2061,24 @@ export function registerNccOperationalRoutes(
         response.status(400).json({ error: `${key} is required.` });
         return;
       }
+    }
+    const registration = readAmounts(body.registration, {
+      requireToBePaid: true,
+    });
+    if (typeof registration === "string") {
+      response.status(400).json({ error: `registration: ${registration}` });
+      return;
+    }
+    if (
+      (body.note !== undefined &&
+        body.note !== null &&
+        typeof body.note !== "string") ||
+      (body.assignedSsaId !== undefined &&
+        body.assignedSsaId !== null &&
+        !isNonBlankString(body.assignedSsaId))
+    ) {
+      response.status(400).json({ error: "note or assignedSsaId is invalid." });
+      return;
     }
     const invalid = identityError(body, true);
     if (invalid) {
@@ -1344,28 +2103,25 @@ export function registerNccOperationalRoutes(
       first_name: body.firstName,
       last_name: body.lastName,
       email: body.email,
-      ...(branchId ? { branch_id: branchId } : {}),
+      ...(branchId ? { home_branch_id: branchId } : {}),
+      registration,
+      ...(typeof body.note === "string" && body.note.trim()
+        ? { note: body.note.trim() }
+        : {}),
+      ...(isNonBlankString(body.assignedSsaId)
+        ? { assigned_ssa_id: body.assignedSsaId }
+        : {}),
       ...identityUpstream(body),
     };
-    try {
-      const student = normalizeEmsStudent(
-        await runNccWrite(
-          request,
-          response,
-          (api, token) => api.createStudent(token, upstream),
-          dependencies
-        )
-      );
-      if (!student) {
-        response
-          .status(502)
-          .json({ error: "NCC EMS returned invalid admissions data." });
-        return;
-      }
-      response.json({ student });
-    } catch (error) {
-      if (!sendNccAuthError(error, response)) throw error;
-    }
+    await sendNccWrite(
+      request,
+      response,
+      dependencies,
+      (api, token) => api.createStudent(token, upstream),
+      normalizeEmsStudent,
+      "student",
+      placementSecrets
+    );
   });
 
   app.patch?.(
@@ -1381,6 +2137,9 @@ export function registerNccOperationalRoutes(
         firstName: "first_name",
         lastName: "last_name",
         email: "email",
+        homeBranchId: "home_branch_id",
+        assignedSsaId: "assigned_ssa_id",
+        note: "note",
       } as const;
       const unknown = hasOnlyKeys(body, [
         ...Object.keys(mapping),
@@ -1395,6 +2154,21 @@ export function registerNccOperationalRoutes(
       ]);
       if (unknown) {
         response.status(400).json({ error: `${unknown} is not allowed.` });
+        return;
+      }
+      if (
+        (body.homeBranchId !== undefined &&
+          !isNonBlankString(body.homeBranchId)) ||
+        (body.assignedSsaId !== undefined &&
+          body.assignedSsaId !== null &&
+          !isNonBlankString(body.assignedSsaId)) ||
+        (body.note !== undefined &&
+          body.note !== null &&
+          typeof body.note !== "string")
+      ) {
+        response
+          .status(400)
+          .json({ error: "homeBranchId, assignedSsaId, or note is invalid." });
         return;
       }
       const invalid = identityError(body, false);
@@ -1448,6 +2222,9 @@ export function registerNccOperationalRoutes(
     (action: "disable" | "enable") =>
     async (request: OperationalRequest, response: OperationalResponse) => {
       if (!prepareAdmissionsWrite(request, response, dependencies)) return;
+      const reasonId =
+        action === "disable" ? requireReasonId(request, response) : "";
+      if (reasonId === null) return;
       try {
         const student = normalizeEmsStudent(
           await runNccWrite(
@@ -1455,7 +2232,11 @@ export function registerNccOperationalRoutes(
             response,
             (api, token) =>
               action === "disable"
-                ? api.disableStudent(token, request.params?.studentId ?? "")
+                ? api.disableStudent(
+                    token,
+                    request.params?.studentId ?? "",
+                    reasonId
+                  )
                 : api.enableStudent(token, request.params?.studentId ?? ""),
             dependencies
           )
@@ -1489,31 +2270,21 @@ export function registerNccOperationalRoutes(
         response.status(400).json({ error: "Request body is required." });
         return;
       }
-      const unknown = hasOnlyKeys(body, [
-        "subject",
-        "scheduledAt",
-        "roomId",
-        "branchId",
-      ]);
-      if (unknown) {
-        response.status(400).json({ error: `${unknown} is not allowed.` });
-        return;
-      }
-      if (
-        !isPlainObject(body.subject) ||
-        hasOnlyKeys(body.subject, ["type", "id"]) !== undefined ||
-        (body.subject.type !== "lead" && body.subject.type !== "student") ||
-        typeof body.subject.id !== "string" ||
-        !body.subject.id
-      ) {
-        response.status(400).json({ error: "subject is required." });
-        return;
-      }
-      if (
-        typeof body.scheduledAt !== "string" ||
-        !Number.isFinite(Date.parse(body.scheduledAt))
-      ) {
-        response.status(400).json({ error: "scheduledAt is required." });
+      const upstream = bookingBody(
+        body,
+        [
+          "subject",
+          "scheduledAt",
+          "roomId",
+          "branchId",
+          "meetingUrl",
+          "areaOfStudyId",
+          "placementMoodleCourseId",
+        ],
+        { create: true }
+      );
+      if (typeof upstream === "string") {
+        response.status(400).json({ error: upstream });
         return;
       }
       const branchId = selectedBranchId(
@@ -1523,33 +2294,16 @@ export function registerNccOperationalRoutes(
         body.branchId
       );
       if (branchId === null) return;
-      const upstream: Record<string, unknown> = {
-        ...(branchId ? { branch_id: branchId } : {}),
-        ...(body.subject.type === "lead"
-          ? { lead_id: body.subject.id }
-          : { student_id: body.subject.id }),
-        scheduled_at: body.scheduledAt,
-        ...(body.roomId !== undefined ? { room_id: body.roomId } : {}),
-      };
-      try {
-        const placementTest = normalizeEmsPlacementTest(
-          await runNccWrite(
-            request,
-            response,
-            (api, token) => api.createPlacementTest(token, upstream),
-            dependencies
-          )
-        );
-        if (!placementTest) {
-          response
-            .status(502)
-            .json({ error: "NCC EMS returned invalid admissions data." });
-          return;
-        }
-        response.json({ placementTest });
-      } catch (error) {
-        if (!sendNccAuthError(error, response)) throw error;
-      }
+      if (branchId) upstream.branch_id = branchId;
+      await sendNccWrite(
+        request,
+        response,
+        dependencies,
+        (api, token) => api.createPlacementTest(token, upstream),
+        normalizeEmsPlacementTest,
+        "placementTest",
+        placementSecrets
+      );
     }
   );
 
@@ -1562,49 +2316,28 @@ export function registerNccOperationalRoutes(
         response.status(400).json({ error: "At least one field is required." });
         return;
       }
-      const mapping = {
-        scheduledAt: "scheduled_at",
-        roomId: "room_id",
-        status: "status",
-      } as const;
-      const unknown = hasOnlyKeys(body, Object.keys(mapping));
-      if (unknown) {
-        response.status(400).json({ error: `${unknown} is not allowed.` });
-        return;
-      }
-      if (body.status !== undefined && body.status !== "no_show") {
-        response.status(400).json({ error: "status is invalid." });
-        return;
-      }
-      const upstream = Object.fromEntries(
-        Object.entries(mapping)
-          .filter(([key]) => body[key] !== undefined)
-          .map(([key, target]) => [target, body[key]])
+      const upstream = bookingBody(
+        body,
+        ["scheduledAt", "roomId", "status", "meetingUrl", "areaOfStudyId"],
+        { create: false }
       );
-      try {
-        const placementTest = normalizeEmsPlacementTest(
-          await runNccWrite(
-            request,
-            response,
-            (api, token) =>
-              api.patchPlacementTest(
-                token,
-                request.params?.placementTestId ?? "",
-                upstream
-              ),
-            dependencies
-          )
-        );
-        if (!placementTest) {
-          response
-            .status(502)
-            .json({ error: "NCC EMS returned invalid admissions data." });
-          return;
-        }
-        response.json({ placementTest });
-      } catch (error) {
-        if (!sendNccAuthError(error, response)) throw error;
+      if (typeof upstream === "string") {
+        response.status(400).json({ error: upstream });
+        return;
       }
+      await sendNccWrite(
+        request,
+        response,
+        dependencies,
+        (api, token) =>
+          api.patchPlacementTest(
+            token,
+            request.params?.placementTestId ?? "",
+            upstream
+          ),
+        normalizeEmsPlacementTest,
+        "placementTest"
+      );
     }
   );
 
@@ -1618,32 +2351,59 @@ export function registerNccOperationalRoutes(
         return;
       }
       let upstream: Record<string, unknown> = {};
+      let reasonId = "";
+      if (action === "cancel") {
+        const value = requireReasonId(request, response);
+        if (value === null) return;
+        reasonId = value;
+      }
       if (action === "record-result") {
         const unknown = hasOnlyKeys(body, [
-          "recommendedCourseId",
           "resultScore",
+          "mentoringTeacherId",
+          "recommendedCourseId",
           "resultNotes",
         ]);
         if (unknown) {
           response.status(400).json({ error: `${unknown} is not allowed.` });
           return;
         }
+        if (!isNonBlankString(body.resultScore)) {
+          response.status(400).json({ error: "resultScore is required." });
+          return;
+        }
+        if (!isNonBlankString(body.mentoringTeacherId)) {
+          response
+            .status(400)
+            .json({ error: "mentoringTeacherId is required." });
+          return;
+        }
         if (
-          typeof body.recommendedCourseId !== "string" ||
-          !body.recommendedCourseId
+          body.recommendedCourseId !== undefined &&
+          body.recommendedCourseId !== null &&
+          !isNonBlankString(body.recommendedCourseId)
         ) {
           response
             .status(400)
-            .json({ error: "recommendedCourseId is required." });
+            .json({ error: "recommendedCourseId is invalid." });
+          return;
+        }
+        if (
+          body.resultNotes !== undefined &&
+          body.resultNotes !== null &&
+          typeof body.resultNotes !== "string"
+        ) {
+          response.status(400).json({ error: "resultNotes is invalid." });
           return;
         }
         upstream = {
-          recommended_course_id: body.recommendedCourseId,
-          ...(body.resultScore !== undefined
-            ? { result_score: body.resultScore }
+          result_score: body.resultScore.trim(),
+          mentoring_teacher_id: body.mentoringTeacherId.trim(),
+          ...(isNonBlankString(body.recommendedCourseId)
+            ? { recommended_course_id: body.recommendedCourseId }
             : {}),
-          ...(body.resultNotes !== undefined
-            ? { result_notes: body.resultNotes }
+          ...(typeof body.resultNotes === "string" && body.resultNotes.trim()
+            ? { result_notes: body.resultNotes.trim() }
             : {}),
         };
       }
@@ -1656,7 +2416,8 @@ export function registerNccOperationalRoutes(
               action === "cancel"
                 ? api.cancelPlacementTest(
                     token,
-                    request.params?.placementTestId ?? ""
+                    request.params?.placementTestId ?? "",
+                    reasonId
                   )
                 : api.recordPlacementResult(
                     token,
@@ -1685,6 +2446,819 @@ export function registerNccOperationalRoutes(
     "/api/ncc/admissions/placement-tests/:placementTestId/record-result",
     placementAction("record-result")
   );
+
+  /* ---------------- Admissions: sync, registrations, learning ---------- */
+
+  app.post?.(
+    "/api/ncc/admissions/placement-tests/:placementTestId/sync-moodle-result",
+    async (request, response) => {
+      if (!prepareAdmissionsWrite(request, response, dependencies)) return;
+      if (!isEmptyBody(request.body)) {
+        response.status(400).json({ error: "Request body must be empty." });
+        return;
+      }
+      await sendNccWrite(
+        request,
+        response,
+        dependencies,
+        (api, token) =>
+          api.syncPlacementMoodleResult(
+            token,
+            request.params?.placementTestId ?? ""
+          ),
+        normalizeEmsPlacementTest,
+        "placementTest"
+      );
+    }
+  );
+
+  app.put?.(
+    "/api/ncc/admissions/leads/:leadId/registration",
+    async (request, response) => {
+      if (!prepareAdmissionsWrite(request, response, dependencies)) return;
+      const amounts = readAmounts(request.body, { requireToBePaid: true });
+      if (typeof amounts === "string") {
+        response.status(400).json({ error: amounts });
+        return;
+      }
+      await sendNccWrite(
+        request,
+        response,
+        dependencies,
+        (api, token) =>
+          api.putLeadRegistration(token, request.params?.leadId ?? "", amounts),
+        normalizeEmsLead,
+        "lead"
+      );
+    }
+  );
+
+  app.patch?.(
+    "/api/ncc/admissions/students/:studentId/registration",
+    async (request, response) => {
+      if (!prepareAdmissionsWrite(request, response, dependencies)) return;
+      const amounts = readAmounts(request.body, { requireToBePaid: true });
+      if (typeof amounts === "string") {
+        response.status(400).json({ error: amounts });
+        return;
+      }
+      await sendNccWrite(
+        request,
+        response,
+        dependencies,
+        (api, token) =>
+          api.patchStudentRegistration(
+            token,
+            request.params?.studentId ?? "",
+            amounts
+          ),
+        normalizeEmsStudent,
+        "student"
+      );
+    }
+  );
+
+  app.get(
+    "/api/ncc/admissions/students/:studentId/learning",
+    (request, response) =>
+      handleOperationalRead(
+        request,
+        response,
+        dependencies,
+        "admissions",
+        (api, token) =>
+          api.studentLearning(token, request.params?.studentId ?? ""),
+        normalizeEmsStudentLearning,
+        learning => ({ learning })
+      )
+  );
+
+  app.get("/api/ncc/admissions/students/:studentId/report", (request, response) => {
+    const query = readListQuery(request, response, [
+      { name: "classId", ems: "class_id", kind: "string" },
+    ]);
+    if (!query) return;
+    return handleOperationalRead(
+      request,
+      response,
+      dependencies,
+      "admissions",
+      (api, token) =>
+        api.studentReport(
+          token,
+          request.params?.studentId ?? "",
+          typeof query.class_id === "string" ? query.class_id : undefined
+        ),
+      normalizeEmsStudentReport,
+      report => ({ report })
+    );
+  });
+
+  app.get("/api/ncc/admissions/assignees", (request, response) => {
+    const query = readListQuery(request, response, [
+      { name: "branchId", ems: "branch_id", kind: "string" },
+    ]);
+    if (!query) return;
+    const session = getNccRequestSession(request, dependencies.env ?? process.env);
+    const branchId =
+      typeof query.branch_id === "string"
+        ? query.branch_id
+        : (session?.workspaceBranchId ?? null);
+    if (!branchId) {
+      response.setHeader("Cache-Control", "private, no-store");
+      response.status(400).json({ error: "branchId is required." });
+      return;
+    }
+    return handleOperationalRead(
+      request,
+      response,
+      dependencies,
+      "admissions",
+      (api, token) =>
+        api.assignees(
+          token,
+          branchId,
+          typeof query.q === "string" ? query.q : undefined
+        ),
+      payload => normalizeEmsPage(payload, normalizeEmsAssignee),
+      page => ({ items: page.items })
+    );
+  });
+
+  /* ---------------- Enrolments (course sales) ------------------------- */
+
+  app.get("/api/ncc/admissions/enrolments", (request, response) => {
+    const query = readListQuery(request, response, [
+      {
+        name: "status",
+        ems: "status",
+        kind: "enum",
+        values: ENROLMENT_LIST_STATUSES,
+      },
+      { name: "branchId", ems: "branch_id", kind: "string" },
+      { name: "courseId", ems: "course_id", kind: "string" },
+      {
+        name: "kind",
+        ems: "kind",
+        kind: "enum",
+        values: ["individual", "group"],
+      },
+    ]);
+    if (!query) return;
+    return handleOperationalRead(
+      request,
+      response,
+      dependencies,
+      "admissions",
+      (api, token) => api.enrolments(token, query),
+      payload => normalizeEmsPage(payload, normalizeEmsEnrolment),
+      pageBody
+    );
+  });
+
+  app.post?.("/api/ncc/admissions/enrolments", async (request, response) => {
+    if (!prepareAdmissionsWrite(request, response, dependencies)) return;
+    const body = request.body;
+    if (!isPlainObject(body)) {
+      response.status(400).json({ error: "Request body is required." });
+      return;
+    }
+    const unknown = hasOnlyKeys(body, [
+      "studentId",
+      "courseId",
+      "kind",
+      "branchId",
+      "toBePaid",
+      "paid",
+    ]);
+    if (unknown) {
+      response.status(400).json({ error: `${unknown} is not allowed.` });
+      return;
+    }
+    if (!isNonBlankString(body.studentId) || !isNonBlankString(body.courseId)) {
+      response
+        .status(400)
+        .json({ error: "studentId and courseId are required." });
+      return;
+    }
+    if (body.kind !== "individual" && body.kind !== "group") {
+      response.status(400).json({ error: "kind is invalid." });
+      return;
+    }
+    const amounts = readAmounts(
+      { toBePaid: body.toBePaid, ...(body.paid !== undefined ? { paid: body.paid } : {}) },
+      { requireToBePaid: true }
+    );
+    if (typeof amounts === "string") {
+      response.status(400).json({ error: amounts });
+      return;
+    }
+    const branchId = selectedBranchId(
+      request,
+      response,
+      dependencies,
+      body.branchId
+    );
+    if (branchId === null) return;
+    if (!branchId) {
+      response.status(400).json({ error: "branchId is required." });
+      return;
+    }
+    await sendNccWrite(
+      request,
+      response,
+      dependencies,
+      (api, token) =>
+        api.createEnrolment(token, {
+          student_id: body.studentId,
+          course_id: body.courseId,
+          kind: body.kind,
+          branch_id: branchId,
+          ...amounts,
+        }),
+      normalizeEmsEnrolment,
+      "enrolment"
+    );
+  });
+
+  app.patch?.(
+    "/api/ncc/admissions/enrolments/:enrolmentId",
+    async (request, response) => {
+      if (!prepareAdmissionsWrite(request, response, dependencies)) return;
+      const body = request.body;
+      if (!isPlainObject(body) || Object.keys(body).length === 0) {
+        response.status(400).json({ error: "At least one field is required." });
+        return;
+      }
+      const unknown = hasOnlyKeys(body, ["toBePaid", "paid", "branchId", "kind"]);
+      if (unknown) {
+        response.status(400).json({ error: `${unknown} is not allowed.` });
+        return;
+      }
+      const amounts = readAmounts(
+        Object.fromEntries(
+          Object.entries(body).filter(([key]) => key === "toBePaid" || key === "paid")
+        ),
+        { requireToBePaid: false }
+      );
+      if (typeof amounts === "string") {
+        response.status(400).json({ error: amounts });
+        return;
+      }
+      if (body.branchId !== undefined && !isNonBlankString(body.branchId)) {
+        response.status(400).json({ error: "branchId is invalid." });
+        return;
+      }
+      if (
+        body.kind !== undefined &&
+        body.kind !== "individual" &&
+        body.kind !== "group"
+      ) {
+        response.status(400).json({ error: "kind is invalid." });
+        return;
+      }
+      await sendNccWrite(
+        request,
+        response,
+        dependencies,
+        (api, token) =>
+          api.patchEnrolment(token, request.params?.enrolmentId ?? "", {
+            ...amounts,
+            ...(body.branchId !== undefined ? { branch_id: body.branchId } : {}),
+            ...(body.kind !== undefined ? { kind: body.kind } : {}),
+          }),
+        normalizeEmsEnrolment,
+        "enrolment"
+      );
+    }
+  );
+
+  for (const action of ["leave", "cancel", "complete"] as const) {
+    app.post?.(
+      `/api/ncc/admissions/enrolments/:enrolmentId/${action}`,
+      async (request, response) => {
+        if (!prepareAdmissionsWrite(request, response, dependencies)) return;
+        let reasonId = "";
+        if (action === "complete") {
+          if (!isEmptyBody(request.body)) {
+            response.status(400).json({ error: "Request body must be empty." });
+            return;
+          }
+        } else {
+          const value = requireReasonId(request, response);
+          if (value === null) return;
+          reasonId = value;
+        }
+        const id = request.params?.enrolmentId ?? "";
+        await sendNccWrite(
+          request,
+          response,
+          dependencies,
+          (api, token) =>
+            action === "leave"
+              ? api.leaveEnrolment(token, id, reasonId)
+              : action === "cancel"
+                ? api.cancelEnrolment(token, id, reasonId)
+                : api.completeEnrolment(token, id),
+          normalizeEmsEnrolment,
+          "enrolment"
+        );
+      }
+    );
+  }
+
+  /* ---------------- Trial lessons ------------------------------------- */
+
+  app.get("/api/ncc/admissions/trial-lessons", (request, response) => {
+    const query = readListQuery(request, response, [
+      { name: "branchId", ems: "branch_id", kind: "string" },
+      { name: "status", ems: "status", kind: "enum", values: BOOKING_STATUSES },
+      { name: "leadId", ems: "lead_id", kind: "string" },
+      { name: "studentId", ems: "student_id", kind: "string" },
+    ]);
+    if (!query) return;
+    return handleOperationalRead(
+      request,
+      response,
+      dependencies,
+      "admissions",
+      (api, token) => api.trialLessons(token, query),
+      payload => normalizeEmsPage(payload, normalizeEmsTrialLesson),
+      pageBody
+    );
+  });
+
+  app.get(
+    "/api/ncc/admissions/trial-lessons/:trialLessonId",
+    (request, response) =>
+      handleOperationalRead(
+        request,
+        response,
+        dependencies,
+        "admissions",
+        (api, token) =>
+          api.trialLesson(token, request.params?.trialLessonId ?? ""),
+        normalizeEmsTrialLesson,
+        trialLesson => ({ trialLesson })
+      )
+  );
+
+  app.post?.("/api/ncc/admissions/trial-lessons", async (request, response) => {
+    if (!prepareAdmissionsWrite(request, response, dependencies)) return;
+    const body = request.body;
+    if (!isPlainObject(body)) {
+      response.status(400).json({ error: "Request body is required." });
+      return;
+    }
+    const upstream = bookingBody(
+      body,
+      [
+        "subject",
+        "scheduledAt",
+        "roomId",
+        "branchId",
+        "meetingUrl",
+        "areaOfStudyId",
+        "courseId",
+      ],
+      { create: true }
+    );
+    if (typeof upstream === "string") {
+      response.status(400).json({ error: upstream });
+      return;
+    }
+    if (
+      Boolean(upstream.area_of_study_id) === Boolean(upstream.course_id)
+    ) {
+      response
+        .status(400)
+        .json({ error: "Choose either an area of study or a course." });
+      return;
+    }
+    const branchId = selectedBranchId(
+      request,
+      response,
+      dependencies,
+      body.branchId
+    );
+    if (branchId === null) return;
+    if (branchId) upstream.branch_id = branchId;
+    await sendNccWrite(
+      request,
+      response,
+      dependencies,
+      (api, token) => api.createTrialLesson(token, upstream),
+      normalizeEmsTrialLesson,
+      "trialLesson"
+    );
+  });
+
+  app.patch?.(
+    "/api/ncc/admissions/trial-lessons/:trialLessonId",
+    async (request, response) => {
+      if (!prepareAdmissionsWrite(request, response, dependencies)) return;
+      const body = request.body;
+      if (!isPlainObject(body) || Object.keys(body).length === 0) {
+        response.status(400).json({ error: "At least one field is required." });
+        return;
+      }
+      const upstream = bookingBody(
+        body,
+        [
+          "scheduledAt",
+          "roomId",
+          "meetingUrl",
+          "areaOfStudyId",
+          "courseId",
+          "status",
+        ],
+        { create: false }
+      );
+      if (typeof upstream === "string") {
+        response.status(400).json({ error: upstream });
+        return;
+      }
+      await sendNccWrite(
+        request,
+        response,
+        dependencies,
+        (api, token) =>
+          api.patchTrialLesson(
+            token,
+            request.params?.trialLessonId ?? "",
+            upstream
+          ),
+        normalizeEmsTrialLesson,
+        "trialLesson"
+      );
+    }
+  );
+
+  app.post?.(
+    "/api/ncc/admissions/trial-lessons/:trialLessonId/record-result",
+    async (request, response) => {
+      if (!prepareAdmissionsWrite(request, response, dependencies)) return;
+      const body = request.body ?? {};
+      if (
+        !isPlainObject(body) ||
+        hasOnlyKeys(body, ["recommendedCourseId", "resultScore", "resultNotes"])
+      ) {
+        response.status(400).json({ error: "Request body is invalid." });
+        return;
+      }
+      const upstream: Record<string, unknown> = {};
+      for (const [source, target] of [
+        ["recommendedCourseId", "recommended_course_id"],
+        ["resultScore", "result_score"],
+        ["resultNotes", "result_notes"],
+      ] as const) {
+        const value = body[source];
+        if (value === undefined || value === null) continue;
+        if (typeof value !== "string") {
+          response.status(400).json({ error: `${source} is invalid.` });
+          return;
+        }
+        if (value.trim()) upstream[target] = value.trim();
+      }
+      await sendNccWrite(
+        request,
+        response,
+        dependencies,
+        (api, token) =>
+          api.recordTrialLessonResult(
+            token,
+            request.params?.trialLessonId ?? "",
+            upstream
+          ),
+        normalizeEmsTrialLesson,
+        "trialLesson"
+      );
+    }
+  );
+
+  app.post?.(
+    "/api/ncc/admissions/trial-lessons/:trialLessonId/cancel",
+    async (request, response) => {
+      if (!prepareAdmissionsWrite(request, response, dependencies)) return;
+      const reasonId = requireReasonId(request, response);
+      if (reasonId === null) return;
+      await sendNccWrite(
+        request,
+        response,
+        dependencies,
+        (api, token) =>
+          api.cancelTrialLesson(
+            token,
+            request.params?.trialLessonId ?? "",
+            reasonId
+          ),
+        normalizeEmsTrialLesson,
+        "trialLesson"
+      );
+    }
+  );
+
+  /* ---------------- Lead groups (siblings, friends) -------------------- */
+
+  app.get("/api/ncc/admissions/lead-groups", (request, response) => {
+    const query = readListQuery(request, response, [
+      { name: "branchId", ems: "branch_id", kind: "string" },
+    ]);
+    if (!query) return;
+    return handleOperationalRead(
+      request,
+      response,
+      dependencies,
+      "admissions",
+      (api, token) =>
+        api.leadGroups(
+          token,
+          typeof query.branch_id === "string" ? query.branch_id : undefined
+        ),
+      normalizeEmsLeadGroups,
+      items => ({ items })
+    );
+  });
+
+  app.get("/api/ncc/admissions/lead-groups/:groupId", (request, response) =>
+    handleOperationalRead(
+      request,
+      response,
+      dependencies,
+      "admissions",
+      (api, token) => api.leadGroup(token, request.params?.groupId ?? ""),
+      normalizeEmsLeadGroup,
+      group => ({ group })
+    )
+  );
+
+  const leadGroupBody = (
+    body: Record<string, unknown>,
+    create: boolean
+  ): Record<string, unknown> | string => {
+    const unknown = hasOnlyKeys(body, [
+      "branchId",
+      "label",
+      "assignedSsaId",
+      "memberLeadIds",
+      "primaryLeadId",
+    ]);
+    if (unknown) return `${unknown} is not allowed.`;
+    if (!create && body.branchId !== undefined) return "branchId is not allowed.";
+    const upstream: Record<string, unknown> = {};
+    if (create || body.memberLeadIds !== undefined) {
+      if (
+        !isStringArray(body.memberLeadIds) ||
+        body.memberLeadIds.length < 2 ||
+        new Set(body.memberLeadIds).size !== body.memberLeadIds.length
+      ) {
+        return "memberLeadIds needs at least two different leads.";
+      }
+      upstream.member_lead_ids = body.memberLeadIds;
+    }
+    if (body.primaryLeadId !== undefined && body.primaryLeadId !== null) {
+      if (!isNonBlankString(body.primaryLeadId)) return "primaryLeadId is invalid.";
+      const members = (upstream.member_lead_ids as string[] | undefined) ?? null;
+      if (members && !members.includes(body.primaryLeadId)) {
+        return "primaryLeadId must be a member.";
+      }
+      upstream.primary_lead_id = body.primaryLeadId;
+    }
+    for (const [source, target] of [
+      ["label", "label"],
+      ["assignedSsaId", "assigned_ssa_id"],
+    ] as const) {
+      const value = body[source];
+      if (value === undefined) continue;
+      if (value !== null && (typeof value !== "string" || value.length > 200)) {
+        return `${source} is invalid.`;
+      }
+      upstream[target] = typeof value === "string" ? value.trim() || null : null;
+    }
+    return upstream;
+  };
+
+  app.post?.("/api/ncc/admissions/lead-groups", async (request, response) => {
+    if (!prepareAdmissionsWrite(request, response, dependencies)) return;
+    const body = request.body;
+    if (!isPlainObject(body)) {
+      response.status(400).json({ error: "Request body is required." });
+      return;
+    }
+    const upstream = leadGroupBody(body, true);
+    if (typeof upstream === "string") {
+      response.status(400).json({ error: upstream });
+      return;
+    }
+    const branchId = selectedBranchId(
+      request,
+      response,
+      dependencies,
+      body.branchId
+    );
+    if (branchId === null) return;
+    if (!branchId) {
+      response.status(400).json({ error: "branchId is required." });
+      return;
+    }
+    upstream.branch_id = branchId;
+    await sendNccWrite(
+      request,
+      response,
+      dependencies,
+      (api, token) => api.createLeadGroup(token, upstream),
+      normalizeEmsLeadGroup,
+      "group"
+    );
+  });
+
+  app.patch?.(
+    "/api/ncc/admissions/lead-groups/:groupId",
+    async (request, response) => {
+      if (!prepareAdmissionsWrite(request, response, dependencies)) return;
+      const body = request.body;
+      if (!isPlainObject(body) || Object.keys(body).length === 0) {
+        response.status(400).json({ error: "At least one field is required." });
+        return;
+      }
+      const upstream = leadGroupBody(body, false);
+      if (typeof upstream === "string") {
+        response.status(400).json({ error: upstream });
+        return;
+      }
+      await sendNccWrite(
+        request,
+        response,
+        dependencies,
+        (api, token) =>
+          api.patchLeadGroup(token, request.params?.groupId ?? "", upstream),
+        normalizeEmsLeadGroup,
+        "group"
+      );
+    }
+  );
+
+  app.delete?.(
+    "/api/ncc/admissions/lead-groups/:groupId",
+    async (request, response) => {
+      if (!prepareAdmissionsWrite(request, response, dependencies)) return;
+      try {
+        await runNccWrite(
+          request,
+          response,
+          (api, token) =>
+            api.deleteLeadGroup(token, request.params?.groupId ?? ""),
+          dependencies
+        );
+        response.json({ deleted: true });
+      } catch (error) {
+        if (!sendNccAuthError(error, response)) throw error;
+      }
+    }
+  );
+
+  app.get("/api/ncc/moodle/site", (request, response) =>
+    handleOperationalRead<EmsStagingMoodleSite>(
+      request,
+      response,
+      dependencies,
+      "system",
+      (api, token): Promise<RemoteResult> => api.moodleSite(token),
+      normalizeEmsMoodleSite,
+      site => ({ site })
+    )
+  );
+
+  app.post?.("/api/ncc/moodle/site/test", (request, response) =>
+    handleOperationalRead<EmsStagingMoodleSiteTest>(
+      request,
+      response,
+      dependencies,
+      "system",
+      (api, token): Promise<RemoteResult> => api.testMoodleSite(token),
+      normalizeEmsMoodleSiteTest,
+      result => ({ result })
+    )
+  );
+
+  const moodleSiteBody = (
+    body: unknown,
+    { requireCredentials }: { requireCredentials: boolean }
+  ): Record<string, unknown> | null => {
+    if (
+      !isPlainObject(body) ||
+      hasOnlyKeys(body, [
+        "siteUrl",
+        "wsToken",
+        "autoCreateStudentMoodle",
+        "placementTestMoodleCourseId",
+      ])
+    ) {
+      return null;
+    }
+    const upstream: Record<string, unknown> = {};
+    if (body.siteUrl !== undefined) {
+      if (
+        typeof body.siteUrl !== "string" ||
+        !body.siteUrl.trim() ||
+        body.siteUrl.trim().length > 500
+      ) {
+        return null;
+      }
+      upstream.site_url = body.siteUrl.trim();
+    }
+    if (body.wsToken !== undefined) {
+      if (
+        typeof body.wsToken !== "string" ||
+        !body.wsToken.trim() ||
+        body.wsToken.trim().length > 255
+      ) {
+        return null;
+      }
+      upstream.ws_token = body.wsToken.trim();
+    }
+    if (body.autoCreateStudentMoodle !== undefined) {
+      if (typeof body.autoCreateStudentMoodle !== "boolean") return null;
+      upstream.auto_create_student_moodle = body.autoCreateStudentMoodle;
+    }
+    if (body.placementTestMoodleCourseId !== undefined) {
+      if (
+        body.placementTestMoodleCourseId !== null &&
+        (!Number.isSafeInteger(body.placementTestMoodleCourseId) ||
+          (body.placementTestMoodleCourseId as number) < 1)
+      ) {
+        return null;
+      }
+      upstream.placement_test_moodle_course_id =
+        body.placementTestMoodleCourseId;
+    }
+    if (requireCredentials && (!upstream.site_url || !upstream.ws_token)) {
+      return null;
+    }
+    if (!requireCredentials && Object.keys(upstream).length === 0) {
+      return null;
+    }
+    return upstream;
+  };
+
+  const moodleSiteWrite =
+    (method: "put" | "patch") =>
+    async (request: OperationalRequest, response: OperationalResponse) => {
+      if (!prepareMoodleAccount(request, response, dependencies)) return;
+      const upstream = moodleSiteBody(request.body, {
+        requireCredentials: method === "put",
+      });
+      if (!upstream) {
+        response.status(400).json({ error: "Request body is invalid." });
+        return;
+      }
+      try {
+        const payload = await runNccWrite(
+          request,
+          response,
+          (api, token) =>
+            method === "put"
+              ? api.putMoodleSite(token, upstream)
+              : api.patchMoodleSite(token, upstream),
+          dependencies
+        );
+        const site = normalizeEmsMoodleSite(payload);
+        if (!site) {
+          response
+            .status(502)
+            .json({ error: "NCC EMS returned invalid Moodle site data." });
+          return;
+        }
+        response.json({ site });
+      } catch (error) {
+        if (!sendNccAuthError(error, response)) throw error;
+      }
+    };
+
+  app.put?.("/api/ncc/moodle/site", moodleSiteWrite("put"));
+  app.patch?.("/api/ncc/moodle/site", moodleSiteWrite("patch"));
+
+  app.post?.("/api/ncc/moodle/site/disconnect", async (request, response) => {
+    if (!prepareMoodleAccount(request, response, dependencies)) return;
+    try {
+      const payload = await runNccWrite(
+        request,
+        response,
+        (api, token) => api.disconnectMoodleSite(token),
+        dependencies
+      );
+      const site = normalizeEmsMoodleSite(payload);
+      if (!site) {
+        response
+          .status(502)
+          .json({ error: "NCC EMS returned invalid Moodle site data." });
+        return;
+      }
+      response.json({ site });
+    } catch (error) {
+      if (!sendNccAuthError(error, response)) throw error;
+    }
+  });
 
   app.get("/api/ncc/moodle/users", async (request, response) => {
     response.setHeader("Vary", "Cookie");
@@ -1808,9 +3382,13 @@ export function registerNccOperationalRoutes(
     if (!prepareDeliveryWrite(request, response, dependencies)) return;
     const q = request.query?.q;
     const refresh = request.query?.refresh;
+    const unmapped = request.query?.unmapped;
     if (
       (q !== undefined && typeof q !== "string") ||
-      (refresh !== undefined && refresh !== "true" && refresh !== "false")
+      (refresh !== undefined && refresh !== "true" && refresh !== "false") ||
+      (unmapped !== undefined &&
+        unmapped !== "true" &&
+        unmapped !== "false")
     ) {
       response.status(400).json({ error: "Request query is invalid." });
       return;
@@ -1824,7 +3402,8 @@ export function registerNccOperationalRoutes(
             api.moodleCourses(
               token,
               typeof q === "string" ? q : undefined,
-              refresh === "true"
+              refresh === "true",
+              unmapped === undefined ? undefined : unmapped === "true"
             ),
           dependencies
         )
@@ -1906,6 +3485,9 @@ export function registerNccOperationalRoutes(
     (action: "disable" | "enable" | "refresh") =>
     async (request: OperationalRequest, response: OperationalResponse) => {
       if (!prepareDeliveryWrite(request, response, dependencies)) return;
+      const reasonId =
+        action === "disable" ? requireReasonId(request, response) : "";
+      if (reasonId === null) return;
       try {
         const course = normalizeEmsCourse(
           await runNccWrite(
@@ -1913,7 +3495,11 @@ export function registerNccOperationalRoutes(
             response,
             (api, token) =>
               action === "disable"
-                ? api.disableCourse(token, request.params?.courseId ?? "")
+                ? api.disableCourse(
+                    token,
+                    request.params?.courseId ?? "",
+                    reasonId
+                  )
                 : action === "enable"
                   ? api.enableCourse(token, request.params?.courseId ?? "")
                   : api.refreshCourse(token, request.params?.courseId ?? ""),
@@ -1932,12 +3518,68 @@ export function registerNccOperationalRoutes(
       }
     };
 
+  /** Optional course links; `null` clears a link on PATCH. */
+  const readCourseLinks = (
+    body: Record<string, unknown>,
+    response: OperationalResponse
+  ): Record<string, unknown> | null => {
+    const out: Record<string, unknown> = {};
+    for (const [key, ems] of [
+      ["areaOfStudyId", "area_of_study_id"],
+      ["previousCourseId", "previous_course_id"],
+    ] as const) {
+      if (body[key] === undefined) continue;
+      if (body[key] !== null && !isNonBlankString(body[key])) {
+        response.status(400).json({ error: `${key} is invalid.` });
+        return null;
+      }
+      out[ems] = body[key] === null ? null : (body[key] as string).trim();
+    }
+    return out;
+  };
+
+  app.post?.(
+    "/api/ncc/delivery/courses/refresh",
+    async (request, response) => {
+      if (!prepareDeliveryWrite(request, response, dependencies)) return;
+      const query = readListQuery(request, response, COURSE_LIST_FILTERS);
+      if (!query) return;
+      try {
+        const page = normalizeEmsPage(
+          await runNccWrite(
+            request,
+            response,
+            (api, token) => api.refreshCourses(token, query),
+            dependencies
+          ),
+          normalizeEmsCourse
+        );
+        if (!page) {
+          response
+            .status(502)
+            .json({ error: "NCC EMS returned invalid delivery data." });
+          return;
+        }
+        response.json(pageBody(page));
+      } catch (error) {
+        if (!sendNccAuthError(error, response)) throw error;
+      }
+    }
+  );
+
   app.post?.("/api/ncc/delivery/courses", async (request, response) => {
     if (!prepareDeliveryWrite(request, response, dependencies)) return;
     const body = request.body;
     if (
       !isPlainObject(body) ||
-      hasOnlyKeys(body, ["departmentId", "moodleCourseId", "sortOrder"])
+      hasOnlyKeys(body, [
+        "departmentId",
+        "moodleCourseId",
+        "sortOrder",
+        "totalHours",
+        "areaOfStudyId",
+        "previousCourseId",
+      ])
     ) {
       response.status(400).json({ error: "Request body is invalid." });
       return;
@@ -1954,6 +3596,13 @@ export function registerNccOperationalRoutes(
       response.status(400).json({ error: "sortOrder is invalid." });
       return;
     }
+    // EMS requires total teaching hours for a new course.
+    if (!isPositiveInteger(body.totalHours)) {
+      response.status(400).json({ error: "totalHours is required." });
+      return;
+    }
+    const courseLinks = readCourseLinks(body, response);
+    if (!courseLinks) return;
     try {
       const course = normalizeEmsCourse(
         await runNccWrite(
@@ -1963,6 +3612,8 @@ export function registerNccOperationalRoutes(
             api.createCourse(token, {
               department_id: (body.departmentId as string).trim(),
               moodle_course_id: body.moodleCourseId,
+              total_hours: body.totalHours,
+              ...courseLinks,
               ...(body.sortOrder !== undefined
                 ? { sort_order: body.sortOrder }
                 : {}),
@@ -1989,12 +3640,28 @@ export function registerNccOperationalRoutes(
       const body = request.body;
       if (
         !isPlainObject(body) ||
-        hasOnlyKeys(body, ["departmentId", "sortOrder", "moodleAttendanceId"])
+        hasOnlyKeys(body, [
+          "departmentId",
+          "sortOrder",
+          "moodleAttendanceId",
+          "totalHours",
+          "areaOfStudyId",
+          "previousCourseId",
+        ])
       ) {
         response.status(400).json({ error: "Request body is invalid." });
         return;
       }
-      const upstream: Record<string, unknown> = {};
+      const links = readCourseLinks(body, response);
+      if (!links) return;
+      const upstream: Record<string, unknown> = { ...links };
+      if (body.totalHours !== undefined) {
+        if (!isPositiveInteger(body.totalHours)) {
+          response.status(400).json({ error: "totalHours is invalid." });
+          return;
+        }
+        upstream.total_hours = body.totalHours;
+      }
       if (body.departmentId !== undefined) {
         if (!isNonBlankString(body.departmentId)) {
           response.status(400).json({ error: "departmentId is invalid." });
@@ -2061,6 +3728,9 @@ export function registerNccOperationalRoutes(
     (action: "disable" | "enable") =>
     async (request: OperationalRequest, response: OperationalResponse) => {
       if (!prepareDeliveryWrite(request, response, dependencies)) return;
+      const reasonId =
+        action === "disable" ? requireReasonId(request, response) : "";
+      if (reasonId === null) return;
       try {
         const room = normalizeEmsRoom(
           await runNccWrite(
@@ -2068,7 +3738,7 @@ export function registerNccOperationalRoutes(
             response,
             (api, token) =>
               action === "disable"
-                ? api.disableRoom(token, request.params?.roomId ?? "")
+                ? api.disableRoom(token, request.params?.roomId ?? "", reasonId)
                 : api.enableRoom(token, request.params?.roomId ?? ""),
             dependencies
           )
@@ -2214,10 +3884,117 @@ export function registerNccOperationalRoutes(
     roomLifecycle("enable")
   );
 
+  /** `from`/`to` (YYYY-MM-DD, at most 62 days) for an hour-cell range read. */
+  const readHourRange = (
+    request: OperationalRequest,
+    response: OperationalResponse
+  ): { from: string; to: string } | null => {
+    const query = request.query ?? {};
+    const { from, to } = query as Record<string, unknown>;
+    if (
+      Object.keys(query).some(key => key !== "from" && key !== "to") ||
+      !isDateOnly(from) ||
+      !isDateOnly(to) ||
+      from > to ||
+      (Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) /
+        86_400_000 >
+        62
+    ) {
+      response.status(400).json({ error: "Request query is invalid." });
+      return null;
+    }
+    return { from, to };
+  };
+
+  app.get(
+    "/api/ncc/delivery/rooms/:roomId/hour-cells",
+    (request, response) => {
+      const range = readHourRange(request, response);
+      if (!range) return;
+      return handleOperationalRead(
+        request,
+        response,
+        dependencies,
+        "delivery",
+        (api, token): Promise<RemoteResult> =>
+          api.roomHourCells(
+            token,
+            request.params?.roomId ?? "",
+            range.from,
+            range.to
+          ),
+        normalizeEmsHourCellRange,
+        value => ({ range: value })
+      );
+    }
+  );
+
+  app.patch?.(
+    "/api/ncc/delivery/rooms/:roomId/hour-cells",
+    async (request, response) => {
+      if (!prepareDeliveryWrite(request, response, dependencies)) return;
+      const body = request.body;
+      const ops: EmsStagingHourCellOp[] = [];
+      const valid =
+        isPlainObject(body) &&
+        hasOnlyKeys(body, ["ops"]) === undefined &&
+        Array.isArray(body.ops) &&
+        body.ops.length <= 24 * 62 &&
+        body.ops.every(item => {
+          if (
+            !isPlainObject(item) ||
+            hasOnlyKeys(item, ["date", "hour", "status"]) !== undefined ||
+            !isDateOnly(item.date) ||
+            !Number.isSafeInteger(item.hour) ||
+            (item.hour as number) < 0 ||
+            (item.hour as number) > 23 ||
+            (item.status !== null &&
+              item.status !== "available" &&
+              item.status !== "unavailable")
+          ) {
+            return false;
+          }
+          ops.push({
+            date: item.date,
+            hour: item.hour as number,
+            status: item.status as EmsStagingHourCellOp["status"],
+          });
+          return true;
+        });
+      if (!valid) {
+        response.status(400).json({ error: "Request body is invalid." });
+        return;
+      }
+      try {
+        const result = normalizeEmsHourCellPatch(
+          await runNccWrite(
+            request,
+            response,
+            (api, token) =>
+              api.patchRoomHourCells(token, request.params?.roomId ?? "", ops),
+            dependencies
+          )
+        );
+        if (!result) {
+          response
+            .status(502)
+            .json({ error: "NCC EMS returned invalid delivery data." });
+          return;
+        }
+        response.json(result);
+      } catch (error) {
+        if (!sendNccAuthError(error, response)) throw error;
+      }
+    }
+  );
+
   const classLifecycle =
     (action: "disable" | "enable") =>
     async (request: OperationalRequest, response: OperationalResponse) => {
       if (!prepareDeliveryWrite(request, response, dependencies)) return;
+      const reasonId =
+        action === "disable" ? requireReasonId(request, response) : "";
+      if (reasonId === null) return;
       try {
         const value = normalizeEmsClass(
           await runNccWrite(
@@ -2225,7 +4002,11 @@ export function registerNccOperationalRoutes(
             response,
             (api, token) =>
               action === "disable"
-                ? api.disableClass(token, request.params?.classId ?? "")
+                ? api.disableClass(
+                    token,
+                    request.params?.classId ?? "",
+                    reasonId
+                  )
                 : api.enableClass(token, request.params?.classId ?? ""),
             dependencies
           )
@@ -2314,6 +4095,27 @@ export function registerNccOperationalRoutes(
       }
       upstream.default_room_id = body.defaultRoomId;
     }
+    if (body.kind !== undefined) {
+      if (body.kind !== "group" && body.kind !== "individual") {
+        response.status(400).json({ error: "kind is invalid." });
+        return null;
+      }
+      upstream.kind = body.kind;
+    }
+    if (body.meetingUrl !== undefined) {
+      if (body.meetingUrl !== null && !isHttpsUrl(body.meetingUrl)) {
+        response.status(400).json({ error: "meetingUrl is invalid." });
+        return null;
+      }
+      upstream.meeting_url = body.meetingUrl;
+    }
+    if (body.assignedSsaId !== undefined) {
+      if (body.assignedSsaId !== null && !isNonBlankString(body.assignedSsaId)) {
+        response.status(400).json({ error: "assignedSsaId is invalid." });
+        return null;
+      }
+      upstream.assigned_ssa_id = body.assignedSsaId;
+    }
     return upstream;
   };
 
@@ -2333,6 +4135,9 @@ export function registerNccOperationalRoutes(
         "schedule",
         "defaultRoomId",
         "branchId",
+        "kind",
+        "meetingUrl",
+        "assignedSsaId",
       ])
     ) {
       response.status(400).json({ error: "Request body is invalid." });
@@ -2404,6 +4209,10 @@ export function registerNccOperationalRoutes(
           "sortOrder",
           "schedule",
           "defaultRoomId",
+          "kind",
+          "meetingUrl",
+          "assignedSsaId",
+          "branchId",
         ])
       ) {
         response.status(400).json({ error: "Request body is invalid." });
@@ -2411,6 +4220,17 @@ export function registerNccOperationalRoutes(
       }
       const upstream = readClassFields(body, response);
       if (!upstream) return;
+      if (body.branchId !== undefined) {
+        // Moving a class between branches is a Super Admin decision.
+        const branchId = selectedBranchId(
+          request,
+          response,
+          dependencies,
+          body.branchId
+        );
+        if (branchId === null) return;
+        if (branchId) upstream.branch_id = branchId;
+      }
       try {
         const value = normalizeEmsClass(
           await runNccWrite(
@@ -2486,7 +4306,7 @@ export function registerNccOperationalRoutes(
     async (request, response) => {
       if (!prepareDeliveryWrite(request, response, dependencies)) return;
       try {
-        const value = normalizeEmsClass(
+        const value = normalizeEmsClassSync(
           await runNccWrite(
             request,
             response,
@@ -2501,7 +4321,7 @@ export function registerNccOperationalRoutes(
             .json({ error: "NCC EMS returned invalid delivery data." });
           return;
         }
-        response.json({ class: value });
+        response.json(value);
       } catch (error) {
         if (!sendNccAuthError(error, response)) throw error;
       }
@@ -2530,39 +4350,26 @@ export function registerNccOperationalRoutes(
       const body = request.body;
       if (
         !isPlainObject(body) ||
-        hasOnlyKeys(body, ["studentId", "status"])
+        hasOnlyKeys(body, ["enrolmentId"])
       ) {
         response.status(400).json({ error: "Request body is invalid." });
         return;
       }
-      if (!isNonBlankString(body.studentId)) {
-        response.status(400).json({ error: "studentId is required." });
+      if (!isNonBlankString(body.enrolmentId)) {
+        response.status(400).json({ error: "enrolmentId is required." });
         return;
       }
-      if (
-        body.status !== undefined &&
-        body.status !== "pending" &&
-        body.status !== "enrolled"
-      ) {
-        response.status(400).json({ error: "status is invalid." });
-        return;
-      }
-      const studentId = (body.studentId as string).trim();
+      const enrolmentId = (body.enrolmentId as string).trim();
       try {
-        const enrolment = normalizeEmsClassEnrolment(
+        const enrolment = normalizeEmsEnrolment(
           await runNccWrite(
             request,
             response,
             (api, token) =>
-              api.createClassEnrolment(
+              api.attachClassEnrolment(
                 token,
                 request.params?.classId ?? "",
-                {
-                  student_id: studentId,
-                  ...(body.status !== undefined
-                    ? { status: body.status }
-                    : {}),
-                }
+                { enrolment_id: enrolmentId }
               ),
             dependencies
           )
@@ -2578,59 +4385,6 @@ export function registerNccOperationalRoutes(
         if (!sendNccAuthError(error, response)) throw error;
       }
     }
-  );
-
-  const enrolmentLifecycle =
-    (action: "withdraw" | "complete") =>
-    async (request: OperationalRequest, response: OperationalResponse) => {
-      if (!prepareDeliveryWrite(request, response, dependencies)) return;
-      if (!isEmptyBody(request.body)) {
-        response.status(400).json({ error: "Request body is invalid." });
-        return;
-      }
-      const studentId = (request.params?.studentId ?? "").trim();
-      if (!isNonBlankString(studentId)) {
-        response.status(400).json({ error: "studentId is required." });
-        return;
-      }
-      try {
-        const enrolment = normalizeEmsClassEnrolment(
-          await runNccWrite(
-            request,
-            response,
-            (api, token) =>
-              action === "withdraw"
-                ? api.withdrawClassEnrolment(
-                    token,
-                    request.params?.classId ?? "",
-                    studentId
-                  )
-                : api.completeClassEnrolment(
-                    token,
-                    request.params?.classId ?? "",
-                    studentId
-                  ),
-            dependencies
-          )
-        );
-        if (!enrolment) {
-          response
-            .status(502)
-            .json({ error: "NCC EMS returned invalid delivery data." });
-          return;
-        }
-        response.json({ enrolment });
-      } catch (error) {
-        if (!sendNccAuthError(error, response)) throw error;
-      }
-    };
-  app.post?.(
-    "/api/ncc/delivery/classes/:classId/enrolments/:studentId/withdraw",
-    enrolmentLifecycle("withdraw")
-  );
-  app.post?.(
-    "/api/ncc/delivery/classes/:classId/enrolments/:studentId/complete",
-    enrolmentLifecycle("complete")
   );
 
   app.get(
@@ -2655,30 +4409,35 @@ export function registerNccOperationalRoutes(
       const body = request.body;
       if (
         !isPlainObject(body) ||
-        hasOnlyKeys(body, [
-          "weekdays",
-          "hoursPerDay",
-          "fromDate",
-          "toDate",
-          "startHour",
-        ])
+        hasOnlyKeys(body, ["weekdayHours", "fromDate", "toDate"])
       ) {
         response.status(400).json({ error: "Request body is invalid." });
         return;
       }
+      // EMS weekdays: 0 = Monday … 6 = Sunday; 1–24 hours per weekday.
+      const weekdays = new Set<number>();
       if (
-        !Array.isArray(body.weekdays) ||
-        body.weekdays.length === 0 ||
-        !body.weekdays.every(
-          day => Number.isSafeInteger(day) && day >= 0 && day <= 6
-        ) ||
-        new Set(body.weekdays).size !== body.weekdays.length
+        !Array.isArray(body.weekdayHours) ||
+        body.weekdayHours.length === 0 ||
+        !body.weekdayHours.every(item => {
+          if (
+            !isPlainObject(item) ||
+            hasOnlyKeys(item, ["weekday", "hours"]) !== undefined ||
+            !Number.isSafeInteger(item.weekday) ||
+            (item.weekday as number) < 0 ||
+            (item.weekday as number) > 6 ||
+            !Number.isSafeInteger(item.hours) ||
+            (item.hours as number) < 1 ||
+            (item.hours as number) > 24 ||
+            weekdays.has(item.weekday as number)
+          ) {
+            return false;
+          }
+          weekdays.add(item.weekday as number);
+          return true;
+        })
       ) {
-        response.status(400).json({ error: "weekdays is invalid." });
-        return;
-      }
-      if (!isPositiveInteger(body.hoursPerDay)) {
-        response.status(400).json({ error: "hoursPerDay is invalid." });
+        response.status(400).json({ error: "weekdayHours is invalid." });
         return;
       }
       if (!isDateOnly(body.fromDate) || !isDateOnly(body.toDate)) {
@@ -2694,23 +4453,12 @@ export function registerNccOperationalRoutes(
           .json({ error: "fromDate must be on or before toDate." });
         return;
       }
-      if (
-        body.startHour !== undefined &&
-        (!Number.isSafeInteger(body.startHour) ||
-          (body.startHour as number) < 0 ||
-          (body.startHour as number) > 23)
-      ) {
-        response.status(400).json({ error: "startHour is invalid." });
-        return;
-      }
       const upstream = {
-        weekdays: body.weekdays,
-        hours_per_day: body.hoursPerDay,
+        weekday_hours: (body.weekdayHours as Array<{ weekday: number; hours: number }>).map(
+          item => ({ weekday: item.weekday, hours: item.hours })
+        ),
         from_date: body.fromDate,
         to_date: body.toDate,
-        ...(body.startHour !== undefined
-          ? { start_hour: body.startHour }
-          : {}),
       };
       try {
         const slots = normalizeEmsSessionSlots(
@@ -2791,6 +4539,95 @@ export function registerNccOperationalRoutes(
   app.post?.(
     "/api/ncc/delivery/classes/:classId/sessions/batch",
     sessionSlotsWrite("batch")
+  );
+
+  /** Moodle attendance session id from the route, or null after a 400. */
+  const moodleSessionParam = (
+    request: OperationalRequest,
+    response: OperationalResponse
+  ) => {
+    const value = Number(request.params?.moodleSessionId);
+    if (!Number.isSafeInteger(value) || value < 1) {
+      response.status(400).json({ error: "moodleSessionId is invalid." });
+      return null;
+    }
+    return value;
+  };
+
+  app.get(
+    "/api/ncc/delivery/classes/:classId/attendance/sessions",
+    (request, response) =>
+      handleOperationalRead(
+        request,
+        response,
+        dependencies,
+        "delivery",
+        (api, token): Promise<RemoteResult> =>
+          api.classAttendanceSessions(token, request.params?.classId ?? ""),
+        normalizeEmsAttendanceSessions,
+        items => ({ items })
+      )
+  );
+
+  app.get(
+    "/api/ncc/delivery/classes/:classId/attendance/sessions/:moodleSessionId",
+    (request, response) => {
+      const moodleSessionId = moodleSessionParam(request, response);
+      if (moodleSessionId === null) return;
+      return handleOperationalRead(
+        request,
+        response,
+        dependencies,
+        "delivery",
+        (api, token): Promise<RemoteResult> =>
+          api.classAttendanceSession(
+            token,
+            request.params?.classId ?? "",
+            moodleSessionId
+          ),
+        normalizeEmsAttendanceDetail,
+        attendance => ({ attendance })
+      );
+    }
+  );
+
+  app.post?.(
+    "/api/ncc/delivery/classes/:classId/attendance/sessions/:moodleSessionId",
+    async (request, response) => {
+      if (!prepareDeliveryWrite(request, response, dependencies)) return;
+      const moodleSessionId = moodleSessionParam(request, response);
+      if (moodleSessionId === null) return;
+      const marks = attendanceMarksBody(request.body);
+      if (!marks) {
+        response.status(400).json({ error: "marks is invalid." });
+        return;
+      }
+      try {
+        const attendance = normalizeEmsAttendanceDetail(
+          await runNccWrite(
+            request,
+            response,
+            (api, token) =>
+              api.markClassAttendance(
+                token,
+                request.params?.classId ?? "",
+                moodleSessionId,
+                { marks }
+              ),
+            dependencies
+          )
+        );
+        if (!attendance) {
+          response
+            .status(502)
+            .json({ error: "NCC EMS returned invalid delivery data." });
+          return;
+        }
+        response.json({ attendance });
+      } catch (error) {
+        if (!sendNccAuthError(error, response)) throw error;
+      }
+    }
   );
 
   app.get(
@@ -2961,32 +4798,10 @@ export function registerNccOperationalRoutes(
         response.status(400).json({ error: "Request body is invalid." });
         return;
       }
-      if (!Array.isArray(body.marks)) {
+      const marks = attendanceMarksBody(body);
+      if (!marks) {
         response.status(400).json({ error: "marks is invalid." });
         return;
-      }
-      const students = new Set<string>();
-      const marks: Array<Record<string, unknown>> = [];
-      for (const mark of body.marks) {
-        if (
-          !isPlainObject(mark) ||
-          hasOnlyKeys(mark, ["studentId", "statusId"]) !== undefined ||
-          !isNonBlankString(mark.studentId) ||
-          !isPositiveInteger(mark.statusId)
-        ) {
-          response.status(400).json({ error: "marks is invalid." });
-          return;
-        }
-        const markStudentId = mark.studentId.trim();
-        if (students.has(markStudentId)) {
-          response.status(400).json({ error: "marks is invalid." });
-          return;
-        }
-        students.add(markStudentId);
-        marks.push({
-          student_id: markStudentId,
-          status_id: mark.statusId,
-        });
       }
       try {
         const attendance = normalizeEmsAttendanceDetail(

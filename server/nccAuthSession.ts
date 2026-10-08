@@ -1,16 +1,25 @@
 import crypto from "node:crypto";
-import type { ServerRole, ServerSession } from "./auth.js";
+import type {
+  NccSessionBlock,
+  ServerRole,
+  ServerSession,
+} from "./auth.js";
 import {
   createEmsStagingClient,
+  EMS_ROLE_ORDER,
   extractTokens,
+  isEmsStagingRole,
   mapEmsRoleToLocal,
   mapLocalRoleToEms,
+  normalizeEmsAuthSessions,
   normalizeEmsBranches,
   normalizeEmsMe,
   normalizeEmsSelfProfile,
+  normalizeEmsSessionScopeOptions,
   resolveEmsStagingConfig,
   type EmsStagingClient,
   type EmsStagingMe,
+  type EmsStagingRole,
   type EmsStagingTokens,
 } from "./emsStagingClient.js";
 
@@ -31,6 +40,7 @@ type NccSessionEnvelope = {
   session: ServerSession & {
     assignedRole: ServerRole;
     workspaceBranchId: string | null;
+    ncc: NccSessionBlock;
   };
   tokens: EmsStagingTokens;
 };
@@ -130,9 +140,31 @@ function validRole(value: unknown): value is ServerRole {
   ].includes(String(value));
 }
 
+function validEffectiveScopes(
+  value: NccSessionBlock["effectiveScopes"]
+): boolean {
+  if (value === null) return true;
+  if (!value || typeof value !== "object") return false;
+  const idArrays = [
+    value.branchIds,
+    value.departmentIds,
+    value.classIds,
+    value.courseIds,
+  ];
+  return (
+    (value.branchId === null || typeof value.branchId === "string") &&
+    idArrays.every(
+      list =>
+        Array.isArray(list) &&
+        list.every(id => typeof id === "string" && id)
+    )
+  );
+}
+
 function validateEnvelope(value: NccSessionEnvelope) {
   const session = value?.session;
   const tokens = value?.tokens;
+  const ncc = session?.ncc;
   if (
     !session ||
     !tokens ||
@@ -157,6 +189,15 @@ function validateEnvelope(value: NccSessionEnvelope) {
     !session.departmentIds.every(id => typeof id === "string" && id) ||
     (session.workspaceBranchId !== null &&
       typeof session.workspaceBranchId !== "string") ||
+    !ncc ||
+    !isEmsStagingRole(ncc.assignedRole) ||
+    !isEmsStagingRole(ncc.activeRole) ||
+    (ncc.workspaceBranchId !== null &&
+      typeof ncc.workspaceBranchId !== "string") ||
+    (ncc.workspaceAccess !== null &&
+      ncc.workspaceAccess !== "manage" &&
+      ncc.workspaceAccess !== "view") ||
+    !validEffectiveScopes(ncc.effectiveScopes) ||
     !Number.isFinite(Date.parse(session.createdAt)) ||
     !Number.isFinite(Date.parse(session.expiresAt)) ||
     typeof tokens.accessToken !== "string" ||
@@ -306,6 +347,13 @@ function buildEnvelope(
       activeRole,
       assignedRole,
       workspaceBranchId: me.workspaceBranchId,
+      ncc: {
+        assignedRole: me.assignedRole,
+        activeRole: me.activeRole,
+        workspaceBranchId: me.workspaceBranchId,
+        workspaceAccess: me.workspaceAccess,
+        effectiveScopes: me.effectiveScopes,
+      },
       branchIds,
       departmentIds: me.departmentIds,
       provider: "ncc",
@@ -687,6 +735,167 @@ export async function logoutNccSession(
   const api = client(env, dependencies.createClient);
   try {
     await runWithRefresh(value, api, token => api.logout(token));
+  } catch (error) {
+    if (!(error instanceof NccAuthError) || error.status !== 401) throw error;
+  }
+  clearNccAuthCookie(response, env);
+}
+
+/**
+ * Switch the active EMS role directly (EMS role names, used by the staff app).
+ * The caller must verify the target is `assignedRole` or a strictly lower role.
+ */
+export async function switchNccEmsRole(
+  request: Request,
+  response: Response,
+  targetRole: EmsStagingRole,
+  dependencies: NccAuthDependencies = {}
+) {
+  const env = dependencies.env ?? process.env;
+  const value = openEnvelope(request, env);
+  if (!value) throw new NccAuthError(401, "Sign in required.");
+  const api = client(env, dependencies.createClient);
+  const switched = await runWithRefresh(value, api, token =>
+    api.switchRole(token, targetRole)
+  );
+  const tokens = extractTokens(switched.result.data);
+  if (!tokens) throw new NccAuthError(502, "NCC EMS returned invalid tokens.");
+  const meResult = await api.me(tokens.accessToken);
+  if (!meResult.ok) remoteError(meResult);
+  const me = normalizeEmsMe(meResult.data);
+  if (!me || me.activeRole !== targetRole) {
+    throw new NccAuthError(
+      502,
+      "NCC EMS returned inconsistent role authority."
+    );
+  }
+  const next = buildEnvelope(me, tokens, value.session.createdAt);
+  writeEnvelope(response, next, env);
+  return next.session;
+}
+
+/** Whether `target` is allowed from `assigned` under the EMS switch rules. */
+export function isSwitchableEmsRole(
+  assigned: EmsStagingRole,
+  target: EmsStagingRole
+): boolean {
+  if (target === assigned) return true;
+  const capable = ["super_admin", "branch_admin", "vice_manager", "hod"].includes(
+    assigned
+  );
+  if (!capable) return false;
+  return (
+    EMS_ROLE_ORDER.indexOf(target) > EMS_ROLE_ORDER.indexOf(assigned)
+  );
+}
+
+export type NccSessionScopesInput = {
+  branchId?: string | null;
+  branchIds?: string[];
+  departmentIds?: string[];
+  classIds?: string[];
+  courseIds?: string[];
+};
+
+/** POST /auth/session-scopes then re-seal the envelope from the returned me. */
+export async function setNccSessionScopes(
+  request: Request,
+  response: Response,
+  scopes: NccSessionScopesInput,
+  dependencies: NccAuthDependencies = {}
+) {
+  const env = dependencies.env ?? process.env;
+  const value = openEnvelope(request, env);
+  if (!value) throw new NccAuthError(401, "Sign in required.");
+  const api = client(env, dependencies.createClient);
+  const body: Record<string, unknown> = {};
+  if (scopes.branchId !== undefined) body.branch_id = scopes.branchId;
+  if (scopes.branchIds !== undefined) body.branch_ids = scopes.branchIds;
+  if (scopes.departmentIds !== undefined)
+    body.department_ids = scopes.departmentIds;
+  if (scopes.classIds !== undefined) body.class_ids = scopes.classIds;
+  if (scopes.courseIds !== undefined) body.course_ids = scopes.courseIds;
+  const result = await runWithRefresh(value, api, token =>
+    api.switchSessionScopes(token, body)
+  );
+  const me = normalizeEmsMe(result.result.data);
+  if (!me)
+    throw new NccAuthError(502, "NCC EMS returned invalid session authority.");
+  const next = buildEnvelope(me, result.tokens, value.session.createdAt);
+  writeEnvelope(response, next, env);
+  return next.session;
+}
+
+export async function getNccSessionScopeOptions(
+  request: Request,
+  response: Response,
+  dependencies: NccAuthDependencies = {}
+) {
+  const options = normalizeEmsSessionScopeOptions(
+    await runNccRead(
+      request,
+      response,
+      (api, token) => api.sessionScopeOptions(token),
+      dependencies
+    )
+  );
+  if (!options)
+    throw new NccAuthError(502, "NCC EMS returned invalid scope options.");
+  return options;
+}
+
+export async function listNccAuthSessions(
+  request: Request,
+  response: Response,
+  dependencies: NccAuthDependencies = {}
+) {
+  const sessions = normalizeEmsAuthSessions(
+    await runNccRead(
+      request,
+      response,
+      (api, token) => api.authSessions(token),
+      dependencies
+    )
+  );
+  if (!sessions)
+    throw new NccAuthError(502, "NCC EMS returned invalid sessions data.");
+  return sessions;
+}
+
+/**
+ * Revoke one EMS auth session. Revoking the current session also clears the
+ * local cookie because the sealed session id is gone upstream.
+ */
+export async function revokeNccAuthSession(
+  request: Request,
+  response: Response,
+  sessionId: string,
+  dependencies: NccAuthDependencies = {}
+) {
+  const env = dependencies.env ?? process.env;
+  const value = openEnvelope(request, env);
+  if (!value) throw new NccAuthError(401, "Sign in required.");
+  const api = client(env, dependencies.createClient);
+  await runWithRefresh(value, api, token =>
+    api.revokeAuthSession(token, sessionId)
+  );
+  if (value.session.id === sessionId) clearNccAuthCookie(response, env);
+}
+
+export async function logoutAllNccSessions(
+  request: Request,
+  response: Response,
+  dependencies: NccAuthDependencies = {}
+) {
+  const env = dependencies.env ?? process.env;
+  const value = openEnvelope(request, env);
+  if (!value) {
+    clearNccAuthCookie(response, env);
+    return;
+  }
+  const api = client(env, dependencies.createClient);
+  try {
+    await runWithRefresh(value, api, token => api.logoutAllSessions(token));
   } catch (error) {
     if (!(error instanceof NccAuthError) || error.status !== 401) throw error;
   }

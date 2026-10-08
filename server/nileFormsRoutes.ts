@@ -22,6 +22,7 @@ import {
   NileFormsRepositoryRateLimitError,
   NileFormsRepositoryUnavailableError,
 } from "./nileFormsRepository.js";
+import { NileFormsCompatibilityRepositoryUnavailableError } from "./nileFormsCompatibilityRepository.js";
 
 type FormApiRequest = {
   method: string;
@@ -224,6 +225,13 @@ function respondWithError(res: FormApiResponse, error: unknown) {
                 ? 429
                 : 503;
     res.status(statusCode).json({
+      error: error.message,
+      code: error.code,
+    });
+    return;
+  }
+  if (error instanceof NileFormsCompatibilityRepositoryUnavailableError) {
+    res.status(503).json({
       error: error.message,
       code: error.code,
     });

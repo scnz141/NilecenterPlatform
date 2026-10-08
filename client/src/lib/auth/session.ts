@@ -79,6 +79,16 @@ export function getStoredAuthSession(): AuthSessionDto | null {
   return activeSession;
 }
 
+/** Store a refreshed session DTO (role/scope switches return a new session). */
+export function applyStoredAuthSession(session: AuthSessionDto) {
+  setStoredAuthSession(session);
+}
+
+/** Clear the local session without a server call (session already revoked). */
+export function clearLocalAuthSession() {
+  clearStoredSessionLocal();
+}
+
 function setStoredAuthSession(session: AuthSessionDto) {
   if (typeof window === "undefined") return;
   activeSession = session;

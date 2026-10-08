@@ -110,6 +110,7 @@ The Phase 0 decisions are recorded under `docs/decisions/`:
 - ADR-010: Moodle-owned learning authority and command boundary;
 - ADR-011: full synthetic Moodle sandbox CRUD authorization;
 - ADR-012: NCC EMS production backend and session authority.
+- ADR-013: unified staff app on the NCC interaction model.
 
 Implementation must follow these records. Any change requires a superseding ADR
 and the approval process defined in `docs/decisions/README.md`.
@@ -725,6 +726,19 @@ Current status:
   mismatching bodies; Super Admin must name a branch. Placement results require
   an EMS course, so the result form stays honest until courses exist.
   Idempotency and version preconditions remain an open backend requirement.
+
+- On 2026-10-06 the product owner accepted ADR-013: one unified staff
+  application under `/app/...` follows the NCC frontend's interaction model —
+  role-filtered navigation, a branch workspace gate, a role-view switch for
+  management roles, and session-scope editing — over all seven EMS roles.
+  Execution follows the phased unified-staff plan: Phase 0 aligns roles and
+  the deployed OpenAPI contract; Phase 1 ships the shell, shared primitives,
+  `/app/notifications`, and `/app/profile`; later phases replace each
+  functional family (admissions, delivery, organisation, settings) route by
+  route. Legacy role portals, the student portal, and compatibility providers
+  keep working until each family is accepted; the compatibility registrar
+  enrolment form that assumed the removed create-shape was retired because
+  `POST /classes/{id}/enrolments` now attaches an existing enrolment.
 
 - On 2026-07-23 the product owner accepted ADR-010 and Phase 6J: Moodle is the
   sole writable authority for learning content, resources, assignments,

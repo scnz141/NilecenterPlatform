@@ -20,7 +20,7 @@ describe("stale deployment recovery", () => {
     expect(
       claimStaleDeploymentReload(
         storage,
-        "https://example.test/app/admin/users",
+        "https://example.test/app/staff",
         1_000
       )
     ).toBe(true);
@@ -28,7 +28,7 @@ describe("stale deployment recovery", () => {
 
   it("prevents a reload loop for the same route", () => {
     const storage = new MemoryStorage();
-    const href = "https://example.test/app/admin/users/user-1";
+    const href = "https://example.test/app/staff/user-1";
 
     expect(claimStaleDeploymentReload(storage, href, 1_000)).toBe(true);
     expect(claimStaleDeploymentReload(storage, href, 10_000)).toBe(false);
@@ -41,14 +41,14 @@ describe("stale deployment recovery", () => {
     expect(
       claimStaleDeploymentReload(
         storage,
-        "https://example.test/app/admin/users",
+        "https://example.test/app/staff",
         1_000
       )
     ).toBe(true);
     expect(
       claimStaleDeploymentReload(
         storage,
-        "https://example.test/app/admin/roles",
+        "https://example.test/app/departments",
         2_000
       )
     ).toBe(true);
