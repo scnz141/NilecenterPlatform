@@ -39,6 +39,9 @@ export default async function handler(req: VercelCatchAllRequest, res: ServerRes
     params.delete("path");
     const queryString = params.toString();
     req.url = `/api/${suffix}${queryString ? `?${queryString}` : ""}`;
+    // Express 4 only parses the query string when req.query is unset, and
+    // Vercel pre-populates it (including `path`), so clear it to reparse.
+    delete req.query;
   }
 
   try {
