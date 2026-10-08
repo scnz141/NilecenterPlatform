@@ -10,6 +10,7 @@
     "preview": "vite preview --host",
     "seed:supabase": "node --import tsx scripts/seed-supabase-demo.ts",
     "qa:portals": "node scripts/qa-portals-cli.mjs",
+    "qa:staff": "node scripts/staff-ui/run.mjs",
     "test": "vitest run",
     "check": "tsc --noEmit",
     "build:supabase-sql-bundle": "node scripts/build-supabase-sql-bundle.mjs",

@@ -18,7 +18,7 @@ import {
 } from "@/lib/backend/api";
 import { staffWrite, useInvalidate, useNcc } from "../api";
 import { copy } from "../copy";
-import { roleLabel } from "../roles";
+import { canReadBranches, canReadDepartments, roleLabel } from "../roles";
 import { FormValidationError, runAction } from "../run-action";
 import { useStaffSession } from "../session";
 import {
@@ -83,10 +83,12 @@ export function StaffForm({
   const workspaceId = session?.ncc?.workspaceBranchId ?? null;
 
   const branches = useNcc<{ items: NccBranchDto[] }>(
-    open ? "/api/ncc/directory/branches" : null
+    open && canReadBranches(callerRole) ? "/api/ncc/directory/branches" : null
   );
   const departments = useNcc<{ items: NccDepartmentDto[] }>(
-    open ? "/api/ncc/directory/departments" : null
+    open && canReadDepartments(callerRole)
+      ? "/api/ncc/directory/departments"
+      : null
   );
   const courses = useNcc<{ items: NccCourseDto[] }>(
     open ? "/api/ncc/delivery/courses" : null

@@ -20,6 +20,8 @@ import {
 } from "./nav";
 import { staffStatusCounts } from "./pages/staff-page";
 import {
+  canReadBranches,
+  canReadDepartments,
   canSwitchRoles,
   needsWorkspaceBranch,
   ROLE_ORDER,
@@ -86,6 +88,43 @@ describe("staff roles", () => {
     expect(needsWorkspaceBranch("vice_manager")).toBe(true);
     expect(needsWorkspaceBranch("registrar")).toBe(true);
     expect(needsWorkspaceBranch("ssa")).toBe(true);
+  });
+
+  it("limits the branch directory read to roles EMS allows", () => {
+    // Live-probed on EMS staging: GET /branches returns 200 for these.
+    for (const role of [
+      "super_admin",
+      "branch_admin",
+      "vice_manager",
+      "registrar",
+      "ssa",
+    ] as NccRole[]) {
+      expect(canReadBranches(role)).toBe(true);
+    }
+    // EMS returns 403 for HOD and teacher; null/undefined never fetch.
+    for (const role of ["hod", "teacher"] as NccRole[]) {
+      expect(canReadBranches(role)).toBe(false);
+    }
+    expect(canReadBranches(null)).toBe(false);
+    expect(canReadBranches(undefined)).toBe(false);
+  });
+
+  it("limits the department directory read to Super Admin", () => {
+    // Live-probed on EMS staging: GET /departments returns 200 only for
+    // super_admin; every other role gets 403.
+    expect(canReadDepartments("super_admin")).toBe(true);
+    for (const role of [
+      "branch_admin",
+      "vice_manager",
+      "registrar",
+      "ssa",
+      "hod",
+      "teacher",
+    ] as NccRole[]) {
+      expect(canReadDepartments(role)).toBe(false);
+    }
+    expect(canReadDepartments(null)).toBe(false);
+    expect(canReadDepartments(undefined)).toBe(false);
   });
 
   it("allows switching only for management roles", () => {

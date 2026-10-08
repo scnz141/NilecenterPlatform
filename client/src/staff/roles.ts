@@ -49,6 +49,16 @@ export function isStaffManager(role: NccRole | null | undefined): boolean {
   return role === "super_admin" || isBranchOperator(role);
 }
 
+/** Roles EMS allows to read the branch directory (HOD and teacher get 403). */
+export function canReadBranches(role: NccRole | null | undefined): boolean {
+  return isAdmissionsRole(role);
+}
+
+/** Roles EMS allows to read the department directory (everyone else gets 403). */
+export function canReadDepartments(role: NccRole | null | undefined): boolean {
+  return role === "super_admin";
+}
+
 /** Roles that must choose a workspace branch before operating. */
 export function needsWorkspaceBranch(
   role: NccRole | null | undefined

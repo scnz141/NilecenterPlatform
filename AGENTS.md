@@ -397,6 +397,13 @@ Use the commands that exist in `package.json`:
 - Plain `scripts/verify.sh` is the final gate. It rejects portal filters/skips and asserts the protected `375/0` summary.
 - `FULL_FORMAT_CHECK=1 scripts/verify.sh` runs the repo-wide Prettier audit. Use this intentionally because the current app has existing formatting drift.
 - `npm run qa:portals` for portal route QA when browser/runtime context is available.
+- `npm run qa:staff` runs the staff browser suites in `scripts/staff-ui/`
+  (admissions, students, teaching, week, forms, shell, public) sequentially
+  against `STAFF_UI_BASE` (default `http://localhost:3000`). They sign in with
+  the `EMS_QA_*` accounts and hit the shared staging EMS, so they must never
+  run in parallel. `QA_STAFF_ONLY=forms,teaching` selects a subset. Teaching
+  and forms write marker-bound synthetic data to staging and clean up after
+  themselves; the runner also closes form-test leads after the forms suite.
 - `npm run seed:supabase` only when explicitly working on Supabase demo seeding.
 - `npm run check:moodle-phase4-loops` verifies that every frozen Moodle read and
   bounded sandbox-write contract has complete lifecycle evidence, deterministic

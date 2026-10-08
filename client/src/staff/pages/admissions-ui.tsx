@@ -12,7 +12,7 @@ import type {
 import { formatAmount, paidShare } from "../admissions";
 import { useNcc } from "../api";
 import { copy } from "../copy";
-import { isStaffManager } from "../roles";
+import { canReadBranches, isStaffManager } from "../roles";
 import { useStaffSession } from "../session";
 
 const M = copy.admissions.mode;
@@ -21,8 +21,10 @@ const $ = copy.admissions.money;
 /* ---------------- Reference data ------------------------------------ */
 
 export function useBranches() {
+  const { session } = useStaffSession();
+  const allowed = canReadBranches(session?.ncc?.activeRole);
   const branches = useNcc<{ items: NccBranchDto[] }>(
-    "/api/ncc/directory/branches"
+    allowed ? "/api/ncc/directory/branches" : null
   );
   return useMemo(() => {
     const items = branches.data?.items ?? [];

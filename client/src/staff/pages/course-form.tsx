@@ -15,7 +15,9 @@ import {
 } from "@/staff/ui/kit";
 import { staffWrite, useInvalidate, useNcc } from "../api";
 import { copy } from "../copy";
+import { canReadDepartments } from "../roles";
 import { FormValidationError, runAction } from "../run-action";
+import { useStaffSession } from "../session";
 import { FormSheet, StaffField } from "../ui/form-sheet";
 import { useActiveAreas } from "./admissions-ui";
 
@@ -24,8 +26,10 @@ const T = copy.teaching;
 const NONE = "__none";
 
 export function useDepartments(enabled = true) {
+  const { session } = useStaffSession();
+  const allowed = canReadDepartments(session?.ncc?.activeRole);
   const departments = useNcc<{ items: NccDepartmentDto[] }>(
-    enabled ? "/api/ncc/directory/departments" : null
+    enabled && allowed ? "/api/ncc/directory/departments" : null
   );
   return useMemo(
     () => (departments.data?.items ?? []).filter(item => item.status === "active"),
