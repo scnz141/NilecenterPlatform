@@ -282,7 +282,7 @@ Use the commands that exist in `package.json`:
   set `NILE_FORMS_COMPATIBILITY_STORE=blob` to persist it in a private
   Vercel Blob JSON snapshot (`NILE_FORMS_BLOB_PATH`, default
   `nile-forms/state.json`) for serverless deployments.
-- Vercel production (`nile-center-platform.vercel.app`, deployed from
+- Vercel production (`nilecenter.vercel.app`, deployed from
   `origin` `main`) runs on Vercel plus the NCC EMS API only; Supabase is not
   used. Staff sign in with EMS accounts (sealed cookie, no session store).
   Nile Forms persists in the private Blob store `nile-learn-forms`
