@@ -59,6 +59,16 @@ export function canReadDepartments(role: NccRole | null | undefined): boolean {
   return role === "super_admin";
 }
 
+/**
+ * Roles whose BFF staff-directory reads succeed (registrar, ssa, hod and
+ * teacher get 403 on /directory/users).
+ */
+export function canReadStaffDirectory(
+  role: NccRole | null | undefined
+): boolean {
+  return isStaffManager(role);
+}
+
 /** Roles that must choose a workspace branch before operating. */
 export function needsWorkspaceBranch(
   role: NccRole | null | undefined

@@ -2437,6 +2437,14 @@ describe("EMS staff directory paging", () => {
     expect((result as { data: { items: unknown[] } }).data.items).toHaveLength(102);
   });
 
+  it("keeps a valid page envelope when the branch has no staff", async () => {
+    const fetchImpl = vi.fn(async () => jsonResponse(200, { items: [], total: 0, page: 1, page_size: 100 }));
+    const client = createEmsStagingClient({ baseUrl: "https://staging.example/api", fetchImpl });
+    const result = await client.users("access-1");
+    expect(result.ok).toBe(true);
+    expect(normalizeEmsStaffUsers((result as { data: unknown }).data)).toEqual([]);
+  });
+
   it("returns the provider error when a later page fails", async () => {
     const fetchImpl = vi
       .fn()

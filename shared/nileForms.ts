@@ -287,6 +287,8 @@ export type FormAssignment = {
   id: string;
   publicationId: string;
   target: FormAssignmentTarget;
+  /** Server-generated EMS display label for `user` targets (e.g. "Amal Hassan · Teacher"). */
+  targetLabel?: string;
   assignedBy: string;
   assignedAt: string;
   expiresAt?: string;
@@ -1806,4 +1808,15 @@ export function getOfflineEligibility(content: FormVersionContent) {
 
 export function getLocalizedText(value: LocalizedText, locale: FormLocale) {
   return value[locale] || value.en;
+}
+
+/**
+ * `entity_reference` questions link to legacy records and render no choices
+ * for respondents. The builder flags them; a version containing one must not
+ * be published until the question is replaced with concrete options.
+ */
+export function formContentHasRecordLinks(content: FormVersionContent) {
+  return content.pages.some(page =>
+    page.fields.some(field => field.type === "entity_reference")
+  );
 }

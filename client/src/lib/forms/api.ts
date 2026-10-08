@@ -210,11 +210,19 @@ export function retireFormPublicationRequest(publicationId: string) {
 export function assignFormPublicationRequest(
   publicationId: string,
   target: FormAssignmentTarget,
-  expiresAt?: string
+  expiresAt?: string,
+  viaClassId?: string
 ) {
   return formsJson<FormAssignment>(
     `/api/forms/publications/${encodeURIComponent(publicationId)}/assignments`,
-    { method: "POST", body: JSON.stringify({ target, expiresAt }) }
+    {
+      method: "POST",
+      body: JSON.stringify({
+        target,
+        expiresAt,
+        ...(viaClassId ? { viaClassId } : {}),
+      }),
+    }
   );
 }
 

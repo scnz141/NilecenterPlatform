@@ -1,7 +1,7 @@
 import "@/styles/nile-forms.css";
 import { useEffect, useMemo, useState } from "react";
 import { ArrowDown, ArrowUp, Copy, Eye, EyeOff, Plus, Trash2 } from "lucide-react";
-import type { FormField, FormFieldType, FormPage, FormVersion, FormVersionContent } from "@shared/nileForms";
+import { formContentHasRecordLinks, type FormField, type FormFieldType, type FormPage, type FormVersion, type FormVersionContent } from "@shared/nileForms";
 import NileFormRenderer from "@/components/forms/NileFormRenderer";
 import { updateFormDraftVersionRequest } from "@/lib/forms/api";
 import type { FormDefinitionBundle } from "../../../../server/nileFormsService";
@@ -346,7 +346,7 @@ export function FormBuilder({
           </div>
         ) : null}
         {content.logic.length || content.calculations?.length ? <p className="staff-hint">{F.logicNote}</p> : null}
-        {content.pages.some(page => page.fields.some(field => field.type === "entity_reference")) ? (
+        {formContentHasRecordLinks(content) ? (
           <p className="staff-banner" data-tone="caution">{F.recordLinkBanner}</p>
         ) : null}
 

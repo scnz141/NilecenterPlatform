@@ -46,6 +46,21 @@ function shortDate(date: string) {
   });
 }
 
+/** Narrow viewports paint one day at a time instead of a squeezed 7-col grid. */
+function useMediaQuery(query: string) {
+  const [matches, setMatches] = useState(
+    () => typeof window !== "undefined" && window.matchMedia(query).matches
+  );
+  useEffect(() => {
+    const list = window.matchMedia(query);
+    const onChange = () => setMatches(list.matches);
+    onChange();
+    list.addEventListener("change", onChange);
+    return () => list.removeEventListener("change", onChange);
+  }, [query]);
+  return matches;
+}
+
 export function HourCellsGrid({
   range,
   loading,
@@ -76,6 +91,12 @@ export function HourCellsGrid({
   const dragging = useRef<PaintStatus | null>(null);
 
   const dates = useMemo(() => weekDates(anchor), [anchor]);
+  const singleDay = useMediaQuery("(max-width: 799px)");
+  const [dayIdx, setDayIdx] = useState(() => {
+    const idx = weekDates(anchor).indexOf(toIsoDate(new Date()));
+    return idx >= 0 ? idx : 0;
+  });
+  const visibleDates = singleDay ? [dates[dayIdx]] : dates;
   const hours = showFullDay ? FULL_HOURS : DEFAULT_HOURS;
   const timezone = range?.timezone ?? "UTC";
 
@@ -186,9 +207,9 @@ export function HourCellsGrid({
             {C.timezoneLabel}: {timezone}
           </span>
         </div>
-        <div className="ms-auto flex items-center gap-2">
+        <div className="ms-auto flex flex-wrap items-center gap-2">
           {canPaint ? (
-            <div className="staff-tabs" role="toolbar" aria-label={C.availabilityTitle}>
+            <div className="staff-segments" role="toolbar" aria-label={C.availabilityTitle}>
               {(
                 [
                   ["available", C.penAvailable],
@@ -199,7 +220,7 @@ export function HourCellsGrid({
                 <button
                   key={label}
                   type="button"
-                  className="staff-tab"
+                  className="staff-segment"
                   data-active={pen === value}
                   aria-pressed={pen === value}
                   onClick={() => setPen(value)}
@@ -221,31 +242,66 @@ export function HourCellsGrid({
         </div>
       </div>
 
+      {singleDay ? (
+        <div className="staff-segments staff-hours-days" role="group" aria-label={copy.teaching.sessions.weekday}>
+          {dates.map((date, index) => (
+            <button
+              key={date}
+              type="button"
+              className="staff-segment"
+              data-active={index === dayIdx}
+              aria-pressed={index === dayIdx}
+              onClick={() => setDayIdx(index)}
+            >
+              {index === dayIdx ? <ActiveMark group="hour-day" /> : null}
+              {weekdayLabel(date)}
+            </button>
+          ))}
+        </div>
+      ) : null}
+
+      <div className="staff-hours-legend" aria-hidden>
+        <span className="staff-hours-legend-item">
+          <i data-status="available" />
+          {C.penAvailable}
+        </span>
+        <span className="staff-hours-legend-item">
+          <i data-status="unavailable" />
+          {C.penUnavailable}
+        </span>
+        <span className="staff-hours-legend-item">
+          <i data-status="booked" />
+          {C.bookedSession}
+        </span>
+      </div>
+
       {isDirty ? (
         <div className="staff-bulk-bar" role="status">
-          <span>{C.unsavedBar}</span>
-          <button
-            type="button"
-            className="staff-btn"
-            data-size="sm"
-            onClick={discard}
-            disabled={saving}
-          >
-            {C.discardChanges}
-          </button>
-          <button
-            type="button"
-            className="staff-btn"
-            data-variant="primary"
-            data-size="sm"
-            onClick={() => void save()}
-            disabled={saving}
-          >
-            {saving ? (
-              <Spinner aria-hidden />
-            ) : null}
-            {C.saveChanges}
-          </button>
+          <div className="staff-bulk-bar-inner">
+            <span>{C.unsavedBar}</span>
+            <button
+              type="button"
+              className="staff-btn"
+              data-size="sm"
+              onClick={discard}
+              disabled={saving}
+            >
+              {C.discardChanges}
+            </button>
+            <button
+              type="button"
+              className="staff-btn"
+              data-variant="primary"
+              data-size="sm"
+              onClick={() => void save()}
+              disabled={saving}
+            >
+              {saving ? (
+                <Spinner aria-hidden />
+              ) : null}
+              {C.saveChanges}
+            </button>
+          </div>
         </div>
       ) : null}
 
@@ -260,7 +316,7 @@ export function HourCellsGrid({
             <thead>
               <tr>
                 <th scope="col" className="staff-hours-hourcol" />
-                {dates.map(date => (
+                {visibleDates.map(date => (
                   <th
                     key={date}
                     scope="col"
@@ -280,7 +336,7 @@ export function HourCellsGrid({
                   <th scope="row" className="staff-hours-hourcol">
                     {String(hour).padStart(2, "0")}:00
                   </th>
-                  {dates.map(date => {
+                  {visibleDates.map(date => {
                     const key = cellKey(date, hour);
                     const booked = overlays.get(key);
                     const status = cells.get(key);

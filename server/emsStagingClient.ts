@@ -4463,7 +4463,8 @@ export function createEmsStagingClient(options: EmsStagingClientOptions) {
         if (!isPage(next.data) || next.data.items.length === 0) break;
         items.push(...next.data.items);
       }
-      return { ok: true as const, data: { ...first.data, items, page: 1, page_size: items.length } };
+      // One merged page; page_size must stay >= 1 even when the branch has no staff.
+      return { ok: true as const, data: { ...first.data, items, page: 1, page_size: Math.max(items.length, 1) } };
     },
     userStatistics(token: string, userId: string) {
       return request<unknown>(

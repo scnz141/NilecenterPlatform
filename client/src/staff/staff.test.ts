@@ -23,6 +23,7 @@ import { staffStatusCounts } from "./pages/staff-page";
 import {
   canReadBranches,
   canReadDepartments,
+  canReadStaffDirectory,
   canSwitchRoles,
   needsWorkspaceBranch,
   ROLE_ORDER,
@@ -126,6 +127,29 @@ describe("staff roles", () => {
     }
     expect(canReadDepartments(null)).toBe(false);
     expect(canReadDepartments(undefined)).toBe(false);
+  });
+
+  it("limits the staff directory read to management roles", () => {
+    // Live-probed on the BFF with a workspace branch selected: super_admin,
+    // branch_admin and vice_manager read /directory/users; registrar, ssa,
+    // hod and teacher all get 403.
+    for (const role of [
+      "super_admin",
+      "branch_admin",
+      "vice_manager",
+    ] as NccRole[]) {
+      expect(canReadStaffDirectory(role)).toBe(true);
+    }
+    for (const role of [
+      "registrar",
+      "ssa",
+      "hod",
+      "teacher",
+    ] as NccRole[]) {
+      expect(canReadStaffDirectory(role)).toBe(false);
+    }
+    expect(canReadStaffDirectory(null)).toBe(false);
+    expect(canReadStaffDirectory(undefined)).toBe(false);
   });
 
   it("allows switching only for management roles", () => {

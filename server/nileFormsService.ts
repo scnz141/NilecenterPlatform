@@ -9,6 +9,7 @@ import {
 } from "./nileFormsCompatibilityRepository.js";
 import { getPlatformStateRepository } from "./platformRepository.js";
 import {
+  formContentHasRecordLinks,
   formLocales,
   getOfflineEligibility,
   normalizeAndValidateFormAnswers,
@@ -70,6 +71,17 @@ export type NileFormsActor = {
   platformState: PlatformState;
   /** NCC staff: identity and scope come from the sealed EMS session. */
   external?: boolean;
+};
+
+/**
+ * Person assignment fact produced by the forms route after reading the target
+ * back from NCC EMS. `branchIds` are the user's branch scope ids, or the
+ * class's branch for a "teachers of a class" pick.
+ */
+export type VerifiedAssignmentUser = {
+  userId: string;
+  label: string;
+  branchIds: string[];
 };
 
 export type FormDefinitionBundle = {
@@ -1131,10 +1143,11 @@ function validateAssignmentTarget(
   actor: NileFormsActor,
   target: FormAssignmentTarget,
   state: PlatformState,
-  definition?: FormDefinition
+  definition?: FormDefinition,
+  verifiedUser?: VerifiedAssignmentUser
 ) {
   if (actor.external) {
-    validateExternalAssignmentTarget(actor, target, definition);
+    validateExternalAssignmentTarget(actor, target, definition, verifiedUser);
     return;
   }
   const definitionAllowsTarget = () => {
@@ -1350,13 +1363,16 @@ function validateAssignmentTarget(
 
 /**
  * NCC staff target respondents by EMS role, branch, or department, checked
- * against the sealed session scope and the form's own scope. Person, course,
- * and class targets need EMS lookups the compatibility runtime cannot make.
+ * against the sealed session scope and the form's own scope. A `user` target
+ * is allowed only when the route already read the person back from EMS and
+ * passed the `verifiedUser` fact; course and class targets need EMS lookups
+ * the compatibility runtime cannot make.
  */
 function validateExternalAssignmentTarget(
   actor: NileFormsActor,
   target: FormAssignmentTarget,
-  definition?: FormDefinition
+  definition?: FormDefinition,
+  verifiedUser?: VerifiedAssignmentUser
 ) {
   const outOfScope = () =>
     new NileFormsError(
@@ -1364,6 +1380,24 @@ function validateExternalAssignmentTarget(
       403,
       "assignment_scope_denied"
     );
+  if (target.type === "user") {
+    if (!verifiedUser) {
+      throw new NileFormsError(
+        "Assign this form by role, branch, or department.",
+        400,
+        "assignment_target_unsupported"
+      );
+    }
+    if (verifiedUser.userId !== target.userId) throw outOfScope();
+    if (
+      definition?.branchId &&
+      actor.role !== "superadmin" &&
+      !verifiedUser.branchIds.includes(definition.branchId)
+    ) {
+      throw outOfScope();
+    }
+    return;
+  }
   if (target.type === "role") return;
   if (target.type === "branch") {
     if (!target.branchId.trim()) {
@@ -1932,6 +1966,13 @@ export function createNileFormsService(
             validation.issues
           );
         }
+        if (formContentHasRecordLinks(version.content)) {
+          throw new NileFormsError(
+            "Fix the highlighted question in Build before publishing.",
+            409,
+            "stale_record_links"
+          );
+        }
         const offline = getOfflineEligibility(version.content);
         if (offlineEligible && !offline.eligible) {
           throw new NileFormsError(
@@ -2087,7 +2128,8 @@ export function createNileFormsService(
       sessionInput: ServerSession | null | undefined,
       publicationId: string,
       target: FormAssignmentTarget,
-      expiresAt?: string
+      expiresAt?: string,
+      options?: { verifiedUser?: VerifiedAssignmentUser }
     ) {
       const session = requireSession(sessionInput);
       const actor = await authorize(session, "forms:assign");
@@ -2116,7 +2158,8 @@ export function createNileFormsService(
           actor,
           target,
           actor.platformState,
-          definition
+          definition,
+          options?.verifiedUser
         );
         if (publication.audience !== "assigned") {
           throw new NileFormsError(
@@ -2147,10 +2190,13 @@ export function createNileFormsService(
         );
         if (duplicate) return duplicate;
         const now = currentIso();
+        const verifiedUser =
+          target.type === "user" ? options?.verifiedUser : undefined;
         const assignment: FormAssignment = {
           id: createId("form_assignment"),
           publicationId,
           target,
+          ...(verifiedUser?.label ? { targetLabel: verifiedUser.label } : {}),
           assignedBy: actor.userId,
           assignedAt: now,
           expiresAt,
@@ -2164,7 +2210,13 @@ export function createNileFormsService(
             action: "form.assigned",
             entityType: "FormAssignment",
             entityId: assignment.id,
-            metadata: { publicationId, targetType: target.type },
+            metadata: {
+              publicationId,
+              targetType: target.type,
+              ...(verifiedUser?.label
+                ? { targetLabel: verifiedUser.label }
+                : {}),
+            },
           },
           createId,
           now

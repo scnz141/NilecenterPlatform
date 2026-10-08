@@ -1,9 +1,19 @@
 import { getRequestSession, type ServerSession } from "./auth.js";
 import { SessionRepositoryUnavailableError } from "./sessionRepository.js";
 import {
+  normalizeEmsClass,
+  normalizeEmsStaffUser,
+} from "./emsStagingClient.js";
+import {
+  NccAuthError,
+  runNccRead,
+  type NccAuthDependencies,
+} from "./nccAuthSession.js";
+import {
   createNileFormsService,
   NileFormsError,
   type NileFormsService,
+  type VerifiedAssignmentUser,
 } from "./nileFormsService.js";
 import type { FormAssignmentTarget } from "../shared/nileForms.js";
 import {
@@ -55,6 +65,7 @@ type NileFormsRouteDependencies = {
   service?: NileFormsService;
   migrationService?: NileFormsMigrationService;
   getSession?: (req: FormApiRequest) => Promise<ServerSession | null>;
+  nccAuth?: NccAuthDependencies;
 };
 
 const publicSubmissionBuckets = new Map<
@@ -243,6 +254,89 @@ function respondWithError(res: FormApiResponse, error: unknown) {
   });
 }
 
+const EMS_PERSON_ROLE_LABELS: Record<string, string> = {
+  super_admin: "Super Admin",
+  branch_admin: "Branch Admin",
+  vice_manager: "Vice Manager",
+  hod: "Head of Department",
+  registrar: "Registrar",
+  ssa: "SSA",
+  teacher: "Teacher",
+};
+
+function assignmentScopeDenied() {
+  return new NileFormsError(
+    "You can't assign this form to that person.",
+    403,
+    "assignment_scope_denied"
+  );
+}
+
+function assignmentVerificationUnavailable() {
+  return new NileFormsError(
+    "Assignment verification is temporarily unavailable.",
+    503,
+    "assignment_verification_unavailable"
+  );
+}
+
+/**
+ * Reads the assignment person back from NCC EMS with the caller's sealed
+ * session. A `viaClassId` pick verifies that the user teaches the class;
+ * otherwise the user record itself must exist and be active. EMS 400/403/404
+ * deny the assignment without leaking detail; network and 5xx map to 503.
+ */
+async function verifyExternalAssignmentUser(
+  req: FormApiRequest,
+  res: FormApiResponse,
+  dependencies: NccAuthDependencies,
+  userId: string,
+  viaClassId: string | undefined
+): Promise<VerifiedAssignmentUser> {
+  try {
+    if (viaClassId) {
+      const klass = normalizeEmsClass(
+        await runNccRead(
+          req,
+          res,
+          (api, token) => api.class(token, viaClassId),
+          dependencies
+        )
+      );
+      const teacher = klass?.teachers.find(item => item.id === userId);
+      if (!klass || !teacher) throw assignmentScopeDenied();
+      return {
+        userId,
+        label: `${teacher.name} · ${EMS_PERSON_ROLE_LABELS.teacher}`,
+        branchIds: [klass.branchId],
+      };
+    }
+    const user = normalizeEmsStaffUser(
+      await runNccRead(
+        req,
+        res,
+        (api, token) => api.user(token, userId),
+        dependencies
+      )
+    );
+    if (!user?.isActive) throw assignmentScopeDenied();
+    return {
+      userId,
+      label: `${user.name} · ${EMS_PERSON_ROLE_LABELS[user.emsRole] ?? "Staff"}`,
+      branchIds: user.branchIds,
+    };
+  } catch (error) {
+    if (error instanceof NileFormsError) throw error;
+    if (
+      error instanceof NccAuthError &&
+      [400, 403, 404].includes(error.status)
+    ) {
+      throw assignmentScopeDenied();
+    }
+    throw assignmentVerificationUnavailable();
+  }
+}
+
 function handler(
   operation: (req: FormApiRequest, res: FormApiResponse) => Promise<void>
 ): FormApiHandler {
@@ -365,14 +459,38 @@ export function registerNileFormsRoutes(
     "/api/forms/publications/:publicationId/assignments",
     handler(async (req, res) => {
       const body = req.body ?? {};
+      const session = await readSession(req);
+      const target = parseAssignmentTarget(body.target);
+      const expiresAt =
+        typeof body.expiresAt === "string" ? body.expiresAt : undefined;
+      const viaClassId =
+        typeof body.viaClassId === "string" && body.viaClassId.trim()
+          ? body.viaClassId.trim()
+          : undefined;
+      let verifiedUser: VerifiedAssignmentUser | undefined;
+      if (
+        session?.provider === "ncc" &&
+        session.authorizationModel === "external" &&
+        session.ncc &&
+        target.type === "user"
+      ) {
+        verifiedUser = await verifyExternalAssignmentUser(
+          req,
+          res,
+          dependencies.nccAuth ?? {},
+          target.userId,
+          viaClassId
+        );
+      }
       res
         .status(201)
         .json(
           await service.assignPublication(
-            await readSession(req),
+            session,
             routeParam(req, "publicationId"),
-            parseAssignmentTarget(body.target),
-            typeof body.expiresAt === "string" ? body.expiresAt : undefined
+            target,
+            expiresAt,
+            { verifiedUser }
           )
         );
     })

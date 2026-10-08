@@ -7,7 +7,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const dir = path.dirname(fileURLToPath(import.meta.url));
-const SUITES = ["admissions", "students", "teaching", "week", "forms", "reports", "shell", "public"];
+const SUITES = ["admissions", "students", "teaching", "week", "forms", "forms-people", "reports", "shell", "public"];
 
 const only = (process.env.QA_STAFF_ONLY ?? "")
   .split(",")

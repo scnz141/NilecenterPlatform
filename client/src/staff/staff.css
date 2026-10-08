@@ -99,6 +99,7 @@ html.staff-ui {
   --t-enter: 300ms;
   /* Layout */
   --sidebar: 16.25rem;
+  --rail: 4.25rem;
   --topbar: 3.5rem;
   --gutter: clamp(1rem, 2.4vw, 3rem);
   --control: 2.25rem;
@@ -214,7 +215,6 @@ html.staff-ui .sr-only {
 }
 
 .staff-shell {
-  --rail: 4.25rem;
   display: grid;
   grid-template-columns: var(--sidebar) minmax(0, 1fr);
 }
@@ -2331,23 +2331,64 @@ html[dir="rtl"] .staff-rtl-flip {
   cursor: pointer;
 }
 
-.staff-hour-cell[data-status="available"] {
-  border-color: var(--positive);
-  background: color-mix(in srgb, var(--positive) 22%, var(--paper-raised));
+/* Painted states are shared with the legend swatches below. */
+.staff-hour-cell[data-status="available"],
+.staff-hours-legend-item > i[data-status="available"] {
+  border: 1.5px solid var(--positive);
+  background: color-mix(in srgb, var(--positive) 40%, var(--paper-raised));
 }
 
-.staff-hour-cell[data-status="unavailable"] {
+.staff-hour-cell[data-status="unavailable"],
+.staff-hours-legend-item > i[data-status="unavailable"] {
+  border-color: var(--line-strong);
   background: repeating-linear-gradient(
     -45deg,
-    var(--paper-sunk) 0 0.25rem,
-    var(--paper-raised) 0.25rem 0.5rem
+    var(--paper-sunk) 0 0.1875rem,
+    var(--line) 0.1875rem 0.3125rem
   );
 }
 
-.staff-hour-cell[data-status="booked"] {
+.staff-hour-cell[data-status="booked"],
+.staff-hours-legend-item > i[data-status="booked"] {
   border-color: var(--river);
   background: color-mix(in srgb, var(--river) 18%, var(--paper-raised));
+}
+
+.staff-hour-cell[data-status="booked"] {
   cursor: default;
+}
+
+.staff-hours-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.375rem 1rem;
+  font-size: 0.75rem;
+  color: var(--ink-3);
+}
+
+.staff-hours-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+}
+
+.staff-hours-legend-item > i {
+  inline-size: 1rem;
+  block-size: 1rem;
+  flex: none;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--paper-raised);
+}
+
+.staff-hours-days {
+  align-self: flex-start;
+}
+
+@media (max-width: 799px) {
+  .staff-hour-cell {
+    min-block-size: 2.25rem;
+  }
 }
 
 @media (hover: hover) {
@@ -4891,6 +4932,86 @@ a.staff-agenda-name:hover {
   font: inherit;
   line-height: 1;
   cursor: pointer;
+}
+
+.staff-people-list {
+  display: flex;
+  flex-direction: column;
+  max-block-size: 15rem;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-lg);
+  padding: 0.25rem;
+}
+
+.staff-people-list > .staff-muted {
+  padding: 0.75rem 0.625rem;
+  margin: 0;
+}
+
+.staff-people-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.625rem;
+  flex: none;
+  min-block-size: 3.25rem;
+  padding: 0.625rem 0.75rem;
+  border-radius: var(--r-md);
+  font-size: 0.9375rem;
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.staff-people-row input {
+  inline-size: 1rem;
+  block-size: 1rem;
+  margin-block-start: 0.375rem;
+  accent-color: var(--river);
+}
+
+.staff-people-row[data-active="true"] {
+  background: color-mix(in oklab, var(--river) 8%, transparent);
+}
+
+.staff-people-row:focus-within {
+  outline: 2px solid var(--river);
+  outline-offset: -2px;
+}
+
+.staff-people-row .staff-person-meta {
+  gap: 0.125rem;
+  padding-block-start: 0.0625rem;
+}
+
+.staff-people-row .staff-person-name,
+.staff-people-row .staff-person-email {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (hover: hover) {
+  .staff-people-row:not([data-active="true"]):hover {
+    background: var(--paper-head);
+  }
+}
+
+.staff-people-count {
+  margin: 0;
+}
+
+.staff-people-failures {
+  border-inline-start: 2px solid var(--caution);
+  padding-inline-start: 0.75rem;
+}
+
+.staff-people-failures ul {
+  margin: 0.25rem 0 0;
+  padding-inline-start: 1rem;
+  font-size: 0.8125rem;
+  color: var(--ink-3);
 }
 
 /* Response answers */

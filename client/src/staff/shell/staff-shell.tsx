@@ -6,6 +6,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { createPortal } from "react-dom";
 import { Link, useLocation } from "wouter";
 import { MotionConfig, motion } from "framer-motion";
 import { Building2, Menu, PanelLeftClose, PanelLeftOpen, Search } from "lucide-react";
@@ -99,23 +100,36 @@ function Brand() {
   );
 }
 
-/** Floating label for the icon rail; fixed so the rail's scroll never clips it. */
+/**
+ * Floating label for the icon rail. Portaled to `document.body` because the
+ * sticky sidebar forms its own stacking context — a fixed child still paints
+ * under `.staff-main`.
+ */
 function useRailTip(enabled: boolean) {
   const [tip, setTip] = useState<{ label: string; top: number } | null>(null);
+  const [path] = useLocation();
   useEffect(() => {
-    if (!enabled) setTip(null);
-  }, [enabled]);
+    setTip(null);
+  }, [enabled, path]);
   const show = (label: string) => (event: { currentTarget: HTMLElement }) => {
     if (!enabled) return;
     const rect = event.currentTarget.getBoundingClientRect();
     setTip({ label, top: rect.top + rect.height / 2 });
   };
-  const node = tip ? (
-    <span className="staff-rail-tip" role="tooltip" style={{ insetBlockStart: tip.top }}>
-      {tip.label}
-    </span>
-  ) : null;
-  return { show, hide: () => setTip(null), node };
+  const showFocus =
+    (label: string) => (event: { currentTarget: HTMLElement }) => {
+      // Only keyboard focus opens the label; mouse press already navigates.
+      if (event.currentTarget.matches(":focus-visible")) show(label)(event);
+    };
+  const node = tip
+    ? createPortal(
+        <span className="staff-rail-tip" role="tooltip" style={{ insetBlockStart: tip.top }}>
+          {tip.label}
+        </span>,
+        document.body
+      )
+    : null;
+  return { show, showFocus, hide: () => setTip(null), node };
 }
 
 function NavList({ onNavigate, collapsed = false }: { onNavigate?: () => void; collapsed?: boolean }) {
@@ -152,7 +166,7 @@ function NavList({ onNavigate, collapsed = false }: { onNavigate?: () => void; c
                     onClick={onNavigate}
                     onPointerEnter={tip.show(item.label)}
                     onPointerLeave={tip.hide}
-                    onFocus={tip.show(item.label)}
+                    onFocus={tip.showFocus(item.label)}
                     onBlur={tip.hide}
                   >
                     {active ? (

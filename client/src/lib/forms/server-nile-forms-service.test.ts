@@ -330,6 +330,20 @@ describe("Nile Forms server authority", () => {
         tr: "Güncellenmiş başvuru",
       },
     };
+    // The cloned version still carries the legacy record-link question; fix
+    // it the way the builder's "Use our branch list" does before publishing.
+    for (const page of content.pages) {
+      for (const field of page.fields) {
+        if (field.type === "entity_reference") {
+          field.type = "single_choice";
+          field.entityType = undefined;
+          field.options = [
+            { id: "cairo", label: { en: "Cairo", ar: "القاهرة", tr: "Kahire" } },
+            { id: "giza", label: { en: "Giza", ar: "الجيزة", tr: "Gize" } },
+          ];
+        }
+      }
+    }
     const saved = await service.updateDraftVersion(
       superAdmin,
       "form_application",
@@ -399,6 +413,48 @@ describe("Nile Forms server authority", () => {
         item => item.slug === "course-application" && item.status !== "retired"
       )
     ).toHaveLength(1);
+  });
+
+  it("blocks publishing while a draft still has a record-link question", async () => {
+    const service = createService();
+    // The seeded application version contains a legacy `entity_reference`
+    // question; a new draft inherits it.
+    const draft = await service.createDraftVersion(
+      superAdmin,
+      "form_application"
+    );
+
+    await expect(
+      service.publishVersion(superAdmin, "form_application", draft.id, {
+        slug: "course-application-v2",
+        audience: "public",
+      })
+    ).rejects.toMatchObject({ statusCode: 409, code: "stale_record_links" });
+
+    // Once the question is replaced by concrete options publishing works.
+    const content = structuredClone(draft.content);
+    for (const page of content.pages) {
+      for (const field of page.fields) {
+        if (field.type === "entity_reference") {
+          field.type = "single_choice";
+          field.entityType = undefined;
+          field.options = [
+            { id: "cairo", label: { en: "Cairo", ar: "القاهرة", tr: "Kahire" } },
+          ];
+        }
+      }
+    }
+    await service.updateDraftVersion(superAdmin, "form_application", draft.id, {
+      expectedRevision: draft.revision,
+      content,
+    });
+    const published = await service.publishVersion(
+      superAdmin,
+      "form_application",
+      draft.id,
+      { slug: "course-application-v2", audience: "public" }
+    );
+    expect(published.version.status).toBe("published");
   });
 
   it("carries active assignments when an assigned publication keeps its slug", async () => {
@@ -1463,6 +1519,207 @@ describe("Nile Forms with NCC staff sessions", () => {
     const assigned = await service.listAssigned(emsRegistrar);
     expect(assigned.map(item => item.publication.id)).toContain(publication.id);
     expect((await service.getManagementOptions(emsSuperAdmin)).branches).toEqual([]);
+  });
+
+  it("assigns a person only with an EMS-verified fact and keeps the label", async () => {
+    const service = createService();
+    const { definition, version } = await service.createDefinition(emsSuperAdmin, {
+      key: "ems_person_check",
+      titleEn: "Person check",
+      titleAr: "استمارة شخصية",
+      titleTr: "Kişi formu",
+      category: "branch_operations",
+    });
+    const publication = (
+      await service.publishVersion(emsSuperAdmin, definition.id, version.id, {
+        slug: "ems-person-check",
+        audience: "assigned",
+      })
+    ).publication;
+
+    await expect(
+      service.assignPublication(emsSuperAdmin, publication.id, {
+        type: "user",
+        userId: "ems-teacher-1",
+      })
+    ).rejects.toMatchObject({
+      statusCode: 400,
+      code: "assignment_target_unsupported",
+    });
+    await expect(
+      service.assignPublication(
+        emsSuperAdmin,
+        publication.id,
+        { type: "user", userId: "ems-teacher-1" },
+        undefined,
+        { verifiedUser: { userId: "ems-other", label: "X", branchIds: [] } }
+      )
+    ).rejects.toMatchObject({
+      statusCode: 403,
+      code: "assignment_scope_denied",
+    });
+
+    const created = await service.assignPublication(
+      emsSuperAdmin,
+      publication.id,
+      { type: "user", userId: "ems-teacher-1" },
+      undefined,
+      {
+        verifiedUser: {
+          userId: "ems-teacher-1",
+          label: "Amal Hassan · Teacher",
+          branchIds: [],
+        },
+      }
+    );
+    expect(created).toMatchObject({
+      target: { type: "user", userId: "ems-teacher-1" },
+      targetLabel: "Amal Hassan · Teacher",
+    });
+
+    const duplicate = await service.assignPublication(
+      emsSuperAdmin,
+      publication.id,
+      { type: "user", userId: "ems-teacher-1" },
+      undefined,
+      {
+        verifiedUser: {
+          userId: "ems-teacher-1",
+          label: "Different label ignored",
+          branchIds: [],
+        },
+      }
+    );
+    expect(duplicate.id).toBe(created.id);
+    expect(duplicate.targetLabel).toBe("Amal Hassan · Teacher");
+
+    const bundle = await service.getDefinition(emsSuperAdmin, definition.id);
+    expect(
+      bundle.assignments.find(item => item.id === created.id)?.targetLabel
+    ).toBe("Amal Hassan · Teacher");
+  });
+
+  it("requires the verified person's branches to cover the form's branch", async () => {
+    const service = createService();
+    const { definition, version } = await service.createDefinition(emsRegistrar, {
+      key: "ems_branch_person",
+      titleEn: "Branch person",
+      titleAr: "استمارة الفرع",
+      titleTr: "Şube kişi formu",
+      category: "admissions",
+      branchId: BRANCH,
+    });
+    const publication = (
+      await service.publishVersion(emsRegistrar, definition.id, version.id, {
+        slug: "ems-branch-person",
+        audience: "assigned",
+      })
+    ).publication;
+
+    await expect(
+      service.assignPublication(
+        emsRegistrar,
+        publication.id,
+        { type: "user", userId: "ems-teacher-9" },
+        undefined,
+        {
+          verifiedUser: {
+            userId: "ems-teacher-9",
+            label: "Elsewhere Teacher",
+            branchIds: ["ems-branch-2"],
+          },
+        }
+      )
+    ).rejects.toMatchObject({
+      statusCode: 403,
+      code: "assignment_scope_denied",
+    });
+
+    await expect(
+      service.assignPublication(
+        emsRegistrar,
+        publication.id,
+        { type: "user", userId: "ems-teacher-9" },
+        undefined,
+        {
+          verifiedUser: {
+            userId: "ems-teacher-9",
+            label: "Same Branch Teacher",
+            branchIds: [BRANCH],
+          },
+        }
+      )
+    ).resolves.toMatchObject({ targetLabel: "Same Branch Teacher" });
+  });
+
+  it("lets Super Admin assign a verified person across branches", async () => {
+    const service = createService();
+    const { definition, version } = await service.createDefinition(emsRegistrar, {
+      key: "ems_branch_person_sa",
+      titleEn: "Branch person SA",
+      titleAr: "استمارة الفرع",
+      titleTr: "Şube kişi formu",
+      category: "admissions",
+      branchId: BRANCH,
+    });
+    const publication = (
+      await service.publishVersion(emsRegistrar, definition.id, version.id, {
+        slug: "ems-branch-person-sa",
+        audience: "assigned",
+      })
+    ).publication;
+
+    await expect(
+      service.assignPublication(
+        emsSuperAdmin,
+        publication.id,
+        { type: "user", userId: "ems-teacher-10" },
+        undefined,
+        {
+          verifiedUser: {
+            userId: "ems-teacher-10",
+            label: "Remote Teacher",
+            branchIds: ["ems-branch-9"],
+          },
+        }
+      )
+    ).resolves.toMatchObject({ targetLabel: "Remote Teacher" });
+  });
+
+  it("keeps course and class targets unsupported for NCC actors", async () => {
+    const service = createService();
+    const { definition, version } = await service.createDefinition(emsSuperAdmin, {
+      key: "ems_course_class_target",
+      titleEn: "Course class target",
+      titleAr: "استمارة",
+      titleTr: "Form",
+      category: "branch_operations",
+    });
+    const publication = (
+      await service.publishVersion(emsSuperAdmin, definition.id, version.id, {
+        slug: "ems-course-class-target",
+        audience: "assigned",
+      })
+    ).publication;
+
+    await expect(
+      service.assignPublication(emsSuperAdmin, publication.id, {
+        type: "course",
+        courseId: "ems-course-1",
+      })
+    ).rejects.toMatchObject({
+      statusCode: 400,
+      code: "assignment_target_unsupported",
+    });
+    await expect(
+      service.assignPublication(emsSuperAdmin, publication.id, {
+        type: "class",
+        classId: "ems-class-1",
+      })
+    ).rejects.toMatchObject({
+      statusCode: 400,
+      code: "assignment_target_unsupported",
+    });
   });
 
   it("denies EMS staff whose sealed scope is empty", async () => {
