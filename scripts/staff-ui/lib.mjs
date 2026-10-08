@@ -108,7 +108,9 @@ export async function signIn(page, role) {
 /** Pick a workspace when the role must choose one (auth page or in-app gate). */
 export async function pickWorkspace(page) {
   if (page.url().includes("/auth/select-workspace")) {
+    // The branch list renders only after the workspaces fetch returns.
     const option = page.locator(".auth-v2-role-list button").first();
+    await option.waitFor({ state: "visible", timeout: 15000 }).catch(() => {});
     if (await option.isVisible().catch(() => false)) {
       await option.click();
       await page
@@ -119,6 +121,7 @@ export async function pickWorkspace(page) {
     }
   }
   const gate = page.locator(".staff-gate-option").first();
+  await gate.waitFor({ state: "visible", timeout: 15000 }).catch(() => {});
   if (await gate.isVisible().catch(() => false)) {
     await gate.click();
     await page

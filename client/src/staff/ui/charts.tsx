@@ -1,4 +1,4 @@
-import type { CSSProperties } from "react";
+import type { CSSProperties, ReactNode } from "react";
 
 /**
  * Small, dependency-free charts in the staff palette. Tones map to tokens
@@ -14,16 +14,22 @@ export function Donut({
   segments,
   centerValue,
   centerLabel,
+  empty,
   size = 148,
   thickness = 16,
 }: {
   segments: Array<{ label: string; value: number; tone: ChartTone }>;
   centerValue: string;
   centerLabel: string;
+  /** Rendered in place of the ring when every segment is zero. */
+  empty?: ReactNode;
   size?: number;
   thickness?: number;
 }) {
   const total = segments.reduce((sum, segment) => sum + segment.value, 0);
+  if (total === 0 && empty !== undefined) {
+    return <div className="staff-donut staff-donut-empty">{empty}</div>;
+  }
   const radius = (size - thickness) / 2;
   const circumference = 2 * Math.PI * radius;
   const visible = segments.filter(segment => segment.value > 0);

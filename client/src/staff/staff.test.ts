@@ -5,6 +5,7 @@ import type {
   NccStaffUserDto,
 } from "@/lib/backend/api";
 import {
+  fetchAllPages,
   matchesStaffKey,
   staffQueryString,
   toStaffKey,
@@ -178,9 +179,9 @@ describe("canAccess", () => {
     }
   });
 
-  it("denies paths whose pages are not yet available", () => {
+  it("gives reports to every role except teacher", () => {
     for (const role of ALL_ROLES) {
-      expect(canAccess("/app/reports", role)).toBe(false);
+      expect(canAccess("/app/reports", role)).toBe(role !== "teacher");
     }
   });
 
@@ -535,5 +536,61 @@ describe("SWR key scoping", () => {
     );
     expect(staffQueryString({ unread: undefined, q: "" })).toBe("");
     expect(staffQueryString(undefined)).toBe("");
+  });
+});
+
+describe("fetchAllPages", () => {
+  const pages = (total: number, size = 100) =>
+    Array.from({ length: Math.ceil(total / size) }, (_, index) => ({
+      items: Array.from(
+        { length: Math.min(size, total - index * size) },
+        (__, row) => index * size + row
+      ),
+      total,
+    }));
+
+  it("fetches exactly ceil(total/100) pages and merges them", async () => {
+    const data = pages(250);
+    const calls: number[] = [];
+    const result = await fetchAllPages("/api/x", undefined, async (_path, q) => {
+      calls.push(q.page as number);
+      return data[(q.page as number) - 1];
+    });
+    expect(calls.sort((a, b) => a - b)).toEqual([1, 2, 3]);
+    expect(result.items).toHaveLength(250);
+    expect(result.items[249]).toBe(249);
+    expect(result.total).toBe(250);
+    expect(result.truncated).toBe(false);
+  });
+
+  it("stops after page 1 when everything fits", async () => {
+    const calls: number[] = [];
+    const result = await fetchAllPages("/api/x", { status: "x" }, async (_p, q) => {
+      calls.push(q.page as number);
+      return { items: [1, 2], total: 2 };
+    });
+    expect(calls).toEqual([1]);
+    expect(result.items).toEqual([1, 2]);
+  });
+
+  it("caps at 50 pages and reports truncation", async () => {
+    const calls: number[] = [];
+    const result = await fetchAllPages("/api/x", undefined, async (_p, q) => {
+      calls.push(q.page as number);
+      return { items: [q.page], total: 9999 };
+    });
+    expect(calls).toHaveLength(50);
+    expect(result.items).toHaveLength(50);
+    expect(result.truncated).toBe(true);
+    expect(result.total).toBe(9999);
+  });
+
+  it("rejects when any later page fails", async () => {
+    await expect(
+      fetchAllPages("/api/x", undefined, async (_p, q) => {
+        if (q.page === 3) throw new Error("boom");
+        return { items: [q.page], total: 400 };
+      })
+    ).rejects.toThrow("boom");
   });
 });

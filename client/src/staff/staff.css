@@ -4080,6 +4080,10 @@ html.staff-ui:lang(ar) .staff-report-title {
 }
 
 .staff-tile-label {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
   font-size: 0.8125rem;
   color: var(--ink-3);
 }
@@ -5499,7 +5503,8 @@ html.staff-ui:lang(ar) .staff-donut-value {
   background: var(--positive);
 }
 
-html[dir="rtl"] .staff-funnel-bar {
+html[dir="rtl"] .staff-funnel-bar,
+html[dir="rtl"] .staff-split-part {
   transform-origin: right;
 }
 
@@ -5548,4 +5553,229 @@ html[dir="rtl"] .staff-funnel-bar {
 .staff-dash-split-title {
   font-size: 0.9375rem;
   font-weight: 500;
+}
+
+/* ---------- Reports ------------------------------------------------------- */
+/* Breakdown panels: 1 column phones, 2 laptop, 3 ultrawide. Panels holding
+   wide tables span the whole row so numbers never clip. */
+.staff-report-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.875rem;
+  align-items: start;
+}
+
+@media (min-width: 1800px) {
+  .staff-report-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 1099px) {
+  .staff-report-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.staff-panel-wide {
+  grid-column: 1 / -1;
+}
+
+.staff-report-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin-inline-start: auto;
+}
+
+.staff-report-branch {
+  inline-size: min(16rem, 100%);
+  flex: none;
+}
+
+@media (max-width: 599px) {
+  .staff-report-controls {
+    margin-inline-start: 0;
+  }
+
+  .staff-report-controls .staff-segments {
+    flex-wrap: wrap;
+    overflow-x: clip;
+  }
+
+  .staff-report-tabs {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    inline-size: 100%;
+  }
+
+  .staff-report-tabs .staff-segment {
+    justify-content: center;
+  }
+
+  .staff-panel .staff-section-head {
+    flex-wrap: wrap;
+  }
+
+  .staff-panel .staff-section-head > .staff-panel-note {
+    flex-basis: 100%;
+  }
+}
+
+/* Label cells give up space to the numbers: ellipsis plus a tooltip. */
+.staff-cell-ellip {
+  display: block;
+  max-inline-size: 9rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-width: 1399px) {
+  .staff-panel-wide .staff-cell-ellip {
+    max-inline-size: 8rem;
+  }
+}
+
+@media (min-width: 1400px) {
+  .staff-panel-wide .staff-cell-ellip {
+    max-inline-size: 16rem;
+  }
+}
+
+/* Phones: each row collapses into a label line + "metric value" pairs. */
+@media (max-width: 599px) {
+  .staff-table-compact thead {
+    display: none;
+  }
+
+  .staff-table-compact .staff-table,
+  .staff-table-compact tbody,
+  .staff-table-compact tbody tr {
+    display: block;
+  }
+
+  .staff-table-compact tbody tr {
+    padding: 0.625rem 1rem;
+    border-block-end: 1px solid var(--line);
+  }
+
+  .staff-table-compact tbody tr:last-child {
+    border-block-end: 0;
+  }
+
+  .staff-table-compact td {
+    block-size: auto;
+    padding: 0;
+    border-block-end: 0;
+    white-space: normal;
+  }
+
+  .staff-table-compact td.staff-cell-label {
+    display: block;
+    margin-block-end: 0.125rem;
+    font-weight: 500;
+  }
+
+  .staff-table-compact .staff-cell-ellip {
+    display: -webkit-box;
+    max-inline-size: none;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    white-space: normal;
+  }
+
+  .staff-table-compact td:not(.staff-cell-label) {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 0.25rem;
+    margin-inline-end: 1rem;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .staff-table-compact td:not(.staff-cell-label)::before {
+    content: attr(data-label);
+    color: var(--ink-3);
+    font-size: 0.75rem;
+  }
+}
+
+/* Labelled KPI groups (e.g. "Right now" / "In this period"). */
+.staff-report-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.625rem;
+}
+
+.staff-report-group-title {
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--ink-3);
+}
+
+.staff-donut-empty {
+  display: block;
+}
+
+/* Numeric columns stay right-aligned with tabular figures. */
+.staff-num {
+  text-align: end;
+}
+
+.staff-report-more {
+  display: block;
+  inline-size: 100%;
+  padding-block: 0.625rem;
+  border-block-start: 1px solid var(--line);
+  background: none;
+  border-inline: 0;
+  border-block-end: 0;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--ink-3);
+  cursor: pointer;
+}
+
+@media (hover: hover) {
+  .staff-report-more:hover {
+    color: var(--ink);
+  }
+}
+
+.staff-report-foot {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.8125rem;
+}
+
+.staff-report-truncated {
+  color: var(--ink-2);
+}
+
+/* Compact definition pairs inside a report panel. */
+.staff-report-facts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.875rem 1rem;
+  margin: 0;
+}
+
+.staff-report-facts > div {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+}
+
+.staff-report-facts dt {
+  font-size: 0.8125rem;
+  color: var(--ink-3);
+}
+
+.staff-report-facts dd {
+  margin: 0;
+  font-size: 1.375rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
 }

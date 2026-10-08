@@ -1,6 +1,7 @@
 import type { NccRole } from "@/lib/backend/api";
 import {
   Activity,
+  BarChart3,
   Bell,
   BookOpen,
   Building2,
@@ -60,7 +61,7 @@ const ROOM_READ: NccRole[] = [
   "ssa",
 ];
 
-const CLASS_READ: NccRole[] = [...ROOM_READ, "teacher"];
+export const CLASS_READ: NccRole[] = [...ROOM_READ, "teacher"];
 
 const STAFF_AUDIT: NccRole[] = ["super_admin", "branch_admin", "vice_manager"];
 
@@ -84,6 +85,13 @@ export function staffNav(): StaffNavGroup[] {
           roles: ALL,
           available: true,
           icon: LayoutDashboard,
+        },
+        {
+          label: copy.nav.reports,
+          href: "/app/reports",
+          roles: ROOM_READ,
+          available: true,
+          icon: BarChart3,
         },
         {
           label: copy.nav.forms,

@@ -86,6 +86,7 @@ const StaffSystemPage = lazy(() => import("./staff/pages/system-page"));
 const StaffAuditPage = lazy(() => import("./staff/pages/audit-page"));
 const StaffLeadsPage = lazy(() => import("./staff/pages/leads-page"));
 const StaffDashboardPage = lazy(() => import("./staff/pages/dashboard-page"));
+const StaffReportsPage = lazy(() => import("./staff/pages/reports-page"));
 const StaffCoursesPage = lazy(() => import("./staff/pages/courses-page"));
 const StaffCourseDetailPage = lazy(
   () => import("./staff/pages/course-detail-page")
@@ -277,6 +278,9 @@ function Router() {
         {/* Unified staff app (NCC sessions only) */}
         <StaffRoute path="/app/dashboard">
           <StaffDashboardPage />
+        </StaffRoute>
+        <StaffRoute path="/app/reports">
+          <StaffReportsPage />
         </StaffRoute>
         <StaffRoute path="/app/notifications">
           <StaffNotificationsPage />

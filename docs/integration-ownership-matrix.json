@@ -545,7 +545,11 @@
       "failureBehavior": "Show unavailable or stale-at timestamps; never substitute demo metrics.",
       "futureWriteStatus": "saved_presets_only",
       "selectors": {
-        "clientRoutes": ["^/app/student/reports$", "^/app/(system|audit)$"],
+        "clientRoutes": [
+          "^/app/student/reports$",
+          "^/app/reports$",
+          "^/app/(system|audit)$"
+        ],
         "workflowActions": [
           "^(audit[.]export|report[.]preset[.]save|system[.]health_check)$"
         ],

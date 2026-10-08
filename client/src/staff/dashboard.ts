@@ -41,9 +41,16 @@ export function splitToday<
 
 /* ---------------- Insights ------------------------------------------ */
 
-export type Period = "7d" | "30d" | "90d" | "all";
+export type Period = "7d" | "30d" | "90d" | "12m" | "all";
 export const PERIODS: Period[] = ["7d", "30d", "90d", "all"];
-const DAYS: Record<Exclude<Period, "all">, number> = { "7d": 7, "30d": 30, "90d": 90 };
+/** Reports offers a year window on top of the dashboard set. */
+export const REPORT_PERIODS: Period[] = ["7d", "30d", "90d", "12m", "all"];
+const DAYS: Record<Exclude<Period, "all">, number> = {
+  "7d": 7,
+  "30d": 30,
+  "90d": 90,
+  "12m": 365,
+};
 
 const iso = (date: Date) => date.toISOString().slice(0, 10);
 const shift = (date: Date, days: number) => new Date(date.getTime() + days * 864e5);

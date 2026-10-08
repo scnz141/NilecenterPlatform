@@ -1,7 +1,6 @@
-import type { ReactNode } from "react";
 import useSWR from "swr";
 import { Link, useLocation, useSearch } from "wouter";
-import { ArrowRight, Check } from "lucide-react";
+import { Check } from "lucide-react";
 import type {
   NccClassDto,
   NccDashboardSummaryDto,
@@ -30,6 +29,7 @@ import { intlLocale } from "../i18n";
 import { canSetAssignee, isAdmissionsRole } from "../roles";
 import { useStaffSession } from "../session";
 import { Columns, Donut, Funnel, Sparkline, SplitBar } from "../ui/charts";
+import { Change, Panel, PanelLink, PeriodSwitch, Tile, fmt } from "../ui/insights";
 import {
   Select,
   SelectContent,
@@ -37,7 +37,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "../ui/kit";
-import { ActiveMark, EmptyState, ErrorState, LoadingRows, StatusBadge } from "../ui/primitives";
+import { EmptyState, ErrorState, LoadingRows, StatusBadge } from "../ui/primitives";
 import { useBranches } from "./admissions-ui";
 import { dayKey } from "./booking-list";
 import { scheduleText } from "./enrolment-actions";
@@ -73,74 +73,6 @@ function Greeting({ context }: { context?: string | null }) {
   );
 }
 
-function Tile({
-  label,
-  value,
-  note,
-  href,
-  meter,
-}: {
-  label: string;
-  value: ReactNode;
-  note?: ReactNode;
-  href?: string;
-  meter?: number;
-}) {
-  const body = (
-    <>
-      <span className="staff-tile-label">{label}</span>
-      <span className="staff-tile-value">{value}</span>
-      {meter !== undefined ? (
-        <span className="staff-tile-meter" aria-hidden>
-          <span style={{ inlineSize: `${meter}%` }} />
-        </span>
-      ) : null}
-      {note ? <span className="staff-tile-note">{note}</span> : null}
-    </>
-  );
-  return href ? (
-    <Link href={href} className="staff-tile" data-link>
-      {body}
-    </Link>
-  ) : (
-    <div className="staff-tile">{body}</div>
-  );
-}
-
-function Panel({
-  title,
-  action,
-  area,
-  children,
-}: {
-  title: string;
-  action?: ReactNode;
-  /** Grid area on the dashboard board. */
-  area?: string;
-  children: ReactNode;
-}) {
-  return (
-    <section className="staff-section staff-panel" data-area={area}>
-      <div className="staff-section-head">
-        <h2 className="staff-section-title">{title}</h2>
-        {action}
-      </div>
-      {children}
-    </section>
-  );
-}
-
-function PanelLink({ href, label }: { href: string; label: string }) {
-  return (
-    <Link href={href} className="staff-panel-link">
-      {label}
-      <ArrowRight className="staff-rtl-flip" strokeWidth={1.75} aria-hidden />
-    </Link>
-  );
-}
-
-const fmt = (value: number) => new Intl.NumberFormat(intlLocale()).format(value);
-
 /** Server total of a one-row page read; `null` while loading or denied. */
 function useTotal(path: string | null, query: StaffQuery) {
   const result = useNcc<{ total: number }>(path, { ...query, pageSize: 1 });
@@ -148,40 +80,6 @@ function useTotal(path: string | null, query: StaffQuery) {
 }
 
 /* ---------------- Admissions and management ------------------------- */
-
-/** Delta chip: "+3 vs previous period", tone by direction. */
-function Change({ value, unit = "" }: { value: number | null; unit?: string }) {
-  if (value === null) return null;
-  const tone = value > 0 ? "up" : value < 0 ? "down" : "flat";
-  const sign = value > 0 ? "+" : value < 0 ? "−" : "±";
-  return (
-    <span className="staff-change" data-tone={tone}>
-      {sign}
-      {fmt(Math.abs(value))}
-      {unit} <span className="staff-change-note">{D.vsPrevious}</span>
-    </span>
-  );
-}
-
-function PeriodSwitch({ value, onChange }: { value: Period; onChange: (value: Period) => void }) {
-  return (
-    <div className="staff-segments" role="group" aria-label={D.period}>
-      {PERIODS.map(item => (
-        <button
-          key={item}
-          type="button"
-          className="staff-segment"
-          data-active={value === item}
-          aria-pressed={value === item}
-          onClick={() => onChange(item)}
-        >
-          {value === item ? <ActiveMark group="dash-period" /> : null}
-          {D.periods[item]}
-        </button>
-      ))}
-    </div>
-  );
-}
 
 const SUMMARY = "/api/ncc/dashboard/summary";
 

@@ -54,6 +54,7 @@
       "/app/placement-tests",
       "/app/profile",
       "/app/registrar",
+      "/app/reports",
       "/app/rooms",
       "/app/rooms/:id",
       "/app/sessions",
