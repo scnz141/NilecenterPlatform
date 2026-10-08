@@ -282,6 +282,18 @@ Use the commands that exist in `package.json`:
   set `NILE_FORMS_COMPATIBILITY_STORE=blob` to persist it in a private
   Vercel Blob JSON snapshot (`NILE_FORMS_BLOB_PATH`, default
   `nile-forms/state.json`) for serverless deployments.
+- Vercel production (`nile-center-platform.vercel.app`, deployed from
+  `origin` `main`) runs on Vercel plus the NCC EMS API only; Supabase is not
+  used. Staff sign in with EMS accounts (sealed cookie, no session store).
+  Nile Forms persists in the private Blob store `nile-learn-forms`
+  (`NILE_FORMS_COMPATIBILITY_STORE=blob`, path `nile-forms/state.json`).
+  Platform state is local-only (`NILE_PLATFORM_STATE_LOCAL_ONLY=1`,
+  `NILE_LOCAL_DATA_DIR=/tmp/nile-learn`) and demo auth is off. Production
+  also needs `EMS_SESSION_SEAL_KEY`, `NILE_FORMS_DRAFT_KEY`,
+  `NILE_FORMS_PUBLIC_HMAC_KEY(_VERSION)`, `NILE_FORMS_ALLOWED_ORIGINS` (every
+  production domain), and the `NILE_NCC_*` flags. `api/[...path].ts` strips
+  Vercel's `path` query parameter and clears `req.query` so strict query
+  allowlists work.
 - `npm run verify:integration-fast` runs the integration ownership/evidence contracts, TypeScript, unit tests, and build in a bounded parallel inner loop. It does not replace the final database and portal gates.
 - `npm run verify:phase6b-fast` runs the Phase 6 contracts, Phase 6A/6B portable PostgreSQL gates, TypeScript, and the focused Moodle projection tests in parallel. Use it while implementing Phase 6B; it intentionally omits the full unit suite, build, and portal QA.
 - `VERIFY_SCOPE=focused SKIP_PORTAL_QA=1 scripts/verify.sh` is the explicit focused verifier when portal QA is not relevant. Filtered portal runs also require `VERIFY_SCOPE=focused`.
