@@ -6541,3 +6541,72 @@ fieldset.staff-dob {
     --dp-cell: 2.75rem;
   }
 }
+
+/* ---------- Back to the parent list (sub-pages) --------------------------- */
+.staff-back {
+  display: inline-flex;
+  flex-shrink: 1;
+  align-items: center;
+  gap: 0.25rem;
+  min-inline-size: 0;
+  max-inline-size: 16rem;
+  block-size: var(--control-sm);
+  margin-inline-start: -0.375rem;
+  padding-inline: 0.25rem 0.5rem;
+  border-radius: var(--r-md);
+  color: var(--ink);
+  font-weight: 500;
+  text-decoration: none;
+  transition-property: background-color, color;
+  transition-duration: var(--t-press);
+  transition-timing-function: var(--ease-out);
+}
+
+.staff-back-glyph {
+  flex-shrink: 0;
+  inline-size: 1.125rem;
+  block-size: 1.125rem;
+  color: var(--ink-2);
+}
+
+.staff-back-label {
+  min-inline-size: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (hover: hover) {
+  .staff-back:hover {
+    background: rgb(27 26 23 / 0.06);
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .staff-back:active {
+    scale: 0.97;
+  }
+}
+
+.staff-back:focus-visible {
+  outline: 2px solid var(--river);
+  outline-offset: 1px;
+}
+
+/* Phone: Back stays; the current name is already the page title. */
+@media (max-width: 639px) {
+  .staff-crumbs:has(.staff-back) .staff-crumb-current,
+  .staff-crumbs:has(.staff-back) .staff-crumb-sep {
+    display: none;
+  }
+  .staff-topbar[data-compact] .staff-crumbs:has(.staff-back) {
+    opacity: 1;
+  }
+  .staff-back {
+    max-inline-size: 9rem;
+  }
+  /* With the compact title centred, Back keeps to its own side. */
+  .staff-topbar[data-compact] .staff-back-label {
+    max-inline-size: 5rem;
+  }
+}
