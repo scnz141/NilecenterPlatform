@@ -1,27 +1,36 @@
 import { useSyncExternalStore } from "react";
 import { getDirection } from "@/lib/i18n";
 import { ar } from "./copy.ar";
+import { ru } from "./copy.ru";
 import { tr } from "./copy.tr";
+import { ur } from "./copy.ur";
+import { zh } from "./copy.zh";
 import { copy, enMessages, type StaffMessages } from "./copy";
 
 /**
  * Staff app language. Shares the `nilelearn.locale` preference with the rest
  * of Nile Learn. A language is listed only when its dictionary is complete.
  */
-export type StaffLocale = "en" | "ar" | "tr";
+export type StaffLocale = "en" | "ar" | "tr" | "zh" | "ru" | "ur";
 
 export const STAFF_LOCALES: { value: StaffLocale; label: string }[] = [
   { value: "en", label: "English" },
   { value: "ar", label: "العربية" },
   { value: "tr", label: "Türkçe" },
+  { value: "zh", label: "中文" },
+  { value: "ru", label: "Русский" },
+  { value: "ur", label: "اردو" },
 ];
 
 const STORAGE_KEY = "nilelearn.locale";
-const DICTIONARIES: Record<StaffLocale, StaffMessages> = { en: enMessages, ar, tr };
+const DICTIONARIES: Record<StaffLocale, StaffMessages> = { en: enMessages, ar, tr, zh, ru, ur };
 const INTL_TAGS: Record<StaffLocale, string> = {
   en: "en-GB",
   ar: "ar-EG-u-nu-latn",
   tr: "tr-TR",
+  zh: "zh-CN",
+  ru: "ru-RU",
+  ur: "ur-PK-u-nu-latn",
 };
 
 let current: StaffLocale = "en";
@@ -30,7 +39,9 @@ const listeners = new Set<() => void>();
 function readStored(): StaffLocale {
   try {
     const stored = window.localStorage.getItem(STORAGE_KEY);
-    return stored === "ar" || stored === "tr" ? stored : "en";
+    return STAFF_LOCALES.some(option => option.value === stored)
+      ? (stored as StaffLocale)
+      : "en";
   } catch {
     return "en";
   }

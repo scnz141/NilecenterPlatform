@@ -20,7 +20,7 @@ import {
 import { useInvalidate, useNcc } from "../api";
 import { formsWrite } from "../forms/write";
 import { copy } from "../copy";
-import { canManageForms, text, toKey } from "../forms/model";
+import { canManageForms, formLocaleFor, text, toKey } from "../forms/model";
 import { formatDateTime, useStaffLocale } from "../i18n";
 import { FormValidationError, runAction } from "../run-action";
 import { useStaffSession } from "../session";
@@ -52,7 +52,7 @@ export const RESPONSE_TONE: Record<string, string> = {
 function NewFormSheet({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
   const { session } = useStaffSession();
   const role = session?.activeRole ?? null;
-  const locale = useStaffLocale();
+  const locale = formLocaleFor(useStaffLocale());
   const [, navigate] = useLocation();
   const invalidate = useInvalidate();
   const branches = useBranches();

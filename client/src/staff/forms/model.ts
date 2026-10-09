@@ -6,6 +6,7 @@ import type {
   LocalizedText,
 } from "@shared/nileForms";
 import type { Role } from "@/lib/platformData";
+import type { StaffLocale } from "../i18n";
 
 /** Question types offered in the builder, grouped as they appear in the menu. */
 export const FIELD_GROUPS: Array<{ key: "text" | "choice" | "value" | "layout"; types: FormFieldType[] }> = [
@@ -192,4 +193,12 @@ export function branchFromAnswers(fields: FormField[], answers: Record<string, u
     }
   }
   return null;
+}
+
+/**
+ * Form content is written in English and Arabic (Turkish optional). Staff
+ * using another app language read forms in English.
+ */
+export function formLocaleFor(locale: StaffLocale): FormLocale {
+  return locale === "ar" || locale === "tr" ? locale : "en";
 }

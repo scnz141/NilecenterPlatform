@@ -5,7 +5,7 @@ import type { FormLocale, FormReview } from "@shared/nileForms";
 import { reviewFormSubmissionRequest, type FormSubmissionDetail } from "@/lib/forms/api";
 import { useInvalidate, useNcc } from "../api";
 import { copy } from "../copy";
-import { answerText, branchFromAnswers, contactFromAnswers, DISPLAY_TYPES, text } from "../forms/model";
+import { answerText, branchFromAnswers, contactFromAnswers, DISPLAY_TYPES, formLocaleFor, text } from "../forms/model";
 import { formsWrite } from "../forms/write";
 import { formatDateTime, useStaffLocale } from "../i18n";
 import { isAdmissionsRole } from "../roles";
@@ -53,7 +53,7 @@ export default function FormResponsePage() {
   if (!data) return <LoadingRows />;
 
   const { submission, version, definition } = data;
-  const locale: FormLocale = staffLocale;
+  const locale: FormLocale = formLocaleFor(staffLocale);
   const fields = version.content.pages.flatMap(page => page.fields).filter(field => !DISPLAY_TYPES.has(field.type));
   const words = { yes: F.yes, no: F.no, agreed: F.agreed };
   const leadId = linkedLeadId(data.reviews);

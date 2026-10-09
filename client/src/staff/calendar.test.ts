@@ -70,6 +70,9 @@ describe("calendar maths", () => {
 
   it("labels in the requested language", () => {
     expect(formatFieldDate("2026-10-10", "en-GB")).toBe("Sat, 10 Oct 2026");
-    expect(weekdayNames(1, "en-GB")[0].long).toBe("Monday");
+    expect(weekdayNames(1, "en-GB")[0]).toEqual({ short: "Mon", long: "Monday" });
+    // Arabic short names are full words, so the column uses the narrow form.
+    expect(weekdayNames(6, "ar-EG")[0].short.length).toBe(1);
+    expect(weekdayNames(6, "ar-EG")[0].long).toBe("السبت");
   });
 });

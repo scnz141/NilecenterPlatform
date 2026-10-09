@@ -3,7 +3,7 @@ import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { Link } from "wouter";
 import { ArrowRight, Check, ChevronDown, Globe2, Menu, X } from "lucide-react";
 import { NileLogo } from "@/components/brand/NileLogo";
-import { LANDING_COPY, LANDING_LOCALES, type LandingCopy, type LandingLocale } from "./landing-copy";
+import { LANDING_COPY, LANDING_LOCALES, RTL_LOCALES, type LandingCopy, type LandingLocale } from "./landing-copy";
 
 /** Shared pieces of every public page: language, header, footer, petals. */
 export const PETAL_COLOURS = ["#406687", "#71adab", "#80b4d7", "#c35d44", "#41714c", "#79689d", "#75c1cc", "#c35d44"];
@@ -31,7 +31,7 @@ export function usePublicLocale() {
     const root = document.documentElement;
     const previous = { lang: root.lang, dir: root.dir };
     root.lang = locale;
-    root.dir = locale === "ar" ? "rtl" : "ltr";
+    root.dir = RTL_LOCALES.includes(locale) ? "rtl" : "ltr";
     return () => {
       root.lang = previous.lang;
       root.dir = previous.dir;
@@ -177,7 +177,7 @@ export function CountUp({ value, locale }: { value: string; locale: LandingLocal
     const node = ref.current;
     if (!node || !animate || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
     const format = (n: number) =>
-      `${match?.[1] ?? ""}${new Intl.NumberFormat(locale === "ar" ? "en" : locale).format(n)}${match?.[3] ?? ""}`;
+      `${match?.[1] ?? ""}${new Intl.NumberFormat(RTL_LOCALES.includes(locale) ? "en" : locale).format(n)}${match?.[3] ?? ""}`;
     setShown(format(0));
     let frame = 0;
     const observer = new IntersectionObserver(

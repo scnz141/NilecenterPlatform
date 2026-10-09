@@ -145,13 +145,15 @@ export function formatDayNumber(iso: string, locale?: string): string {
 /** Narrow weekday names in display order, plus full names for headers' titles. */
 export function weekdayNames(firstDay: number, locale?: string): { short: string; long: string }[] {
   // 2023-01-01 was a Sunday.
-  return Array.from({ length: 7 }, (_, index) => {
-    const iso = addDays("2023-01-01", (firstDay + index) % 7);
-    return {
-      short: format(iso, { weekday: "short" }, locale),
-      long: format(iso, { weekday: "long" }, locale),
-    };
-  });
+  const days = Array.from({ length: 7 }, (_, index) => addDays("2023-01-01", (firstDay + index) % 7));
+  const short = days.map(iso => format(iso, { weekday: "short" }, locale));
+  // Some languages' short names (Arabic gives full words) overflow a day
+  // column; those use the narrow form, as printed calendars do.
+  const fits = short.every(name => name.length <= 3);
+  return days.map((iso, index) => ({
+    short: fits ? short[index] : format(iso, { weekday: "narrow" }, locale),
+    long: format(iso, { weekday: "long" }, locale),
+  }));
 }
 
 export function monthNamesShort(locale?: string): string[] {

@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { enMessages } from "./copy";
 import { ar } from "./copy.ar";
+import { ru } from "./copy.ru";
 import { tr } from "./copy.tr";
+import { ur } from "./copy.ur";
+import { zh } from "./copy.zh";
 
 type Tree = { [key: string]: string | Tree };
 
@@ -16,6 +19,9 @@ const english = new Map(leaves(enMessages as unknown as Tree));
 describe.each([
   ["Arabic", ar],
   ["Turkish", tr],
+  ["Chinese", zh],
+  ["Russian", ru],
+  ["Urdu", ur],
 ])("%s staff copy", (_name, dictionary) => {
   const entries = leaves(dictionary as unknown as Tree);
 
@@ -28,5 +34,10 @@ describe.each([
     // Product names, codes, and symbols may stay as they are.
     const same = entries.filter(([key, value]) => value === english.get(key) && /[a-z]{4,}/i.test(value));
     expect(same.length / entries.length).toBeLessThan(0.04);
+  });
+
+  it("keeps every placeholder", () => {
+    const marks = (text: string) => (text.match(/\{[a-zA-Z]+\}/g) ?? []).sort().join(",");
+    expect(entries.filter(([key, value]) => marks(value) !== marks(english.get(key) ?? ""))).toEqual([]);
   });
 });
