@@ -37,6 +37,7 @@ import { copy } from "../copy";
 import { FormValidationError, runAction } from "../run-action";
 import type { DobError } from "../date-of-birth";
 import { DateOfBirthField } from "../ui/date-of-birth-field";
+import { DatePicker } from "../ui/date-picker";
 import { FormSheet, StaffField } from "../ui/form-sheet";
 import type { StaffSecret } from "../ui/secret-dialog";
 import {
@@ -297,12 +298,10 @@ export function BookingSheet({
             error={show(errors.when) ?? errorFor("scheduled_at")}
           >
             <div className="staff-when">
-              <input
+              <DatePicker
                 id="booking-date"
-                type="date"
-                className="staff-input"
                 value={draft.date}
-                onChange={event => set("date", event.target.value)}
+                onChange={next => set("date", next)}
               />
               <Select
                 value={draft.hour}

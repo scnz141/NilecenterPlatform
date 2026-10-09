@@ -14,6 +14,7 @@ import {
 } from "@/staff/ui/kit";
 import { staffWrite, useInvalidate } from "../api";
 import { copy } from "../copy";
+import { DatePicker } from "../ui/date-picker";
 import { FormValidationError, runAction } from "../run-action";
 import { useStaffSession } from "../session";
 import {
@@ -258,22 +259,24 @@ export function ClassForm({
           </div>
           <div className="grid grid-cols-2 gap-3">
             <StaffField label={K.starts} htmlFor="class-start" error={show("startDate") ?? errorFor("start_at")}>
-              <input
+              <DatePicker
                 id="class-start"
-                type="date"
-                className="staff-input"
                 value={draft.startDate}
-                onChange={event => set("startDate", event.target.value)}
+                rangeStart={draft.startDate}
+                rangeEnd={draft.endDate}
+                invalid={Boolean(show("startDate") ?? errorFor("start_at"))}
+                onChange={next => set("startDate", next)}
               />
             </StaffField>
             <StaffField label={K.ends} htmlFor="class-end" error={show("endDate") ?? errorFor("end_at")}>
-              <input
+              <DatePicker
                 id="class-end"
-                type="date"
-                className="staff-input"
                 min={draft.startDate || undefined}
                 value={draft.endDate}
-                onChange={event => set("endDate", event.target.value)}
+                rangeStart={draft.startDate}
+                rangeEnd={draft.endDate}
+                invalid={Boolean(show("endDate") ?? errorFor("end_at"))}
+                onChange={next => set("endDate", next)}
               />
             </StaffField>
           </div>

@@ -18,6 +18,8 @@ import {
   SelectValue,
 } from "@/staff/ui/kit";
 import { copy } from "../copy";
+import { DatePicker } from "../ui/date-picker";
+import { todayIso } from "../calendar";
 import { useNcc } from "../api";
 import { SLUG_PATTERN, toSlug } from "../forms/model";
 import { formsWrite } from "../forms/write";
@@ -571,7 +573,7 @@ function AssignSheet({
         </StaffField>
       )}
       <StaffField label={F.expires} htmlFor="assign-expires">
-        <input id="assign-expires" type="date" className="staff-input" value={expires} onChange={event => setExpires(event.target.value)} />
+        <DatePicker id="assign-expires" value={expires} min={todayIso()} clearable onChange={setExpires} />
       </StaffField>
     </FormSheet>
   );

@@ -7,6 +7,7 @@ import {
   SelectValue,
 } from "@/staff/ui/kit";
 import { useNcc } from "../api";
+import { DatePicker } from "./date-picker";
 import { StaffField } from "./form-sheet";
 
 export type CustomFieldValues = Record<
@@ -99,13 +100,11 @@ export function CustomFieldsEditor({
                 }
               />
             ) : definition.fieldType === "date" ? (
-              <input
-                type="date"
-                className="staff-input"
+              <DatePicker
+                aria-label={definition.label}
                 value={typeof current === "string" ? current : ""}
-                onChange={event =>
-                  set(definition.fieldKey, event.target.value || null)
-                }
+                clearable
+                onChange={next => set(definition.fieldKey, next || null)}
               />
             ) : definition.fieldType === "textarea" ? (
               <textarea

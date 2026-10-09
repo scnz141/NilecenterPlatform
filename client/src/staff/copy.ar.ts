@@ -51,6 +51,7 @@ export const ar: StaffMessages = {
     teacher: "المعلم",
   },
   shell: {
+    backTo: "العودة إلى {page}",
     collapseSidebar: "طيّ الشريط الجانبي",
     expandSidebar: "توسيع الشريط الجانبي",
     staffNav: "تنقل الموظفين",

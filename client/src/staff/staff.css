@@ -6219,3 +6219,325 @@ fieldset.staff-dob {
     display: none;
   }
 }
+
+/* ---------- Date picker ---------------------------------------------------- */
+.staff-date-trigger {
+  justify-content: space-between;
+  text-align: start;
+  cursor: pointer;
+}
+
+.staff-date-trigger:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.staff-date-text {
+  min-inline-size: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.staff-date-trigger[data-empty] .staff-date-text {
+  color: var(--ink-3);
+}
+
+.staff-date-glyph {
+  flex-shrink: 0;
+  inline-size: 1.0625rem;
+  block-size: 1.0625rem;
+  color: var(--ink-3);
+}
+
+.staff-date-trigger[aria-expanded="true"] {
+  border-color: var(--ink);
+}
+
+.staff-date-trigger[aria-expanded="true"] .staff-date-glyph {
+  color: var(--ink);
+}
+
+.staff-date-trigger[aria-invalid="true"] {
+  border-color: var(--critical);
+}
+
+.ui-popover.staff-datepicker {
+  --dp-cell: 2.5rem;
+  inline-size: calc(var(--dp-cell) * 7 + 1.5rem);
+  min-inline-size: 0;
+  max-block-size: none;
+  padding: 0.75rem;
+  overflow: visible;
+}
+
+.staff-dp-head {
+  display: grid;
+  grid-template-columns: var(--dp-cell) minmax(0, 1fr) var(--dp-cell);
+  align-items: center;
+  margin-block-end: 0.5rem;
+}
+
+.staff-dp-nav,
+.staff-dp-title {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  block-size: 2.25rem;
+  border: 0;
+  border-radius: var(--r-md);
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  cursor: pointer;
+  transition: background-color var(--t-press) var(--ease-out);
+}
+
+.staff-dp-nav {
+  inline-size: 2.25rem;
+  justify-self: center;
+  color: var(--ink-2);
+}
+
+.staff-dp-nav > svg {
+  inline-size: 1.125rem;
+  block-size: 1.125rem;
+}
+
+.staff-dp-nav:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+.staff-dp-title {
+  justify-self: center;
+  padding-inline: 0.75rem;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+@media (hover: hover) {
+  .staff-dp-nav:not(:disabled):hover,
+  .staff-dp-title:hover {
+    background: rgb(27 26 23 / 0.06);
+  }
+}
+
+.staff-dp-row {
+  display: grid;
+  grid-template-columns: repeat(7, var(--dp-cell));
+}
+
+.staff-dp-weekday {
+  display: grid;
+  place-items: center;
+  block-size: 1.75rem;
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--ink-3);
+}
+
+.staff-dp-weekday abbr {
+  text-decoration: none;
+}
+
+.staff-dp-cell {
+  position: relative;
+  display: grid;
+  place-items: center;
+  block-size: var(--dp-cell);
+}
+
+/* Range shading runs edge to edge between the From and To days. */
+.staff-dp-cell[data-between],
+.staff-dp-cell[data-edge-start],
+.staff-dp-cell[data-edge-end] {
+  background: rgb(196 163 90 / 0.16);
+}
+
+.staff-dp-cell[data-edge-start] {
+  border-start-start-radius: 999px;
+  border-end-start-radius: 999px;
+}
+
+.staff-dp-cell[data-edge-end] {
+  border-start-end-radius: 999px;
+  border-end-end-radius: 999px;
+}
+
+.staff-dp-day {
+  position: relative;
+  display: grid;
+  place-items: center;
+  inline-size: calc(var(--dp-cell) - 0.25rem);
+  block-size: calc(var(--dp-cell) - 0.25rem);
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-size: 0.875rem;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  transition-property: background-color, color, scale;
+  transition-duration: var(--t-press);
+  transition-timing-function: var(--ease-out);
+}
+
+.staff-dp-day[data-outside] {
+  color: var(--ink-3);
+  opacity: 0.55;
+}
+
+@media (hover: hover) {
+  .staff-dp-day:not([aria-disabled]):not([data-selected]):hover {
+    background: rgb(27 26 23 / 0.07);
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .staff-dp-day:not([aria-disabled]):active {
+    scale: 0.94;
+  }
+}
+
+/* Today: a gold dot under the number, so it never competes with selection. */
+.staff-dp-day[data-today]::after {
+  content: "";
+  position: absolute;
+  inset-block-end: 0.3125rem;
+  inline-size: 0.25rem;
+  block-size: 0.25rem;
+  border-radius: 999px;
+  background: var(--gold);
+}
+
+.staff-dp-day[data-today] {
+  font-weight: 600;
+}
+
+.staff-dp-day[data-edge] {
+  background: rgb(196 163 90 / 0.32);
+}
+
+.staff-dp-day[data-selected] {
+  background: var(--ink);
+  color: var(--paper-raised);
+  font-weight: 600;
+  opacity: 1;
+}
+
+.staff-dp-day[data-selected][data-today]::after {
+  background: var(--paper-raised);
+}
+
+.staff-dp-day[aria-disabled] {
+  color: var(--ink-3);
+  opacity: 0.35;
+  text-decoration: line-through;
+  text-decoration-thickness: 1px;
+  cursor: not-allowed;
+}
+
+.staff-dp-day:focus-visible,
+.staff-dp-month:focus-visible,
+.staff-dp-nav:focus-visible,
+.staff-dp-title:focus-visible {
+  outline: 2px solid var(--river);
+  outline-offset: 1px;
+}
+
+/* Month change: the new month slides in from the side it came from. */
+@media (prefers-reduced-motion: no-preference) {
+  .staff-dp-weeks[data-dir="next"] {
+    animation: staff-dp-next 200ms var(--ease) both;
+  }
+  .staff-dp-weeks[data-dir="prev"] {
+    animation: staff-dp-prev 200ms var(--ease) both;
+  }
+  html[dir="rtl"] .staff-dp-weeks[data-dir="next"] {
+    animation-name: staff-dp-prev;
+  }
+  html[dir="rtl"] .staff-dp-weeks[data-dir="prev"] {
+    animation-name: staff-dp-next;
+  }
+}
+
+@keyframes staff-dp-next {
+  from {
+    opacity: 0;
+    translate: 0.75rem 0;
+  }
+}
+
+@keyframes staff-dp-prev {
+  from {
+    opacity: 0;
+    translate: -0.75rem 0;
+  }
+}
+
+.staff-dp-months {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.375rem;
+  padding-block: 0.25rem;
+}
+
+.staff-dp-month {
+  block-size: 2.75rem;
+  border: 0;
+  border-radius: var(--r-md);
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-size: 0.875rem;
+  cursor: pointer;
+  transition: background-color var(--t-press) var(--ease-out);
+}
+
+.staff-dp-month[data-today] {
+  font-weight: 600;
+  box-shadow: inset 0 0 0 1px var(--gold);
+}
+
+.staff-dp-month[data-current] {
+  background: var(--ink);
+  color: var(--paper-raised);
+  font-weight: 600;
+}
+
+.staff-dp-month:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+@media (hover: hover) {
+  .staff-dp-month:not(:disabled):not([data-current]):hover {
+    background: rgb(27 26 23 / 0.07);
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .staff-dp-months {
+    animation: ui-fade-in 150ms var(--ease-out) both;
+  }
+}
+
+.staff-dp-foot {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-block-start: 0.5rem;
+  padding-block-start: 0.5rem;
+  border-block-start: 1px solid var(--line);
+}
+
+/* Touch screens: 44px targets. */
+@media (pointer: coarse) {
+  .ui-popover.staff-datepicker {
+    --dp-cell: 2.75rem;
+  }
+}

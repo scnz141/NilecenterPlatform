@@ -52,6 +52,7 @@ export const tr: StaffMessages = {
     teacher: "Öğretmen",
   },
   shell: {
+    backTo: "{page} sayfasına dön",
     collapseSidebar: "Kenar çubuğunu daralt",
     expandSidebar: "Kenar çubuğunu genişlet",
     staffNav: "Personel menüsü",

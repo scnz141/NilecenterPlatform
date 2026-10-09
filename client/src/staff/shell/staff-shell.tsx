@@ -66,10 +66,40 @@ import {
   useSidebarCollapsed,
 } from "./sidebar-state";
 import { StaffCommandMenu } from "./command-menu";
+import {
+  installNavHistory,
+  lastNavType,
+  lastSearchFor,
+  rememberScroll,
+  savedScroll,
+  stepsBackTo,
+} from "./nav-history";
+import { GlyphChevronLeft } from "../ui/glyphs";
+
+installNavHistory();
 
 const StaffCrumbContext = createContext<(label: string | null) => void>(
   () => {},
 );
+
+type StaffParent = { href: string; label: string };
+const StaffParentContext = createContext<(parent: StaffParent | null) => void>(
+  () => {}
+);
+
+/**
+ * Sub-pages go up to the list they belong to (from the route). A page whose
+ * parent is not in its URL, such as a form response, names it here.
+ */
+export function useStaffParent(parent: StaffParent | null) {
+  const setParent = useContext(StaffParentContext);
+  const href = parent?.href ?? null;
+  const label = parent?.label ?? null;
+  useEffect(() => {
+    setParent(href && label ? { href, label } : null);
+    return () => setParent(null);
+  }, [href, label, setParent]);
+}
 
 /** Pages call this to append a final breadcrumb crumb (e.g. a person name). */
 export function useStaffCrumb(label: string | null) {
@@ -439,7 +469,69 @@ function SidebarFooter({ session, compact = false }: { session: AuthSessionDto; 
   );
 }
 
-function Breadcrumb({ path, crumb }: { path: string; crumb: string | null }) {
+/**
+ * Up to the parent list, as a link (so a modified click opens a new tab).
+ * When the page before this one in history is that list, it goes back
+ * through history, which keeps the list's filters, tab and scroll. Otherwise
+ * it opens the list with the filters it had last time in this tab.
+ */
+function BackLink({ parent }: { parent: StaffParent }) {
+  const [, navigate] = useLocation();
+  const [parentPath] = parent.href.split("?");
+  const href = parent.href.includes("?") ? parent.href : parentPath + lastSearchFor(parentPath);
+  return (
+    <Link
+      href={href}
+      className="staff-back"
+      aria-label={copy.shell.backTo.replace("{page}", parent.label)}
+      onClick={event => {
+        if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) return;
+        event.preventDefault();
+        const steps = stepsBackTo(parentPath);
+        if (steps !== null) window.history.go(steps);
+        else navigate(href);
+      }}
+    >
+      <GlyphChevronLeft className="ui-glyph staff-back-glyph staff-rtl-flip" />
+      <span className="staff-back-label">{parent.label}</span>
+    </Link>
+  );
+}
+
+/** The parent of a sub-page: a page override, or the nav item its URL sits under. */
+function parentForPath(path: string, override: StaffParent | null): StaffParent | null {
+  if (override) return override;
+  const trail = navTrailForPath(path);
+  if (!trail || path === trail.item.href) return null;
+  return { href: trail.item.href, label: trail.item.label };
+}
+
+function Breadcrumb({
+  path,
+  crumb,
+  parent,
+}: {
+  path: string;
+  crumb: string | null;
+  parent: StaffParent | null;
+}) {
+  if (parent) {
+    return (
+      <>
+        <BackLink parent={parent} />
+        {crumb ? (
+          <>
+            <span className="staff-crumb-sep" aria-hidden>
+              /
+            </span>
+            <span className="staff-crumb staff-crumb-current" aria-current="page">
+              {crumb}
+            </span>
+          </>
+        ) : null}
+      </>
+    );
+  }
   const trail = navTrailForPath(path);
   if (!trail) {
     return (
@@ -489,7 +581,22 @@ function useCollapsingTitle(location: string) {
   useEffect(() => {
     const main = mainRef.current;
     if (!main) return;
+    // Back and Forward return to where the page was; anything else starts at the top.
+    const target = lastNavType() === "pop" ? savedScroll() : 0;
     main.scrollTo({ top: 0 });
+    let restore = 0;
+    if (target > 0) {
+      let tries = 0;
+      const attempt = () => {
+        tries += 1;
+        if (main.scrollHeight - main.clientHeight >= target || tries > 40) {
+          main.scrollTo({ top: target });
+          return;
+        }
+        restore = requestAnimationFrame(attempt);
+      };
+      restore = requestAnimationFrame(attempt);
+    }
     setBar({ scrolled: false, compact: false, title: null });
     let frame = 0;
     const measure = () => {
@@ -520,6 +627,7 @@ function useCollapsingTitle(location: string) {
       });
     };
     const onScroll = () => {
+      rememberScroll(main.scrollTop);
       if (!frame) frame = requestAnimationFrame(measure);
     };
     measure();
@@ -527,6 +635,7 @@ function useCollapsingTitle(location: string) {
     return () => {
       main.removeEventListener("scroll", onScroll);
       if (frame) cancelAnimationFrame(frame);
+      if (restore) cancelAnimationFrame(restore);
     };
   }, [location]);
 
@@ -545,6 +654,8 @@ export function StaffShell({
   const [mobileNav, setMobileNav] = useState(false);
   const [commandOpen, setCommandOpen] = useState(false);
   const [crumb, setCrumb] = useState<string | null>(null);
+  const [parentOverride, setParentOverride] = useState<StaffParent | null>(null);
+  const parent = parentForPath(path, parentOverride);
   const bar = useCollapsingTitle(location);
   const collapsed = useSidebarCollapsed();
   const isMac =
@@ -577,6 +688,7 @@ export function StaffShell({
   return (
     <MotionConfig reducedMotion="user">
       <StaffCrumbContext.Provider value={setCrumb}>
+      <StaffParentContext.Provider value={setParentOverride}>
         <div className="staff-app staff-shell" data-sidebar={collapsed ? "collapsed" : "expanded"}>
           <aside className="staff-sidebar">
             <div className="staff-sidebar-head">
@@ -615,7 +727,7 @@ export function StaffShell({
                 <Menu strokeWidth={1.75} aria-hidden />
               </button>
               <nav className="staff-crumbs" aria-label={copy.shell.breadcrumb}>
-                <Breadcrumb path={path} crumb={crumb} />
+                <Breadcrumb path={path} crumb={crumb} parent={parent} />
               </nav>
               <span className="staff-topbar-title" aria-hidden>
                 {bar.title}
@@ -660,6 +772,7 @@ export function StaffShell({
 
           <StaffCommandMenu open={commandOpen} onOpenChange={setCommandOpen} />
         </div>
+      </StaffParentContext.Provider>
       </StaffCrumbContext.Provider>
     </MotionConfig>
   );

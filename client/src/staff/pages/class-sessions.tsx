@@ -19,6 +19,7 @@ import {
 } from "@/staff/ui/kit";
 import { staffWrite, useInvalidate, useNcc } from "../api";
 import { copy } from "../copy";
+import { DatePicker } from "../ui/date-picker";
 import { zonedDateHour, zonedInstant } from "../hour-cells";
 import { intlLocale } from "../i18n";
 import { FormValidationError, runAction } from "../run-action";
@@ -239,24 +240,25 @@ function PlanSheet({
       </div>
       <div className="grid grid-cols-2 gap-3">
         <StaffField label={S.fromDate} htmlFor="plan-from">
-          <input
+          <DatePicker
             id="plan-from"
-            type="date"
-            className="staff-input"
             value={from}
             min={today}
-            onChange={event => edit(() => setFrom(event.target.value))}
+            max={classEnd || undefined}
+            rangeStart={from}
+            rangeEnd={to}
+            onChange={next => edit(() => setFrom(next))}
           />
         </StaffField>
         <StaffField label={S.toDate} htmlFor="plan-to">
-          <input
+          <DatePicker
             id="plan-to"
-            type="date"
-            className="staff-input"
             value={to}
-            min={from}
-            max={classEnd}
-            onChange={event => edit(() => setTo(event.target.value))}
+            min={from || today}
+            max={classEnd || undefined}
+            rangeStart={from}
+            rangeEnd={to}
+            onChange={next => edit(() => setTo(next))}
           />
         </StaffField>
       </div>
@@ -374,13 +376,7 @@ function RescheduleSheet({
     >
       <StaffField label={copy.admissions.booking.when} htmlFor="session-date">
         <div className="staff-when">
-          <input
-            id="session-date"
-            type="date"
-            className="staff-input"
-            value={date}
-            onChange={event => setDate(event.target.value)}
-          />
+          <DatePicker id="session-date" value={date} onChange={setDate} />
           <Select value={hour} onValueChange={setHour}>
             <SelectTrigger aria-label={copy.admissions.booking.hour}>
               <SelectValue />

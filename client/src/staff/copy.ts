@@ -54,6 +54,7 @@ const en = {
     teacher: "Teacher",
   },
   shell: {
+    backTo: "Back to {page}",
     collapseSidebar: "Collapse sidebar",
     expandSidebar: "Expand sidebar",
     staffNav: "Staff navigation",
