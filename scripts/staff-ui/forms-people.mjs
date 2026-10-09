@@ -178,14 +178,18 @@ try {
   await fillRow.getByRole("link", { name: "Fill" }).click();
   await t.waitForURL(u => /\/app\/forms\/fill\//.test(u.pathname), { timeout: 20000 });
   await fillAssignedForm(t);
+  // The fill view now keeps the responder on a success panel with a back
+  // action instead of navigating away mid-submit.
+  const successShown = await t
+    .locator(".nile-form-success")
+    .waitFor({ state: "visible", timeout: 20000 })
+    .then(() => true)
+    .catch(() => false);
+  step("teacher submit shows the success panel", successShown);
+  await t.getByRole("button", { name: "Back to forms" }).click();
   await t
     .waitForURL(u => u.pathname === "/app/forms", { timeout: 20000 })
     .catch(() => {});
-  step(
-    "teacher submit navigated back to the forms hub",
-    t.url().startsWith(`${BASE}/app/forms`) && !t.url().includes("/fill/"),
-    t.url()
-  );
   await settle(t, ".staff-section, .staff-empty");
   const afterFill = t.locator("li", { hasText: `NILE-QA ${mark} Staff check` });
   step(

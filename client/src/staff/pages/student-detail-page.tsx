@@ -24,6 +24,7 @@ import {
 import { formatAmount } from "../admissions";
 import { staffGet, staffWrite, useInvalidate, useNcc } from "../api";
 import { copy } from "../copy";
+import { formatDob } from "../date-of-birth";
 import { formatDateTime } from "../i18n";
 import { isAdmissionsRole } from "../roles";
 import { runAction } from "../run-action";
@@ -239,7 +240,7 @@ function ReportView({ report }: { report: NccStudentReportDto }) {
           value={<span className="staff-ltr">{identity.email}</span>}
         />
         <Field label={S.branch} value={identity.branchName} />
-        <Field label={I.dateOfBirth} value={identity.dateOfBirth} />
+        <Field label={I.dateOfBirth} value={formatDob(identity.dateOfBirth)} />
         <Field label={I.nationality} value={identity.nationality} />
         <Field
           label={I.nationalId}
@@ -528,7 +529,7 @@ export default function StudentDetailPage() {
                       : null
                   }
                 />
-                <Field label={I.dateOfBirth} value={student.dateOfBirth} />
+                <Field label={I.dateOfBirth} value={formatDob(student.dateOfBirth)} />
                 <Field
                   label={I.nationalId}
                   value={

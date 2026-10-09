@@ -18,6 +18,7 @@ import {
 } from "@/lib/backend/api";
 import { staffWrite, useInvalidate, useNcc } from "../api";
 import { copy } from "../copy";
+import { dobError } from "../date-of-birth";
 import { canReadBranches, canReadDepartments, roleLabel } from "../roles";
 import { FormValidationError, runAction } from "../run-action";
 import { useStaffSession } from "../session";
@@ -25,6 +26,7 @@ import {
   CustomFieldsEditor,
   type CustomFieldValues,
 } from "../ui/custom-fields-editor";
+import { DateOfBirthField } from "../ui/date-of-birth-field";
 import { FormSheet, StaffField } from "../ui/form-sheet";
 import { MultiSelect } from "../ui/multi-select";
 import type { StaffSecret } from "../ui/secret-dialog";
@@ -192,6 +194,8 @@ export function StaffForm({
           : null;
   const callerPasswordErr =
     stepUpPassword && !callerPassword ? C.yourPasswordRequired : null;
+  const dobCode = dobError(dateOfBirth);
+  const dateOfBirthErr = dobCode ? copy.dateOfBirth[dobCode] : null;
 
   const branchChoices = (branches.data?.items ?? []).filter(
     branch =>
@@ -299,7 +303,8 @@ export function StaffForm({
       lastNameErr ||
       emailErr ||
       branchScopeErr ||
-      callerPasswordErr
+      callerPasswordErr ||
+      dateOfBirthErr
     ) {
       throw new FormValidationError();
     }
@@ -552,14 +557,13 @@ export function StaffForm({
             />
             <span className="staff-muted text-xs">{C.nationalityHint}</span>
           </StaffField>
-          <StaffField label={C.dateOfBirth}>
-            <input
-              type="date"
-              className="staff-input"
-              value={dateOfBirth}
-              onChange={event => setDateOfBirth(event.target.value)}
-            />
-          </StaffField>
+          <DateOfBirthField
+            label={C.dateOfBirth}
+            value={dateOfBirth}
+            onChange={setDateOfBirth}
+            error={attempted ? dateOfBirthErr : null}
+            optional
+          />
           <StaffField label={C.address}>
             <textarea
               className="staff-input"

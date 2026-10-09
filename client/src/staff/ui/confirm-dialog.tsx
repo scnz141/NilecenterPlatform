@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import {
   AlertDialog,
   AlertDialogCancel,
@@ -46,6 +46,7 @@ export function ConfirmDialog({
   reasonKind,
   reasonRequired,
   reasonLabel = "Reason",
+  reasonsEmpty: reasonsEmptyContent,
   onConfirm,
 }: {
   open: boolean;
@@ -58,6 +59,9 @@ export function ConfirmDialog({
   reasonKind?: NccActionReasonKind;
   reasonRequired?: boolean;
   reasonLabel?: string;
+  /** Rendered instead of the default action-reasons hint when the required
+   *  reason list is empty (e.g. the account cannot list lost reasons). */
+  reasonsEmpty?: ReactNode;
   onConfirm: (reasonId?: string) => Promise<void> | void;
 }) {
   const [pending, setPending] = useState(false);
@@ -135,12 +139,14 @@ export function ConfirmDialog({
           </div>
         ) : null}
         {blocked ? (
-          <p className="staff-confirm-reason-missing">
-            {copy.actions.noReasons}{" "}
-            <Link href="/app/action-reasons" className="staff-link">
-              {copy.actions.openActionReasons}
-            </Link>
-          </p>
+          (reasonsEmptyContent ?? (
+            <p className="staff-confirm-reason-missing">
+              {copy.actions.noReasons}{" "}
+              <Link href="/app/action-reasons" className="staff-link">
+                {copy.actions.openActionReasons}
+              </Link>
+            </p>
+          ))
         ) : null}
         <AlertDialogFooter>
           <AlertDialogCancel disabled={pending}>

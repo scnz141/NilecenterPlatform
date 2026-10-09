@@ -38,6 +38,8 @@ export interface StaffNavItem {
 }
 
 export interface StaffNavGroup {
+  /** Stable key, independent of the UI language. */
+  id: string;
   label: string;
   items: StaffNavItem[];
 }
@@ -77,6 +79,7 @@ const BRANCH_PICKER: NccRole[] = [
 export function staffNav(): StaffNavGroup[] {
   return [
     {
+      id: "overview",
       label: copy.nav.overview,
       items: [
         {
@@ -110,6 +113,7 @@ export function staffNav(): StaffNavGroup[] {
       ],
     },
     {
+      id: "admissions",
       label: copy.nav.admissions,
       items: [
         {
@@ -150,6 +154,7 @@ export function staffNav(): StaffNavGroup[] {
       ],
     },
     {
+      id: "delivery",
       label: copy.nav.delivery,
       items: [
         {
@@ -183,6 +188,7 @@ export function staffNav(): StaffNavGroup[] {
       ],
     },
     {
+      id: "organisation",
       label: copy.nav.organisation,
       items: [
         {
@@ -209,6 +215,7 @@ export function staffNav(): StaffNavGroup[] {
       ],
     },
     {
+      id: "setup",
       label: copy.nav.setup,
       items: [
         {
@@ -242,6 +249,7 @@ export function staffNav(): StaffNavGroup[] {
       ],
     },
     {
+      id: "system",
       label: copy.nav.system,
       items: [
         {

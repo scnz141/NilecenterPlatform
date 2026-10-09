@@ -1,8 +1,8 @@
 import { Fragment, type ReactNode } from "react";
-import { Redirect, Route } from "wouter";
+import { Redirect, Route, useLocation, useSearch } from "wouter";
 import { copy } from "../copy";
 import { useStaffDocument } from "../display";
-import { staffGateDecision } from "../gate";
+import { staffGateDecision, staffLoginRedirect } from "../gate";
 import { useStaffLocale } from "../i18n";
 import { useStaffSession, StaffSessionProvider } from "../session";
 import "../staff.css";
@@ -23,6 +23,8 @@ function StaffLocaleRoot({ path, children }: { path: string; children: ReactNode
 
 function StaffGate({ path, children }: { path: string; children: ReactNode }) {
   const { session, loading } = useStaffSession();
+  const [location] = useLocation();
+  const search = useSearch();
   const decision = staffGateDecision(session, loading, path);
 
   if (decision === "loading") {
@@ -33,7 +35,7 @@ function StaffGate({ path, children }: { path: string; children: ReactNode }) {
     );
   }
   if (decision === "login") {
-    return <Redirect to="/login" />;
+    return <Redirect to={staffLoginRedirect(location, search)} />;
   }
   if (decision === "workspace") {
     return <WorkspaceGate />;

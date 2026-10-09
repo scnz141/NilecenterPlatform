@@ -36,7 +36,7 @@ const en = {
   stats: [
     { value: "1998", label: "Founded in Cairo" },
     { value: "120,000+", label: "Learners taught" },
-    { value: "120+", label: "Countries" },
+    { value: "120", label: "Nationalities" },
     { value: "150", label: "Teachers" },
   ],
   programmes: {
@@ -102,6 +102,27 @@ const en = {
       { text: "Personal coaching and interactive lessons took me to confident Egyptian Ammiyya in three months.", name: "Yasmine", context: "Egyptian Ammiyya, Turkey" },
     ],
   },
+  films: {
+    title: "See a real class",
+    lead: "Two short films from Nile Center’s own channel, on learning online and on campus.",
+    online: { title: "Learning online", note: "Nile Center’s film on its live online courses" },
+    campus: { title: "Learning on campus", note: "Nile Center’s film on its Nasr City courses" },
+    play: "Play film",
+    source: "Plays from YouTube",
+    close: "Close film",
+  },
+  faq: {
+    title: "Questions people ask first",
+    lead: "Short answers. For anything else, message an admissions advisor on WhatsApp.",
+    items: [
+      { q: "What happens in the free placement test?", a: "It takes about 30 minutes, online or on campus. A teacher checks your level and tells you where to start." },
+      { q: "Can I try a lesson before I pay?", a: "Yes. Book a free trial lesson with a certified teacher, then decide." },
+      { q: "When are classes held?", a: "There are morning, afternoon and evening groups, online and on campus." },
+      { q: "Do you teach children?", a: "Yes. The Kids path covers Qur’an, Arabic and Islamic studies for ages 5 to 14." },
+      { q: "Can I study from outside Egypt?", a: "Yes. Live online classes run worldwide, with recordings and materials to revise from." },
+      { q: "Where are the campuses?", a: "Two branches in the 7th District of Nasr City, Cairo: 37 Abd Al-Shafy Mohammed and 6 Fadl ibn Rabea." },
+    ],
+  },
   cta: {
     title: "Start with a free trial lesson.",
     text: "Tell us what you want to learn. We reply with a time for your placement test and trial lesson.",
@@ -156,7 +177,7 @@ const ar: LandingCopy = {
   stats: [
     { value: "1998", label: "تأسس في القاهرة" },
     { value: "+120,000", label: "متعلم" },
-    { value: "+120", label: "دولة" },
+    { value: "120", label: "جنسية" },
     { value: "150", label: "معلمًا" },
   ],
   programmes: {
@@ -222,6 +243,27 @@ const ar: LandingCopy = {
       { text: "بفضل التوجيه الشخصي والحصص التفاعلية أتقنت العامية المصرية في ثلاثة أشهر.", name: "ياسمين", context: "العامية المصرية، تركيا" },
     ],
   },
+  films: {
+    title: "شاهد حصة حقيقية",
+    lead: "فيلمان قصيران من قناة مركز النيل عن التعلم أونلاين وفي المقر.",
+    online: { title: "التعلم أونلاين", note: "فيلم مركز النيل عن دوراته المباشرة أونلاين" },
+    campus: { title: "التعلم في المقر", note: "فيلم مركز النيل عن دوراته في مدينة نصر" },
+    play: "تشغيل الفيلم",
+    source: "يُعرض من يوتيوب",
+    close: "إغلاق الفيلم",
+  },
+  faq: {
+    title: "أسئلة يطرحها الناس أولًا",
+    lead: "إجابات قصيرة. لأي سؤال آخر، راسل مستشار القبول على واتساب.",
+    items: [
+      { q: "ماذا يحدث في اختبار تحديد المستوى المجاني؟", a: "يستغرق نحو 30 دقيقة، أونلاين أو في المقر. يحدد المعلم مستواك ويخبرك من أين تبدأ." },
+      { q: "هل يمكنني تجربة حصة قبل الدفع؟", a: "نعم. احجز حصة تجريبية مجانية مع معلم معتمد، ثم قرّر." },
+      { q: "متى تُعقد الحصص؟", a: "توجد مجموعات صباحية وظهرية ومسائية، أونلاين وفي المقر." },
+      { q: "هل تدرّسون الأطفال؟", a: "نعم. مسار الأطفال يشمل القرآن والعربية والدراسات الإسلامية من سن 5 إلى 14 سنة." },
+      { q: "هل يمكنني الدراسة من خارج مصر؟", a: "نعم. الحصص المباشرة أونلاين متاحة حول العالم، مع تسجيلات ومواد للمراجعة." },
+      { q: "أين يقع المقر؟", a: "فرعان في الحي السابع بمدينة نصر، القاهرة: 37 شارع عبد الشافي محمد، و6 شارع فضل بن ربيع." },
+    ],
+  },
   cta: {
     title: "ابدأ بحصة تجريبية مجانية.",
     text: "أخبرنا بما تريد تعلّمه، ونرد عليك بموعد اختبار المستوى والحصة التجريبية.",
@@ -274,7 +316,7 @@ const tr: LandingCopy = {
   stats: [
     { value: "1998", label: "Kahire’de kuruldu" },
     { value: "120.000+", label: "Öğrenci" },
-    { value: "120+", label: "Ülke" },
+    { value: "120", label: "Uyruk" },
     { value: "150", label: "Öğretmen" },
   ],
   programmes: {
@@ -338,6 +380,27 @@ const tr: LandingCopy = {
       { text: "Öğretmenlerim sekiz ayda tüm hıfz programında bana rehberlik etti. İcazetimi aldım ve şimdi ülkemde başlangıç sınıflarına ders veriyorum.", name: "Ahmed", context: "Hıfz ve icazet, BAE" },
       { text: "Altı ayda sıfırdan akıcı Arapça konuşmaya geçtim ve Kahire’de canlı bir sunum yaptım.", name: "Sarah", context: "Arapça, Birleşik Krallık" },
       { text: "Kişisel rehberlik ve etkileşimli derslerle üç ayda Mısır lehçesinde kendime güvendim.", name: "Yasmine", context: "Mısır lehçesi, Türkiye" },
+    ],
+  },
+  films: {
+    title: "Gerçek bir dersi izleyin",
+    lead: "Nile Center'ın kendi kanalından, çevrim içi ve kampüste öğrenme üzerine iki kısa film.",
+    online: { title: "Çevrim içi öğrenme", note: "Nile Center'ın canlı çevrim içi kursları hakkındaki filmi" },
+    campus: { title: "Kampüste öğrenme", note: "Nile Center'ın Nasr City kursları hakkındaki filmi" },
+    play: "Filmi oynat",
+    source: "YouTube'dan oynatılır",
+    close: "Filmi kapat",
+  },
+  faq: {
+    title: "İlk sorulan sorular",
+    lead: "Kısa cevaplar. Başka bir sorunuz için WhatsApp'tan kabul danışmanına yazın.",
+    items: [
+      { q: "Ücretsiz seviye sınavında ne olur?", a: "Çevrim içi veya kampüste yaklaşık 30 dakika sürer. Öğretmen seviyenizi belirler ve nereden başlayacağınızı söyler." },
+      { q: "Ödeme yapmadan önce bir ders deneyebilir miyim?", a: "Evet. Sertifikalı bir öğretmenle ücretsiz deneme dersi alın, sonra karar verin." },
+      { q: "Dersler ne zaman yapılıyor?", a: "Çevrim içi ve kampüste sabah, öğleden sonra ve akşam grupları vardır." },
+      { q: "Çocuklara ders veriyor musunuz?", a: "Evet. Çocuk programı 5 ile 14 yaş arası için Kur’an, Arapça ve İslami ilimleri kapsar." },
+      { q: "Mısır dışından ders alabilir miyim?", a: "Evet. Canlı çevrim içi dersler dünyanın her yerinden alınabilir; kayıtlar ve materyaller dahildir." },
+      { q: "Kampüsler nerede?", a: "Kahire, Nasr City 7. Bölge'de iki şube: 37 Abd Al-Shafy Mohammed ve 6 Fadl ibn Rabea." },
     ],
   },
   cta: {

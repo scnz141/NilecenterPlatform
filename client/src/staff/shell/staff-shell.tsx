@@ -9,7 +9,7 @@ import {
 import { createPortal } from "react-dom";
 import { Link, useLocation } from "wouter";
 import { MotionConfig, motion } from "framer-motion";
-import { Building2, Menu, PanelLeftClose, PanelLeftOpen, Search } from "lucide-react";
+import { Building2, ChevronDown, Menu, PanelLeftClose, PanelLeftOpen, Search } from "lucide-react";
 import {
   fetchAuthWorkspacesRequest,
   type AuthSessionDto,
@@ -58,7 +58,13 @@ import {
 import { NileRosette } from "@/components/brand/NileLogo";
 import { StaffNotificationsBell } from "./staff-notifications";
 import { RoleViewChip } from "./role-view-bar";
-import { isTypingTarget, setSidebarCollapsed, useSidebarCollapsed } from "./sidebar-state";
+import {
+  isTypingTarget,
+  setSidebarCollapsed,
+  toggleGroupFolded,
+  useFoldedGroups,
+  useSidebarCollapsed,
+} from "./sidebar-state";
 import { StaffCommandMenu } from "./command-menu";
 
 const StaffCrumbContext = createContext<(label: string | null) => void>(
@@ -136,6 +142,7 @@ function NavList({ onNavigate, collapsed = false }: { onNavigate?: () => void; c
   const { session } = useStaffSession();
   const [path] = useLocation();
   const tip = useRailTip(collapsed);
+  const foldedGroups = useFoldedGroups();
   const role = session?.ncc?.activeRole ?? "teacher";
   const sections = staffNavForRole(role);
   const bestMatch = sections
@@ -148,48 +155,74 @@ function NavList({ onNavigate, collapsed = false }: { onNavigate?: () => void; c
     )
     .sort((a, b) => b.href.length - a.href.length)[0];
 
+  const renderItem = (item: (typeof sections)[number]["items"][number]) => {
+    const active = bestMatch?.href === item.href;
+    return (
+      <li key={item.href}>
+        <Link
+          href={item.href}
+          className="staff-nav-link"
+          data-active={active}
+          aria-current={active ? "page" : undefined}
+          onClick={onNavigate}
+          onPointerEnter={tip.show(item.label)}
+          onPointerLeave={tip.hide}
+          onFocus={tip.showFocus(item.label)}
+          onBlur={tip.hide}
+        >
+          {active ? (
+            <motion.span
+              layoutId="staff-nav-active"
+              className="staff-nav-active"
+              transition={{ type: "spring", duration: 0.25, bounce: 0 }}
+              aria-hidden
+            />
+          ) : null}
+          <item.icon className="staff-nav-icon" strokeWidth={1.75} aria-hidden />
+          <span className="staff-nav-label">{item.label}</span>
+        </Link>
+      </li>
+    );
+  };
+
   return (
     <nav className="staff-nav" aria-label={copy.shell.staffNav}>
-      {sections.map(section => (
-        <div key={section.label} className="staff-nav-group">
-          <p className="staff-nav-group-label">{section.label}</p>
-          <ul className="staff-nav-list">
-            {section.items.map(item => {
-              const active = bestMatch?.href === item.href;
-              return (
-                <li key={item.href}>
-                  <Link
-                    href={item.href}
-                    className="staff-nav-link"
-                    data-active={active}
-                    aria-current={active ? "page" : undefined}
-                    onClick={onNavigate}
-                    onPointerEnter={tip.show(item.label)}
-                    onPointerLeave={tip.hide}
-                    onFocus={tip.showFocus(item.label)}
-                    onBlur={tip.hide}
-                  >
-                    {active ? (
-                      <motion.span
-                        layoutId="staff-nav-active"
-                        className="staff-nav-active"
-                        transition={{ type: "spring", duration: 0.25, bounce: 0 }}
-                        aria-hidden
-                      />
-                    ) : null}
-                    <item.icon
-                      className="staff-nav-icon"
-                      strokeWidth={1.75}
-                      aria-hidden
-                    />
-                    <span className="staff-nav-label">{item.label}</span>
-                  </Link>
-                </li>
-              );
-            })}
-          </ul>
-        </div>
-      ))}
+      {sections.map(section => {
+        // The icon rail always shows every icon; folding is for the full sidebar.
+        const folded = !collapsed && foldedGroups.has(section.id);
+        const current = section.items.find(item => item.href === bestMatch?.href);
+        const listId = `staff-nav-${section.id}`;
+        return (
+          <div key={section.id} className="staff-nav-group" data-folded={folded || undefined}>
+            <button
+              type="button"
+              className="staff-nav-group-label"
+              aria-expanded={!folded}
+              aria-controls={listId}
+              onClick={() => toggleGroupFolded(section.id)}
+            >
+              <span className="staff-nav-group-text">{section.label}</span>
+              {folded ? (
+                <span className="staff-nav-group-count" aria-hidden>
+                  {section.items.length}
+                </span>
+              ) : null}
+              <ChevronDown className="staff-nav-group-caret" strokeWidth={2} aria-hidden />
+            </button>
+            {/* While folded, the page you are on stays visible under its group. */}
+            {folded && current ? (
+              <ul className="staff-nav-list">{renderItem(current)}</ul>
+            ) : null}
+            <div className="staff-nav-fold" id={listId} inert={folded || undefined}>
+              <ul className="staff-nav-list">
+                {section.items
+                  .filter(item => !(folded && item === current))
+                  .map(renderItem)}
+              </ul>
+            </div>
+          </div>
+        );
+      })}
       {tip.node}
     </nav>
   );

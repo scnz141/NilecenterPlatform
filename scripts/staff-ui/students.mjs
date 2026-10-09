@@ -56,7 +56,9 @@ try {
   await page.fill("#student-paid", "100");
   await page.fill("#id-nationality", "EGY");
   await chooseOption(page, "Gender", "Male");
-  await page.fill("#id-dob", "2011-05-05");
+  await page.fill(".staff-dob-part[data-part='day'] input", "5");
+  await chooseOption(page, "Month", "May");
+  await page.fill(".staff-dob-part[data-part='year'] input", "2011");
   await page.fill("#id-national", `3${String(Date.now()).slice(-9)}${Math.floor(1000 + Math.random() * 8999)}`);
   await page.fill("#id-address", `${MARK} address`);
   const g = page.locator(".staff-guardian").first().locator("input");

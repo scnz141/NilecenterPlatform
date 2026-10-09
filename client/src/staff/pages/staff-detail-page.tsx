@@ -15,6 +15,7 @@ import {
 } from "@/lib/backend/api";
 import { staffWrite, useInvalidate, useNcc } from "../api";
 import { copy } from "../copy";
+import { formatDob } from "../date-of-birth";
 import { isStaffManager, roleLabel } from "../roles";
 import { runAction } from "../run-action";
 import { useStaffSession } from "../session";
@@ -338,7 +339,7 @@ export default function StaffDetailPage() {
               <Field label={C.email} value={current.email} />
               <Field label={C.phone} value={current.phone} />
               <Field label={C.nationality} value={current.nationality} />
-              <Field label={C.dateOfBirth} value={current.dateOfBirth} />
+              <Field label={C.dateOfBirth} value={formatDob(current.dateOfBirth)} />
               <Field label={C.address} value={current.address} />
             </dl>
           </section>

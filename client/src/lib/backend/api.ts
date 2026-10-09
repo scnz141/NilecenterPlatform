@@ -60,6 +60,24 @@ export type ApiResult<T> = {
   details?: Record<string, string[]>;
 };
 
+/** EMS validation errors use `{loc: ["body", field], msg}` entries. */
+function normalizeDetailsList(
+  list: unknown[]
+): Record<string, string[]> | undefined {
+  const out: Record<string, string[]> = {};
+  for (const item of list) {
+    if (!item || typeof item !== "object") continue;
+    const loc = (item as { loc?: unknown }).loc;
+    const msg = (item as { msg?: unknown }).msg;
+    if (!Array.isArray(loc) || typeof msg !== "string") continue;
+    const field = [...loc]
+      .reverse()
+      .find(part => typeof part === "string" && part !== "body");
+    if (typeof field === "string") (out[field] ??= []).push(msg);
+  }
+  return Object.keys(out).length ? out : undefined;
+}
+
 export async function apiJson<T>(
   path: string,
   init: RequestInit = {}
@@ -91,10 +109,12 @@ export async function apiJson<T>(
       data &&
       typeof data === "object" &&
       "details" in data &&
-      data.details &&
-      typeof data.details === "object" &&
-      !Array.isArray(data.details)
-        ? (data.details as Record<string, string[]>)
+      data.details
+        ? Array.isArray(data.details)
+          ? normalizeDetailsList(data.details)
+          : typeof data.details === "object"
+            ? (data.details as Record<string, string[]>)
+            : undefined
         : undefined;
     if (!response.ok) {
       return {

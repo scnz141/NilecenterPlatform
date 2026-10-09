@@ -116,8 +116,6 @@
 
 .lp-header[data-scrolled] {
   border-block-end-color: var(--line);
-  background: color-mix(in oklab, var(--paper) 86%, transparent);
-  backdrop-filter: saturate(1.6) blur(14px);
 }
 
 .lp-header-row {
@@ -235,9 +233,6 @@
   border-color: transparent;
   background: var(--navy);
   color: #fff;
-  box-shadow:
-    0 1px 0 rgb(255 255 255 / 0.12) inset,
-    0 8px 20px -10px rgb(29 74 108 / 0.7);
 }
 
 .lp-btn[data-variant="accent"] {
@@ -374,7 +369,10 @@
 }
 
 .lp-stats > div {
-  padding: 1.125rem 1.25rem 0 0;
+  display: flex;
+  flex-direction: column-reverse;
+  gap: 0.375rem;
+  padding: 1.25rem 1.25rem 0 0;
   border-inline-end: 1px solid var(--line);
 }
 
@@ -387,12 +385,12 @@
 }
 
 .lp-stats dt {
-  font-size: 0.8125rem;
-  color: var(--ink-3);
+  font-size: 0.9375rem;
+  color: var(--ink-2);
 }
 
 .lp-stats dd {
-  margin: 0.25rem 0 0;
+  margin: 0;
   font-family: var(--serif);
   font-size: clamp(2rem, 3.4vw, 2.75rem);
   line-height: 1;
@@ -2062,7 +2060,7 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 1.5rem;
+  gap: clamp(1.5rem, 3vw, 2.5rem);
 }
 
 .lh-wisdom-ar {
@@ -2070,7 +2068,9 @@
   font-family: "Aref Ruqaa", var(--arabic);
   font-size: clamp(5rem, 13vw, 11rem);
   font-weight: 700;
-  line-height: 1.15;
+  /* Aref Ruqaa's descenders run deep; this box holds the whole glyph. */
+  line-height: 1.5;
+  padding-block-end: 0.12em;
   color: var(--navy);
 }
 
@@ -2142,17 +2142,6 @@
   transition: background-color 150ms var(--ease);
 }
 
-.lh-index-row::before {
-  content: "";
-  position: absolute;
-  inset-block: 0;
-  inset-inline-start: 0;
-  inline-size: 3px;
-  background: var(--tone);
-  transform: scaleY(0);
-  transition: transform 200ms var(--ease);
-}
-
 .lh-index-num {
   font-family: var(--serif);
   font-size: 1.25rem;
@@ -2196,9 +2185,7 @@
   inline-size: 1.25rem;
   block-size: 1.25rem;
   color: var(--ink-3);
-  transition-property: translate, color;
-  transition-duration: 200ms;
-  transition-timing-function: var(--ease);
+  transition: color 150ms var(--ease);
 }
 
 .lh-index-row:focus-visible {
@@ -2206,30 +2193,19 @@
   background: var(--card);
 }
 
-.lh-index-row:focus-visible::before {
-  transform: scaleY(1);
-}
-
 @media (hover: hover) {
   .lh-index-row:hover {
     background: var(--card);
   }
-  .lh-index-row:hover::before {
-    transform: scaleY(1);
-  }
   .lh-index-row:hover .lh-index-arrow {
     color: var(--tone);
-    translate: 4px 0;
-  }
-  [dir="rtl"] .lh-index-row:hover .lh-index-arrow {
-    translate: -4px 0;
   }
 }
 
 /* How we teach, beside a tall crop of the mashrabiya. */
 .lh-teach {
   display: grid;
-  grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr);
+  grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr);
   gap: clamp(2rem, 6vw, 6rem);
   align-items: start;
 }
@@ -2242,57 +2218,6 @@
   inline-size: 1rem;
   block-size: 1.5rem;
   margin-block-start: 0.25rem;
-}
-
-/* Khatam lattice, the eight-point star of Cairene mashrabiya screens. */
-.lh-lattice {
-  position: sticky;
-  inset-block-start: 7rem;
-  aspect-ratio: 1 / 1.05;
-  overflow: hidden;
-  border-radius: 1.5rem;
-  background:
-    radial-gradient(circle at 50% 50%, rgb(246 139 67 / 0.16), transparent 55%),
-    var(--paper);
-  box-shadow: var(--shadow);
-}
-
-.lh-lattice svg {
-  display: block;
-  mask-image: radial-gradient(circle at 50% 50%, #000 40%, transparent 75%);
-}
-
-.lh-lattice polygon {
-  fill: rgb(29 74 108 / 0.07);
-}
-
-.lh-lattice polygon,
-.lh-lattice path {
-  stroke: var(--navy);
-  stroke-width: 1.25;
-  stroke-opacity: 0.5;
-  vector-effect: non-scaling-stroke;
-}
-
-@supports (animation-timeline: view()) {
-  @media (prefers-reduced-motion: no-preference) {
-    .lh-lattice svg {
-      animation: lh-open linear both;
-      animation-timeline: view();
-      animation-range: entry 10% cover 50%;
-    }
-  }
-}
-
-@keyframes lh-open {
-  from {
-    clip-path: circle(0% at 50% 50%);
-    rotate: -8deg;
-    scale: 1.15;
-  }
-  to {
-    clip-path: circle(75% at 50% 50%);
-  }
 }
 
 /* One learner at a time. */
@@ -2391,8 +2316,8 @@
 }
 
 .lh-voice-pick button[data-on] {
+  border-color: var(--line);
   background: var(--card);
-  box-shadow: var(--shadow);
 }
 
 @media (hover: hover) {
@@ -2432,9 +2357,12 @@
   }
 }
 
-@media (min-width: 2200px) {
+/* Large displays and TVs: the whole page scales with width, about 16px at
+   1800px, 21px at 2560px and 28px at 3840px. 5K-wide boards stop at 30px so
+   lines do not stretch. Every size on the page is in rem, so all of it scales. */
+@media (min-width: 1800px) {
   html:has(.lp) {
-    font-size: 125%;
+    font-size: min(calc(5.4px + 0.588vw), 30px);
   }
 }
 
@@ -2460,10 +2388,6 @@
 @media (max-width: 1099px) {
   .lh-teach {
     grid-template-columns: minmax(0, 1fr);
-  }
-  .lh-lattice {
-    position: static;
-    aspect-ratio: 21 / 9;
   }
   .lh-index-row {
     grid-template-columns: 3rem minmax(10rem, 0.9fr) minmax(0, 1.6fr) 1.25rem;
@@ -2661,4 +2585,368 @@
 .lp-notice a:focus-visible,
 .lp-notice button:focus-visible {
   outline-color: #fff;
+}
+
+/* =========================================================================
+   See a real class: Nile Center's own films, opened in a dialog.
+   ========================================================================= */
+.lh-teach-films {
+  display: flex;
+  flex-direction: column;
+}
+
+.lh-teach-films {
+  padding-block-start: 0.5rem;
+}
+
+.lh-films-title {
+  margin: 0;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--orange-ink);
+}
+
+.lh-films-lead {
+  margin: 0.5rem 0 1.25rem;
+  max-inline-size: 30rem;
+  color: var(--ink-2);
+}
+
+.lh-films {
+  display: grid;
+  gap: 1rem;
+}
+
+.lh-film {
+  position: relative;
+  display: flex;
+  align-items: flex-end;
+  aspect-ratio: 16 / 9;
+  padding: 1.25rem;
+  overflow: hidden;
+  border: 0;
+  border-radius: 1rem;
+  background: var(--navy-deep);
+  color: #fff;
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+  isolation: isolate;
+}
+
+.lh-film-art {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+}
+
+/* Campus film: terracotta, the brand's warm petal, so the two read apart. */
+.lh-film[data-kind="campus"] {
+  background: #8a3f17;
+}
+
+.lh-film-art::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(to top, rgb(0 0 0 / 0.42), rgb(0 0 0 / 0) 55%);
+}
+
+.lh-film-lattice polygon {
+  fill: rgb(246 139 67 / 0.08);
+}
+
+.lh-film-lattice polygon,
+.lh-film-lattice path {
+  stroke: #fff;
+  stroke-width: 1;
+  stroke-opacity: 0.18;
+  vector-effect: non-scaling-stroke;
+}
+
+.lh-film-play {
+  position: absolute;
+  inset-block-start: 50%;
+  inset-inline-start: 50%;
+  display: grid;
+  place-items: center;
+  inline-size: 4rem;
+  block-size: 4rem;
+  border-radius: 50%;
+  background: #fff;
+  color: var(--navy);
+  translate: -50% -60%;
+  transition: background-color 150ms var(--ease), color 150ms var(--ease);
+}
+
+[dir="rtl"] .lh-film-play {
+  translate: 50% -60%;
+}
+
+.lh-film-play > svg {
+  inline-size: 1.5rem;
+  block-size: 1.5rem;
+  /* The triangle's optical centre sits right of its box. */
+  margin-inline-start: 0.1875rem;
+  fill: currentColor;
+}
+
+[dir="rtl"] .lh-film-play > svg {
+  margin-inline: 0 0.1875rem;
+}
+
+@media (hover: hover) {
+  .lh-film:hover .lh-film-play {
+    background: var(--orange);
+    color: var(--ink);
+  }
+}
+
+.lh-film:focus-visible {
+  outline: 2px solid var(--navy);
+  outline-offset: 3px;
+  border-radius: 1rem;
+}
+
+.lh-film-text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+}
+
+.lh-film-text strong {
+  font-size: 1.125rem;
+  font-weight: 600;
+}
+
+.lh-film-text small {
+  font-size: 0.875rem;
+  color: rgb(255 255 255 / 0.78);
+}
+
+.lh-films-source {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--ink-3);
+}
+
+/* The global reset zeroes margins; a modal dialog needs auto margins to centre. */
+.lh-film-dialog {
+  position: fixed;
+  inset: 0;
+  margin: auto;
+  block-size: fit-content;
+  inline-size: min(64rem, 92vw, calc((100dvh - 9rem) * 16 / 9));
+  max-inline-size: none;
+  padding: 0;
+  overflow: visible;
+  border: 0;
+  border-radius: 1rem;
+  background: #000;
+}
+
+.lh-film-dialog::backdrop {
+  background: rgb(12 20 28 / 0.82);
+}
+
+.lh-film-frame {
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  border-radius: 1rem;
+}
+
+.lh-film-frame iframe {
+  display: block;
+  inline-size: 100%;
+  block-size: 100%;
+  border: 0;
+}
+
+.lh-film-close {
+  position: absolute;
+  inset-block-start: -3.25rem;
+  inset-inline-end: 0;
+  display: grid;
+  place-items: center;
+  inline-size: 2.75rem;
+  block-size: 2.75rem;
+  border: 1px solid rgb(255 255 255 / 0.3);
+  border-radius: 50%;
+  background: transparent;
+  color: #fff;
+  cursor: pointer;
+}
+
+.lh-film-close > svg {
+  inline-size: 1.25rem;
+  block-size: 1.25rem;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .lh-film-dialog[open] {
+    animation: lh-dialog-in 300ms cubic-bezier(0.2, 0, 0, 1) both;
+  }
+  .lh-film-dialog[open]::backdrop {
+    animation: nile-fade 300ms ease-out both;
+  }
+}
+
+@keyframes lh-dialog-in {
+  from {
+    opacity: 0;
+    scale: 0.96;
+  }
+}
+
+/* =========================================================================
+   Questions: native disclosure, smooth where the browser can size to auto.
+   ========================================================================= */
+.lh-faq-inner {
+  display: grid;
+  grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr);
+  gap: clamp(2rem, 6vw, 6rem);
+  align-items: start;
+}
+
+.lh-faq-inner > :first-child {
+  position: sticky;
+  inset-block-start: 7rem;
+}
+
+.lh-faq-ask {
+  margin-block-start: 1.75rem;
+}
+
+.lh-faq-ask > svg {
+  inline-size: 1.125rem;
+  block-size: 1.125rem;
+}
+
+.lh-faq-list {
+  border-block-start: 2px solid var(--ink);
+}
+
+.lh-faq-item {
+  border-block-end: 1px solid #d9d0c0;
+  interpolate-size: allow-keywords;
+}
+
+.lh-faq-item summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1.5rem;
+  padding-block: 1.375rem;
+  font-size: 1.125rem;
+  font-weight: 600;
+  line-height: 1.4;
+  list-style: none;
+  cursor: pointer;
+}
+
+.lh-faq-item summary::-webkit-details-marker {
+  display: none;
+}
+
+.lh-faq-item summary:focus-visible {
+  outline: 2px solid var(--navy);
+  outline-offset: 3px;
+  border-radius: 0.375rem;
+}
+
+.lh-faq-mark {
+  inline-size: 1.25rem;
+  block-size: 1.25rem;
+  flex-shrink: 0;
+  color: var(--navy);
+  transition: rotate 250ms var(--ease);
+}
+
+.lh-faq-item[open] .lh-faq-mark {
+  rotate: 45deg;
+}
+
+.lh-faq-item p {
+  margin: 0;
+  padding-block-end: 1.5rem;
+  max-inline-size: 38rem;
+  color: var(--ink-2);
+  font-size: 1.0625rem;
+}
+
+.lh-faq-item::details-content {
+  block-size: 0;
+  overflow: hidden;
+  transition:
+    block-size 280ms cubic-bezier(0.2, 0, 0, 1),
+    content-visibility 280ms allow-discrete;
+}
+
+.lh-faq-item[open]::details-content {
+  block-size: auto;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lh-faq-item::details-content {
+    transition: none;
+  }
+  .lh-faq-mark {
+    transition: none;
+  }
+}
+
+@media (max-width: 1099px) {
+  .lh-faq-inner {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .lh-faq-inner > :first-child {
+    position: static;
+  }
+  .lh-films {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 640px) {
+  .lh-films {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  /* Short tiles: a smaller button sits clear of the title. */
+  .lh-film-play {
+    inset-block-start: 38%;
+    inline-size: 3.25rem;
+    block-size: 3.25rem;
+  }
+  .lh-film-play > svg {
+    inline-size: 1.25rem;
+    block-size: 1.25rem;
+  }
+  .lh-film-close {
+    inset-block-start: auto;
+    inset-block-end: -3.5rem;
+    inset-inline-end: 50%;
+    translate: 50% 0;
+  }
+  [dir="rtl"] .lh-film-close {
+    translate: -50% 0;
+  }
+}
+
+/* The logo takes pixel heights; restate them in rem so it scales with the page. */
+.lp-brand .nile-logo svg {
+  inline-size: 2.375rem;
+  block-size: 2.375rem;
+}
+
+.lp-brand .nile-logo img {
+  block-size: 2.375rem !important;
+}
+
+.lp-footer-brand .nile-logo svg {
+  inline-size: 2.75rem;
+  block-size: 2.75rem;
+}
+
+.lp-footer-brand .nile-logo img {
+  block-size: 2.75rem !important;
 }

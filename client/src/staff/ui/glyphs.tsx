@@ -87,3 +87,9 @@ export const GlyphMore = (props: GlyphProps) => (
     <path d="M4.5 10h.01M10 10h.01M15.5 10h.01" />
   </Glyph>
 );
+
+export const GlyphCalendar = (props: GlyphProps) => (
+  <Glyph {...props}>
+    <path d="M3.5 5.5h13v11h-13zM3.5 9h13M7 3v4M13 3v4" />
+  </Glyph>
+);

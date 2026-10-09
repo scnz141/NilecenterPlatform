@@ -10,10 +10,16 @@ import { ErrorState, LoadingCenter } from "../ui/primitives";
 
 /** Full-screen branch picker for roles that must run inside one workspace. */
 export function WorkspaceGate() {
-  const { switchWorkspace, signOut } = useStaffSession();
+  const { session, setScopes, switchWorkspace, signOut } = useStaffSession();
   const [items, setItems] = useState<AuthWorkspaceDto[] | null>(null);
   const [error, setError] = useState<unknown>(null);
+  const [chooseError, setChooseError] = useState<string | null>(null);
   const [switching, setSwitching] = useState<string | null>(null);
+  // Role-view sessions (activeRole ≠ assignedRole) cannot call
+  // switch-workspace; the branch scope goes through session-scopes instead.
+  const viewingAsRole = Boolean(
+    session?.ncc && session.ncc.activeRole !== session.ncc.assignedRole
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -29,8 +35,23 @@ export function WorkspaceGate() {
 
   async function choose(branchId: string) {
     setSwitching(branchId);
+    setChooseError(null);
     try {
-      await switchWorkspace(branchId);
+      if (viewingAsRole) {
+        await setScopes(
+          session?.ncc?.activeRole === "branch_admin"
+            ? { branchIds: [branchId] }
+            : { branchId }
+        );
+      } else {
+        await switchWorkspace(branchId);
+      }
+    } catch (cause) {
+      setChooseError(
+        cause instanceof Error && cause.message
+          ? cause.message
+          : copy.state.errorGeneric
+      );
     } finally {
       setSwitching(null);
     }
@@ -82,6 +103,11 @@ export function WorkspaceGate() {
             ))}
           </div>
         )}
+        {chooseError ? (
+          <p className="staff-field-error" role="alert">
+            {chooseError}
+          </p>
+        ) : null}
         <button
           type="button"
           className="staff-btn"

@@ -153,10 +153,17 @@ export async function refreshServerSession() {
     setStoredAuthSession(result.data);
     return result.data;
   }
-  if (result.ok && result.data === null && typeof window !== "undefined") {
-    clearStoredSessionLocal();
+  if (result.ok || result.status === 401) {
+    // Definitive answer: there is no authenticated session.
+    if (typeof window !== "undefined") {
+      clearStoredSessionLocal();
+    }
+    return null;
   }
-  return null;
+  // Transient failure (network error, 5xx, ...): keep any stored session so
+  // the app stays usable and each query surfaces its own retryable state
+  // instead of bouncing the user to sign-in.
+  return getStoredAuthSession();
 }
 
 export function getActiveUser(): DemoUser | null {

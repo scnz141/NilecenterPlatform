@@ -178,7 +178,9 @@ export default function EnrolmentsPage() {
       id: "actions",
       label: "",
       always: true,
-      render: row => actions.menu(row),
+      render: row => (
+        <span className="staff-cell-top">{actions.menu(row)}</span>
+      ),
     },
   ];
 

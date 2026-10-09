@@ -37,6 +37,67 @@ export function useSidebarCollapsed(): boolean {
   );
 }
 
+/* ---------- Folded navigation groups ------------------------------------ */
+
+const FOLD_KEY = "nilelearn.staff.sidebar.folded";
+const foldListeners = new Set<() => void>();
+let foldCache: { raw: string | null; ids: ReadonlySet<string> } = {
+  raw: null,
+  ids: new Set(),
+};
+
+function readFolded(): ReadonlySet<string> {
+  let raw: string | null = null;
+  try {
+    raw = window.localStorage.getItem(FOLD_KEY);
+  } catch {
+    raw = null;
+  }
+  // useSyncExternalStore needs a stable snapshot for unchanged storage.
+  if (raw === foldCache.raw) return foldCache.ids;
+  let ids: string[] = [];
+  try {
+    const parsed: unknown = raw ? JSON.parse(raw) : [];
+    if (Array.isArray(parsed)) ids = parsed.filter(id => typeof id === "string");
+  } catch {
+    ids = [];
+  }
+  foldCache = { raw, ids: new Set(ids) };
+  return foldCache.ids;
+}
+
+/** Fold or unfold one navigation group; remembered on this device. */
+export function toggleGroupFolded(id: string) {
+  const next = new Set(readFolded());
+  if (next.has(id)) next.delete(id);
+  else next.add(id);
+  try {
+    window.localStorage.setItem(FOLD_KEY, JSON.stringify(Array.from(next)));
+  } catch {
+    foldCache = { raw: foldCache.raw, ids: next };
+  }
+  foldListeners.forEach(listener => listener());
+}
+
+const EMPTY_FOLDED: ReadonlySet<string> = new Set();
+
+export function useFoldedGroups(): ReadonlySet<string> {
+  return useSyncExternalStore(
+    listener => {
+      foldListeners.add(listener);
+      const onStorage = (event: StorageEvent) =>
+        event.key === FOLD_KEY && listener();
+      window.addEventListener("storage", onStorage);
+      return () => {
+        foldListeners.delete(listener);
+        window.removeEventListener("storage", onStorage);
+      };
+    },
+    readFolded,
+    () => EMPTY_FOLDED
+  );
+}
+
 /** Typing in a field never toggles the sidebar. */
 export function isTypingTarget(target: EventTarget | null) {
   const element = target as HTMLElement | null;

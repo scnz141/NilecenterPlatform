@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type {
   AuthSessionDto,
+  NccEffectiveScopesDto,
   NccRole,
   NccStaffUserDto,
 } from "@/lib/backend/api";
@@ -10,7 +11,11 @@ import {
   staffQueryString,
   toStaffKey,
 } from "./api";
-import { staffGateDecision } from "./gate";
+import {
+  staffGateDecision,
+  staffLoginRedirect,
+  staffNextTarget,
+} from "./gate";
 import {
   canAccess,
   navTrailForPath,
@@ -45,6 +50,7 @@ function nccSession(overrides: {
   assignedRole?: NccRole;
   activeRole?: NccRole;
   workspaceBranchId?: string | null;
+  effectiveScopes?: NccEffectiveScopesDto | null;
 } = {}): AuthSessionDto {
   return {
     userId: "u1",
@@ -65,7 +71,7 @@ function nccSession(overrides: {
           ? "branch-1"
           : overrides.workspaceBranchId,
       workspaceAccess: null,
-      effectiveScopes: null,
+      effectiveScopes: overrides.effectiveScopes ?? null,
     },
   };
 }
@@ -504,12 +510,54 @@ describe("staffGateDecision", () => {
     expect(staffGateDecision(teacher, false, "/app/profile")).toBe("ok");
   });
 
+  it("accepts effective-scope branches on role-view sessions", () => {
+    // EMS never sets workspaceBranchId for a viewed-as branch_admin; the
+    // branch lives in effectiveScopes.
+    const viewed = nccSession({
+      assignedRole: "super_admin",
+      activeRole: "branch_admin",
+      workspaceBranchId: null,
+      effectiveScopes: {
+        branchId: null,
+        branchIds: ["branch-9"],
+        departmentIds: [],
+        classIds: [],
+        courseIds: [],
+      },
+    });
+    expect(staffGateDecision(viewed, false, "/app/profile")).toBe("ok");
+  });
+
   it("denies paths outside the active role", () => {
     const teacher = nccSession({ assignedRole: "teacher" });
     expect(staffGateDecision(teacher, false, "/app/audit")).toBe("denied");
     expect(staffGateDecision(teacher, false, "/app/profile")).toBe("ok");
     const admin = nccSession({ assignedRole: "super_admin" });
     expect(staffGateDecision(admin, false, "/app/notifications")).toBe("ok");
+  });
+});
+
+describe("staffLoginRedirect", () => {
+  it("carries the current location into the login redirect", () => {
+    expect(staffLoginRedirect("/app/forms", "")).toBe(
+      "/auth/administration-login?next=%2Fapp%2Fforms"
+    );
+    expect(staffLoginRedirect("/app/forms", "tab=share")).toBe(
+      "/auth/administration-login?next=%2Fapp%2Fforms%3Ftab%3Dshare"
+    );
+  });
+});
+
+describe("staffNextTarget", () => {
+  it("accepts only in-app absolute paths", () => {
+    expect(staffNextTarget("/app/forms?tab=share")).toBe("/app/forms?tab=share");
+    expect(staffNextTarget("/app")).toBe("/app");
+    expect(staffNextTarget("/apple")).toBeNull();
+    expect(staffNextTarget("//evil.example")).toBeNull();
+    expect(staffNextTarget("https://evil.example/app")).toBeNull();
+    expect(staffNextTarget("/login")).toBeNull();
+    expect(staffNextTarget(null)).toBeNull();
+    expect(staffNextTarget("")).toBeNull();
   });
 });
 

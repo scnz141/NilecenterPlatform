@@ -1,13 +1,6 @@
 import { useMemo } from "react";
 import { useLocation, useSearch } from "wouter";
 import { GlyphSearch } from "../ui/glyphs";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/staff/ui/kit";
 import type {
   NccAuditEventDto,
   NccAuditStreamDto,
@@ -15,40 +8,108 @@ import type {
 } from "@/lib/backend/api";
 import { useNcc } from "../api";
 import { copy } from "../copy";
+import { intlLocale } from "../i18n";
 import { useStaffSession } from "../session";
 import {
+  ActiveMark,
+  Avatar,
   EmptyState,
   ErrorState,
   LoadingRows,
   PageHeader,
-  StatusBadge,
 } from "../ui/primitives";
-import { formatDate } from "./catalog-shared";
 
 const C = copy.audit;
+const LIMIT = 100;
 
 const AUDIT_ROLES: NccRole[] = ["super_admin", "branch_admin", "vice_manager"];
 
-const STREAMS: NccAuditStreamDto[] = [
-  "auth",
-  "branch",
-  "department",
-  "course",
-  "custom_field",
-  "moodle_site",
-  "student",
-  "lead",
-  "placement_test",
-  "class",
-  "enrolment",
-  "room",
-  "session",
-];
+/** Streams grouped the way staff think about them. Each group has at most four. */
+const GROUPS = {
+  auth: ["auth"],
+  admissions: ["lead", "student", "placement_test", "enrolment"],
+  teaching: ["course", "class", "session", "room"],
+  setup: ["branch", "department", "custom_field", "moodle_site"],
+} satisfies Record<string, NccAuditStreamDto[]>;
+
+type Group = keyof typeof GROUPS;
+const GROUP_KEYS = Object.keys(GROUPS) as Group[];
+
+type Tone = "positive" | "critical" | "neutral";
+
+const POSITIVE = new Set([
+  "login_success",
+  "created",
+  "enabled",
+  "completed",
+  "converted",
+  "enrolled",
+  "invitation_accepted",
+  "moodle_group_created",
+  "moodle_linked",
+]);
+const CRITICAL = new Set([
+  "login_failed",
+  "disabled",
+  "cancelled",
+  "moodle_group_deleted",
+]);
 
 function humanize(value: string) {
-  return value
-    .replace(/[_.-]/g, " ")
-    .replace(/\b\w/g, character => character.toUpperCase());
+  return value.replace(/[_.-]/g, " ");
+}
+
+/** One plain sentence per event: actor, what they did, and to what. */
+export function describeEvent(event: NccAuditEventDto) {
+  const type = event.eventType.split(".").at(-1) ?? event.eventType;
+  const noun = C.nouns[event.stream];
+  const special = (C.actions as Record<string, string>)[type];
+  const verb = (C.verbs as Record<string, string>)[type];
+  const action = special
+    ? special
+    : verb
+      ? verb.replace("{noun}", noun)
+      : C.verbs.other.replace("{action}", humanize(type)).replace("{noun}", noun);
+  const actor =
+    event.actorDisplayName ??
+    (type === "login_failed" ? C.failedSignIn : C.system);
+  // Sign-in events name the same person twice; show the entity only when it adds something.
+  const entity =
+    event.entityLabel && event.entityLabel !== event.actorDisplayName
+      ? event.entityLabel
+      : null;
+  const tone: Tone = POSITIVE.has(type)
+    ? "positive"
+    : CRITICAL.has(type)
+      ? "critical"
+      : "neutral";
+  return { actor, action, entity, tone };
+}
+
+function localDayKey(iso: string) {
+  const date = new Date(iso);
+  return `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
+}
+
+function dayLabel(iso: string, now = new Date()) {
+  const date = new Date(iso);
+  const yesterday = new Date(now);
+  yesterday.setDate(now.getDate() - 1);
+  if (localDayKey(iso) === localDayKey(now.toISOString())) return C.today;
+  if (localDayKey(iso) === localDayKey(yesterday.toISOString())) return C.yesterday;
+  return date.toLocaleDateString(intlLocale(), {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+    ...(date.getFullYear() === now.getFullYear() ? {} : { year: "numeric" }),
+  });
+}
+
+function timeLabel(iso: string) {
+  return new Date(iso).toLocaleTimeString(intlLocale(), {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 }
 
 export default function AuditPage() {
@@ -59,19 +120,28 @@ export default function AuditPage() {
   const search = useSearch();
   const [, navigate] = useLocation();
   const params = useMemo(() => new URLSearchParams(search), [search]);
-  const stream = params.get("stream") ?? "";
+  const groupParam = params.get("group");
+  const group: Group | null = GROUP_KEYS.includes(groupParam as Group)
+    ? (groupParam as Group)
+    : null;
   const q = (params.get("q") ?? "").trim().toLowerCase();
 
-  const events = useNcc<{ items: NccAuditEventDto[] }>(
-    allowed ? "/api/ncc/audit/events" : null,
-    {
-      stream:
-        stream && STREAMS.includes(stream as NccAuditStreamDto)
-          ? stream
-          : undefined,
-      limit: 100,
-    }
+  // "All" reads the newest events. A group reads each of its streams, so busy
+  // sign-in traffic never pushes admissions or teaching events out of view.
+  const streams: (NccAuditStreamDto | null)[] = group
+    ? [...GROUPS[group], null, null, null].slice(0, 4)
+    : [null, null, null, null];
+  const path = (stream: NccAuditStreamDto | null) =>
+    allowed && stream ? "/api/ncc/audit/events" : null;
+  const all = useNcc<{ items: NccAuditEventDto[] }>(
+    allowed && !group ? "/api/ncc/audit/events" : null,
+    { limit: LIMIT }
   );
+  const s0 = useNcc<{ items: NccAuditEventDto[] }>(path(streams[0]), { stream: streams[0] ?? undefined, limit: LIMIT });
+  const s1 = useNcc<{ items: NccAuditEventDto[] }>(path(streams[1]), { stream: streams[1] ?? undefined, limit: LIMIT });
+  const s2 = useNcc<{ items: NccAuditEventDto[] }>(path(streams[2]), { stream: streams[2] ?? undefined, limit: LIMIT });
+  const s3 = useNcc<{ items: NccAuditEventDto[] }>(path(streams[3]), { stream: streams[3] ?? undefined, limit: LIMIT });
+  const reads = group ? [s0, s1, s2, s3].filter((_, i) => streams[i]) : [all];
 
   function setParam(key: string, value: string | null) {
     const next = new URLSearchParams(search);
@@ -80,40 +150,57 @@ export default function AuditPage() {
     navigate(`?${next.toString()}`, { replace: true });
   }
 
+  const error = reads.find(read => read.error)?.error;
+  const loading = reads.some(read => read.isLoading || !read.data);
+  const items = loading
+    ? null
+    : reads
+        .flatMap(read => read.data?.items ?? [])
+        .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+
   if (!allowed) {
-    return (
-      <EmptyState title={copy.shell.noAccess} description={C.noAccess} />
-    );
-  }
-  if (events.error) {
-    return (
-      <ErrorState
-        error={events.error}
-        onRetry={() => void events.mutate()}
-      />
-    );
+    return <EmptyState title={copy.shell.noAccess} description={C.noAccess} />;
   }
 
-  const items = events.data?.items ?? null;
-  const filtered = (items ?? []).filter(event => {
-    if (!q) return true;
-    const text = [
-      event.actorDisplayName,
-      event.eventType,
-      event.stream,
-      event.entityLabel,
-    ]
-      .filter(Boolean)
-      .join(" ")
-      .toLowerCase();
-    return text.includes(q);
-  });
+  const rows = (items ?? [])
+    .map(event => ({ event, text: describeEvent(event) }))
+    .filter(({ event, text }) => {
+      if (!q) return true;
+      return [text.actor, text.action, text.entity, C.streams[event.stream]]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase()
+        .includes(q);
+    });
+
+  const days: { key: string; label: string; rows: typeof rows }[] = [];
+  for (const row of rows) {
+    const key = localDayKey(row.event.createdAt);
+    const last = days.at(-1);
+    if (last?.key === key) last.rows.push(row);
+    else days.push({ key, label: dayLabel(row.event.createdAt), rows: [row] });
+  }
 
   return (
-    <div className="flex min-w-0 flex-col gap-4">
+    <div className="flex min-w-0 flex-col gap-5">
       <PageHeader title={C.title} description={C.description} />
 
       <div className="staff-toolbar">
+        <div className="staff-segments" role="group" aria-label={C.stream}>
+          {([null, ...GROUP_KEYS] as (Group | null)[]).map(key => (
+            <button
+              key={key ?? "all"}
+              type="button"
+              className="staff-segment"
+              data-active={group === key}
+              aria-pressed={group === key}
+              onClick={() => setParam("group", key)}
+            >
+              {group === key ? <ActiveMark group="audit-group" /> : null}
+              {key ? C.groups[key] : C.groups.all}
+            </button>
+          ))}
+        </div>
         <label className="staff-search">
           <GlyphSearch className="ui-glyph staff-search-glyph" />
           <input
@@ -125,70 +212,50 @@ export default function AuditPage() {
             aria-label={C.search}
           />
         </label>
-        <Select
-          value={stream || "__all"}
-          onValueChange={value =>
-            setParam("stream", value === "__all" || !value ? null : value)
-          }
-        >
-          <SelectTrigger
-            size="sm"
-            className="min-w-[9rem]"
-            aria-label={C.stream}
-          >
-            <SelectValue placeholder={C.allStreams} />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="__all">{C.allStreams}</SelectItem>
-            {STREAMS.map(item => (
-              <SelectItem key={item} value={item}>
-                {C.streams[item]}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
       </div>
 
-      {events.isLoading || items === null ? (
+      {error ? (
+        <ErrorState
+          error={error}
+          onRetry={() => reads.forEach(read => void read.mutate())}
+        />
+      ) : items === null ? (
         <LoadingRows />
-      ) : filtered.length === 0 ? (
+      ) : rows.length === 0 ? (
         <EmptyState title={C.empty} description={C.emptyHint} />
       ) : (
-        <div className="staff-card !py-0">
-          <div className="flex flex-col divide-y divide-[var(--staff-border)]">
-            {filtered.map(event => (
-              <div
-                key={event.id}
-                className="flex items-start justify-between gap-4 py-3"
-              >
-                <div className="min-w-0">
-                  <span className="staff-muted text-xs">
-                    {C.streams[event.stream]}
-                  </span>
-                  <strong className="block text-sm">
-                    {humanize(event.eventType)}
-                  </strong>
-                  {event.entityLabel ? (
-                    <p className="staff-muted break-words">
-                      {event.entityLabel}
+        <div className="staff-log">
+          {days.map(day => (
+            <section key={day.key} className="staff-log-day" aria-label={day.label}>
+              <h2 className="staff-log-day-label">
+                {day.label}
+                <span className="staff-log-day-count">{day.rows.length}</span>
+              </h2>
+              <ol className="staff-log-list">
+                {day.rows.map(({ event, text }) => (
+                  <li key={event.id} className="staff-log-row" data-tone={text.tone}>
+                    <time className="staff-log-time" dateTime={event.createdAt}>
+                      {timeLabel(event.createdAt)}
+                    </time>
+                    <Avatar name={text.actor} seed={event.actorUserId ?? text.actor} size="sm" />
+                    <p className="staff-log-text">
+                      <strong>{text.actor}</strong> {text.action}
+                      {text.entity ? (
+                        <>
+                          {" "}
+                          <span className="staff-log-entity">{text.entity}</span>
+                        </>
+                      ) : null}
                     </p>
-                  ) : null}
-                </div>
-                <div className="flex shrink-0 flex-col items-end gap-1 text-end">
-                  <StatusBadge
-                    status={event.eventType.split(".").at(-1) ?? "active"}
-                    label={humanize(
-                      event.eventType.split(".").at(-1) ?? event.eventType
-                    )}
-                  />
-                  <span className="staff-muted text-xs">
-                    {event.actorDisplayName ?? C.system} ·{" "}
-                    {formatDate(event.createdAt)}
-                  </span>
-                </div>
-              </div>
-            ))}
-          </div>
+                    <span className="staff-log-stream">{C.streams[event.stream]}</span>
+                  </li>
+                ))}
+              </ol>
+            </section>
+          ))}
+          <p className="staff-log-foot">
+            {C.latest.replace("{n}", String(LIMIT))}
+          </p>
         </div>
       )}
     </div>

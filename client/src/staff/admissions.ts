@@ -4,6 +4,7 @@ import type {
   NccRegistrationDto,
   NccTrialLessonDto,
 } from "@/lib/backend/api";
+import { ageOn, dobError, type DobError } from "./date-of-birth";
 import { intlLocale } from "./i18n";
 
 /* ---------------- Lead journey -------------------------------------- */
@@ -184,19 +185,10 @@ export type IdentityErrorKey =
   | "invalidNationalId"
   | "nationalIdRequired"
   | "guardianRequired"
-  | "guardianIncomplete";
+  | "guardianIncomplete"
+  | DobError;
 
-export function ageOn(dateOfBirth: string, today = new Date()): number | null {
-  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateOfBirth);
-  if (!match) return null;
-  const [year, month, day] = match.slice(1).map(Number);
-  let age = today.getFullYear() - year;
-  const beforeBirthday =
-    today.getMonth() + 1 < month ||
-    (today.getMonth() + 1 === month && today.getDate() < day);
-  if (beforeBirthday) age -= 1;
-  return age;
-}
+export { ageOn };
 
 /**
  * Mirrors the EMS student rules learned from live staging: three-letter
@@ -215,6 +207,10 @@ export function validateIdentity(
   if (!input.address.trim()) errors.address = "required";
   if (!input.gender) errors.gender = "required";
   if (!input.dateOfBirth) errors.dateOfBirth = "required";
+  else {
+    const dob = dobError(input.dateOfBirth, today);
+    if (dob) errors.dateOfBirth = dob;
+  }
   const nationalId = input.nationalId.trim();
   if (nationalId && !/^\d{14}$/.test(nationalId))
     errors.nationalId = "invalidNationalId";

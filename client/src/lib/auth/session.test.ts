@@ -72,6 +72,90 @@ async function seedSession() {
   );
 }
 
+describe("refreshServerSession", () => {
+  beforeEach(() => {
+    backendMocks.fetchSessionRequest.mockReset();
+    backendMocks.logoutRequest.mockReset();
+    backendMocks.signInRequest.mockReset();
+    backendMocks.switchRoleRequest.mockReset();
+    backendMocks.switchWorkspaceRequest.mockReset();
+  });
+
+  afterEach(async () => {
+    backendMocks.logoutRequest.mockResolvedValue({
+      ok: true,
+      data: { ok: true },
+    });
+    await clearStoredSession();
+    vi.unstubAllGlobals();
+  });
+
+  it("clears the stored session when the server reports no session", async () => {
+    installWindow();
+    await seedSession();
+    backendMocks.fetchSessionRequest.mockResolvedValue({
+      ok: true,
+      data: null,
+    });
+
+    await expect(refreshServerSession()).resolves.toBeNull();
+    expect(getActiveUser()).toBeNull();
+  });
+
+  it("clears the stored session on a definitive 401", async () => {
+    installWindow();
+    await seedSession();
+    backendMocks.fetchSessionRequest.mockResolvedValue({
+      ok: false,
+      status: 401,
+      error: "Sign in required.",
+    });
+
+    await expect(refreshServerSession()).resolves.toBeNull();
+    expect(getActiveUser()).toBeNull();
+  });
+
+  it("keeps the stored session when the refresh fails transiently", async () => {
+    installWindow();
+    await seedSession();
+    backendMocks.fetchSessionRequest.mockResolvedValue({
+      ok: false,
+      status: 503,
+      error: "Service unavailable.",
+    });
+
+    await expect(refreshServerSession()).resolves.toMatchObject({
+      userId: studentSession.userId,
+    });
+    expect(getActiveUser()).toMatchObject({ id: "usr_student_demo" });
+  });
+
+  it("keeps the stored session when the network request fails", async () => {
+    installWindow();
+    await seedSession();
+    backendMocks.fetchSessionRequest.mockResolvedValue({
+      ok: false,
+      error: "Failed to fetch",
+    });
+
+    await expect(refreshServerSession()).resolves.toMatchObject({
+      userId: studentSession.userId,
+    });
+    expect(getActiveUser()).toMatchObject({ id: "usr_student_demo" });
+  });
+
+  it("still returns null on transient failure without a stored session", async () => {
+    installWindow();
+    backendMocks.fetchSessionRequest.mockResolvedValue({
+      ok: false,
+      status: 503,
+      error: "Service unavailable.",
+    });
+
+    await expect(refreshServerSession()).resolves.toBeNull();
+  });
+});
+
 describe("clearStoredSession", () => {
   beforeEach(() => {
     backendMocks.fetchSessionRequest.mockReset();

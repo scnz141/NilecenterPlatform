@@ -35,6 +35,8 @@ import { intlLocale } from "../i18n";
 import { staffWrite, useInvalidate } from "../api";
 import { copy } from "../copy";
 import { FormValidationError, runAction } from "../run-action";
+import type { DobError } from "../date-of-birth";
+import { DateOfBirthField } from "../ui/date-of-birth-field";
 import { FormSheet, StaffField } from "../ui/form-sheet";
 import type { StaffSecret } from "../ui/secret-dialog";
 import {
@@ -782,7 +784,10 @@ export function IdentityFields({
   const message = (key: keyof IdentityInput) => {
     const code = attempted ? errors[key] : undefined;
     if (!code) return null;
-    return code === "required" ? L.required : I[code];
+    if (code === "required") return L.required;
+    return code in copy.dateOfBirth
+      ? copy.dateOfBirth[code as DobError]
+      : I[code as Exclude<typeof code, DobError>];
   };
   const set = <K extends keyof IdentityInput>(key: K, next: IdentityInput[K]) =>
     onChange({ ...value, [key]: next });
@@ -837,20 +842,13 @@ export function IdentityFields({
           </Select>
         </StaffField>
       </div>
+      <DateOfBirthField
+        label={I.dateOfBirth}
+        value={value.dateOfBirth}
+        onChange={next => set("dateOfBirth", next)}
+        error={message("dateOfBirth") ?? errorFor("date_of_birth")}
+      />
       <div className="grid grid-cols-2 gap-3">
-        <StaffField
-          label={I.dateOfBirth}
-          htmlFor="id-dob"
-          error={message("dateOfBirth") ?? errorFor("date_of_birth")}
-        >
-          <input
-            id="id-dob"
-            type="date"
-            className="staff-input"
-            value={value.dateOfBirth}
-            onChange={event => set("dateOfBirth", event.target.value)}
-          />
-        </StaffField>
         <StaffField
           label={I.nationalId}
           htmlFor="id-national"
@@ -867,20 +865,20 @@ export function IdentityFields({
             }
           />
         </StaffField>
+        <StaffField
+          label={I.passport}
+          htmlFor="id-passport"
+          error={errorFor("passport_number")}
+        >
+          <input
+            id="id-passport"
+            className="staff-input staff-ltr"
+            maxLength={32}
+            value={value.passportNumber}
+            onChange={event => set("passportNumber", event.target.value)}
+          />
+        </StaffField>
       </div>
-      <StaffField
-        label={I.passport}
-        htmlFor="id-passport"
-        error={errorFor("passport_number")}
-      >
-        <input
-          id="id-passport"
-          className="staff-input staff-ltr"
-          maxLength={32}
-          value={value.passportNumber}
-          onChange={event => set("passportNumber", event.target.value)}
-        />
-      </StaffField>
       <StaffField
         label={I.address}
         htmlFor="id-address"

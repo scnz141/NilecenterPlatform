@@ -165,7 +165,9 @@ try {
   await waitFor("#id-nationality");
   await page.fill("#id-nationality", "EGY");
   await chooseOption(page, "Gender", "Female");
-  await page.fill("#id-dob", "2012-03-04");
+  await page.fill(".staff-dob-part[data-part='day'] input", "4");
+  await chooseOption(page, "Month", "March");
+  await page.fill(".staff-dob-part[data-part='year'] input", "2012");
   await page.getByRole("button", { name: "Create student", exact: true }).click();
   step(
     "identity rules: national ID and guardian required",

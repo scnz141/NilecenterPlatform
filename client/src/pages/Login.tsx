@@ -9,13 +9,14 @@ import {
   GraduationCap,
   ShieldCheck,
 } from "lucide-react";
-import { Link, useLocation } from "wouter";
+import { Link, useLocation, useSearch } from "wouter";
 import { toast } from "sonner";
 import { AuthExperience } from "@/components/auth/AuthExperience";
 import { signInWithPassword } from "@/lib/auth/session";
 import { fetchAuthModeRequest } from "@/lib/backend/api";
 import { isSupportedLocale, translateUiLabel, type Locale } from "@/lib/i18n";
 import { roleMeta, type Role } from "@/lib/platformData";
+import { staffNextTarget } from "@/staff/gate";
 
 type LoginAudience = "gateway" | "student" | "administration";
 
@@ -181,6 +182,10 @@ function LoginForm({
   audience: Exclude<LoginAudience, "gateway">;
 }) {
   const [, navigate] = useLocation();
+  const search = useSearch();
+  const nextTarget = staffNextTarget(
+    new URLSearchParams(search).get("next")
+  );
   const availableRoles = useMemo(
     () =>
       roles.filter(role =>
@@ -313,9 +318,10 @@ function LoginForm({
       ["branchadmin", "registrar"].includes(signedInRole) &&
       !result.session.workspaceBranchId;
     navigate(
-      needsWorkspace
-        ? "/auth/select-workspace"
-        : roleMeta[signedInRole].defaultRoute
+      nextTarget ??
+        (needsWorkspace
+          ? "/auth/select-workspace"
+          : roleMeta[signedInRole].defaultRoute)
     );
   };
 

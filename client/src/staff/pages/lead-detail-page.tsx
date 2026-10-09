@@ -24,6 +24,7 @@ import {
 } from "../admissions";
 import { staffWrite, useInvalidate, useNcc } from "../api";
 import { copy } from "../copy";
+import { canAccess } from "../nav";
 import { isAdmissionsRole } from "../roles";
 import { runAction } from "../run-action";
 import { useStaffSession } from "../session";
@@ -538,6 +539,17 @@ export default function LeadDetailPage() {
           .filter(reason => reason.status === "active")
           .map(reason => ({ id: reason.id, label: reason.name }))}
         reasonRequired
+        reasonsEmpty={
+          <p className="staff-confirm-reason-missing">
+            {L.noLostReasons}{" "}
+            {session?.ncc?.activeRole &&
+            canAccess("/app/lost-reasons", session.ncc.activeRole) ? (
+              <Link href="/app/lost-reasons" className="staff-link">
+                {L.openLostReasons}
+              </Link>
+            ) : null}
+          </p>
+        }
         onConfirm={reasonId =>
           runAction(
             async () => {

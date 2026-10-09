@@ -12,7 +12,8 @@
  */
 import { useState, type CSSProperties } from "react";
 import { Link } from "wouter";
-import { ArrowRight, ArrowUpRight, Globe2, MapPin, MessageCircle, Phone } from "lucide-react";
+import { ArrowRight, ArrowUpRight, Globe2, MapPin, MessageCircle, Phone, Plus } from "lucide-react";
+import { ClassFilms } from "./home/class-films";
 import { LANDING_COPY } from "./home/landing-copy";
 import {
   CountUp,
@@ -133,12 +134,9 @@ export default function Home() {
         </div>
       </section>
 
-      {/* How we teach, beside the mashrabiya */}
+      {/* How we teach, beside two real classes */}
       <section className="lp-section lp-section-tint">
         <div className="lp-wrap lh-teach">
-          <div className="lh-lattice" aria-hidden="true">
-            <Lattice />
-          </div>
           <div>
             <div className="lp-reveal">
               <h2 className="lp-h2">{t.teach.title}</h2>
@@ -155,6 +153,11 @@ export default function Home() {
                 </li>
               ))}
             </ol>
+          </div>
+          <div className="lh-teach-films lp-reveal">
+            <h3 className="lh-films-title">{t.films.title}</h3>
+            <p className="lh-films-lead">{t.films.lead}</p>
+            <ClassFilms copy={t.films} />
           </div>
         </div>
       </section>
@@ -259,6 +262,33 @@ export default function Home() {
                   <small>{item.context}</small>
                 </span>
               </button>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Questions */}
+      <section id="questions" className="lp-section lp-section-tint lh-faq" aria-labelledby="lh-faq-title">
+        <div className="lp-wrap lh-faq-inner">
+          <div className="lp-reveal">
+            <h2 id="lh-faq-title" className="lp-h2">
+              {t.faq.title}
+            </h2>
+            <p className="lp-section-lead">{t.faq.lead}</p>
+            <a className="lp-link-arrow lh-faq-ask" href={whatsapp(PHONE_ONSITE)} target="_blank" rel="noreferrer">
+              <MessageCircle aria-hidden="true" />
+              {t.cta.whatsapp}
+            </a>
+          </div>
+          <div className="lh-faq-list">
+            {t.faq.items.map((item, index) => (
+              <details key={item.q} className="lh-faq-item lp-reveal" style={vars({ "--r": index % 3 })} name="lh-faq">
+                <summary>
+                  <span>{item.q}</span>
+                  <Plus className="lh-faq-mark" aria-hidden="true" />
+                </summary>
+                <p>{item.a}</p>
+              </details>
             ))}
           </div>
         </div>
