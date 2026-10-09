@@ -6,7 +6,7 @@ import NileFormRenderer from "@/components/forms/NileFormRenderer";
 import type { FormResponderBundle } from "../../../../server/nileFormsService";
 import { useInvalidate, useNcc } from "../api";
 import { copy } from "../copy";
-import { useStaffCrumb } from "../shell/staff-shell";
+import { useStaffCrumb, useStaffParent } from "../shell/staff-shell";
 import { ErrorState, LoadingRows } from "../ui/primitives";
 
 const F = copy.forms;
@@ -21,6 +21,7 @@ export default function FormFillPage() {
     publicationId ? `/api/forms/assigned/${encodeURIComponent(publicationId)}` : null
   );
   useStaffCrumb(bundle.data?.definition.title ?? null);
+  useStaffParent({ href: "/app/forms?tab=fill", label: copy.nav.forms });
 
   // After submitting, EMS 409s the assigned-bundle refetch — keep rendering
   // the last bundle (the renderer shows its own success panel) instead of

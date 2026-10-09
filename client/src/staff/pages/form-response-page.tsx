@@ -11,7 +11,8 @@ import { formatDateTime, useStaffLocale } from "../i18n";
 import { isAdmissionsRole } from "../roles";
 import { runAction } from "../run-action";
 import { useStaffSession } from "../session";
-import { useStaffCrumb } from "../shell/staff-shell";
+import { useStaffCrumb, useStaffParent } from "../shell/staff-shell";
+import { canManageForms } from "../forms/model";
 import { ErrorState, LoadingRows, StatusBadge } from "../ui/primitives";
 import { RESPONSE_TONE } from "./forms-page";
 import { LeadForm } from "./lead-form";
@@ -41,6 +42,12 @@ export default function FormResponsePage() {
   );
   const data = detail.data;
   useStaffCrumb(data ? data.definition.title : null);
+  // Up goes to this form's responses, not the forms list the URL sits under.
+  useStaffParent(
+    data && canManageForms(session?.activeRole)
+      ? { href: `/app/forms/${encodeURIComponent(data.definition.id)}?tab=responses`, label: data.definition.title }
+      : null
+  );
 
   if (detail.error) return <ErrorState error={detail.error} onRetry={() => void detail.mutate()} />;
   if (!data) return <LoadingRows />;
