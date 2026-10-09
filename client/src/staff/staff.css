@@ -149,10 +149,28 @@ html.staff-ui body {
   text-rendering: optimizeLegibility;
 }
 
-html.staff-ui:lang(ar) body,
-html.staff-ui [lang="ar"] {
+html.staff-ui:is(:lang(ar), :lang(ur)) body,
+html.staff-ui :is([lang="ar"], [lang="ur"]) {
   font-family: var(--font-ar);
   line-height: 1.65;
+}
+
+/* Chinese: a CJK stack, and sans titles (Instrument Serif has no CJK glyphs). */
+html.staff-ui:lang(zh) {
+  --font-ui:
+    -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB",
+    "Microsoft YaHei", "Noto Sans SC", "Segoe UI", system-ui, sans-serif;
+  --font-title: var(--font-ui);
+}
+
+html.staff-ui:lang(zh) :is(.staff-app h1, .staff-detail-name, .staff-report-title) {
+  font-weight: 600;
+  letter-spacing: 0;
+}
+
+/* Russian: Instrument Serif has no Cyrillic, so titles use a serif that does. */
+html.staff-ui:lang(ru) {
+  --font-title: Georgia, "Times New Roman", serif;
 }
 
 html.staff-ui *,
@@ -423,7 +441,7 @@ html.staff-ui .sr-only {
   min-inline-size: 0;
 }
 
-html.staff-ui:lang(ar) .staff-brand-sub {
+html.staff-ui:is(:lang(ar), :lang(ur)) .staff-brand-sub {
   letter-spacing: 0;
   text-transform: none;
 }
@@ -546,7 +564,7 @@ html[dir="rtl"] .staff-nav-group[data-folded] .staff-nav-group-caret {
   opacity: 1;
 }
 
-html.staff-ui:lang(ar) .staff-nav-group-label {
+html.staff-ui:is(:lang(ar), :lang(ur)) .staff-nav-group-label {
   letter-spacing: 0;
   text-transform: none;
   font-size: 0.8125rem;
@@ -955,33 +973,11 @@ html[dir="rtl"] .staff-topbar[data-compact] .staff-topbar-title {
   color: var(--ink-3);
 }
 
-.staff-user-menu {
-  min-inline-size: 16rem;
-}
-
-.staff-user-menu-name {
-  display: block;
-  font-weight: 500;
-  color: var(--ink);
-}
-
-.staff-user-menu-email {
-  display: block;
-  font-size: 0.8125rem;
-  color: var(--ink-3);
-  direction: ltr;
-  unicode-bidi: plaintext;
-  text-align: start;
-}
-
-.staff-user-menu-role {
-  display: inline-block;
-  margin-block-start: 0.5rem;
-  font-size: 0.75rem;
-  color: var(--ink-2);
-}
-
+/* Page layouts answer to this column's width, not the screen's, so they
+   follow the sidebar, the icon rail and the Display size setting. Thresholds
+   match the old screen breakpoints with the full sidebar open. */
 .staff-content {
+  container: content / inline-size;
   inline-size: 100%;
   max-inline-size: 140rem;
   padding-block: 2.5rem 4rem;
@@ -1024,7 +1020,7 @@ html[dir="rtl"] .staff-topbar[data-compact] .staff-topbar-title {
   text-wrap: balance;
 }
 
-html.staff-ui:lang(ar) .staff-app h1 {
+html.staff-ui:is(:lang(ar), :lang(ur)) .staff-app h1 {
   font-family: var(--font-ar);
   font-weight: 600;
   font-size: 2.125rem;
@@ -1265,7 +1261,6 @@ html[dir="rtl"].staff-ui input[type="tel"] {
 
 /* ---------- Form controls --------------------------------------------- */
 .staff-input,
-.staff-select,
 .ui-field,
 .staff-multiselect-trigger {
   display: flex;
@@ -1795,7 +1790,7 @@ html.staff-ui input[type="radio"] {
   padding-inline-end: 1rem;
 }
 
-html.staff-ui:lang(ar) .staff-table th {
+html.staff-ui:is(:lang(ar), :lang(ur)) .staff-table th {
   font-size: 0.8125rem;
 }
 
@@ -2495,7 +2490,7 @@ html[dir="rtl"] .staff-rtl-flip {
   align-self: flex-start;
 }
 
-@media (max-width: 799px) {
+@container content (width < 47.5rem) {
   .staff-hour-cell {
     min-block-size: 2.25rem;
   }
@@ -2540,7 +2535,7 @@ html[dir="rtl"] .staff-rtl-flip {
   font-family: var(--font-ui);
 }
 
-html.staff-ui:lang(ar) .ui-layer {
+html.staff-ui:is(:lang(ar), :lang(ur)) .ui-layer {
   font-family: var(--font-ar);
 }
 
@@ -2972,7 +2967,7 @@ html[dir="rtl"] .ui-dialog {
   letter-spacing: -0.015em;
 }
 
-html.staff-ui:lang(ar) .staff-detail-name {
+html.staff-ui:is(:lang(ar), :lang(ur)) .staff-detail-name {
   font-family: var(--font-ar);
   font-weight: 600;
   font-size: 1.875rem;
@@ -3302,7 +3297,7 @@ html[dir="rtl"] .staff-fact {
   }
 }
 
-@media (max-width: 767px) {
+@media (max-width: 639px) {
   html.staff-ui {
     --topbar: 3.5rem;
     --gutter: 1rem;
@@ -3831,13 +3826,13 @@ fieldset.staff-field {
   gap: 0.25rem;
 }
 
-@media (max-width: 1099px) {
+@container content (width < 49rem) {
   .staff-detail-grid {
     grid-template-columns: minmax(0, 1fr);
   }
 }
 
-@media (max-width: 767px) {
+@container content (width < 46rem) {
   .staff-journey {
     grid-template-columns: minmax(0, 1fr);
     gap: 0.75rem;
@@ -4069,7 +4064,7 @@ html.staff-ui[dir="rtl"] .staff-detail-contact {
   font-weight: 400;
 }
 
-html.staff-ui:lang(ar) .staff-report-title {
+html.staff-ui:is(:lang(ar), :lang(ur)) .staff-report-title {
   font-family: var(--font-ar);
   font-weight: 600;
 }
@@ -4128,7 +4123,7 @@ html.staff-ui:lang(ar) .staff-report-title {
   display: none;
 }
 
-@media (max-width: 767px) {
+@container content (width < 46rem) {
   .staff-only-wide {
     display: none;
   }
@@ -4217,7 +4212,7 @@ html.staff-ui:lang(ar) .staff-report-title {
   font-variant-numeric: tabular-nums;
 }
 
-html.staff-ui:lang(ar) .staff-tile-value {
+html.staff-ui:is(:lang(ar), :lang(ur)) .staff-tile-value {
   font-family: var(--font-figures);
   font-size: 2rem;
 }
@@ -4548,6 +4543,7 @@ a.staff-agenda-name:hover {
 
 .staff-class-list > li {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: 1rem;
@@ -4559,7 +4555,7 @@ a.staff-agenda-name:hover {
   border-block-end: 0;
 }
 
-@media (max-width: 1099px) {
+@container content (width < 49rem) {
   .staff-dash-grid {
     grid-template-columns: minmax(0, 1fr);
   }
@@ -5152,7 +5148,7 @@ html.staff-ui .nile-form-renderer-header h1 {
   letter-spacing: -0.02em;
 }
 
-html.staff-ui:lang(ar) .nile-form-renderer-header h1 {
+html.staff-ui:is(:lang(ar), :lang(ur)) .nile-form-renderer-header h1 {
   font-family: var(--font-ar);
 }
 
@@ -5166,7 +5162,7 @@ html.staff-ui:lang(ar) .nile-form-renderer-header h1 {
   margin-block-start: 1rem;
 }
 
-@media (max-width: 1099px) {
+@container content (width < 49rem) {
   .staff-builder[data-preview] {
     grid-template-columns: minmax(0, 1fr);
   }
@@ -5317,7 +5313,7 @@ html.staff-ui:lang(ar) .nile-form-renderer-header h1 {
   border-block-start: 1px solid var(--line);
 }
 
-@media (max-width: 767px) {
+@media (max-width: 899px) {
   .staff-roleview-prefix,
   .staff-roleview-scope {
     display: none;
@@ -5365,7 +5361,7 @@ html.staff-ui:lang(ar) .nile-form-renderer-header h1 {
 .staff-dash-board > [data-area="pipeline"] { --area: pipeline; }
 .staff-dash-board > [data-area="students"] { --area: students; }
 
-@media (min-width: 1700px) {
+@container content (width >= 85rem) {
   .staff-dash-board {
     grid-template-columns: repeat(4, minmax(0, 1fr));
     grid-template-areas:
@@ -5375,7 +5371,7 @@ html.staff-ui:lang(ar) .nile-form-renderer-header h1 {
   }
 }
 
-@media (max-width: 1099px) {
+@container content (width < 49rem) {
   .staff-dash-board {
     grid-template-columns: minmax(0, 1fr);
     grid-template-areas: "intake" "outcomes" "today" "attention" "funnel" "bookings" "pipeline" "students";
@@ -5539,7 +5535,7 @@ html.staff-ui:lang(ar) .nile-form-renderer-header h1 {
   line-height: 1;
 }
 
-html.staff-ui:lang(ar) .staff-donut-value {
+html.staff-ui:is(:lang(ar), :lang(ur)) .staff-donut-value {
   font-family: var(--font-figures);
 }
 
@@ -5771,13 +5767,13 @@ html[dir="rtl"] .staff-split-part {
   align-items: start;
 }
 
-@media (min-width: 1800px) {
+@container content (width >= 91rem) {
   .staff-report-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
 
-@media (max-width: 1099px) {
+@container content (width < 49rem) {
   .staff-report-grid {
     grid-template-columns: minmax(0, 1fr);
   }
@@ -5800,7 +5796,7 @@ html[dir="rtl"] .staff-split-part {
   flex: none;
 }
 
-@media (max-width: 599px) {
+@container content (width < 35.5rem) {
   .staff-report-controls {
     margin-inline-start: 0;
   }
@@ -5838,20 +5834,20 @@ html[dir="rtl"] .staff-split-part {
   white-space: nowrap;
 }
 
-@media (max-width: 1399px) {
+@container content (width < 67rem) {
   .staff-panel-wide .staff-cell-ellip {
     max-inline-size: 8rem;
   }
 }
 
-@media (min-width: 1400px) {
+@container content (width >= 67rem) {
   .staff-panel-wide .staff-cell-ellip {
     max-inline-size: 16rem;
   }
 }
 
 /* Phones: each row collapses into a label line + "metric value" pairs. */
-@media (max-width: 599px) {
+@container content (width < 35.5rem) {
   .staff-table-compact thead {
     display: none;
   }
@@ -6001,7 +5997,8 @@ fieldset.staff-dob {
 
 .staff-dob-parts {
   display: grid;
-  grid-template-columns: 4.5rem minmax(8rem, 1fr) 6rem;
+  /* Shrinks to fit a 320px phone panel; month takes what is left. */
+  grid-template-columns: minmax(3.25rem, 4.5rem) minmax(0, 1fr) minmax(4.25rem, 6rem);
   gap: 0.5rem;
   align-items: end;
 }
@@ -6164,7 +6161,7 @@ fieldset.staff-dob {
   color: var(--ink-3);
 }
 
-@media (max-width: 640px) {
+@container content (width < 38rem) {
   .staff-log-row {
     grid-template-columns: auto minmax(0, 1fr);
     grid-template-areas:
@@ -6577,5 +6574,151 @@ fieldset.staff-dob {
   /* With the compact title centred, Back keeps to its own side. */
   .staff-topbar[data-compact] .staff-back-label {
     max-inline-size: 5rem;
+  }
+}
+
+/* =========================================================================
+   Responsive rules. Width bands used across the staff app:
+     phone   < 640px     one column, slide-in menu, cards for lists
+     tablet  640-899px   one column, slide-in menu
+     laptop  900-1279px  icon rail by default, so content gets the width
+     desktop 1280-2559px full sidebar
+     wall    >= 2560px   the root size scales with the screen (see top)
+   Panels (side sheets, dialogs) respond to their own width with container
+   queries, not the screen: the same form is used in a 34rem sheet on a
+   desktop and full width on a phone.
+   ========================================================================= */
+.staff-sheet-body,
+.ui-dialog {
+  container: panel / inline-size;
+}
+
+/* Narrow panels: every two- or three-column form row stacks. */
+@container panel (max-width: 26rem) {
+  .grid.grid-cols-2 {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* A flex row of filters never forces the page wider than the phone. */
+.staff-dash-head > *,
+.staff-dash-controls > * {
+  min-inline-size: 0;
+  max-inline-size: 100%;
+}
+
+/* Phone detail headers: the identity takes the width, actions sit on their own
+   row from the start edge, and the avatar steps down a size. */
+@media (max-width: 639px) {
+  .staff-detail-head {
+    gap: 1rem;
+  }
+  .staff-detail-id {
+    align-items: flex-start;
+    inline-size: 100%;
+  }
+  .staff-detail-id > .staff-avatar {
+    inline-size: 3rem;
+    block-size: 3rem;
+    font-size: 1rem;
+  }
+  .staff-detail-name {
+    font-size: 1.75rem;
+    overflow-wrap: anywhere;
+  }
+  html.staff-ui:is(:lang(ar), :lang(ur)) .staff-detail-name {
+    font-size: 1.5rem;
+  }
+  .staff-detail-actions {
+    flex-wrap: wrap;
+    inline-size: 100%;
+    margin-inline-start: 0;
+  }
+}
+
+/* Touch screens: every control is at least 44px tall (WCAG 2.5.5), whatever
+   the screen width. Pointer type, not width, decides this: a touch laptop
+   needs it and a narrow desktop window does not. */
+@media (pointer: coarse) {
+  .staff-btn,
+  .ui-field,
+  .staff-input:not(textarea),
+  .staff-segment,
+  .staff-tab,
+  .staff-search-btn,
+  .staff-back,
+  .staff-crumb-link,
+  .staff-nav-link,
+  .staff-dp-nav,
+  .staff-dp-title,
+  .staff-nav .staff-nav-group-label {
+    min-block-size: 2.75rem;
+  }
+  .staff-icon-btn,
+  .staff-menu-toggle,
+  .staff-sidebar-toggle {
+    min-inline-size: 2.75rem;
+    min-block-size: 2.75rem;
+  }
+  .staff-crumb-link {
+    display: inline-flex;
+    align-items: center;
+  }
+  html.staff-ui input[type="checkbox"],
+  html.staff-ui input[type="radio"] {
+    flex-shrink: 0;
+    inline-size: 1.5rem;
+    block-size: 1.5rem;
+  }
+  /* Text links in rows and panels: padding grows the touch area to 24px+
+     without moving the text. */
+  .staff-link,
+  .staff-link-quiet,
+  .staff-panel-link,
+  html.staff-ui button.staff-link {
+    padding-block: 0.25rem;
+  }
+  .staff-sort {
+    min-inline-size: 2rem;
+    min-block-size: 1.75rem;
+  }
+  .staff-tab {
+    min-inline-size: 2.75rem;
+  }
+}
+
+/* Lists inside detail pages: the name takes a full line on narrow screens
+   instead of being squeezed beside the meta column. */
+.staff-class-list > li > :first-child {
+  flex: 1 1 14rem;
+  min-inline-size: 0;
+}
+
+/* Phone: header actions never push the page wider. Long labels (Russian,
+   Turkish, Urdu) wrap inside the button instead of overflowing. */
+.staff-page-header > *,
+.staff-detail-head > * {
+  min-inline-size: 0;
+  max-inline-size: 100%;
+}
+
+@media (max-width: 639px) {
+  .staff-chip {
+    block-size: auto;
+    min-block-size: 1.75rem;
+    max-inline-size: 100%;
+    padding-block: 0.25rem;
+    line-height: 1.25;
+    white-space: normal;
+    text-align: start;
+  }
+  :is(.staff-page-actions, .staff-detail-actions) .staff-btn {
+    block-size: auto;
+    min-block-size: var(--control);
+    max-inline-size: 100%;
+    padding-block: 0.5rem;
+    line-height: 1.25;
+    white-space: normal;
+    text-align: start;
   }
 }

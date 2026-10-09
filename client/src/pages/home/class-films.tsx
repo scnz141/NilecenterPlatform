@@ -1,16 +1,17 @@
 import { useEffect, useRef, useState } from "react";
 import { Play, X } from "lucide-react";
 import type { LandingCopy } from "./landing-copy";
-import { Lattice } from "./public-chrome";
 
 /**
- * Nile Center's own published films (nilecenter.edu.eg, "Learn Courses
- * Online / Onsite"). Nothing loads from YouTube until a visitor presses play,
- * and then only from the privacy-enhanced domain.
+ * Nile Center's own films from its YouTube channel (NileCenterArabic):
+ * "Discover the Life of Nile Learning Center since 1998" and "Stop Searching.
+ * Start Learning Arabic & Quran". The posters are the films' own thumbnails,
+ * served from this site, so nothing loads from YouTube until a visitor
+ * presses play, and then only from the privacy-enhanced domain.
  */
 const FILMS = {
-  online: "OC5b0NDBqeM",
-  campus: "uuuZq9CDtBk",
+  life: { id: "OC5b0NDBqeM", poster: "/home/films/life" },
+  start: { id: "uuuZq9CDtBk", poster: "/home/films/start" },
 } as const;
 
 type Film = keyof typeof FILMS;
@@ -28,7 +29,7 @@ export function ClassFilms({ copy }: { copy: LandingCopy["films"] }) {
 
   return (
     <div className="lh-films">
-      {(["online", "campus"] as const).map(kind => (
+      {(["life", "start"] as const).map(kind => (
         <button
           key={kind}
           type="button"
@@ -38,7 +39,16 @@ export function ClassFilms({ copy }: { copy: LandingCopy["films"] }) {
           aria-label={`${copy.play}: ${copy[kind].title}`}
         >
           <span className="lh-film-art" aria-hidden="true">
-            <Lattice className="lh-film-lattice" scale={kind === "online" ? 1.6 : 2.2} />
+            <img
+              src={`${FILMS[kind].poster}-640.webp`}
+              srcSet={`${FILMS[kind].poster}-640.webp 640w, ${FILMS[kind].poster}-1280.webp 1280w`}
+              sizes="(max-width: 640px) 100vw, (max-width: 1099px) 50vw, 36rem"
+              width={1280}
+              height={720}
+              alt=""
+              loading="lazy"
+              decoding="async"
+            />
           </span>
           <span className="lh-film-play" aria-hidden="true">
             <Play />
@@ -73,7 +83,7 @@ export function ClassFilms({ copy }: { copy: LandingCopy["films"] }) {
         {film ? (
           <div className="lh-film-frame">
             <iframe
-              src={`https://www.youtube-nocookie.com/embed/${FILMS[film]}?autoplay=1&rel=0&modestbranding=1`}
+              src={`https://www.youtube-nocookie.com/embed/${FILMS[film].id}?autoplay=1&rel=0&modestbranding=1`}
               title={copy[film].title}
               allow="autoplay; encrypted-media; picture-in-picture; fullscreen"
               allowFullScreen

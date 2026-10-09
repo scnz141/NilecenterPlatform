@@ -603,15 +603,27 @@ Mobile must be a real portal experience.
 
 Rules:
 
+- Width bands (staff app): phone under 640px, tablet 640-899px, laptop
+  900-1279px, desktop 1280-2559px, wall 2560px and up. Use these values for
+  new media queries.
 - Use one-column layouts under tablet widths.
-- Sidebar becomes a drawer or mobile navigation pattern.
+- Sidebar becomes a drawer under 900px. On laptops it defaults to the icon
+  rail; a user's own toggle always wins and is remembered per device.
 - Do not squeeze desktop sidebar into a narrow mixed state.
-- Keep tap targets at least 40px high.
+- On touch screens (`pointer: coarse`, not screen width) every control is at
+  least 44px tall; nothing is ever under 24px (WCAG 2.5.8).
+- Side sheets and dialogs respond to their own width with container queries
+  (`container: panel`): form rows stack when the panel is under 26rem, on any
+  screen.
 - Keep primary actions reachable without covering content.
 - Convert wide tables into priority rows/cards when needed.
 - Long names, emails, IDs, certificate codes, and Arabic text must wrap or truncate safely.
 - Avoid portal hero scale on mobile.
 - Test overflow for rosters, schedules, forms, dashboards, and action bars.
+- Gate: `node --env-file=.env.local scripts/staff-ui/responsive.mjs` checks
+  every staff page at 320, 390, 768, 1024 (touch) and 1280-3840 (desktop) for
+  sideways scrolling, content off screen, wide tables, cut-off labels, and
+  small touch targets. Run it with `STAFF_UI_LANG=ar` too. Both must pass.
 
 ## 19. Large Displays And Container Behavior
 
@@ -632,7 +644,10 @@ Rules:
 - Tables and timelines may scroll inside their owned region when necessary;
   the document itself must not gain horizontal overflow.
 - On 5K/6K and ultrawide displays, increase useful workspace capacity, column
-  count, or contextual separation. Do not scale font size with viewport width.
+  count, or contextual separation. Desk monitors up to 2560px keep a 16-18px
+  root. Above that the device is a wall display or TV, so the staff app root
+  scales with the screen (about 28px at 3840) and Display size multiplies it
+  (see section 25); 5K-wide boards stop at the 4K size.
 - On classroom boards, keep controls, player surfaces, attendance rosters, and
   learning content legible from distance without turning ordinary portal copy
   into hero typography.
@@ -649,6 +664,21 @@ Rules:
 - Arabic labels and Quran text need enough line height for diacritics.
 - Keep numbers, dates, emails, codes, and IDs readable in RTL.
 - Do not use Arabic calligraphy as operational UI text decoration.
+
+Languages (staff app and public site): English (source), Arabic and Urdu
+(right-to-left), Turkish, Chinese (Simplified) and Russian. Rules:
+
+- Every string lives in a dictionary that TypeScript checks against English;
+  a missing key fails the build, and unit tests reject untranslated strings
+  and lost `{placeholders}`.
+- Right-to-left rules target `:is(:lang(ar), :lang(ur))`, never Arabic alone.
+- Instrument Serif has no Cyrillic or CJK glyphs: Russian titles use Georgia,
+  Chinese titles use the CJK sans at weight 600, and Chinese never uses
+  italics.
+- Labels can be up to twice as long as English (Russian, Turkish); buttons and
+  rows wrap on phones instead of overflowing.
+- Nile Forms content is authored in English and Arabic (Turkish optional);
+  staff using another language read form content in English.
 
 ## 21. Strict Limits
 

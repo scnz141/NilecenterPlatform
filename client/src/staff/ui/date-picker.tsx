@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent } from "react";
+import { useId, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { cn } from "@/lib/utils";
 import {
   addDays,
@@ -94,14 +94,19 @@ export function DatePicker({
   }
 
   // Keyboard moves focus with the cursor; pointer use on the header keeps its focus.
-  useEffect(() => {
+  // Focus moves in the same frame as the key press; on first open the popover
+  // may mount a frame later, so that case retries once.
+  useLayoutEffect(() => {
     if (!open || view !== "days" || !focusCursor.current) return;
-    focusCursor.current = false;
-    const frame = requestAnimationFrame(() => {
-      grid.current
-        ?.querySelector<HTMLButtonElement>(`[data-iso="${cursor}"]`)
-        ?.focus({ preventScroll: true });
-    });
+    const focus = () => {
+      const day = grid.current?.querySelector<HTMLButtonElement>(`[data-iso="${cursor}"]`);
+      if (!day) return false;
+      day.focus({ preventScroll: true });
+      focusCursor.current = false;
+      return true;
+    };
+    if (focus()) return;
+    const frame = requestAnimationFrame(focus);
     return () => cancelAnimationFrame(frame);
   }, [open, view, cursor]);
 

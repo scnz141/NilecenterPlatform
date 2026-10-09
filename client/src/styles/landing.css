@@ -34,8 +34,29 @@
   -webkit-font-smoothing: antialiased;
 }
 
-.lp[data-locale="ar"] {
+.lp:is([data-locale="ar"], [data-locale="ur"]) {
   font-family: var(--arabic-ui);
+}
+
+/* Chinese: CJK faces; Instrument Serif has no CJK glyphs, so display text uses
+   a CJK serif and drops the tight Latin tracking. */
+.lp[data-locale="zh"] {
+  --serif: "Noto Serif SC", "Songti SC", "STSong", serif;
+  --sans: -apple-system, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans SC", system-ui, sans-serif;
+}
+
+.lp[data-locale="zh"] :is(.lp-display, .lp-h2, .pp-title, .lh-index-name, .lh-voice-quote blockquote) {
+  letter-spacing: 0;
+}
+
+/* CJK has no true italics; a slanted Han character reads as a rendering fault. */
+.lp[data-locale="zh"] :is(em, i) {
+  font-style: normal;
+}
+
+/* Russian: Instrument Serif has no Cyrillic; Georgia does. */
+.lp[data-locale="ru"] {
+  --serif: Georgia, "Times New Roman", serif;
 }
 
 .lp *,
@@ -307,7 +328,7 @@
   color: var(--navy);
 }
 
-.lp[data-locale="ar"] .lp-display {
+.lp:is([data-locale="ar"], [data-locale="ur"]) .lp-display {
   font-family: var(--arabic);
   font-weight: 700;
   font-size: clamp(2.6rem, 5.6vw, 4.75rem);
@@ -315,7 +336,7 @@
   letter-spacing: 0;
 }
 
-.lp[data-locale="ar"] .lp-display em {
+.lp:is([data-locale="ar"], [data-locale="ur"]) .lp-display em {
   font-style: normal;
 }
 
@@ -426,7 +447,7 @@
   text-wrap: balance;
 }
 
-.lp[data-locale="ar"] .lp-h2 {
+.lp:is([data-locale="ar"], [data-locale="ur"]) .lp-h2 {
   font-family: var(--arabic);
   font-weight: 700;
   font-size: clamp(2rem, 3.6vw, 3rem);
@@ -516,7 +537,7 @@
   line-height: 1.05;
 }
 
-.lp[data-locale="ar"] .lp-card-title {
+.lp:is([data-locale="ar"], [data-locale="ur"]) .lp-card-title {
   font-family: var(--arabic);
   font-weight: 700;
   font-size: 1.5rem;
@@ -630,7 +651,7 @@
   line-height: 1.05;
 }
 
-.lp[data-locale="ar"] .lp-mode-title {
+.lp:is([data-locale="ar"], [data-locale="ur"]) .lp-mode-title {
   font-family: var(--arabic);
   font-weight: 700;
   line-height: 1.35;
@@ -1093,7 +1114,7 @@
   text-wrap: balance;
 }
 
-.lp[data-locale="ar"] .pp-title {
+.lp:is([data-locale="ar"], [data-locale="ur"]) .pp-title {
   font-family: var(--arabic);
   font-weight: 700;
   font-size: clamp(2.25rem, 4.6vw, 3.75rem);
@@ -1835,7 +1856,7 @@
   text-wrap: pretty;
 }
 
-.lp[data-locale="ar"] .pp-story-text p {
+.lp:is([data-locale="ar"], [data-locale="ur"]) .pp-story-text p {
   font-family: var(--arabic);
   font-size: clamp(1.25rem, 2vw, 1.625rem);
   line-height: 1.8;
@@ -1972,7 +1993,7 @@
   z-index: -2;
 }
 
-.lp:not([data-locale="ar"]) .lh-hero-media {
+.lp:not([data-locale="ar"], [data-locale="ur"]) .lh-hero-media {
   transform: scaleX(-1);
 }
 
@@ -2158,7 +2179,7 @@
   line-height: 1.05;
 }
 
-.lp[data-locale="ar"] .lh-index-name {
+.lp:is([data-locale="ar"], [data-locale="ur"]) .lh-index-name {
   font-family: var(--arabic);
   font-size: clamp(1.375rem, 2vw, 1.75rem);
   font-weight: 700;
@@ -2250,7 +2271,7 @@
   line-height: 1;
 }
 
-.lp[data-locale="ar"] .lh-voice-quote blockquote::before {
+.lp:is([data-locale="ar"], [data-locale="ur"]) .lh-voice-quote blockquote::before {
   content: "\201D";
   font-family: var(--serif);
 }
@@ -2264,7 +2285,7 @@
   text-wrap: pretty;
 }
 
-.lp[data-locale="ar"] .lh-voice-quote blockquote {
+.lp:is([data-locale="ar"], [data-locale="ur"]) .lh-voice-quote blockquote {
   font-family: var(--arabic);
   font-size: clamp(1.5rem, 2.6vw, 2.25rem);
   line-height: 1.7;
@@ -2640,28 +2661,19 @@
   z-index: -1;
 }
 
-/* Campus film: terracotta, the brand's warm petal, so the two read apart. */
-.lh-film[data-kind="campus"] {
-  background: #8a3f17;
+/* The film's own poster, with a soft fade at the foot for the title. */
+.lh-film-art img {
+  display: block;
+  inline-size: 100%;
+  block-size: 100%;
+  object-fit: cover;
 }
 
 .lh-film-art::after {
   content: "";
   position: absolute;
   inset: 0;
-  background: linear-gradient(to top, rgb(0 0 0 / 0.42), rgb(0 0 0 / 0) 55%);
-}
-
-.lh-film-lattice polygon {
-  fill: rgb(246 139 67 / 0.08);
-}
-
-.lh-film-lattice polygon,
-.lh-film-lattice path {
-  stroke: #fff;
-  stroke-width: 1;
-  stroke-opacity: 0.18;
-  vector-effect: non-scaling-stroke;
+  background: linear-gradient(to top, rgb(10 18 26 / 0.78), rgb(10 18 26 / 0.12) 48%, rgb(10 18 26 / 0) 70%);
 }
 
 .lh-film-play {
@@ -2673,7 +2685,7 @@
   inline-size: 4rem;
   block-size: 4rem;
   border-radius: 50%;
-  background: #fff;
+  background: rgb(255 255 255 / 0.94);
   color: var(--navy);
   translate: -50% -60%;
   transition: background-color 150ms var(--ease), color 150ms var(--ease);
@@ -2911,15 +2923,45 @@
   .lh-films {
     grid-template-columns: minmax(0, 1fr);
   }
-  /* Short tiles: a smaller button sits clear of the title. */
-  .lh-film-play {
-    inset-block-start: 38%;
-    inline-size: 3.25rem;
-    block-size: 3.25rem;
+  /* Phones: the caption moves under the poster, so it never sits on the
+     film's own title card, and the play button centres on the image. */
+  .lh-film {
+    display: grid;
+    gap: 0.75rem;
+    aspect-ratio: auto;
+    padding: 0;
+    overflow: visible;
+    border-radius: 0;
+    background: transparent;
+    color: var(--ink);
   }
-  .lh-film-play > svg {
-    inline-size: 1.25rem;
-    block-size: 1.25rem;
+  .lh-film-art,
+  .lh-film-play {
+    grid-area: 1 / 1;
+  }
+  .lh-film-art {
+    position: relative;
+    z-index: auto;
+    aspect-ratio: 16 / 9;
+    overflow: hidden;
+    border-radius: 1rem;
+  }
+  .lh-film-art::after {
+    display: none;
+  }
+  .lh-film-play {
+    position: relative;
+    inset: auto;
+    place-self: center;
+    translate: none;
+    inline-size: 3.5rem;
+    block-size: 3.5rem;
+  }
+  [dir="rtl"] .lh-film-play {
+    translate: none;
+  }
+  .lh-film-text small {
+    color: var(--ink-3);
   }
   .lh-film-close {
     inset-block-start: auto;
@@ -2949,4 +2991,17 @@
 
 .lp-footer-brand .nile-logo img {
   block-size: 2.75rem !important;
+}
+
+
+/* Narrow screens: long labels (Russian, Turkish, Urdu) wrap inside the button
+   instead of running off the screen. */
+@media (max-width: 640px) {
+  .lp-btn {
+    max-inline-size: 100%;
+    white-space: normal;
+    text-align: center;
+    line-height: 1.3;
+    padding-block: 0.625rem;
+  }
 }

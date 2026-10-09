@@ -3,12 +3,19 @@ import { useSyncExternalStore } from "react";
 const KEY = "nilelearn.staff.sidebar";
 const listeners = new Set<() => void>();
 
+/* Laptop widths default to the icon rail so lists and forms get the room. */
+const LAPTOP = "(min-width: 900px) and (max-width: 1279px)";
+
 function read(): boolean {
+  let stored: string | null = null;
   try {
-    return window.localStorage.getItem(KEY) === "collapsed";
+    stored = window.localStorage.getItem(KEY);
   } catch {
-    return false;
+    stored = null;
   }
+  // An explicit choice always wins; with none, the screen width decides.
+  if (stored === "collapsed" || stored === "expanded") return stored === "collapsed";
+  return window.matchMedia(LAPTOP).matches;
 }
 
 /** Collapse or expand the desktop sidebar; remembered on this device. */
@@ -26,10 +33,13 @@ export function useSidebarCollapsed(): boolean {
     listener => {
       listeners.add(listener);
       const onStorage = (event: StorageEvent) => event.key === KEY && listener();
+      const laptop = window.matchMedia(LAPTOP);
       window.addEventListener("storage", onStorage);
+      laptop.addEventListener("change", listener);
       return () => {
         listeners.delete(listener);
         window.removeEventListener("storage", onStorage);
+        laptop.removeEventListener("change", listener);
       };
     },
     read,

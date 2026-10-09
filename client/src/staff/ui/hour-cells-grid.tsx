@@ -175,7 +175,7 @@ export function HourCellsGrid({
   return (
     <div className="flex min-w-0 flex-col gap-3">
       <div className="staff-toolbar">
-        <div className="flex items-center gap-1">
+        <div className="flex flex-wrap items-center gap-1">
           <button
             type="button"
             className="staff-icon-btn"
@@ -323,7 +323,7 @@ export function HourCellsGrid({
                     data-today={date === toIsoDate(new Date())}
                   >
                     {weekdayLabel(date)}
-                    <span className="block text-[11px] font-normal">
+                    <span className="block text-[0.6875rem] font-normal">
                       {shortDate(date)}
                     </span>
                   </th>
