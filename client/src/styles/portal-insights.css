@@ -324,38 +324,10 @@
   box-shadow: none;
 }
 
-.platform-shell[data-role="teacher"] .portal-insight {
-  --portal-insight-color: #1a3a5c;
-  background: var(--card);
-  box-shadow: none;
-}
-
 @media (min-width: 1080px) {
-  .platform-shell[data-role="student"] .portal-insight,
-  .platform-shell[data-role="teacher"] .portal-insight,
-  .platform-shell[data-role="registrar"] .portal-insight,
-  .platform-shell[data-role="headofdepartment"] .portal-insight,
-  .platform-shell[data-role="branchadmin"] .portal-insight,
-  .platform-shell[data-role="superadmin"] .portal-insight {
+  .platform-shell[data-role="student"] .portal-insight {
     max-width: 1560px;
     margin-inline: auto;
-  }
-}
-
-@media (min-width: 1260px) {
-  .teacher-reports-page .platform-v2-layout-grid,
-  .admin-reports-page .platform-v2-layout-grid,
-  .hod-report-page .platform-v2-layout-grid,
-  .branch-reports-page .platform-v2-layout-grid {
-    grid-template-columns: minmax(0, 1fr) minmax(280px, 0.42fr);
-  }
-
-  .teacher-reports-page .platform-v2-layout-side,
-  .admin-reports-page .platform-v2-layout-side,
-  .hod-report-page .platform-v2-layout-side,
-  .branch-reports-page .platform-v2-layout-side {
-    position: sticky;
-    top: 18px;
   }
 }
 
@@ -365,13 +337,11 @@
     gap: 16px;
   }
 
-  .platform-v2-summary-body,
-  .teacher-plan-body {
+  .platform-v2-summary-body {
     grid-template-columns: 1fr;
   }
 
-  .platform-v2-summary-facts,
-  .teacher-plan-facts {
+  .platform-v2-summary-facts {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
@@ -413,8 +383,7 @@
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .platform-v2-summary-facts,
-  .teacher-plan-facts {
+  .platform-v2-summary-facts {
     grid-template-columns: 1fr;
   }
 }

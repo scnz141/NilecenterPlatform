@@ -599,22 +599,16 @@
 }
 
 /* Messaging, support, and profile use the same calm workspace language. */
-.platform-shell[data-role="student"] .portal-message-toolbar-v3,
 .platform-shell[data-role="student"] .student-support-toolbar {
   width: 100%;
   max-width: 100%;
 }
 
-.platform-shell[data-role="student"] .portal-message-toolbar-v3 label,
 .platform-shell[data-role="student"] .student-support-toolbar label {
   min-height: 42px;
   border-color: var(--student-line);
   border-radius: 10px;
   background: var(--card);
-}
-
-.platform-shell[data-role="student"] .portal-message-thread:hover {
-  background: color-mix(in srgb, var(--role-tint) 12%, var(--card));
 }
 
 .platform-shell[data-role="student"] .profile-identity-strip {
@@ -872,7 +866,6 @@
     min-height: 0;
   }
 
-  .platform-shell[data-role="student"] .portal-message-toolbar-v3,
   .platform-shell[data-role="student"] .student-support-toolbar {
     width: 100%;
   }

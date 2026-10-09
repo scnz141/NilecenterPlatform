@@ -977,40 +977,6 @@
   min-width: 0;
 }
 
-/* Records retain their real actions but no longer use a metrics sidebar. */
-.student-records-page .platform-workflow-layout {
-  grid-template-columns: minmax(0, 1fr);
-}
-
-.student-records-page .platform-workflow-side {
-  display: none;
-}
-
-.student-records-page .platform-workflow-main {
-  width: min(100%, 1040px);
-  margin-inline: auto;
-  gap: 18px;
-}
-
-.student-records-page .platform-workflow-card {
-  border-radius: 12px;
-  box-shadow: 0 16px 42px rgba(26, 26, 26, 0.035);
-}
-
-.student-records-page .platform-workflow-title {
-  min-height: 64px;
-  padding: 17px 20px;
-}
-
-.student-records-page .platform-row-list article {
-  border-radius: 9px;
-}
-
-.student-records-page .platform-report-table article,
-.student-records-page .platform-student-feedback-list article {
-  border-radius: 10px;
-}
-
 /* Support is a request list. The composer is deliberately optional. */
 .student-support-page .platform-v2-layout-main {
   width: min(100%, 1060px);
@@ -1407,7 +1373,6 @@
   }
 
   .student-assessment-page .platform-v2-layout-main,
-  .student-records-page .platform-workflow-main,
   .student-support-page .platform-v2-layout-main {
     width: 100%;
   }

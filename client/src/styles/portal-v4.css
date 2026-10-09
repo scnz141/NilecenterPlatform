@@ -15,11 +15,6 @@
   box-shadow: none;
 }
 
-.platform-shell .admin-system-recent-audit article {
-  border-left: 0;
-  padding-inline-start: 0;
-}
-
 .platform-v2-layout {
   gap: 18px;
 }
@@ -28,26 +23,19 @@
   min-inline-size: 0;
 }
 
-.portal-simple-page .platform-v2-layout-toolbar,
-.simple-portal-page .platform-v2-layout-toolbar,
-.portal-ia-page .platform-v2-layout-toolbar,
-.admin-ia-page .platform-v2-layout-toolbar {
+.portal-simple-page .platform-v2-layout-toolbar {
   flex-direction: row;
   align-items: center;
   justify-content: flex-start;
   flex-wrap: wrap;
 }
 
-.platform-v2-layout-toolbar > .portal-simple-toolbar,
-.platform-v2-layout-toolbar > .simple-portal-toolbar,
-.platform-v2-layout-toolbar > .portal-ia-toolbar {
+.platform-v2-layout-toolbar > .simple-portal-toolbar {
   width: fit-content;
   max-width: 100%;
 }
 
-.portal-simple-toolbar,
-.simple-portal-toolbar,
-.portal-ia-toolbar {
+.simple-portal-toolbar {
   min-height: 50px;
   border-color: color-mix(in srgb, var(--border) 88%, var(--foreground));
   background: color-mix(in srgb, var(--card) 96%, var(--muted));
@@ -55,9 +43,7 @@
   gap: 4px;
 }
 
-.portal-simple-toolbar label,
-.simple-portal-toolbar label,
-.portal-ia-toolbar label {
+.simple-portal-toolbar label {
   min-height: 40px;
   border-color: transparent;
   background: transparent;
@@ -66,21 +52,15 @@
   font-weight: 720;
 }
 
-.portal-simple-toolbar label + label,
-.simple-portal-toolbar label + label,
-.portal-ia-toolbar label + label {
+.simple-portal-toolbar label + label {
   border-inline-start-color: var(--border);
 }
 
-.portal-simple-toolbar label:focus-within,
-.simple-portal-toolbar label:focus-within,
-.portal-ia-toolbar label:focus-within {
+.simple-portal-toolbar label:focus-within {
   background: color-mix(in srgb, var(--role-tint) 34%, var(--card));
 }
 
-.portal-simple-tabs,
-.portal-ia-subnav,
-.platform-segmented {
+.portal-simple-tabs {
   min-height: 50px;
   padding: 4px;
   gap: 4px;
@@ -89,30 +69,20 @@
 }
 
 .portal-simple-tabs a,
-.portal-simple-tabs button,
-.portal-ia-subnav a,
-.platform-segmented button {
+.portal-simple-tabs button {
   min-height: 40px;
   padding-inline: 15px;
   font-weight: 760;
 }
 
 .portal-simple-tabs a.active,
-.portal-simple-tabs button.active,
-.portal-ia-subnav a.active,
-.platform-segmented button.active {
+.portal-simple-tabs button.active {
   background: var(--role-color);
   color: white;
   box-shadow: none;
 }
 
-.platform-status,
-.platform-chip-row > span,
-.platform-calendar-scope span,
-.platform-row-list article > span,
-.platform-row-actions span,
-.platform-inbox-tabs span,
-.profile-chip-row span {
+.platform-status {
   min-height: 23px;
   padding-inline: 8px;
   font-size: 10.5px;
@@ -130,50 +100,31 @@
     gap: 14px;
   }
 
-  .portal-simple-page .platform-v2-layout-toolbar,
-  .simple-portal-page .platform-v2-layout-toolbar,
-  .portal-ia-page .platform-v2-layout-toolbar,
-  .admin-ia-page .platform-v2-layout-toolbar {
+  .portal-simple-page .platform-v2-layout-toolbar {
     align-items: stretch;
   }
 
-  .platform-v2-layout-toolbar > .portal-simple-toolbar,
   .platform-v2-layout-toolbar > .simple-portal-toolbar,
-  .platform-v2-layout-toolbar > .portal-ia-toolbar,
-  .portal-simple-tabs,
-  .portal-ia-subnav,
-  .platform-segmented {
+  .portal-simple-tabs {
     width: 100%;
   }
 
-  .portal-simple-toolbar,
-  .simple-portal-toolbar,
-  .portal-ia-toolbar {
+  .simple-portal-toolbar {
     min-height: 48px;
     flex-wrap: wrap;
   }
 
-  .portal-simple-toolbar label,
-  .simple-portal-toolbar label,
-  .portal-ia-toolbar label {
+  .simple-portal-toolbar label {
     min-width: 0;
     flex: 1 1 200px;
   }
 
-  .simple-portal-toolbar select,
-  .portal-ia-toolbar select {
+  .simple-portal-toolbar select {
     min-width: 0;
   }
 
-  .portal-simple-toolbar label + label,
-  .simple-portal-toolbar label + label,
-  .portal-ia-toolbar label + label {
+  .simple-portal-toolbar label + label {
     border-inline-start-color: transparent;
-  }
-
-  .portal-ia-toolbar .portal-ia-subnav,
-  .portal-simple-toolbar .portal-simple-tabs {
-    flex: 1 1 100%;
   }
 }
 
