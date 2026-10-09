@@ -1,5 +1,6 @@
 // Browser walk-through of the teaching UI as Super Admin (+ teacher read-only check).
 import {
+  pickDate,
   Api,
   BASE,
   chromium,
@@ -93,8 +94,8 @@ try {
   await page.getByRole("button", { name: "Plan sessions" }).click();
   await page.waitForSelector("#plan-from");
   step("planner starts from the usual days", (await page.locator(".staff-plan-row").count()) === 2);
-  await page.fill("#plan-to", "2026-11-29");
-  await page.fill("#plan-from", "2026-11-23");
+  await pickDate(page, "#plan-from", "2026-11-23");
+  await pickDate(page, "#plan-to", "2026-11-29");
   await page.getByRole("button", { name: "Find times" }).click();
   await page.waitForSelector(".staff-proposal", { timeout: 30000 }).catch(() => {});
   step(

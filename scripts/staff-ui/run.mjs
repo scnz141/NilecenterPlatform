@@ -1,13 +1,21 @@
 #!/usr/bin/env node
 // Runs the staff browser suites sequentially (staging EMS is shared — no
 // parallelism) and always cleans up form-test leads after the forms suite.
+// The responsive gate runs once per staff language.
 // Usage: npm run qa:staff   ·   QA_STAFF_ONLY=forms,teaching npm run qa:staff
+//        QA_STAFF_ONLY=responsive-ar,public-languages npm run qa:staff
 import { spawnSync } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const dir = path.dirname(fileURLToPath(import.meta.url));
-const SUITES = ["admissions", "students", "teaching", "week", "forms", "forms-people", "reports", "shell", "public", "fix-verify"];
+const LANGUAGES = ["en", "ar", "tr", "zh", "ru", "ur"];
+const SCRIPTS = new Map([
+  ...["admissions", "students", "teaching", "week", "forms", "forms-people", "reports", "shell", "public", "fix-verify",
+    "sidebar", "back-navigation", "date-picker", "date-of-birth", "landing", "public-languages"].map(name => [name, { script: `${name}.mjs` }]),
+  ...LANGUAGES.map(lang => [`responsive-${lang}`, { script: "responsive.mjs", env: { STAFF_UI_LANG: lang } }]),
+]);
+const SUITES = [...SCRIPTS.keys()];
 
 const only = (process.env.QA_STAFF_ONLY ?? "")
   .split(",")
@@ -21,10 +29,11 @@ if (unknown.length) {
 }
 const selected = only.length ? SUITES.filter(name => only.includes(name)) : SUITES;
 
-function run(script) {
+function run(script, env = {}) {
   const result = spawnSync(process.execPath, [path.join(dir, script)], {
     encoding: "utf8",
     stdio: ["ignore", "pipe", "inherit"],
+    env: { ...process.env, ...env },
   });
   process.stdout.write(result.stdout ?? "");
   const line = (result.stdout ?? "").split("\n").find(l => l.startsWith("SUITE_RESULT "));
@@ -34,7 +43,8 @@ function run(script) {
 const rows = [];
 for (const name of selected) {
   console.log(`\n=== ${name} ===`);
-  const { status, summary } = run(`${name}.mjs`);
+  const { script, env } = SCRIPTS.get(name);
+  const { status, summary } = run(script, env);
   rows.push({
     suite: name,
     passed: summary?.passed ?? 0,
@@ -51,7 +61,7 @@ for (const name of selected) {
 console.log("\nsuite            passed/total    console errors");
 for (const row of rows) {
   console.log(
-    row.suite.padEnd(16),
+    row.suite.padEnd(18),
     `${row.passed}/${row.total}`.padEnd(15),
     row.consoleErrors
   );

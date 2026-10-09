@@ -1,5 +1,6 @@
 // Browser walk-through of the admissions UI as Registrar. Synthetic, marker-bound data.
 import {
+  pickDate,
   Api,
   BASE,
   chooseOption,
@@ -104,7 +105,7 @@ try {
   await page.getByRole("button", { name: "Book trial lesson" }).click();
   await waitFor("#booking-date");
   const when = new Date(Date.now() + 3 * 864e5);
-  await page.fill("#booking-date", when.toISOString().slice(0, 10));
+  await pickDate(page, "#booking-date", when.toISOString().slice(0, 10));
   await chooseOption(page, "Course", course.displayName ?? course.fullname);
   await page.getByRole("button", { name: "Book", exact: true }).click();
   step(

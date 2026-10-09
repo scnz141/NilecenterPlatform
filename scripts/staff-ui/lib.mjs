@@ -143,6 +143,28 @@ export async function settle(page, selector, { timeout = 30000, quiet = 500 } = 
   await page.waitForTimeout(quiet);
 }
 
+/**
+ * Choose an ISO date in a staff DatePicker field (a button, not an input):
+ * opens it, steps month by month to the date, and clicks the day.
+ */
+export async function pickDate(page, selector, iso) {
+  await page.locator(selector).click();
+  const pop = page.locator(".staff-datepicker");
+  await pop.waitFor({ timeout: 10000 });
+  for (let step = 0; step < 120; step += 1) {
+    const day = pop.locator(`.staff-dp-day[data-iso="${iso}"]:not([data-outside])`);
+    if (await day.count()) {
+      await day.click();
+      await pop.waitFor({ state: "detached", timeout: 10000 }).catch(() => {});
+      return;
+    }
+    const shown = await pop.locator(".staff-dp-day:not([data-outside])").first().getAttribute("data-iso");
+    // Header order is previous, title, next in every language.
+    await pop.locator(".staff-dp-nav").nth(iso > shown ? 1 : 0).click();
+  }
+  throw new Error(`Date ${iso} is not reachable in ${selector}`);
+}
+
 /** Pick an option from an aria-labelled combobox (Select trigger). */
 export async function chooseOption(page, triggerName, optionText) {
   await page.getByRole("combobox", { name: triggerName }).click();

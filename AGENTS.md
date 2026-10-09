@@ -65,6 +65,9 @@ Do not duplicate or infer that status in companion files.
 Current QA baseline:
 
 - Portal QA: 375 checks, 0 failures.
+- Staff browser suites (`npm run qa:staff`): 22 suites, 0 failures. That is
+  16 functional suites plus the responsive gate in each of the six languages
+  (en, ar, tr, zh, ru, ur).
 - This baseline must not be broken.
 
 ### Frontend And Backend Team Boundary
@@ -275,6 +278,14 @@ Use the commands that exist in `package.json`:
   channel. On machines without Chrome, run
   `PLAYWRIGHT_MCP_BROWSER=chromium QA_PORT=3011 scripts/verify.sh` to use the
   bundled Chromium and a free port when the dev servers hold 3000/3001.
+- `node --env-file=.env.local scripts/staff-ui/responsive.mjs` is the staff
+  app responsive gate (every page, 320 to 3840 px, touch emulated below
+  1280). Set `STAFF_UI_LANG` to check one language; `npm run qa:staff` runs
+  it for all six.
+- Staff app languages: en (source), ar, tr, zh, ru, ur in
+  `client/src/staff/copy*.ts`; public site: `client/src/pages/home/landing-copy.ts`
+  and `public-copy.ts`. TypeScript and `copy.test.ts` reject missing keys,
+  untranslated strings and lost `{placeholders}`. Arabic and Urdu are RTL.
 - Nile Forms in the unified staff app (`/app/forms`) needs
   `NILE_FORMS_NCC_WRITES_ENABLED=1` for NCC staff writes (author, publish,
   review, fill). Reads work without it. The compatibility forms store is
@@ -398,12 +409,17 @@ Use the commands that exist in `package.json`:
 - `FULL_FORMAT_CHECK=1 scripts/verify.sh` runs the repo-wide Prettier audit. Use this intentionally because the current app has existing formatting drift.
 - `npm run qa:portals` for portal route QA when browser/runtime context is available.
 - `npm run qa:staff` runs the staff browser suites in `scripts/staff-ui/`
-  (admissions, students, teaching, week, forms, shell, public) sequentially
-  against `STAFF_UI_BASE` (default `http://localhost:3000`). They sign in with
-  the `EMS_QA_*` accounts and hit the shared staging EMS, so they must never
-  run in parallel. `QA_STAFF_ONLY=forms,teaching` selects a subset. Teaching
-  and forms write marker-bound synthetic data to staging and clean up after
-  themselves; the runner also closes form-test leads after the forms suite.
+  sequentially against `STAFF_UI_BASE` (default `http://localhost:3000`):
+  admissions, students, teaching, week, forms, forms-people, reports, shell,
+  public, fix-verify, sidebar, back-navigation, date-picker, date-of-birth,
+  landing, public-languages, and `responsive-<lang>` for en, ar, tr, zh, ru
+  and ur. They sign in with the `EMS_QA_*` accounts and hit the shared
+  staging EMS (Moodle sandbox behind it), so they must never run in parallel.
+  `QA_STAFF_ONLY=forms,responsive-ar` selects a subset. Suites that write use
+  marker-bound synthetic data and clean up after themselves; the runner also
+  closes form-test leads after the forms suite. Staff date fields are
+  `DatePicker` buttons, not inputs: use `pickDate(page, selector, iso)` from
+  `lib.mjs` instead of `page.fill`.
 - `npm run seed:supabase` only when explicitly working on Supabase demo seeding.
 - `npm run check:moodle-phase4-loops` verifies that every frozen Moodle read and
   bounded sandbox-write contract has complete lifecycle evidence, deterministic

@@ -88,14 +88,24 @@ async function newPage() {
       the stretch overlay swallowing the click. Creates its own
       pending_payment enrolment first — terminal rows render no actions. */
 {
-  const regApi = new Api();
-  await regApi.login("REGISTRAR");
-  const ws = await regApi.call("GET", "/api/auth/workspaces");
+  // The Registrar's branch hosts the test row. Setup runs as Super Admin:
+  // staging scopes course reads, and a Registrar may see no course at all.
+  const branchApi = new Api();
+  await branchApi.login("REGISTRAR");
+  const ws = await branchApi.call("GET", "/api/auth/workspaces");
   const branchId = ws.data.items[0].id;
-  await regApi.call("POST", "/api/auth/switch-workspace", { branchId });
-  const students = await regApi.call("GET", "/api/ncc/admissions/students?pageSize=20");
+  await branchApi.logout();
+  const regApi = new Api();
+  await regApi.login("SUPER_ADMIN");
+  const students = await regApi.call("GET", `/api/ncc/admissions/students?pageSize=100`);
   const courses = await regApi.call("GET", "/api/ncc/delivery/courses?pageSize=5");
   const course = courses.data?.items?.[0];
+  // Other suites restore the sandbox course to disabled; enable it for this
+  // check only and restore it in cleanup, as admissions.mjs does.
+  let courseEnabled = false;
+  if (course && course.status !== "active") {
+    courseEnabled = (await regApi.call("POST", `/api/ncc/delivery/courses/${course.id}/enable`)).status < 300;
+  }
   let createdStudent = null;
   let enrolmentId = null;
   const tryEnrol = async studentId => {
@@ -105,7 +115,9 @@ async function newPage() {
     });
     return e.data?.enrolment?.id ?? null;
   };
-  const existing = (students.data?.items ?? []).find(s => s.status === "active");
+  const existing = (students.data?.items ?? []).find(
+    s => s.status === "active" && (s.homeBranchId ?? branchId) === branchId
+  );
   if (existing && course) enrolmentId = await tryEnrol(existing.id);
   if (!enrolmentId && course) {
     // Existing students already hold an enrolment for this course (409), or
@@ -148,16 +160,16 @@ async function newPage() {
   await ctx.close();
 
   // Cleanup: cancel the enrolment and disable a student created for it.
-  if (enrolmentId || createdStudent) {
+  if (enrolmentId || createdStudent || courseEnabled) {
     const cleanup = new Api();
-    await cleanup.login("REGISTRAR");
-    await cleanup.call("POST", "/api/auth/switch-workspace", { branchId });
+    await cleanup.login("SUPER_ADMIN");
     const reasons = await cleanup.call(
       "GET", "/api/ncc/settings/action-reasons?activeOnly=true"
     );
     const items = reasons.data?.items ?? [];
     const cancelReason = items.find(r => r.kind === "cancel_enrolment");
     const disableReason = items.find(r => r.kind === "disable_student");
+    const courseReason = items.find(r => r.kind === "disable_course");
     if (enrolmentId && cancelReason) {
       await cleanup.call(
         "POST",
@@ -171,6 +183,11 @@ async function newPage() {
         `/api/ncc/admissions/students/${createdStudent}/disable`,
         { reasonId: disableReason.id }
       );
+    }
+    if (courseEnabled && courseReason) {
+      await cleanup.call("POST", `/api/ncc/delivery/courses/${course.id}/disable`, {
+        reasonId: courseReason.id,
+      });
     }
     await cleanup.logout();
   }
