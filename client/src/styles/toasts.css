@@ -1,0 +1,55 @@
+/* Toasts: one design on every surface (public site, sign-in, staff app,
+   student portal), a compact dark pill at the top centre. Every selector
+   starts with [data-sonner-toaster] so it outranks sonner's own styles
+   whichever stylesheet loads last. */
+[data-sonner-toaster] [data-sonner-toast][data-styled="true"] {
+  min-block-size: 2.75rem;
+  padding-block: 0.625rem;
+  /* The icon side sits 4px tighter so the pill reads optically centred. */
+  padding-inline: 1rem 1.25rem;
+  border: 1px solid transparent;
+  border-radius: 22px;
+  box-shadow:
+    0 2px 6px rgb(27 26 23 / 0.16),
+    0 12px 32px -8px rgb(27 26 23 / 0.32);
+  background: #1a1a1a;
+  color: #ffffff;
+  font-family:
+    -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", "Inter",
+    "IBM Plex Sans", "IBM Plex Sans Arabic", system-ui, sans-serif;
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+/* Wider screens: the pill hugs its message, centred under the toaster.
+   Phones keep sonner's full-width banner. */
+@media (min-width: 601px) {
+  [data-sonner-toaster][data-x-position="center"] [data-sonner-toast][data-styled="true"] {
+    inset-inline: 0;
+    inline-size: fit-content;
+    max-inline-size: var(--width);
+    margin-inline: auto;
+  }
+}
+
+[data-sonner-toaster] [data-sonner-toast][data-styled="true"]:focus-visible {
+  outline: 2px solid #c4a35a;
+  outline-offset: 2px;
+}
+
+[data-sonner-toaster] [data-sonner-toast][data-styled="true"] [data-description] {
+  color: rgb(248 245 239 / 0.75);
+  font-weight: 400;
+}
+
+[data-sonner-toaster] [data-sonner-toast][data-type="success"] [data-icon] {
+  color: #7fd39a;
+}
+
+[data-sonner-toaster] [data-sonner-toast][data-type="error"] [data-icon] {
+  color: #ff9a87;
+}
+
+[data-sonner-toaster] [data-sonner-toast][data-type="warning"] [data-icon] {
+  color: #f2c46b;
+}

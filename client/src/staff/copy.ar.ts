@@ -1231,7 +1231,6 @@ export const ar: StaffMessages = {
     allForms: "كل الاستمارات",
     allStatuses: "كل الحالات",
     import: "الاستيراد من Jotform",
-    sentToast: "شكرًا لك. تم إرسال ردك.",
     backToForms: "العودة إلى النماذج",
     importer: {
       title: "الاستيراد من Jotform",

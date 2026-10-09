@@ -32,7 +32,6 @@ export function SecretDialog({
     try {
       await navigator.clipboard.writeText(value);
       setCopied(value);
-      toast.success(copy.staffUsers.copied);
       window.setTimeout(() => setCopied(null), 1500);
     } catch {
       toast.error(copy.state.errorGeneric);

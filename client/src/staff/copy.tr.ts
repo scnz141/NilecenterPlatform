@@ -1234,7 +1234,6 @@ export const tr: StaffMessages = {
     allForms: "Tüm formlar",
     allStatuses: "Tüm durumlar",
     import: "Jotform'dan içe aktar",
-    sentToast: "Teşekkürler. Yanıtınız gönderildi.",
     backToForms: "Formlara dön",
     importer: {
       title: "Jotform'dan içe aktar",

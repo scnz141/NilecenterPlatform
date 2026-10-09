@@ -660,22 +660,12 @@ function Router() {
   );
 }
 
-const STUDENT_PORTAL_PATH = /^\/app\/student(\/|$)/;
-
-/** Staff sheets open from the inline-end edge; keep toasts clear of their footer. */
-function AppToaster() {
-  const [location] = useLocation();
-  const staffApp =
-    location.startsWith("/app/") && !STUDENT_PORTAL_PATH.test(location);
-  return <Toaster position={staffApp ? "top-center" : undefined} />;
-}
-
 function App() {
   return (
     <ErrorBoundary>
       <ThemeProvider defaultTheme="light">
         <TooltipProvider>
-          <AppToaster />
+          <Toaster />
           <Router />
         </TooltipProvider>
       </ThemeProvider>

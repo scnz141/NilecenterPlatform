@@ -2948,37 +2948,6 @@ html[dir="rtl"] .ui-dialog {
   background: var(--paper);
 }
 
-/* Toasts (sonner) */
-/* Toasts: a compact dark pill at the top centre. */
-html.staff-ui [data-sonner-toast] {
-  min-block-size: 2.75rem !important;
-  padding-block: 0.625rem !important;
-  padding-inline: 1rem 1.25rem !important;
-  border: 1px solid transparent !important;
-  border-radius: 22px !important;
-  box-shadow:
-    0 2px 6px rgb(27 26 23 / 0.16),
-    0 12px 32px -8px rgb(27 26 23 / 0.32) !important;
-  background: var(--ink) !important;
-  color: var(--paper-raised) !important;
-  font-family: var(--font-ui) !important;
-  font-size: 0.875rem !important;
-  font-weight: 500 !important;
-}
-
-html.staff-ui [data-sonner-toast] [data-description] {
-  color: rgb(248 245 239 / 0.75) !important;
-  font-weight: 400 !important;
-}
-
-html.staff-ui [data-sonner-toast][data-type="success"] [data-icon] {
-  color: #7fd39a;
-}
-
-html.staff-ui [data-sonner-toast][data-type="error"] [data-icon] {
-  color: #ff9a87;
-}
-
 /* ---------- Staff detail ----------------------------------------------- */
 .staff-detail-head {
   display: flex;

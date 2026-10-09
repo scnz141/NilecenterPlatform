@@ -1,7 +1,6 @@
 import "@/styles/nile-forms.css";
 import { useState } from "react";
 import { useLocation, useParams } from "wouter";
-import { toast } from "sonner";
 import NileFormRenderer from "@/components/forms/NileFormRenderer";
 import type { FormResponderBundle } from "../../../../server/nileFormsService";
 import { useInvalidate, useNcc } from "../api";
@@ -36,7 +35,6 @@ export default function FormFillPage() {
         mode="assigned"
         onSubmitted={() => {
           setSubmitted(true);
-          toast.success(F.sentToast);
           void invalidate("/api/forms");
         }}
       />

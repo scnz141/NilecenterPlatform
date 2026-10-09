@@ -1260,7 +1260,6 @@ const en = {
     allForms: "All forms",
     allStatuses: "All statuses",
     import: "Import from Jotform",
-    sentToast: "Thank you. Your response was sent.",
     backToForms: "Back to forms",
     importer: {
       title: "Import from Jotform",

@@ -295,7 +295,6 @@ function LoginForm({
     if (!result.ok) {
       setLoading(false);
       setFormError(result.error);
-      toast.error(ui("Sign in failed"), { description: result.error });
       return;
     }
 
@@ -309,9 +308,7 @@ function LoginForm({
     }
 
     setSignedIn(true);
-    toast.success(ui("Signed in"), {
-      description: ui("Opening workspace"),
-    });
+    toast.success(ui("Signed in"));
     await new Promise(resolve => window.setTimeout(resolve, 180));
     const needsWorkspace =
       result.session.provider === "ncc" &&
